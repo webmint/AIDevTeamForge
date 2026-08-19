@@ -68,8 +68,12 @@ human gate is the escape hatch when layer 1 is wrong.
   An `unresolved_subject` AC counts in neither N nor K — it is the ledger's
   fourth term: the AC was never formalized, because nothing resolved what its
   subject IS, so the solver never saw it; the failure detail lives in the
-  UNRESOLVED SUBJECTS section above. Makes "the solver only proves over the
-  formalized subset" structural, not a footnote.
+  UNRESOLVED SUBJECTS section above. Every count on this line is computed from
+  the SINGLE representative pass's IR, so the parenthetical can legitimately
+  disagree with the cross-pass merge that feeds the UNRESOLVED SUBJECTS section
+  and the `clean` signal — a subject left unresolved by the representative pass
+  but resolved by another pass is counted here and nowhere else. Makes "the
+  solver only proves over the formalized subset" structural, not a footnote.
 
 When the IR carries at least one `implication` constraint, a short reachability
 note (conditional ACs are checked assuming their trigger can fire — the solver

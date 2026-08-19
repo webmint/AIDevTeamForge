@@ -17,7 +17,7 @@ It is neurosymbolic — two parts, one soft, one hard. **Auto-formalization (sof
 - **Honest permission boundary (D9).** It is STRONG on numeric/state/enum invariants. Conditional-permission clashes are caught ONLY when a permitting case is asserted reachable (an AC that asserts the reachable scenario, e.g. "a non-admin CAN delete"). Do NOT claim "permission/role logic" is caught in general — a set of pure IF/THEN rules is genuinely consistent until a permitted case is asserted, and the solver correctly reports that.
 - **Determinism is honest, not bare (D13).** The Z3 proof is deterministic GIVEN a formalization, but the English→logic formalization is a soft LLM step that can differ run-to-run. So the command formalizes a fixed 2 times (a quorum) and surfaces a contradiction as CONFIRMED only when the same conflicting AC set reproduces across a majority of passes; the human checks the translation. Never bare-claim "a deterministic proof of your spec" — say "a deterministic proof over a human-checked, quorum-stable formalization."
 
-**`/devforge:spec-check` produces FINDINGS PLUS a recommended DISPOSITION — but the disposition is a RECOMMENDATION, not a binding verdict.** The human owns the final call. The three dispositions are CONSISTENT (proceed to `/devforge:plan`), REVISE-SPEC (back to `/devforge:specify` to fix the named conflicting ACs — the translation is confirmed correct), and DISMISS (the human judges the translation wrong; proceed anyway). Because the softness lives in the translation, the report surfaces the full formalization so the human can check THAT before a proven contradiction is treated as real — DISMISS is the escape hatch when the translation is wrong.
+**`/devforge:spec-check` produces FINDINGS PLUS a recommended DISPOSITION — but the disposition is a RECOMMENDATION, not a binding verdict.** The human owns every call the run actually raises — and the run raises one only when there is something to decide. A CLEAN result (no contradiction reproduced across the formalization passes, every acceptance criterion's subject resolved, no citation miss) is accepted without asking: the report is still rendered, written, and committed, but no question is put to the human, because nothing has been alleged. Anything else surfaces the report and asks. The three dispositions are CONSISTENT (proceed to `/devforge:plan`), REVISE-SPEC (back to `/devforge:specify` to fix the named conflicting ACs — the translation is confirmed correct), and DISMISS (the human judges the translation wrong; proceed anyway). Because the softness lives in the translation, the report surfaces the full formalization so the human can check THAT before a proven contradiction is treated as real — DISMISS is the escape hatch when the translation is wrong.
 
 **Opt-in by construction — never an auto-gate (D14).** `/devforge:spec-check` runs because the USER invoked it (like `/devforge:audit` and `/devforge:grill`) — it NEVER auto-runs, and there is NO forced gate on any `/devforge:specify` run. Blocking belongs to the DETERMINISTIC forcing-functions family (no stochastic link); an advisory check atop a stochastic formalizer must never become a blocking gate, or every mistranslation would hard-stop a correct specification. Skipping `/devforge:spec-check` leaves the `/devforge:specify → /devforge:plan` chain byte-unchanged. Run it for high-stakes specs — those with many interacting numeric/threshold, state/enum, or conditional-permission acceptance criteria over shared quantities, where a hidden contradiction is most likely and most costly to discover only after `/devforge:plan` has designed against it.
 
@@ -31,8 +31,8 @@ This file lives at `src/commands/spec-check/main.md` in the AIDevTeamForge templ
 
 The files this command writes under the repo are:
 
-- `specs/[feature]/spec-check.md` — the rendered consistency report. Produced by the helper's `render-report` verb in PHASE 4; carries the two-layer surface (how the ACs were read as logic, then the proof over that reading) AND the recommended 3-way disposition. Idempotent: re-running `/devforge:spec-check` on the same feature OVERWRITES `spec-check.md` (the helper does an atomic write).
-- `specs/[feature]/spec-check-seed.json` — written in PHASE 6 ONLY when the user chooses `Revise spec` at the human gate AND that matches the recommended REVISE-SPEC disposition. Produced by the helper's `write-seed` verb (`source="spec-check"`, `target_stage="spec"`); the structured BACKWARD handoff `/devforge:specify` consumes on re-entry so the re-run is directed at the conflicting ACs, not a repeat. Not written for `Consistent`, `Dismiss`, or a cross-pick (the user picking `Revise spec` when the recommendation was not REVISE-SPEC).
+- `specs/[feature]/spec-check.md` — the rendered consistency report. Produced by the helper's `render-report` verb in PHASE 4; carries the two-layer surface (how the ACs were read as logic, then the proof over that reading) AND the recommended 3-way disposition. Its header also carries a `**Spec hash**` line — the sha256 of the `spec.md` this run checked, so a later reader can re-hash that file and tell whether the report still describes it — and, when at least one acceptance criterion's subject went unresolved across EVERY formalization pass, an `## UNRESOLVED SUBJECTS` section naming those variables (absent when there are none). Idempotent: re-running `/devforge:spec-check` on the same feature OVERWRITES `spec-check.md` (the helper does an atomic write).
+- `specs/[feature]/spec-check-seed.json` — written in PHASE 6 ONLY when the user chooses `Revise spec` at the human gate AND that matches the recommended REVISE-SPEC disposition. Produced by the helper's `write-seed` verb (`source="spec-check"`, `target_stage="spec"`); the structured BACKWARD handoff `/devforge:specify` consumes on re-entry so the re-run is directed at the conflicting ACs, not a repeat. Not written for `Consistent`, `Dismiss`, or a cross-pick (the user picking `Revise spec` when the recommendation was not REVISE-SPEC) — and not written on a clean run, where PHASE 5 raises no gate at all, so there is no pick to match.
 
 **`/devforge:spec-check` is STATELESS** — it writes NO run-state file. It gates on the setup chain + the presence of `spec.md` (PHASE 0), and a re-run simply overwrites `spec-check.md`. File-idempotency is not verdict-determinism: the formalization is a soft LLM step, so the VERDICT can differ run-to-run — the PHASE-2 quorum (D13) is the mitigation, not statelessness.
 
@@ -45,11 +45,12 @@ The helper cannot dispatch agents (a subprocess has no Task tool), so the orches
 - `$WORKDIR/preflight.json` — the `preflight` stdout (the setup-chain / constitution / feature-gate / z3 context block). Written in PHASE 0.
 - `$WORKDIR/acs.json` — the `resolve-scope` stdout (`{"acs": [...], "count": N}`, the extracted acceptance criteria). Written in PHASE 1, read by `render-formalize-brief --acs-file`, `consume-ir --acs-file`, and `render-report --acs-file`.
 - `$WORKDIR/ir-pass-<i>.json` — the RAW IR JSON returned by the `spec-formalizer` Task on pass `i` (the fenced ```json block extracted from the agent's final message). Written + read per pass in PHASE 2, consumed by `consume-ir --ir-file`.
-- `$WORKDIR/ir-canon-<i>.json` — the CANONICAL (parsed + validated) IR for pass `i`, from `consume-ir` stdout. Written per pass in PHASE 2; one of these becomes the representative IR passed to `render-report --ir-file` in PHASE 4.
+- `$WORKDIR/ir-canon-<i>.json` — the CANONICAL (parsed + validated) IR for pass `i`, from `consume-ir` stdout, carrying that pass's `citation_errors` list. Written per pass in PHASE 2; in PHASE 4 ALL of them are assembled into `ir-files.json`, and ONE of them becomes the representative IR passed to `render-report --ir-file`.
 - `$WORKDIR/solve-pass-<i>.json` — the `solve` stdout for pass `i` (`{"status", "unsat_core"}`). Written per pass in PHASE 2.
 - `$WORKDIR/passes.json` — the bare JSON array of the successful passes' solve-results, assembled from the `solve-pass-<i>.json` files. Written in PHASE 3, read by `quorum-core --passes-file`.
 - `$WORKDIR/quorum.json` — the `quorum-core` stdout (the D13 verdict + `confirmed_core` + `stability` + `all_cores` + `declared_k`). Written in PHASE 3, read by `render-report --stability-file`.
 - `$WORKDIR/solve-final.json` — the synthesized `{"status", "unsat_core"}` the report renders from (derived from the quorum verdict: `confirmed_unsat` → `unsat` + the confirmed core, else `sat` + `[]`). Written in PHASE 4, read by `render-report --solve-file`.
+- `$WORKDIR/ir-files.json` — the bare JSON array of the successful passes' canonical IRs — the IR OBJECTS themselves, each one `consume-ir`'s stdout including its `citation_errors` key, NOT their file paths — assembled from the `ir-canon-<i>.json` files. Written in PHASE 4, read by `render-report --ir-files-file`.
 
 ## Reference files
 
@@ -146,10 +147,10 @@ Extract the fenced ```json block from the agent's final message and write it to 
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-spec-check"
-.devforge/lib/spec_check_helper consume-ir --ir-file "$WORKDIR/ir-pass-<i>.json" --acs-file "$WORKDIR/acs.json" > "$WORKDIR/ir-canon-<i>.json"
+.devforge/lib/spec_check_helper consume-ir --ir-file "$WORKDIR/ir-pass-<i>.json" --acs-file "$WORKDIR/acs.json" --workspace-root . > "$WORKDIR/ir-canon-<i>.json"
 ```
 
-`consume-ir` parses the raw IR and cross-validates it against the ACs (every atom references a declared variable, coverage covers every AC exactly once, atom values match their variable's sort). On success it prints the canonical IR to stdout, captured to `$WORKDIR/ir-canon-<i>.json`. Two failure modes, both meaning "re-prompt the formalizer for THIS pass":
+`consume-ir` parses the raw IR and cross-validates it against the ACs (every atom references a declared variable, coverage covers every AC exactly once, atom values match their variable's sort). `--workspace-root .` additionally resolves every `arm="code"` subject-resolution citation the formalizer claimed against the repo and records each miss in the canonical IR's `citation_errors` list — a citation miss is neither a shape problem nor an inconsistency with the ACs, so it leaves this verb's exit code at 0, consumes NONE of the retry budget below, and needs no recovery arm here; it simply rides forward in the IR for PHASE 4 to fold into the report. On success it prints the canonical IR to stdout, captured to `$WORKDIR/ir-canon-<i>.json`. Two failure modes, both meaning "re-prompt the formalizer for THIS pass":
 
 - **exit 2** — the IR is shape-malformed (bad JSON, missing key). Re-dispatch the formalizer for this pass with the helper's stderr appended to the prompt so it can fix the syntax.
 - **exit 3** — the IR parses but is logically inconsistent with the ACs (undeclared variable, missing coverage entry, sort mismatch). Re-dispatch with the helper's stderr (the validation errors) appended so it can fix the translation.
@@ -194,6 +195,23 @@ python3 -c "import json; q=json.load(open('$WORKDIR/quorum.json')); print(json.d
 
 This mirrors the helper's own quorum→solve-result synthesis: `confirmed_unsat` → `unsat` + the confirmed core; `unstable` and `consistent` both → `sat` + `[]` (the D13 cry-wolf rule — an unstable one-off must not recommend REVISE-SPEC; the instability is surfaced as a report caveat via the stability file, never folded into the disposition).
 
+Assemble EVERY successful pass's canonical IR into one bare JSON array, so the report speaks for the whole quorum's subject resolution rather than for the representative pass alone:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-spec-check"
+python3 -c "
+import json, glob
+out = []
+for p in sorted(glob.glob('$WORKDIR/ir-canon-*.json')):
+    try:
+        out.append(json.load(open(p)))
+    except ValueError:
+        pass
+print(json.dumps(out))" > "$WORKDIR/ir-files.json"
+```
+
+The array holds the IR OBJECTS, not their paths. The `try`/`except` skips an `ir-canon-<i>.json` left EMPTY by a pass that exhausted its PHASE-2.3 retry cap — the `>` redirect creates that file even when `consume-ir` exits non-zero, so a failed pass leaves a zero-byte file behind that must not abort the assembly. At least one entry always survives: reaching PHASE 4 means PHASE 3's `quorum-core` accepted a non-empty `passes.json`, and a pass only reaches `solve` after its `consume-ir` succeeded.
+
 Pick the REPRESENTATIVE IR for the report — for `confirmed_unsat`, the `ir-canon-<i>.json` of the FIRST pass whose `solve-pass-<i>.json` core equals `confirmed_core` (so the Contradiction section renders the constraints that produced the confirmed core); for `unstable` / `consistent`, pass 1's `ir-canon-1.json`:
 
 ```bash
@@ -211,14 +229,28 @@ Capture the printed path as `<representative-ir>`, then render the report:
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-spec-check"
-.devforge/lib/spec_check_helper render-report --ir-file <representative-ir> --solve-file "$WORKDIR/solve-final.json" --acs-file "$WORKDIR/acs.json" --feature <feature> --feature-dir <feature-dir> --stability-file "$WORKDIR/quorum.json"
+.devforge/lib/spec_check_helper render-report --ir-file <representative-ir> --solve-file "$WORKDIR/solve-final.json" --acs-file "$WORKDIR/acs.json" --feature <feature> --feature-dir <feature-dir> --stability-file "$WORKDIR/quorum.json" --ir-files-file "$WORKDIR/ir-files.json" --spec-file <feature-dir>/spec.md
 ```
 
-`render-report` reads the representative IR, the synthesized solve-result, the ACs, and the quorum stability, then renders the full report (skeleton documented in `references/report-format.md`) and writes it to `<feature-dir>/spec-check.md` via an atomic write, OVERWRITING any prior `spec-check.md` (idempotent). It computes the date itself (`--date` is not a flag). The `--stability-file` adds the "contradiction core reproduced in j/k passes" line for a stable verdict, or the prominent "Formalization unstable" caveat for an `unstable` verdict. Stdout is a JSON ack `{"report_path", "recommended_disposition", "unsat_core", "status"}`. Carry `recommended_disposition` forward to PHASE 5, and carry the ack's `report_path` forward to PHASE 7 (it is the exact `<feature-dir>/spec-check.md` path to commit). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`render-report` reads the representative IR, the synthesized solve-result, the ACs, the quorum stability, every pass's IR, and the spec file, then renders the full report (skeleton documented in `references/report-format.md`) and writes it to `<feature-dir>/spec-check.md` via an atomic write, OVERWRITING any prior `spec-check.md` (idempotent). It computes the date itself (`--date` is not a flag). The `--stability-file` adds the "contradiction core reproduced in j/k passes" line for a stable verdict, or the prominent "Formalization unstable" caveat for an `unstable` verdict. `--ir-files-file` merges the passes' subject resolutions — a variable resolved in ANY pass counts as resolved — and renders the `## UNRESOLVED SUBJECTS` section naming every variable NO pass resolved (the section is absent when there are none). `--spec-file` content-hashes the spec into the report's `**Spec hash**` header line; it is `<feature-dir>/spec.md`, the same file PHASE 1 extracted the ACs from.
 
-## PHASE 5 — Surface + human gate (the user owns the verdict)
+Stdout is a JSON ack `{"report_path", "recommended_disposition", "unsat_core", "status", "clean", "unresolved_subject_count", "citation_failure_count", "spec_sha256"}`. Read `clean` from that stdout — it is the signal PHASE 5 branches on, and the helper computes it: `true` ONLY when the quorum verdict was `consistent` AND the cross-pass merge found zero unresolved subjects AND zero citation failures; `false` when any of the three fails; `null` when the verb could not compute it because `--stability-file` or `--ir-files-file` was absent. The invocation above passes both flags, so a `null` should not occur — if one does, treat it as NOT clean; an uncomputed signal is never a clean one. `unresolved_subject_count` and `citation_failure_count` report two of the three inputs to that signal (the third is the quorum verdict itself) — quote them when you tell the user why the gate fired. Carry `recommended_disposition` and `clean` forward to PHASE 5, and carry the ack's `report_path` forward to PHASE 5 and PHASE 7 (it is the exact `<feature-dir>/spec-check.md` path to surface and to commit). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
-The disposition is a RECOMMENDATION; the human makes the final call, and the thing the human is asked to check is the TRANSLATION, not the proof. First display the rendered report so the human can check it: copy the contents of `<feature-dir>/spec-check.md` (the ack's `report_path` from PHASE 4) VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — the `## How your ACs were read as logic` section IS the human's check against a mistranslation.
+## PHASE 5 — Surface + human gate (the gate fires only on a non-clean result)
+
+Branch on `clean` from the PHASE-4 ack. Do NOT re-derive it by reading the report text: one of the three inputs is not rendered at all — a citation failure in a pass whose variable a DIFFERENT pass resolved fails `clean` without producing any `## UNRESOLVED SUBJECTS` entry — so a report that looks clean can still carry a `false`.
+
+### 5.1 — Clean arm (`"clean": true`)
+
+Nothing has been alleged, so there is nothing for the human to confirm: fire NO AskUserQuestion, capture NO pick, and proceed to PHASE 6. The report is still rendered, still written to `<feature-dir>/spec-check.md`, and still WIP-committed in PHASE 7 — an accepted result is a recorded one.
+
+Tell the user, in your next message: the report path (the ack's `report_path`); the report's Coverage headline, quoting the bold `**Checked N of M acceptance criteria**` prefix verbatim; and one sentence stating that no contradiction reproduced across the formalization passes and that every acceptance criterion's subject resolved — `unresolved_subject_count` 0 and `citation_failure_count` 0 in the ack — so `/devforge:spec-check` accepted the result without asking. Take the resolution claim from those two ack fields, NEVER from the headline's parenthetical: the parenthetical counts unresolved subjects in the REPRESENTATIVE pass alone, while `clean` is computed over the merge of every pass. If that parenthetical names unresolved subjects even though `clean` is `true`, say that the count reflects only the representative pass and a later pass resolved those subjects — that is why no `## UNRESOLVED SUBJECTS` section appears — and do NOT present it as the cross-pass result. Keep the scope boundary in view while you say it: a clean result means the ACs did not contradict EACH OTHER, never that they say what you MEANT.
+
+### 5.2 — Non-clean arm (`"clean": false` or `null`)
+
+Something has been alleged — a reproduced contradiction, an unresolved subject, a failed citation, or a signal the helper could not compute — so the human decides. Treat `null` exactly as `false`.
+
+The disposition is a RECOMMENDATION; the human makes the final call, and the thing the human is asked to check is the TRANSLATION, not the proof. First display the rendered report so the human can check it: copy the contents of `<feature-dir>/spec-check.md` (the ack's `report_path` from PHASE 4) VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — the `## How your ACs were read as logic` section IS the human's check against a mistranslation. When the report carries an `## UNRESOLVED SUBJECTS` section, name it explicitly in your surrounding prose: those ACs were never formalized, so nothing the solver reports covers them.
 
 Then capture the user's choice via AskUserQuestion so the next step is explicit:
 
@@ -230,13 +262,15 @@ Options (2–4; AskUserQuestion auto-injects "Other"):
 - `Revise spec` — the translation is correct and the contradiction is real; re-run `/devforge:specify` to fix the named conflicting ACs.
 - `Dismiss` — the translation is WRONG (you misread an AC); this is a false positive, proceed to `/devforge:plan` anyway.
 
-Frame the choice as "check the TRANSLATION, not the proof": `Revise spec` means "the reading is right and the ACs genuinely conflict"; `Dismiss` means "the reading is wrong, so the proof does not apply." If the quorum verdict was `unstable`, the recommendation is CONSISTENT (not REVISE-SPEC) — present the instability honestly (a contradiction appeared in some but not a majority of passes; it is not confirmed) rather than steering the user toward `Revise spec`.
+Frame the choice as "check the TRANSLATION, not the proof": `Revise spec` means "the reading is right and the ACs genuinely conflict"; `Dismiss` means "the reading is wrong, so the proof does not apply." If the quorum verdict was `unstable`, the recommendation is CONSISTENT (not REVISE-SPEC) — present the instability honestly (a contradiction appeared in some but not a majority of passes; it is not confirmed) rather than steering the user toward `Revise spec`. The same honesty applies when this arm fired on unresolved subjects or citation failures alone: the recommendation is still CONSISTENT, because what is not clean is the COVERAGE, not the proof.
 
 Carry the user's pick forward to PHASE 6.
 
 ## PHASE 6 — Verdict-gated seed (matching REVISE-SPEC pick only)
 
-Write the backward re-entry seed ONLY when the user's PHASE-5 pick is `Revise spec` AND the recommended disposition was REVISE-SPEC. On any other pick — `Consistent`, `Dismiss`, or a cross-pick (`Revise spec` when the recommendation was NOT REVISE-SPEC) — write NO seed and skip to PHASE 7. This verdict-gating stops an overridden or false-positive seed from becoming an orphan a later `/devforge:specify` run silently obeys.
+When PHASE 5 captured NO pick — the clean arm, where no gate was raised — write NO seed and go straight to PHASE 7. A seed exists to redirect a `/devforge:specify` re-run at a confirmed problem, and a clean run confirmed none; the enumeration below is over picks, and on that arm there is no pick to enumerate.
+
+Otherwise the user made a pick. Write the backward re-entry seed ONLY when that PHASE-5 pick is `Revise spec` AND the recommended disposition was REVISE-SPEC. On any other pick — `Consistent`, `Dismiss`, or a cross-pick (`Revise spec` when the recommendation was NOT REVISE-SPEC) — write NO seed and skip to PHASE 7. This verdict-gating stops an overridden or false-positive seed from becoming an orphan a later `/devforge:specify` run silently obeys.
 
 In the matching arm, compose the seed inputs from the report's confirmed contradiction and write the seed:
 
@@ -263,18 +297,18 @@ WORKDIR="${TMPDIR:-/tmp}/forge-spec-check"
 rm -rf "$WORKDIR"
 ```
 
-Then point the user at the next step by their PHASE-5 pick:
+Then point the user at the next step:
 
-- `Consistent` or `Dismiss` → the next command is `/devforge:plan`.
+- No PHASE-5 pick (the clean arm), or a `Consistent` / `Dismiss` pick → the next command is `/devforge:plan`.
 - `Revise spec` → the next command is `/devforge:specify`; the emitted `spec-check-seed.json` directs the re-run at the conflicting ACs.
 
 ## Important rules
 
 1. **Opt-in, never an auto-gate** — `/devforge:spec-check` runs only by invocation (like `/devforge:audit` and `/devforge:grill`); it never auto-runs, and there is NO forced gate on any `/devforge:specify` run. Blocking belongs to the deterministic forcing-functions family; an advisory check atop a stochastic formalizer must never be made blocking. Skipping `/devforge:spec-check` leaves `/devforge:specify → /devforge:plan` byte-unchanged.
 2. **Consistency prover, not a mind-reader** — it checks whether ACs contradict EACH OTHER, not whether they are what you MEANT; a single coherent-but-wrong AC passes. Intent-correctness stays with the soft-LLM stages (`/devforge:research`, `/devforge:grill`, human gates).
-3. **Check the translation, not the proof** — the Z3 proof is hard, but the English→logic translation is soft. PHASE 5 surfaces the full formalization so the human confirms the reading before a contradiction is treated as real; `Dismiss` is the escape when the reading is wrong.
+3. **Check the translation, not the proof** — the Z3 proof is hard, but the English→logic translation is soft. Whenever there is something to decide, PHASE 5 surfaces the full formalization so the human confirms the reading before a contradiction is treated as real; `Dismiss` is the escape when the reading is wrong.
 4. **Quorum, not a single pass** — PHASE 2 formalizes a fixed 2 times and only a majority-reproduced contradiction is CONFIRMED. The honest claim is "a deterministic proof over a human-checked, quorum-stable formalization" — never a bare "deterministic proof of your spec."
 5. **Honest permission boundary** — strong on numeric/state/enum invariants; a conditional-permission clash is caught ONLY when a permitting case is asserted reachable (an `assertion`, not a pure rule). Never claim "permission/role logic" is caught in general.
-6. **The disposition is a RECOMMENDATION** — `/devforge:spec-check` recommends CONSISTENT / REVISE-SPEC / DISMISS; the human owns the final call. The backward re-entry seed is written ONLY on a matching `Revise spec` pick (PHASE 6).
+6. **The disposition is a RECOMMENDATION, and the gate fires only when it is not clean** — `/devforge:spec-check` recommends CONSISTENT / REVISE-SPEC / DISMISS, and the human owns every call the run raises. PHASE 5 raises one only when the PHASE-4 ack's `clean` is not `true`; a clean run is accepted without a question, and the report is written and committed either way. The backward re-entry seed is written ONLY on a matching `Revise spec` pick (PHASE 6), so a clean run — having no pick — never writes one.
 7. **Read-only on the spec** — no modification of `spec.md`. `/devforge:spec-check` does WIP-commit its OWN artifacts (`spec-check.md`, and `spec-check-seed.json` when written) via `artifact_helper commit-artifacts` — install-repo-only, fail-soft `[WIP]` commits that fold into `/devforge:finalize`'s squash; it never commits source or modifies the spec.
 8. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-spec-check`), outside the repo, and is swept by the single `rm -rf "$WORKDIR"` at the end of PHASE 7, never mid-run.
