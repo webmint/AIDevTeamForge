@@ -11,12 +11,22 @@ Covers:
     errors all surface together).
   - validate_ir_or_raise -- raises IRValidationError on the invalid set,
     returns None on the valid set.
+  - Plan 82 Phase 1 (subject resolution): parse_ir happy/error paths for
+    Variable.subject_resolution + Coverage.subject; back-compat parsing of
+    historical IR dicts lacking both keys; validate_ir's third
+    status/constraint agreement branch (unresolved_subject) and its
+    subject-names-a-declared-variable cross-check; dataclasses.asdict
+    round-trip for every new record shape; validate_citations (D3's one
+    filesystem-touching check) against real tmp-dir workspace roots.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -32,6 +42,7 @@ from _spec_check._consume import (  # noqa: E402
     IRValidationError,
     extract_acs,
     parse_ir,
+    validate_citations,
     validate_ir,
     validate_ir_or_raise,
 )
@@ -422,6 +433,266 @@ class TestParseIrErrors(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# parse_ir -- Variable.subject_resolution / Coverage.subject (Plan 82
+# Phase 1).
+# ---------------------------------------------------------------------------
+
+
+def _raw_var_code_resolution(**sr_overrides):
+    sr = {
+        "status": "resolved",
+        "arm": "code",
+        "citation": "src/orders.py",
+        "locator": "def mark_shipped",
+        "note": "mark_shipped() sets the shipped flag.",
+    }
+    sr.update(sr_overrides)
+    return {
+        "variables": [
+            {
+                "name": "shipped_state",
+                "sort": "Bool",
+                "gloss": "order has shipped",
+                "subject_resolution": sr,
+            }
+        ],
+        "constraints": [],
+        "coverage": [],
+    }
+
+
+def _raw_var_spec_resolution(**sr_overrides):
+    sr = {
+        "status": "resolved",
+        "arm": "spec",
+        "citation": "AC-3",
+        "note": "AC-3 introduces the shipped state as new behavior.",
+    }
+    sr.update(sr_overrides)
+    return {
+        "variables": [
+            {
+                "name": "shipped_state",
+                "sort": "Bool",
+                "gloss": "order has shipped",
+                "subject_resolution": sr,
+            }
+        ],
+        "constraints": [],
+        "coverage": [],
+    }
+
+
+def _raw_var_unresolved(**sr_overrides):
+    sr = {
+        "status": "unresolved",
+        "searched": "grepped 'shipped' and 'mark_shipped' across src/, 0 hits.",
+    }
+    sr.update(sr_overrides)
+    return {
+        "variables": [
+            {
+                "name": "shipped_state",
+                "sort": "Bool",
+                "gloss": "order has shipped",
+                "subject_resolution": sr,
+            }
+        ],
+        "constraints": [],
+        "coverage": [],
+    }
+
+
+class TestParseIrSubjectResolutionHappyPath(unittest.TestCase):
+    def test_variable_arm_code_parses(self):
+        ir = parse_ir(_raw_var_code_resolution())
+        sr = ir.variables[0].subject_resolution
+        self.assertEqual(sr.status, "resolved")
+        self.assertEqual(sr.arm, "code")
+        self.assertEqual(sr.citation, "src/orders.py")
+        self.assertEqual(sr.locator, "def mark_shipped")
+
+    def test_variable_arm_spec_parses(self):
+        ir = parse_ir(_raw_var_spec_resolution())
+        sr = ir.variables[0].subject_resolution
+        self.assertEqual(sr.arm, "spec")
+        self.assertEqual(sr.citation, "AC-3")
+        self.assertIsNone(sr.locator)
+
+    def test_variable_unresolved_parses(self):
+        ir = parse_ir(_raw_var_unresolved())
+        sr = ir.variables[0].subject_resolution
+        self.assertEqual(sr.status, "unresolved")
+        self.assertIn("grepped", sr.searched)
+
+    def test_variable_without_subject_resolution_key_defaults_none(self):
+        raw = {
+            "variables": [{"name": "n", "sort": "Int", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [],
+        }
+        ir = parse_ir(raw)
+        self.assertIsNone(ir.variables[0].subject_resolution)
+
+    def test_coverage_subject_parses(self):
+        raw = {
+            "variables": [{"name": "shipped_state", "sort": "Bool", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        self.assertEqual(ir.coverage[0].subject, "shipped_state")
+
+    def test_coverage_without_subject_key_defaults_none(self):
+        raw = {
+            "variables": [],
+            "constraints": [],
+            "coverage": [{"ac_id": "AC-1", "status": "formalized"}],
+        }
+        ir = parse_ir(raw)
+        self.assertIsNone(ir.coverage[0].subject)
+
+
+class TestParseIrSubjectResolutionErrors(unittest.TestCase):
+    def test_subject_resolution_not_an_object_raises(self):
+        raw = {
+            "variables": [
+                {
+                    "name": "n",
+                    "sort": "Int",
+                    "gloss": "g",
+                    "subject_resolution": "nope",
+                }
+            ],
+            "constraints": [],
+            "coverage": [],
+        }
+        with self.assertRaises(IRParseError) as ctx:
+            parse_ir(raw)
+        msg = str(ctx.exception)
+        self.assertIn("variables[0].subject_resolution", msg)
+        self.assertIn("expected an object", msg)
+
+    def test_subject_resolution_missing_status_raises(self):
+        raw = {
+            "variables": [
+                {
+                    "name": "n",
+                    "sort": "Int",
+                    "gloss": "g",
+                    "subject_resolution": {"arm": "code"},
+                }
+            ],
+            "constraints": [],
+            "coverage": [],
+        }
+        with self.assertRaises(IRParseError) as ctx:
+            parse_ir(raw)
+        msg = str(ctx.exception)
+        self.assertIn("variables[0].subject_resolution", msg)
+        self.assertIn("status", msg)
+
+    def test_subject_resolution_bad_arm_value_raises(self):
+        """F2-style: well-typed str, not a valid SUBJECT_RESOLUTION_ARMS
+        member -- the dataclass ValueError re-raise path."""
+        raw = _raw_var_code_resolution(arm="bogus")
+        with self.assertRaises(IRParseError) as ctx:
+            parse_ir(raw)
+        msg = str(ctx.exception)
+        self.assertIn("variables[0].subject_resolution", msg)
+        self.assertIn("arm", msg)
+
+    def test_coverage_invalid_subject_combination_raises(self):
+        """Coverage(status='formalized', subject=<non-None>) -- well-typed,
+        rejected by the dataclass's status/subject agreement rule."""
+        raw = {
+            "variables": [],
+            "constraints": [
+                {
+                    "ac_id": "AC-1",
+                    "kind": "assertion",
+                    "consequent": [{"var": "x", "op": "=", "value": 1}],
+                }
+            ],
+            "coverage": [
+                {"ac_id": "AC-1", "status": "formalized", "subject": "x"}
+            ],
+        }
+        with self.assertRaises(IRParseError) as ctx:
+            parse_ir(raw)
+        self.assertIn("coverage[0]", str(ctx.exception))
+
+
+class TestSubjectResolutionSerdeRoundTrip(unittest.TestCase):
+    """parse_ir(dataclasses.asdict(ir)) == ir for every new record shape --
+    the load-bearing round-trip invariant the whole scratch chain depends
+    on (see _cli.py's _ir_to_dict / _ir_from_dict)."""
+
+    def test_arm_code_round_trips(self):
+        ir = parse_ir(_raw_var_code_resolution())
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+    def test_arm_spec_round_trips(self):
+        ir = parse_ir(_raw_var_spec_resolution())
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+    def test_unresolved_round_trips(self):
+        ir = parse_ir(_raw_var_unresolved())
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+    def test_no_record_round_trips(self):
+        raw = {
+            "variables": [{"name": "n", "sort": "Int", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [],
+        }
+        ir = parse_ir(raw)
+        self.assertIsNone(ir.variables[0].subject_resolution)
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+    def test_coverage_unresolved_subject_round_trips(self):
+        raw = {
+            "variables": [{"name": "shipped_state", "sort": "Bool", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+    def test_full_valid_ir_round_trips(self):
+        """The pre-existing full-fixture IR (no new keys at all) still
+        round-trips byte-for-byte -- back-compat confirmed at the
+        dataclass-equality level, not just parse-without-raising."""
+        ir = parse_ir(_full_valid_raw_ir())
+        self.assertEqual(parse_ir(dataclasses.asdict(ir)), ir)
+
+
+class TestSubjectResolutionBackwardCompatibility(unittest.TestCase):
+    """Historical IR dicts (no subject_resolution / subject keys at all)
+    still parse -- the pre-Phase-1 shape is a strict subset of the
+    Phase-1 shape."""
+
+    def test_historical_full_ir_parses_with_none_records(self):
+        ir = parse_ir(_full_valid_raw_ir())
+        for var in ir.variables:
+            self.assertIsNone(var.subject_resolution)
+        for cov in ir.coverage:
+            self.assertIsNone(cov.subject)
+
+
+# ---------------------------------------------------------------------------
 # validate_ir -- VALID case
 # ---------------------------------------------------------------------------
 
@@ -683,6 +954,395 @@ class TestValidateIrInvalid(unittest.TestCase):
         self.assertIn("AC coverage missing for AC-1", errors)
         self.assertIn("AC coverage missing for AC-2", errors)
         self.assertGreaterEqual(len(errors), 3)
+
+
+# ---------------------------------------------------------------------------
+# validate_ir -- unresolved_subject cases (Plan 82 Phase 1).
+# ---------------------------------------------------------------------------
+
+
+class TestValidateIrUnresolvedSubject(unittest.TestCase):
+    def test_unresolved_subject_with_constraint_is_rejected(self):
+        """The exact hole named in the brief: before this branch, a status
+        that is neither 'formalized' nor a skip status was checked by
+        nothing -- an unresolved_subject AC carrying a constraint (which
+        Coverage's own __post_init__ cannot see, since it has no access to
+        ir.constraints) passed validate_ir silently."""
+        raw = {
+            "variables": [{"name": "shipped_state", "sort": "Bool", "gloss": "g"}],
+            "constraints": [
+                {
+                    "ac_id": "AC-1",
+                    "kind": "assertion",
+                    "consequent": [{"var": "shipped_state", "negated": False}],
+                }
+            ],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1"])
+        self.assertIn(
+            "AC-1 marked unresolved_subject but has 1 constraint(s)", errors
+        )
+
+    def test_unresolved_subject_names_undeclared_variable(self):
+        raw = {
+            "variables": [],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "ghost_var",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1"])
+        self.assertIn(
+            "AC-1: unresolved_subject names undeclared variable 'ghost_var'",
+            errors,
+        )
+
+    def test_unresolved_subject_naming_declared_variable_no_constraint_is_valid(
+        self,
+    ):
+        """The named variable must carry a genuinely 'unresolved'
+        subject_resolution record -- a no-record shape here was itself the
+        evidence of the coherence gap this fixture now guards against (see
+        TestValidateIrSubjectCoherence below)."""
+        raw = {
+            "variables": [
+                {"name": "n_lerna_refs", "sort": "Int", "gloss": "g"},
+                {
+                    "name": "shipped_state",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "unresolved",
+                        "searched": (
+                            "grepped 'shipped' and 'mark_shipped' across "
+                            "src/, 0 hits."
+                        ),
+                    },
+                },
+            ],
+            "constraints": [
+                {
+                    "ac_id": "AC-1",
+                    "kind": "assertion",
+                    "consequent": [
+                        {"var": "n_lerna_refs", "op": "=", "value": 0}
+                    ],
+                }
+            ],
+            "coverage": [
+                {"ac_id": "AC-1", "status": "formalized"},
+                {
+                    "ac_id": "AC-2",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                },
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1", "AC-2"])
+        self.assertEqual(errors, [])
+
+
+# ---------------------------------------------------------------------------
+# validate_ir -- coverage-pointer coherence + constraint-exclusion
+# (python-reviewer Finding 2, medium, ratified option (a)).
+# ---------------------------------------------------------------------------
+
+
+class TestValidateIrSubjectCoherence(unittest.TestCase):
+    def test_target_variable_with_no_subject_resolution_record_is_rejected(
+        self,
+    ):
+        """Dangling pointer: the named variable exists but carries no
+        subject_resolution at all."""
+        raw = {
+            "variables": [{"name": "shipped_state", "sort": "Bool", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1"])
+        self.assertIn(
+            "AC-1: unresolved_subject variable 'shipped_state' has no "
+            "subject_resolution record",
+            errors,
+        )
+
+    def test_target_variable_with_resolved_record_is_rejected(self):
+        """Contradicted pointer: the named variable's own record says
+        'resolved', not 'unresolved'."""
+        raw = {
+            "variables": [
+                {
+                    "name": "shipped_state",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "resolved",
+                        "arm": "code",
+                        "citation": "src/orders.py",
+                        "locator": "def mark_shipped",
+                        "note": "found it",
+                    },
+                }
+            ],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1"])
+        self.assertIn(
+            "AC-1: unresolved_subject variable 'shipped_state' has a "
+            "resolved subject_resolution (expected unresolved)",
+            errors,
+        )
+
+    def test_coherent_unresolved_target_is_valid(self):
+        """The positive twin: a genuinely 'unresolved' record, named by
+        exactly one coverage entry, with no constraint anywhere
+        referencing it -- clean."""
+        raw = {
+            "variables": [
+                {
+                    "name": "shipped_state",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "unresolved",
+                        "searched": "grepped 'shipped' across src/, 0 hits.",
+                    },
+                }
+            ],
+            "constraints": [],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                }
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1"])
+        self.assertEqual(errors, [])
+
+    def test_constraint_under_a_different_ac_referencing_unresolved_variable_is_rejected(
+        self,
+    ):
+        """The D1 twin, at full strength: AC-1's own coverage row is
+        internally coherent (unresolved_subject, zero constraints, a
+        genuinely unresolved target) -- the violation is a SEPARATE AC
+        (AC-2, marked 'formalized', which the pre-existing agreement rule
+        does not flag on its own) whose constraint illegally references
+        the same unresolved variable. Proves the exclusion is IR-wide, not
+        scoped to the unresolved variable's own AC's rows."""
+        raw = {
+            "variables": [
+                {
+                    "name": "shipped_state",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "unresolved",
+                        "searched": "grepped 'shipped' across src/, 0 hits.",
+                    },
+                },
+                {"name": "n_lerna_refs", "sort": "Int", "gloss": "g"},
+            ],
+            "constraints": [
+                {
+                    "ac_id": "AC-2",
+                    "kind": "assertion",
+                    "consequent": [{"var": "shipped_state", "negated": False}],
+                }
+            ],
+            "coverage": [
+                {
+                    "ac_id": "AC-1",
+                    "status": "unresolved_subject",
+                    "subject": "shipped_state",
+                },
+                {"ac_id": "AC-2", "status": "formalized"},
+            ],
+        }
+        ir = parse_ir(raw)
+        errors = validate_ir(ir, ["AC-1", "AC-2"])
+        self.assertIn(
+            "AC-2: constraint references variable 'shipped_state' whose "
+            "subject is unresolved",
+            errors,
+        )
+
+
+# ---------------------------------------------------------------------------
+# validate_citations -- D3's one filesystem-touching check.
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCitations(unittest.TestCase):
+    def setUp(self):
+        # An OUTER tmp dir wrapping the actual workspace_root -- lets the
+        # containment-escape tests place a real, readable file OUTSIDE
+        # workspace_root (a sibling of it) to prove escape is rejected on
+        # the path alone, not merely because the target happens to be
+        # missing.
+        self._outer_tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._outer_tmpdir.cleanup)
+        self.workspace_root = os.path.join(self._outer_tmpdir.name, "workspace")
+        os.makedirs(self.workspace_root)
+
+    def _write(self, rel_path, content):
+        abs_path = os.path.join(self.workspace_root, rel_path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+    def test_nonexistent_cited_file_is_an_error(self):
+        ir = parse_ir(_raw_var_code_resolution(citation="src/nope.py"))
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("does not exist", errors[0])
+        self.assertIn("shipped_state", errors[0])
+
+    def test_real_file_missing_cited_locator_is_an_error(self):
+        self._write("src/orders.py", "def other_function():\n    pass\n")
+        ir = parse_ir(_raw_var_code_resolution())
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("not found", errors[0])
+        self.assertIn("shipped_state", errors[0])
+
+    def test_real_file_with_cited_locator_is_clean(self):
+        self._write("src/orders.py", "def mark_shipped():\n    pass\n")
+        ir = parse_ir(_raw_var_code_resolution())
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(errors, [])
+
+    # -----------------------------------------------------------------
+    # python-reviewer Finding 1 (high, confirmed empirically): a
+    # citation must be rejected on containment ALONE, before any
+    # filesystem touch -- never on file existence/content.
+    # -----------------------------------------------------------------
+
+    def test_absolute_citation_is_rejected_as_escape(self):
+        """An absolute citation pointing at a REAL, matching file OUTSIDE
+        workspace_root must still be rejected -- proves the rejection is
+        on the path being absolute, not on the target missing or the
+        locator not matching (both of which would pass here otherwise)."""
+        outside_path = os.path.join(self._outer_tmpdir.name, "outside.py")
+        with open(outside_path, "w", encoding="utf-8") as fh:
+            fh.write("def mark_shipped():\n    pass\n")
+
+        ir = parse_ir(_raw_var_code_resolution(citation=outside_path))
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("escapes workspace root", errors[0])
+        self.assertIn("shipped_state", errors[0])
+
+    def test_depth_correct_dot_dot_traversal_is_rejected_as_escape(self):
+        """A single '..' from workspace_root lands exactly on a REAL,
+        matching file placed as workspace_root's sibling -- rejected on
+        containment, not on the (passing) existence/locator checks."""
+        secret_path = os.path.join(self._outer_tmpdir.name, "secret.py")
+        with open(secret_path, "w", encoding="utf-8") as fh:
+            fh.write("def mark_shipped():\n    pass\n")
+
+        ir = parse_ir(_raw_var_code_resolution(citation="../secret.py"))
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("escapes workspace root", errors[0])
+
+    def test_legitimate_nested_relative_path_still_resolves(self):
+        """Regression guard: a normal nested relative citation (no '..',
+        not absolute) is unaffected by the containment guard."""
+        self._write("src/pkg/mod.py", "def mark_shipped():\n    pass\n")
+        ir = parse_ir(_raw_var_code_resolution(citation="src/pkg/mod.py"))
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(errors, [])
+
+    def test_spec_arm_does_not_trigger_the_file_check(self):
+        """D3: a nonexistent path-like spec citation passes -- arm='spec'
+        is never filesystem-checked."""
+        ir = parse_ir(
+            _raw_var_spec_resolution(citation="spec.md #this-path-does-not-exist")
+        )
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(errors, [])
+
+    def test_unresolved_variable_is_not_filesystem_checked(self):
+        ir = parse_ir(_raw_var_unresolved())
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(errors, [])
+
+    def test_variable_without_subject_resolution_is_skipped(self):
+        raw = {
+            "variables": [{"name": "n", "sort": "Int", "gloss": "g"}],
+            "constraints": [],
+            "coverage": [],
+        }
+        ir = parse_ir(raw)
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(errors, [])
+
+    def test_collects_multiple_errors_across_variables(self):
+        raw = {
+            "variables": [
+                {
+                    "name": "a",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "resolved",
+                        "arm": "code",
+                        "citation": "src/missing_a.py",
+                        "locator": "x",
+                        "note": "n",
+                    },
+                },
+                {
+                    "name": "b",
+                    "sort": "Bool",
+                    "gloss": "g",
+                    "subject_resolution": {
+                        "status": "resolved",
+                        "arm": "code",
+                        "citation": "src/missing_b.py",
+                        "locator": "y",
+                        "note": "n",
+                    },
+                },
+            ],
+            "constraints": [],
+            "coverage": [],
+        }
+        ir = parse_ir(raw)
+        errors = validate_citations(ir, self.workspace_root)
+        self.assertEqual(len(errors), 2)
 
 
 # ---------------------------------------------------------------------------

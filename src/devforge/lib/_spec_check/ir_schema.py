@@ -1,8 +1,10 @@
 """ir_schema -- pure IR dataclasses for the /spec-check acceptance-criteria solver.
 
-Provides ``Variable``, ``Atom``, ``Constraint``, ``Coverage``, and the
-top-level container ``SpecCheckIR``, plus the ``SORTS``, ``COMPARISON_OPS``,
-``CONSTRAINT_KINDS``, and ``COVERAGE_STATUSES`` module constants.
+Provides ``Variable``, ``Atom``, ``Constraint``, ``Coverage``,
+``SubjectResolution``, and the top-level container ``SpecCheckIR``, plus the
+``SORTS``, ``COMPARISON_OPS``, ``CONSTRAINT_KINDS``, ``COVERAGE_STATUSES``,
+``SUBJECT_RESOLUTION_STATUSES``, and ``SUBJECT_RESOLUTION_ARMS`` module
+constants.
 
 What this is: the normalized intermediate representation an LLM (in a later
 phase) translates a feature spec's acceptance criteria into, so a deterministic
@@ -46,7 +48,16 @@ COMPARISON_OPS = ("<", "<=", "=", "!=", ">", ">=")
 
 CONSTRAINT_KINDS = ("assertion", "implication")
 
-COVERAGE_STATUSES = ("formalized", "skipped_prose", "skipped_unsupported")
+COVERAGE_STATUSES = (
+    "formalized",
+    "skipped_prose",
+    "skipped_unsupported",
+    "unresolved_subject",
+)
+
+SUBJECT_RESOLUTION_STATUSES = ("resolved", "unresolved")
+
+SUBJECT_RESOLUTION_ARMS = ("code", "spec")
 
 # ---------------------------------------------------------------------------
 # Validation helpers.
@@ -77,6 +88,122 @@ def _require_in_enum(value, allowed, field_name):
 
 
 # ---------------------------------------------------------------------------
+# SubjectResolution -- D1/D2: per-variable subject resolution record.
+#
+# The motivating incident: a preservation AC over a state no code constructs
+# was formalized and proven "consistent" -- correctly, since an unfalsifiable
+# AC conflicts with nothing. The fix is that a Variable's SUBJECT (what in
+# the code/spec produces the state it models) must be resolved BEFORE
+# formalization, via one of two arms:
+#
+#   arm="code": a construction site in the EXISTING codebase -- citation is
+#     a repo-relative file path, locator is a symbol name or line reference
+#     within it, note is a one-line statement of what was found there.
+#   arm="spec": the spec's OWN new-behavior declaration -- citation is the
+#     spec section/AC reference that introduces the state (e.g. "AC-3" or
+#     "spec.md #4.2"); locator MUST be None (the citation IS the locator --
+#     a separate one would be redundant/ambiguous), note describes it.
+#
+# When resolution fails, status="unresolved" instead carries `searched`: a
+# free-text description of what was searched (terms, paths, the search's
+# bound/extent) so a human can FALSIFY the miss, not just take it on faith.
+#
+# D3 (this schema's neighbor _consume.py): arm="code" citations are
+# mechanically validated -- the cited file must exist under a workspace
+# root and the cited locator must appear in it (plain substring check, no
+# LLM). That check needs filesystem access, which this schema module
+# deliberately does not perform (see the module docstring) -- it lives in
+# _consume.validate_citations, a sibling of the pure in-memory
+# validate_ir, so validate_ir's purity survives. arm="spec" resolutions do
+# NOT trigger that file check; a reported `searched` miss is not re-checked
+# either -- the negative claim is taken on faith.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SubjectResolution:
+    """How a Variable's subject was resolved before formalization.
+
+    status must be one of SUBJECT_RESOLUTION_STATUSES ("resolved",
+      "unresolved").
+
+    When status == "resolved":
+      arm is required, one of SUBJECT_RESOLUTION_ARMS ("code", "spec").
+      citation is required, non-empty: for arm="code" a repo-relative file
+        path; for arm="spec" the spec section/AC reference that introduces
+        the state.
+      locator: required, non-empty, for arm="code" (a symbol name or line
+        reference within citation); MUST be None for arm="spec".
+      note is required, non-empty: a one-line statement of what was found.
+      searched MUST be None.
+
+    When status == "unresolved":
+      arm, citation, locator, note MUST all be None.
+      searched is required, non-empty: what was searched (terms, paths,
+        bound) so a human can falsify the miss.
+    """
+
+    status: str
+    arm: Optional[str] = None
+    citation: Optional[str] = None
+    locator: Optional[str] = None
+    note: Optional[str] = None
+    searched: Optional[str] = None
+
+    def __post_init__(self):
+        # type: () -> None
+        _require_in_enum(
+            self.status, SUBJECT_RESOLUTION_STATUSES, "SubjectResolution.status"
+        )
+
+        if self.status == "resolved":
+            _require_in_enum(
+                self.arm, SUBJECT_RESOLUTION_ARMS, "SubjectResolution.arm"
+            )
+            _require_nonempty(self.citation, "SubjectResolution.citation")
+            _require_nonempty(self.note, "SubjectResolution.note")
+
+            if self.arm == "code":
+                _require_nonempty(self.locator, "SubjectResolution.locator")
+            else:
+                # arm == "spec": the citation IS the locator.
+                if self.locator is not None:
+                    raise ValueError(
+                        "SubjectResolution.locator must be None when "
+                        "arm='spec'"
+                    )
+
+            if self.searched is not None:
+                raise ValueError(
+                    "SubjectResolution.searched must be None when "
+                    "status='resolved'"
+                )
+        else:
+            # status == "unresolved"
+            if self.arm is not None:
+                raise ValueError(
+                    "SubjectResolution.arm must be None when "
+                    "status='unresolved'"
+                )
+            if self.citation is not None:
+                raise ValueError(
+                    "SubjectResolution.citation must be None when "
+                    "status='unresolved'"
+                )
+            if self.locator is not None:
+                raise ValueError(
+                    "SubjectResolution.locator must be None when "
+                    "status='unresolved'"
+                )
+            if self.note is not None:
+                raise ValueError(
+                    "SubjectResolution.note must be None when "
+                    "status='unresolved'"
+                )
+            _require_nonempty(self.searched, "SubjectResolution.searched")
+
+
+# ---------------------------------------------------------------------------
 # Variable.
 # ---------------------------------------------------------------------------
 
@@ -92,18 +219,36 @@ class Variable:
       gloss is a schema error, not merely a style nit.
     domain is required (non-empty list of non-empty, non-duplicate str) IFF
       sort == "Enum"; it MUST be None for the other three sorts.
+    subject_resolution is Optional[SubjectResolution], default None. None
+      means "not recorded" -- required for backward compatibility: historical
+      IR dicts (and existing producers/tests) that predate the subject-
+      resolution mechanism have no such key, and parse_ir must still parse
+      them. Enforcing that it IS recorded (mandatory subject resolution) is
+      a later phase's brief/instruction-layer concern, not a schema one --
+      see this file's module docstring on the schema/cross-record split.
     """
 
     name: str
     sort: str
     gloss: str
     domain: Optional[List[str]] = None
+    subject_resolution: Optional[SubjectResolution] = None
 
     def __post_init__(self):
         # type: () -> None
         _require_nonempty(self.name, "Variable.name")
         _require_in_enum(self.sort, SORTS, "Variable.sort")
         _require_nonempty(self.gloss, "Variable.gloss")
+
+        if self.subject_resolution is not None and not isinstance(
+            self.subject_resolution, SubjectResolution
+        ):
+            raise ValueError(
+                "Variable.subject_resolution must be a SubjectResolution "
+                "or None, got {0}".format(
+                    type(self.subject_resolution).__name__
+                )
+            )
 
         if self.sort == "Enum":
             if self.domain is None:
@@ -268,14 +413,26 @@ class Coverage:
 
     ac_id is the source acceptance-criterion identifier; non-empty.
     status must be one of COVERAGE_STATUSES ("formalized", "skipped_prose",
-      "skipped_unsupported").
+      "skipped_unsupported", "unresolved_subject").
     reason: required (non-empty str) when status starts with "skipped_"; for
-      status="formalized" reason may be None (if provided, must be a str).
+      status in ("formalized", "unresolved_subject") reason may be None (if
+      provided, must be a str) -- unresolved_subject's failure detail lives
+      in the named Variable's SubjectResolution.searched field (see
+      `subject` below), so a reason here is not mandated.
+    subject: the name of the Variable whose subject failed to resolve;
+      required (non-empty str) IFF status == "unresolved_subject", MUST be
+      None otherwise. An "unresolved_subject" AC carries NO constraints
+      (D1), so the usual constraint-based ac_id -> variable join cannot
+      reach the unresolved variable's SubjectResolution record -- this
+      field is the coverage-side pointer that closes that gap. Existence of
+      the named variable in the IR's variable table is a cross-record
+      concern, checked by `_consume.validate_ir`, not here.
     """
 
     ac_id: str
     status: str
     reason: Optional[str] = None
+    subject: Optional[str] = None
 
     def __post_init__(self):
         # type: () -> None
@@ -285,14 +442,24 @@ class Coverage:
         if self.status.startswith("skipped_"):
             _require_nonempty(self.reason, "Coverage.reason")
         else:
-            # status == "formalized": reason may be None; if provided, must
-            # be a str (not required to be non-empty).
+            # status in ("formalized", "unresolved_subject"): reason may be
+            # None; if provided, must be a str (not required to be
+            # non-empty).
             if self.reason is not None and not isinstance(self.reason, str):
                 raise ValueError(
                     "Coverage.reason must be a string, got {0}".format(
                         type(self.reason).__name__
                     )
                 )
+
+        if self.status == "unresolved_subject":
+            _require_nonempty(self.subject, "Coverage.subject")
+        elif self.subject is not None:
+            raise ValueError(
+                "Coverage.subject must be None when status={0!r}".format(
+                    self.status
+                )
+            )
 
 
 # ---------------------------------------------------------------------------

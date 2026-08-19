@@ -30,7 +30,22 @@ Three responsibilities:
    shape problems -- an IR that fails ``validate_ir`` parsed FINE; it is
    surfaced to a human via ``IRValidationError``, not re-prompted
    automatically. ``validate_ir`` collects every problem before returning
-   (never fail-fast) so a human sees the whole picture in one pass.
+   (never fail-fast) so a human sees the whole picture in one pass. Stays
+   pure in-memory -- no filesystem access (see ``validate_citations``
+   below).
+
+4. ``validate_citations(ir, workspace_root)`` -- D3: the ONE filesystem-
+   touching check in this module. Mechanically validates every Variable
+   whose ``subject_resolution.arm == "code"``: the cited file must exist
+   under ``workspace_root`` and the cited locator (symbol name or line
+   text) must appear as a plain substring of that file's content. Kept as
+   a sibling function rather than folded into ``validate_ir`` so
+   ``validate_ir`` stays pure and independently testable without a
+   filesystem -- callers compose the two. ``arm == "spec"`` resolutions are
+   NOT filesystem-checked (the spec's own new-behavior declaration is not
+   a repo construction site); an ``unresolved`` variable's ``searched``
+   claim is likewise never re-checked -- the negative claim is taken on
+   faith (D3).
 
 Two atom input shapes are accepted by ``parse_ir`` (mirroring the IR's own
 Bool/numeric/Enum representation, see ``ir_schema.Atom``):
@@ -57,10 +72,18 @@ Stdlib only. Python 3.8+.
 from __future__ import annotations
 
 import json
+import os
 from typing import Dict, List, Optional
 
 from _shared.spec_acs import parse_acs
-from _spec_check.ir_schema import Atom, Constraint, Coverage, SpecCheckIR, Variable
+from _spec_check.ir_schema import (
+    Atom,
+    Constraint,
+    Coverage,
+    SpecCheckIR,
+    SubjectResolution,
+    Variable,
+)
 
 # ---------------------------------------------------------------------------
 # Exceptions.
@@ -119,6 +142,35 @@ def _require_list_key(data, key):
     return value
 
 
+def _parse_subject_resolution(d, locator):
+    # type: (object, str) -> SubjectResolution
+    """Parse one Variable's optional ``subject_resolution`` object.
+
+    Note: SubjectResolution's own field is ALSO named ``locator`` (the
+    code-arm symbol/line reference) -- ``d.get("locator")`` below reads
+    that dict key, unrelated to this function's own ``locator`` parameter
+    (the error-message breadcrumb, same convention as every other
+    ``_parse_*`` helper in this module).
+    """
+    if not isinstance(d, dict):
+        raise IRParseError(
+            "{0}: expected an object, got {1}".format(locator, type(d).__name__)
+        )
+    if "status" not in d:
+        raise IRParseError("{0}: missing key 'status'".format(locator))
+    try:
+        return SubjectResolution(
+            status=d["status"],
+            arm=d.get("arm"),
+            citation=d.get("citation"),
+            locator=d.get("locator"),
+            note=d.get("note"),
+            searched=d.get("searched"),
+        )
+    except ValueError as exc:
+        raise IRParseError("{0}: {1}".format(locator, exc))
+
+
 def _parse_variable(d, i):
     # type: (object, int) -> Variable
     locator = "variables[{0}]".format(i)
@@ -129,9 +181,20 @@ def _parse_variable(d, i):
     for key in ("name", "sort", "gloss"):
         if key not in d:
             raise IRParseError("{0}: missing key '{1}'".format(locator, key))
+
+    subject_resolution = None  # type: Optional[SubjectResolution]
+    if d.get("subject_resolution") is not None:
+        subject_resolution = _parse_subject_resolution(
+            d["subject_resolution"], "{0}.subject_resolution".format(locator)
+        )
+
     try:
         return Variable(
-            name=d["name"], sort=d["sort"], gloss=d["gloss"], domain=d.get("domain")
+            name=d["name"],
+            sort=d["sort"],
+            gloss=d["gloss"],
+            domain=d.get("domain"),
+            subject_resolution=subject_resolution,
         )
     except ValueError as exc:
         raise IRParseError("{0}: {1}".format(locator, exc))
@@ -249,7 +312,12 @@ def _parse_coverage(d, i):
         if key not in d:
             raise IRParseError("{0}: missing key '{1}'".format(locator, key))
     try:
-        return Coverage(ac_id=d["ac_id"], status=d["status"], reason=d.get("reason"))
+        return Coverage(
+            ac_id=d["ac_id"],
+            status=d["status"],
+            reason=d.get("reason"),
+            subject=d.get("subject"),
+        )
     except ValueError as exc:
         raise IRParseError("{0}: {1}".format(locator, exc))
 
@@ -311,6 +379,17 @@ def parse_ir(raw):
 # validate_ir -- cross-record checks.
 # ---------------------------------------------------------------------------
 
+# D1: "unresolved_subject" is deliberately NOT a skip status. A skip means
+# "no logic here" (the AC is prose, or outside the solver's supported
+# sorts) -- the coverage row is an honest statement that nothing was
+# attempted. An unresolved subject means the opposite: formalization WAS
+# attempted and failed because the state the AC talks about has no
+# resolvable referent (no construction site, no spec new-behavior
+# declaration) -- that is a distinct failure mode from "not applicable",
+# and folding it into _SKIPPED_STATUSES would let it silently inherit the
+# skip branch's "reason required" rule and the report layer's skip
+# rendering, burying the exact incident (an unfalsifiable AC formalized as
+# vacuously consistent) this mechanism exists to surface.
 _SKIPPED_STATUSES = ("skipped_prose", "skipped_unsupported")
 
 
@@ -406,7 +485,25 @@ def validate_ir(ir, ac_ids):
                 # declaration would be noise (the atom may have been meant
                 # for a different, later declaration of the same name).
                 continue
-            sort_err = _check_atom_sort(atom, var_table[atom.var])
+
+            # D1 twin check: an unresolved subject is NOT formalized into
+            # constraints -- this must hold across the WHOLE constraint
+            # set, not merely within the unresolved variable's own AC's
+            # rows (an unrelated AC's constraint referencing the same
+            # variable is just as much a violation).
+            referenced_var = var_table[atom.var]
+            if (
+                referenced_var.subject_resolution is not None
+                and referenced_var.subject_resolution.status == "unresolved"
+            ):
+                errors.append(
+                    "{0}: constraint references variable '{1}' whose "
+                    "subject is unresolved".format(
+                        constraint.ac_id, atom.var
+                    )
+                )
+
+            sort_err = _check_atom_sort(atom, referenced_var)
             if sort_err is not None:
                 errors.append("{0}: {1}".format(constraint.ac_id, sort_err))
 
@@ -425,6 +522,41 @@ def validate_ir(ir, ac_ids):
         else:
             seen_coverage_ac_ids.add(cov.ac_id)
             coverage_status[cov.ac_id] = cov.status
+
+        # D1: an "unresolved_subject" Coverage entry carries no constraint,
+        # so the usual constraint-based ac_id -> variable join cannot reach
+        # the unresolved variable -- Coverage.subject is the pointer that
+        # closes that gap (see ir_schema.Coverage's docstring). Its
+        # existence in the IR's own variable table is a cross-record
+        # concern, checked here (var_table was built in step 1, above).
+        #
+        # Coherence, not just existence: the pointer must land on an
+        # INSPECTABLE unresolved record -- a dangling pointer (the named
+        # variable has no subject_resolution at all) or a contradicted one
+        # (the variable's own record says "resolved") both defeat the
+        # report layer's reason for having this pointer, which is to
+        # render the AC alongside what was searched and why it failed.
+        if cov.status == "unresolved_subject":
+            if cov.subject not in var_table:
+                errors.append(
+                    "{0}: unresolved_subject names undeclared variable "
+                    "'{1}'".format(cov.ac_id, cov.subject)
+                )
+            else:
+                target_sr = var_table[cov.subject].subject_resolution
+                if target_sr is None:
+                    errors.append(
+                        "{0}: unresolved_subject variable '{1}' has no "
+                        "subject_resolution record".format(
+                            cov.ac_id, cov.subject
+                        )
+                    )
+                elif target_sr.status != "unresolved":
+                    errors.append(
+                        "{0}: unresolved_subject variable '{1}' has a "
+                        "resolved subject_resolution (expected "
+                        "unresolved)".format(cov.ac_id, cov.subject)
+                    )
 
     for dup in duplicate_coverage_ac_ids:
         errors.append("duplicate coverage entry for AC '{0}'".format(dup))
@@ -452,6 +584,11 @@ def validate_ir(ir, ac_ids):
                     ac_id, status, count
                 )
             )
+        elif status == "unresolved_subject" and count > 0:
+            errors.append(
+                "{0} marked unresolved_subject but has {1} "
+                "constraint(s)".format(ac_id, count)
+            )
 
     return sorted(set(errors))
 
@@ -462,3 +599,95 @@ def validate_ir_or_raise(ir, ac_ids):
     errors = validate_ir(ir, ac_ids)
     if errors:
         raise IRValidationError("\n".join(errors))
+
+
+# ---------------------------------------------------------------------------
+# validate_citations -- D3: the one filesystem-touching check.
+# ---------------------------------------------------------------------------
+
+
+def validate_citations(ir, workspace_root):
+    # type: (SpecCheckIR, str) -> List[str]
+    """D3: mechanically validate every arm="code" SubjectResolution citation.
+
+    Filesystem-touching -- deliberately kept OUT of validate_ir (which
+    stays pure in-memory, see this module's docstring) so validate_ir
+    remains independently testable without a filesystem; callers compose
+    the two.
+
+    For each Variable whose subject_resolution.status == "resolved" and
+    .arm == "code": the cited file (subject_resolution.citation,
+    repo-relative) must exist under workspace_root, and the cited locator
+    (a symbol name or line text) must appear as a plain substring of that
+    file's content -- no LLM, no regex. arm == "spec" resolutions are NOT
+    filesystem-checked (the spec's own new-behavior declaration is not a
+    repo construction site); a Variable with no subject_resolution, or
+    status == "unresolved", is skipped -- nothing to check (an
+    "unresolved" record's `searched` claim is a negative claim, never
+    re-checked here).
+
+    Containment guard (checked BEFORE any filesystem touch -- isfile/open):
+    an LLM-authored citation is untrusted input, so an absolute citation
+    (which os.path.join silently lets discard workspace_root entirely --
+    os.path.join(root, "/etc/passwd") == "/etc/passwd") and a
+    depth-correct "../.." relative citation that walks back out of
+    workspace_root are both rejected on the PATH alone, never on file
+    existence/content. Containment is decided by realpath comparison (not
+    a raw string prefix check) so a workspace_root that is itself a
+    symlink (e.g. macOS's /tmp -> /private/tmp) still compares correctly.
+
+    Collects ALL problems (never fail-fast); returns a sorted, deduplicated
+    list of human-readable strings naming the offending variable. Never
+    raises on a missing/unreadable file -- that IS the finding.
+    """
+    errors = []  # type: List[str]
+    workspace_root_real = os.path.realpath(workspace_root)
+
+    for var in ir.variables:
+        sr = var.subject_resolution
+        if sr is None or sr.status != "resolved" or sr.arm != "code":
+            continue
+
+        if os.path.isabs(sr.citation):
+            errors.append(
+                "variable '{0}': cited file '{1}' escapes workspace "
+                "root".format(var.name, sr.citation)
+            )
+            continue
+
+        abs_path = os.path.join(workspace_root, sr.citation)
+        abs_path_real = os.path.realpath(abs_path)
+        if (
+            os.path.commonpath([workspace_root_real, abs_path_real])
+            != workspace_root_real
+        ):
+            errors.append(
+                "variable '{0}': cited file '{1}' escapes workspace "
+                "root".format(var.name, sr.citation)
+            )
+            continue
+
+        if not os.path.isfile(abs_path):
+            errors.append(
+                "variable '{0}': cited file '{1}' does not exist under "
+                "workspace root".format(var.name, sr.citation)
+            )
+            continue
+
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except OSError as exc:
+            errors.append(
+                "variable '{0}': cited file '{1}' could not be read: "
+                "{2}".format(var.name, sr.citation, exc)
+            )
+            continue
+
+        if sr.locator not in content:
+            errors.append(
+                "variable '{0}': cited locator {1!r} not found in "
+                "'{2}'".format(var.name, sr.locator, sr.citation)
+            )
+
+    return sorted(set(errors))

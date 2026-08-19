@@ -2,14 +2,21 @@
 
 Coverage, per dataclass:
 - Variable: happy path (each sort), name/gloss empty, bad sort, Enum without
-  domain, non-Enum with domain, domain with dupes, domain with empty member.
+  domain, non-Enum with domain, domain with dupes, domain with empty member,
+  subject_resolution wrong type / happy attach.
 - Atom: happy path (numeric/bool/enum-shaped), var empty, bad op, bad value
   type.
 - Constraint: happy path (assertion/implication), ac_id empty, bad kind,
   empty consequent, non-Atom consequent element, assertion-with-antecedent,
   implication-without-antecedent, implication-with-empty-antecedent.
-- Coverage: happy path (all three statuses), ac_id empty, bad status,
-  skipped-without-reason, formalized-with-reason, formalized-reason-bad-type.
+- Coverage: happy path (all four statuses), ac_id empty, bad status,
+  skipped-without-reason, formalized-with-reason, formalized-reason-bad-type,
+  unresolved_subject subject-required/must-be-None-otherwise.
+- SubjectResolution: happy path (resolved/code, resolved/spec, unresolved),
+  bad status, resolved-without-arm, resolved-without-citation,
+  resolved-without-note, code-without-locator, spec-with-locator,
+  resolved-with-searched, unresolved-with-any-of-arm/citation/locator/note,
+  unresolved-without-searched.
 - SpecCheckIR: happy path (incl. all-empty and all-skipped/zero-constraints),
   wrong-element-type per list.
 - Module constants exported correctly.
@@ -30,10 +37,13 @@ from _spec_check.ir_schema import (  # noqa: E402
     CONSTRAINT_KINDS,
     COVERAGE_STATUSES,
     SORTS,
+    SUBJECT_RESOLUTION_ARMS,
+    SUBJECT_RESOLUTION_STATUSES,
     Atom,
     Constraint,
     Coverage,
     SpecCheckIR,
+    SubjectResolution,
     Variable,
 )
 
@@ -60,8 +70,21 @@ class TestModuleConstants(unittest.TestCase):
         self.assertIsInstance(COVERAGE_STATUSES, tuple)
         self.assertEqual(
             COVERAGE_STATUSES,
-            ("formalized", "skipped_prose", "skipped_unsupported"),
+            (
+                "formalized",
+                "skipped_prose",
+                "skipped_unsupported",
+                "unresolved_subject",
+            ),
         )
+
+    def test_subject_resolution_statuses_tuple(self):
+        self.assertIsInstance(SUBJECT_RESOLUTION_STATUSES, tuple)
+        self.assertEqual(SUBJECT_RESOLUTION_STATUSES, ("resolved", "unresolved"))
+
+    def test_subject_resolution_arms_tuple(self):
+        self.assertIsInstance(SUBJECT_RESOLUTION_ARMS, tuple)
+        self.assertEqual(SUBJECT_RESOLUTION_ARMS, ("code", "spec"))
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +120,48 @@ def _make_constraint(**overrides):
 
 
 def _make_coverage(**overrides):
-    defaults = dict(ac_id="AC-1", status="formalized", reason=None)
+    defaults = dict(ac_id="AC-1", status="formalized", reason=None, subject=None)
     defaults.update(overrides)
     return Coverage(**defaults)
+
+
+def _make_subject_resolution_code(**overrides):
+    defaults = dict(
+        status="resolved",
+        arm="code",
+        citation="src/widget.py",
+        locator="def build_widget",
+        note="Constructed at widget.py's build_widget factory.",
+        searched=None,
+    )
+    defaults.update(overrides)
+    return SubjectResolution(**defaults)
+
+
+def _make_subject_resolution_spec(**overrides):
+    defaults = dict(
+        status="resolved",
+        arm="spec",
+        citation="AC-3",
+        locator=None,
+        note="AC-3 introduces the shipped state as new behavior.",
+        searched=None,
+    )
+    defaults.update(overrides)
+    return SubjectResolution(**defaults)
+
+
+def _make_subject_resolution_unresolved(**overrides):
+    defaults = dict(
+        status="unresolved",
+        arm=None,
+        citation=None,
+        locator=None,
+        note=None,
+        searched="grepped 'widget' and 'build_widget' across src/, 0 hits.",
+    )
+    defaults.update(overrides)
+    return SubjectResolution(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +263,133 @@ class TestVariableValidation(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             _make_variable(sort="Enum", domain=["a", ""])
         self.assertIn("domain[1]", str(ctx.exception))
+
+    def test_subject_resolution_defaults_to_none(self):
+        v = _make_variable()
+        self.assertIsNone(v.subject_resolution)
+
+    def test_subject_resolution_code_attaches(self):
+        sr = _make_subject_resolution_code()
+        v = _make_variable(subject_resolution=sr)
+        self.assertIs(v.subject_resolution, sr)
+
+    def test_subject_resolution_spec_attaches(self):
+        sr = _make_subject_resolution_spec()
+        v = _make_variable(subject_resolution=sr)
+        self.assertIs(v.subject_resolution, sr)
+
+    def test_subject_resolution_unresolved_attaches(self):
+        sr = _make_subject_resolution_unresolved()
+        v = _make_variable(subject_resolution=sr)
+        self.assertIs(v.subject_resolution, sr)
+
+    def test_subject_resolution_wrong_type_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_variable(subject_resolution={"status": "resolved"})  # type: ignore[arg-type]
+        self.assertIn("subject_resolution", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# SubjectResolution.
+# ---------------------------------------------------------------------------
+
+class TestSubjectResolutionHappyPath(unittest.TestCase):
+
+    def test_resolved_code_arm(self):
+        sr = _make_subject_resolution_code()
+        self.assertEqual(sr.status, "resolved")
+        self.assertEqual(sr.arm, "code")
+        self.assertEqual(sr.citation, "src/widget.py")
+        self.assertEqual(sr.locator, "def build_widget")
+        self.assertIsNone(sr.searched)
+
+    def test_resolved_spec_arm(self):
+        sr = _make_subject_resolution_spec()
+        self.assertEqual(sr.status, "resolved")
+        self.assertEqual(sr.arm, "spec")
+        self.assertEqual(sr.citation, "AC-3")
+        self.assertIsNone(sr.locator)
+
+    def test_unresolved(self):
+        sr = _make_subject_resolution_unresolved()
+        self.assertEqual(sr.status, "unresolved")
+        self.assertIsNone(sr.arm)
+        self.assertIsNone(sr.citation)
+        self.assertIsNone(sr.locator)
+        self.assertIsNone(sr.note)
+        self.assertIn("grepped", sr.searched)
+
+
+class TestSubjectResolutionValidation(unittest.TestCase):
+
+    def test_bad_status_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(status="bogus")
+        self.assertIn("status", str(ctx.exception))
+
+    def test_resolved_without_arm_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(arm=None)
+        self.assertIn("arm", str(ctx.exception))
+
+    def test_resolved_bad_arm_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(arm="bogus")
+        self.assertIn("arm", str(ctx.exception))
+
+    def test_resolved_without_citation_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(citation=None)
+        self.assertIn("citation", str(ctx.exception))
+
+    def test_resolved_without_note_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(note=None)
+        self.assertIn("note", str(ctx.exception))
+
+    def test_code_arm_without_locator_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(locator=None)
+        self.assertIn("locator", str(ctx.exception))
+
+    def test_spec_arm_with_locator_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_spec(locator="line 12")
+        self.assertIn("locator", str(ctx.exception))
+
+    def test_resolved_with_searched_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_code(searched="looked around")
+        self.assertIn("searched", str(ctx.exception))
+
+    def test_unresolved_with_arm_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(arm="code")
+        self.assertIn("arm", str(ctx.exception))
+
+    def test_unresolved_with_citation_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(citation="src/widget.py")
+        self.assertIn("citation", str(ctx.exception))
+
+    def test_unresolved_with_locator_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(locator="line 12")
+        self.assertIn("locator", str(ctx.exception))
+
+    def test_unresolved_with_note_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(note="found it")
+        self.assertIn("note", str(ctx.exception))
+
+    def test_unresolved_without_searched_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_subject_resolution_unresolved(searched=None)
+        self.assertIn("searched", str(ctx.exception))
+
+    def test_unresolved_empty_searched_raises(self):
+        with self.assertRaises(ValueError):
+            _make_subject_resolution_unresolved(searched="")
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +567,19 @@ class TestCoverageHappyPath(unittest.TestCase):
         )
         self.assertEqual(c.status, "skipped_unsupported")
 
+    def test_unresolved_subject_with_subject(self):
+        c = _make_coverage(status="unresolved_subject", subject="shipped_state")
+        self.assertEqual(c.status, "unresolved_subject")
+        self.assertEqual(c.subject, "shipped_state")
+
+    def test_unresolved_subject_with_subject_and_reason(self):
+        c = _make_coverage(
+            status="unresolved_subject",
+            subject="shipped_state",
+            reason="no construction site found",
+        )
+        self.assertEqual(c.reason, "no construction site found")
+
 
 class TestCoverageValidation(unittest.TestCase):
 
@@ -409,6 +611,27 @@ class TestCoverageValidation(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             _make_coverage(status="formalized", reason=42)  # type: ignore[arg-type]
         self.assertIn("reason", str(ctx.exception))
+
+    def test_unresolved_subject_without_subject_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_coverage(status="unresolved_subject", subject=None)
+        self.assertIn("subject", str(ctx.exception))
+
+    def test_unresolved_subject_empty_subject_raises(self):
+        with self.assertRaises(ValueError):
+            _make_coverage(status="unresolved_subject", subject="")
+
+    def test_formalized_with_subject_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_coverage(status="formalized", subject="shipped_state")
+        self.assertIn("subject", str(ctx.exception))
+
+    def test_skipped_prose_with_subject_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            _make_coverage(
+                status="skipped_prose", reason="n/a", subject="shipped_state"
+            )
+        self.assertIn("subject", str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------
