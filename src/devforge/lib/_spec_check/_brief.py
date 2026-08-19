@@ -27,6 +27,8 @@ from _spec_check.ir_schema import (
     CONSTRAINT_KINDS,
     COVERAGE_STATUSES,
     SORTS,
+    SUBJECT_RESOLUTION_ARMS,
+    SUBJECT_RESOLUTION_STATUSES,
 )
 
 # ---------------------------------------------------------------------------
@@ -42,9 +44,12 @@ def render_formalize_brief(acs):
     ----------
     acs : list of dict
         The ``extract_acs`` output -- each dict at minimum carries ``id`` and
-        ``text``; ``checked`` / ``subsection`` (if present) are ignored here.
-        A dict missing ``checked`` / ``subsection`` does not crash this
-        renderer -- only ``id`` and ``text`` are read.
+        ``text``. ``subsection`` (if present and non-empty) is rendered
+        alongside the AC so the formalizer can apply the subsection-keyed
+        preservation trigger below; ``checked`` is ignored here. A dict
+        missing ``checked`` / ``subsection`` does not crash this renderer --
+        an absent or empty ``subsection`` simply renders the AC as it did
+        before this key existed.
 
     Returns
     -------
@@ -68,7 +73,13 @@ def render_formalize_brief(acs):
         for ac in acs:
             ac_id = ac.get("id", "")
             ac_text = ac.get("text", "")
-            out.append("**{0}**: {1}".format(ac_id, ac_text))
+            subsection = ac.get("subsection", "")
+            if subsection:
+                out.append(
+                    "**{0}** ({1}): {2}".format(ac_id, subsection, ac_text)
+                )
+            else:
+                out.append("**{0}**: {1}".format(ac_id, ac_text))
     else:
         out.append("(no acceptance criteria found)")
     out.append("")
@@ -101,6 +112,52 @@ def render_formalize_brief(acs):
         "quantity ONCE and reuse the same `name` across every AC that "
         "refers to it (co-reference -- do not re-declare the same "
         "quantity under a different name in a later AC)."
+    )
+    out.append(
+        "`subject_resolution` is REQUIRED on every variable: "
+        "`{\"status\": one of "
+        + " | ".join(SUBJECT_RESOLUTION_STATUSES)
+        + ", ...}`. It records how the variable's subject -- what in "
+        "the code or spec produces the state it models -- was resolved "
+        "BEFORE this variable is used in any constraint."
+    )
+    out.append(
+        "Resolved via the code arm (an existing construction site): "
+        "`{\"status\": \"resolved\", \"arm\": \"code\", \"citation\": "
+        "\"<repo-relative path>\", \"locator\": \"<symbol or short "
+        "verbatim text present in that file>\", \"note\": \"<one line: "
+        "what was found>\"}` -- the citation is MECHANICALLY CHECKED: "
+        "the cited file must exist under the workspace root and the "
+        "locator text must be present in it, or the citation does not "
+        "count as a resolution."
+    )
+    out.append(
+        "Resolved via the spec arm (state introduced by THIS feature): "
+        "`{\"status\": \"resolved\", \"arm\": \"spec\", \"citation\": "
+        "\"<spec section or AC id declaring the new behavior>\", "
+        "\"note\": \"<one line>\"}` -- no `locator` (`arm` is one of "
+        + " | ".join(SUBJECT_RESOLUTION_ARMS)
+        + ")."
+    )
+    out.append(
+        "Unresolved: `{\"status\": \"unresolved\", \"searched\": "
+        "\"<the terms, paths and bound reached -- concrete enough for "
+        "a human to falsify the miss>\"}`."
+    )
+    out.append("")
+    out.append(
+        "Resolve every variable's subject BEFORE writing any "
+        "constraint over it. An AC whose `subsection` above is `5.2 "
+        "Behavior preservation` must resolve its subject via the code "
+        "arm REGARDLESS of how the AC is worded -- the subsection is "
+        "the primary trigger. Additionally, an AC under any OTHER "
+        "subsection whose statement presupposes presently-existing "
+        "behavior must ALSO resolve via the code arm -- wording is a "
+        "secondary trigger, checked whether or not the subsection "
+        "trigger fired. Either way, a preservation subject resolvable "
+        "only via the spec arm is UNRESOLVED. An unresolved variable "
+        "must not appear in ANY constraint -- the AC over it takes "
+        "coverage status `unresolved_subject` instead."
     )
     out.append("")
 
@@ -140,12 +197,18 @@ def render_formalize_brief(acs):
     out.append(
         "Each element: `{\"ac_id\": \"<id>\", \"status\": one of "
         + " | ".join(COVERAGE_STATUSES)
-        + ", \"reason\": str}`. `reason` is REQUIRED for either "
-        "`skipped_*` status. EVERY AC id above MUST appear exactly once in "
+        + ", \"reason\": str, \"subject\": str}`. `reason` is REQUIRED "
+        "for either `skipped_*` status. `subject` is REQUIRED for "
+        "`unresolved_subject` and names the unresolved variable; "
+        "omit it for every other status. `reason` is optional for "
+        "`unresolved_subject` (the failure "
+        "detail lives in that variable's `subject_resolution.searched` "
+        "instead). EVERY AC id above MUST appear exactly once in "
         "`coverage`. Use `skipped_prose` for a vague/non-logical AC (e.g. "
         "\"the app shall feel responsive\"); use `skipped_unsupported` for "
         "logic this IR cannot express (e.g. arithmetic over two or more "
-        "variables)."
+        "variables); use `unresolved_subject` when the AC's subject "
+        "could not be resolved (see variables[] above)."
     )
     out.append("")
 
