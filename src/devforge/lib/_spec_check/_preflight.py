@@ -8,7 +8,7 @@ preflight — read and validate the 4-command setup chain artefacts and check
             plan.md — requiring it would defeat the point: /spec-check exists
             to catch acceptance-criteria conflicts BEFORE planning starts.
 
-check_z3 — probe for the (opt-in) z3-solver dependency /spec-check needs to
+check_z3 — probe for the z3-solver dependency /spec-check needs to
            actually run its satisfiability checks.
 
 The functions return plain dicts / tuples; the CLI handler (a later phase)
@@ -63,8 +63,8 @@ Z3_INSTALL_MESSAGE = (
     "\n"
     "    pip install z3-solver\n"
     "\n"
-    "(opt-in dependency -- not installed by default, since /devforge:spec-check is "
-    "opt-in.)"
+    "(not installed by default -- /devforge:spec-check needs it, and "
+    "/devforge:plan requires a fresh spec-check report before it will run.)"
 )
 
 

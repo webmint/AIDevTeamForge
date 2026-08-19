@@ -151,7 +151,7 @@ When MORE THAN ONE file in that one directory matches `target_stage == "spec"` (
 
 This block only READS the seed's directive. It does not delete the seed or mutate its `cycle_count` — that lifecycle management, whatever form it takes, is the emitting command's responsibility, not this consumer's. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/<resolved-feature-dir>/*-seed.json` file matches `target_stage == "spec"` (the normal case — both `/devforge:grill` and `/devforge:spec-check` are opt-in, and no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict or a `/devforge:spec-check` run reaches a REVISE-SPEC verdict), this block is a no-op: proceed directly to Phase 1.
+When no `specs/<resolved-feature-dir>/*-seed.json` file matches `target_stage == "spec"` (the normal case — `/devforge:grill` is opt-in, and `/devforge:spec-check`, though the user must run it before `/devforge:plan` will proceed, writes no seed on most runs; no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict or a `/devforge:spec-check` run reaches a REVISE-SPEC verdict the user picks), this block is a no-op: proceed directly to Phase 1.
 
 ## Phase 1 — Input reads (8 sources)
 

@@ -1,6 +1,6 @@
 # 82 — `/devforge:spec-check`: subject resolution + mandatory run
 
-**Status:** Phase 0 RATIFIED 2026-08-19 (all items; D5 sub-fork = a-ii, D7 = c, D6 with the narrow reading confirmed) — build phases 1–6 may proceed.
+**Status:** ✅ **Phases 0–6 BUILT 2026-08-19** — Phase 0 ratified all items (D5 sub-fork = a-ii, D7 = c, D6 with the narrow reading confirmed); build commits `55fa1ab` / `b6d834b` / `e1ba862` / `5d56a47` / `45bc760` / `5b73269`, plus Phase 6's D14 amendment + full cross-reference sweep. **Phase 7 (consumer e2e) PENDING — user-driven HARD GATE, NOT run: this work is build-verified, NOT consumer-validated.**
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-17.
 **Premises re-verified:** 2026-08-19 against the shipped plan 81 and the created plan 85 — the two with a substantive touchpoint here. **Plans 79 and 80 shipped alongside plan 81 on 2026-08-18 and were checked: no premise in this file rests on either, and neither reaches a site this plan reads or edits** (verified 2026-08-19 — zero `memory` references in `src/devforge/lib/_spec_check/`, `src/agents/spec-formalizer.md` and `src/commands/spec-check/main.md`, and plan 79's memory prose in `src/commands/plan/main.md` is a different site from the PHASE-0a block Phase 5 adds; file overlap is not site overlap). Stale premises are corrected in place with dated markers; **no D-item, no OQ and no recommendation moved, and the plan is still NOT STARTED** — a re-verification is not a ratification. *(That last clause described the state at re-verification time and was superseded hours later the same day: Phase 0 closed on 2026-08-19 and every D-item and OQ is now ratified. The point it makes is unchanged — the re-verification itself ratified nothing; the separate per-item confirmation recorded below did.)*
@@ -1238,6 +1238,43 @@ that discipline is how this paragraph's own premise was caught.
 2026-08-17: seven files under `src/commands/` carry the flag). Route it separately; no
 phase above touches that file.
 
+**Discovered while BUILDING (2026-08-19), recorded and NOT fixed here.** Four items, none
+of which any phase above owns; each is stated so a later session finds it rather than
+rediscovering it.
+
+1. **`src/devforge/lib/_spec_check/_cli.py` is 1300 lines** (measured 2026-08-19; the
+   package totals 4574 across nine modules, with `_consume.py` at 747 and `_report.py` at
+   609 the next two). This is
+   **PRE-EXISTING debt that Phases 1–3 grew rather than created** — the subject-resolution
+   record, the fourth coverage status, the any-pass merge and the new report section all
+   landed in modules that were already oversized. **The split was DEFERRED deliberately:**
+   doing it in the same change-set as a behavior change would have made the diff
+   unreviewable and put the `_spec_check` regression suite's value at risk exactly when it
+   was the only net under a semantic change. Candidate follow-up plan; nothing here depends
+   on it.
+2. **A pre-existing zero-byte representative-IR defect in PHASE 4.** The representative-IR
+   picker resolves to `ir-canon-1.json` whenever the quorum verdict is not
+   `confirmed_unsat`. When pass 1 exhausted its PHASE-2.3 retry cap and pass 2 succeeded,
+   that file exists but is ZERO BYTES (the `>` redirect creates it even on a non-zero
+   `consume-ir` exit), so `render-report --ir-file` gets an unparseable file and exits 2 —
+   a hard stop on a run that HAD a solvable IR. **It predates this plan** (the picker and
+   the redirect behaviour are both shipped v1) and this plan did NOT fix it; the sibling
+   `ir-files.json` assembly guards the identical case with a `try`/`except`, which is where
+   a fix would take its shape from.
+3. **The consumer-side CBM discovery-gate `PreToolUse` hook blocks the formalizer's FIRST
+   `Read`/`Grep`/`Glob` of a session as a retryable error.** Subject resolution makes the
+   `spec-formalizer` a tool user for the first time, so it now meets that gate. **Left
+   unhandled deliberately** — the hook passes every subsequent matched call in the same
+   session, so the expected consequence is one retried tool call, not a failure; inventing
+   a carve-out before observing the behaviour would be speculative. **Phase 7 observes it**
+   and records what actually happened.
+4. **`plan_helper verify-spec-check --spec <path>` takes a NAMED flag where every other
+   verb in that file takes its spec/plan path POSITIONALLY.** The departure is deliberate
+   and is commented in the code at the verb's `add_parser` registration, with the recorded
+   reason: *a named `--spec` reads unambiguously in `plan/main.md`'s Phase 0a.8 bash
+   block, which already emits `--spec` explicitly.* Recorded here so a later consistency
+   pass does not "fix" it into a positional and break that phase's invocation.
+
 ---
 
 ## When resuming work
@@ -1245,7 +1282,20 @@ phase above touches that file.
 1. Read this file in full, then **Verified mechanics** again — twenty-one rows, each
    checkable in under a minute. **If rows 3, 5, 6, 11, 16, 17 or 18 no longer hold, stop
    and re-derive**: they are the cost argument, and D1's build shape and D5's option pick
-   both rest on them.
+   both rest on them. **(AMENDED 2026-08-19 — Phases 1–6 are BUILT, so SEVEN rows are now
+   deliberately false and must NOT trigger that stop.** The whole table is a PRE-BUILD
+   record. Rows **1**, **5** and **6** describe the three-status ledger the build replaced
+   with four (`COVERAGE_STATUSES` now carries `unresolved_subject`, the agreement rule has
+   its third branch, and the coverage headline has its third term); row **3**'s two
+   `_SKIPPED_STATUSES` copies still exist with their original value, but its closing claim
+   that *every* status branch keys on `== "formalized"` or `in _SKIPPED_STATUSES` no longer
+   holds; row **11** quotes the *"from that input alone"* sentence Phase 2 deleted (that
+   grep returns zero); rows **13** and **14** quote the opt-in strings Phase 6 rewrote; and rows
+   **16** and **17** — no `plan_helper` preflight verb, no mechanical gate in
+   `/devforge:plan` — were falsified by Phase 5, which added exactly those. Row **10**
+   (`tools: Read, Grep, Glob`) is still true and must stay true. **The stop-and-re-derive
+   rule now applies only to a row that changed for a reason OTHER than this plan's own
+   build** — re-derive from the code, never from this table.**)**
 2. Read **plan 62 in full** — not just D14. D3, D4, D9, D10, D11 and D13 all constrain
    what this plan may do, and D9 is subject resolution's direct ancestor.
 3. Read the **`PLAN-STATUS-ARCHIVE.md` plan-81 entry** for the incident. **Do not open

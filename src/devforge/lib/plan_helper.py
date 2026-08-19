@@ -2465,8 +2465,8 @@ _Z3_INSTALL_MESSAGE = (
     "\n"
     "    pip install z3-solver\n"
     "\n"
-    "(opt-in dependency -- not installed by default, since /devforge:spec-check is "
-    "opt-in.)"
+    "(not installed by default -- /devforge:spec-check needs it, and "
+    "/devforge:plan requires a fresh spec-check report before it will run.)"
 )
 
 

@@ -103,7 +103,7 @@ conjunction is allowed), the required outcome is the `consequent`. Here "checkou
 shall be disabled" is `checkout_enabled` = false, so the Bool atom is
 `{"var": "checkout_enabled", "negated": true}`.
 
-## Example 3 — a permission GRANT vs a restriction (the D9 case)
+## Example 3 — a permission GRANT vs a restriction (the permission-clash case)
 
 Two ACs, formalized together so the shared variables co-refer:
 

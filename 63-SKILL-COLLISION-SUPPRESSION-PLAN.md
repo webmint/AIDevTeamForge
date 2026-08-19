@@ -235,6 +235,21 @@ to both (plus a `storage-rules.md` CODE-class row) is REQUIRED work, not a free 
   judgment call at execution time. The maintainer's counter-question ("why disable at all if the framework is
   human-first?") was argued and resolved: the human-first guarantee lives in the in-command gates, and the
   flag's invisibility side-effect is what CAUSED the hijack bug — see OQ-4.
+  **(AMENDED 2026-08-19 — the KEEP decision stands; one of its two quoted reasons no longer
+  holds.)** `82-SPEC-CHECK-SUBJECT-RESOLUTION-MANDATORY-PLAN.md`'s ratified D5 sub-fork
+  (a-ii) KEEPS `disable-model-invocation: true` on `spec-check`, so **the 13/7 counts are
+  unchanged and this carve-out is NOT reopened** — but that plan's Phase 6 rewrote the very
+  sentence quoted above: `spec-check`'s `description` no longer reads *"Opt-in — never an
+  auto-gate"*, because a fresh `spec-check.md` is now a precondition of `/devforge:plan`.
+  The command is still typed by the user and still never auto-invoked; what became mandatory
+  is that the check RAN, and its verdict never binds. **So the REASON is replaced, not the
+  decision:** keeping the flag now rests on plan 82 D5(a-ii)'s own argument plus the
+  frontmatter semantics re-verified against current docs 2026-08-19
+  (`https://code.claude.com/docs/en/slash-commands`, now serving the merged *"Extend Claude
+  with skills"* page, whose invocation-control table records `disable-model-invocation:
+  true` as *"Description not in context, full skill loads when you invoke"*) — the
+  description therefore consumes no always-on context and no trim is owed. **`grill`'s half
+  of the quoted reason is untouched and still accurate.**
 - **OQ-3 — plan 26 D2 reconcile:** plan `26-REINTRODUCE-FIX-PLAN.md` D2 specifies the model PROPOSES `/fix`
   and the USER invokes it (never model-invoked). If `/fix` drops the disable flag it becomes
   model-invocable — reconcile (amend plan 26 D2, or keep `/fix` a disable-flag exception). Flag it; do not

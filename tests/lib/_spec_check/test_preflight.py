@@ -114,8 +114,15 @@ class TestCheckZ3(unittest.TestCase):
     def test_install_message_mentions_pip_install(self):
         self.assertIn("pip install z3-solver", Z3_INSTALL_MESSAGE)
 
-    def test_install_message_mentions_opt_in(self):
-        self.assertIn("opt-in", Z3_INSTALL_MESSAGE)
+    def test_install_message_does_not_call_spec_check_opt_in(self):
+        """/devforge:spec-check is run-mandatory before /devforge:plan (a
+        gate a user being BLOCKED for skipping must not then be told is
+        opt-in) -- only the z3-solver package itself is optional/
+        not-bundled, which the message states without the word 'opt-in'."""
+        self.assertNotIn("opt-in", Z3_INSTALL_MESSAGE)
+        self.assertIn("not installed by default", Z3_INSTALL_MESSAGE)
+        self.assertIn("/devforge:plan requires a fresh spec-check report",
+                       Z3_INSTALL_MESSAGE)
 
     def test_install_message_mentions_spec_check(self):
         self.assertIn("/devforge:spec-check", Z3_INSTALL_MESSAGE)
