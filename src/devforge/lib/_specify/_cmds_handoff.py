@@ -35,9 +35,11 @@ find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   dir), filtered to feature dirs that are PENDING -- D5's structural
   predicate, extended by D10: a feature dir is pending when its intake
   handoff is present AND (spec.md is absent OR a sibling *-seed.json file
-  (grill-seed.json / spec-check-seed.json) exists whose target_stage ==
-  "spec").  The second arm exists because a /grill RE-ENTER-UPSTREAM or
-  /spec-check REVISE-SPEC seed asks the user to re-run /specify on a
+  (grill-seed.json / spec-check-seed.json / fix-seed.json) exists whose
+  target_stage == "spec").  The second arm exists because a /grill
+  RE-ENTER-UPSTREAM, /spec-check REVISE-SPEC, or /fix scope-change bounce
+  seed (fix source added by plan 83; its producer is that plan's Phases 2-3)
+  asks the user to re-run /specify on a
   feature whose spec.md ALREADY exists -- without it, Phase 0.4 would exit
   2 BLOCKED before Phase 0.5's re-entry-seed consumption ever runs,
   making re-entry structurally unreachable.  A dir admitted only via the
@@ -921,8 +923,8 @@ def _has_spec_reentry_seed(feature_dir: Path) -> bool:
     """True iff feature_dir contains a *-seed.json whose target_stage is "spec".
 
     68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D10: the glob "*-seed.json" matches
-    both grill-seed.json and spec-check-seed.json (see
-    _shared/seed_schema.py's ReEntrySeed -- both are serialized via
+    grill-seed.json, spec-check-seed.json, and fix-seed.json (see
+    _shared/seed_schema.py's ReEntrySeed -- all are serialized via
     dataclasses.asdict, so the on-disk JSON's top-level "target_stage" key
     is exactly the field name). Matches on that field ONLY -- does NOT
     reconstruct a ReEntrySeed via the schema, because a seed that is

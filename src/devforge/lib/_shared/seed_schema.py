@@ -3,7 +3,10 @@
 Provides the ``ReEntrySeed`` frozen dataclass, ``SEED_SOURCES``,
 ``SEED_TARGET_STAGES``, and ``SEED_SCHEMA_VERSION`` constants for backward
 re-entry handoff artefacts (e.g. /grill -> upstream spec/discovery/research/
-plan, /spec-check -> spec).
+plan, /spec-check -> spec, /fix -> spec via /devforge:fix's scope-change
+bounce when a fix in flight turns out to need an architectural/behavior
+change -- the fix source's producer is 83-DOWNSTREAM-REENTRY-SEED-PLAN.md's
+Phases 2-3).
 
 What this is: when a downstream command proves a defect is rooted UPSTREAM
 (the design/implementation faithfully reflects a flawed earlier-stage
@@ -23,7 +26,7 @@ Design notes:
 
 - Schema-level validation runs in __post_init__ and is mechanical:
     * Required string fields are non-empty after .strip().
-    * source must be one of SEED_SOURCES ("grill", "spec-check").
+    * source must be one of SEED_SOURCES ("grill", "spec-check", "fix").
     * target_stage must be one of SEED_TARGET_STAGES.
     * cycle_count: strict int (no bool), must be >= 1.
     * carried_findings: list of str; may be empty.
@@ -49,7 +52,7 @@ SEED_SCHEMA_VERSION = "1"
 # Provenance and allowed enum values.
 # ---------------------------------------------------------------------------
 
-SEED_SOURCES = ("grill", "spec-check")
+SEED_SOURCES = ("grill", "spec-check", "fix")
 
 SEED_TARGET_STAGES = ("spec", "discovery", "research", "plan")
 
@@ -92,8 +95,8 @@ class ReEntrySeed:
 
     seed_version is a non-empty string; callers should pass SEED_SCHEMA_VERSION
       ("1"); any non-empty string is accepted at the schema level.
-    source must be one of SEED_SOURCES ("grill", "spec-check") -- any other
-      value is rejected.
+    source must be one of SEED_SOURCES ("grill", "spec-check", "fix") -- any
+      other value is rejected.
     target_stage must be one of SEED_TARGET_STAGES ("spec", "discovery",
       "research", "plan") -- the re-entry target stage.
     feature is the feature slug/id; non-empty.

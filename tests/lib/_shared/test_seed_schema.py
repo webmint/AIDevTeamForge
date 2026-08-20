@@ -59,7 +59,7 @@ def _make_seed(**overrides):
 class TestModuleConstants(unittest.TestCase):
 
     def test_seed_sources_value(self):
-        self.assertEqual(SEED_SOURCES, ("grill", "spec-check"))
+        self.assertEqual(SEED_SOURCES, ("grill", "spec-check", "fix"))
 
     def test_seed_sources_is_tuple(self):
         self.assertIsInstance(SEED_SOURCES, tuple)
@@ -234,6 +234,10 @@ class TestSourceValidation(unittest.TestCase):
     def test_source_spec_check_accepted(self):
         seed = _make_seed(source="spec-check")
         self.assertEqual(seed.source, "spec-check")
+
+    def test_source_fix_accepted(self):
+        seed = _make_seed(source="fix")
+        self.assertEqual(seed.source, "fix")
 
     def test_all_seed_sources_accepted(self):
         for source in SEED_SOURCES:
@@ -411,6 +415,26 @@ class TestReEntrySeedRoundTrip(unittest.TestCase):
             provenance="specs/007-catalog-filters/spec-check.md",
         )
         self.assertEqual(seed.source, "spec-check")
+        self.assertEqual(seed.target_stage, "spec")
+
+    def test_full_seed_round_trip_fix_source(self):
+        """fix source constructs and validates identically to grill/spec-check."""
+        seed = ReEntrySeed(
+            seed_version="1",
+            source="fix",
+            target_stage="spec",
+            feature="009-checkout-retry",
+            prior_conclusion="Fix assumed the retry defect was a local implementation bug.",
+            invalidating_evidence=(
+                "fix triage: the retry defect traces to a missing idempotency "
+                "requirement in the spec's acceptance criteria, not the code."
+            ),
+            must_satisfy="Spec must define idempotency behavior for retried checkouts.",
+            cycle_count=1,
+            carried_findings=[],
+            provenance="specs/009-checkout-retry/fix-triage.md",
+        )
+        self.assertEqual(seed.source, "fix")
         self.assertEqual(seed.target_stage, "spec")
 
 
