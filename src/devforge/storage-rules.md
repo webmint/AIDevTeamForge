@@ -216,7 +216,7 @@ verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 tria
 summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
 finalize     → squashes WIP commits + surgical docs/ updates via tech-writer
 report-bug   → creates bugs/NNN-description.md
-fix          → writes a [WIP] commit in the source repo (no spec/bugs/ files written)
+fix          → writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/NNN-name/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two (no bugs/ files written either way)
 audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
 
