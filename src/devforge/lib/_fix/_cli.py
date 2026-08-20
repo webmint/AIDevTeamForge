@@ -13,6 +13,10 @@ Verbs (Phase 1):
   resolve-scope     — map working list to narrow file set for verify-touched
   in-fix-window     — detect post-/implement, pre-/summarize window (case-3 gate)
 
+Verbs (Phase 2, plan 83 D5):
+  write-seed        — build + write fix-seed.json (scope-change backward
+                      re-entry arm, target_stage="spec" fixed)
+
 OQ decisions recorded in _fix/__init__.py and the individual submodules:
   OQ-1 persisted findings     → _findings.py
   OQ-2 narrow finding scope   → _scope.py
@@ -172,6 +176,109 @@ def cmd_in_fix_window(args):
     return 0 if result["in_window"] else 1
 
 
+def cmd_write_seed(args):
+    # type: (argparse.Namespace) -> int
+    """Build + write fix-seed.json (scope-change backward re-entry arm).
+
+    source/target_stage are fixed internally by build_seed ("fix" / "spec")
+    -- /devforge:fix has exactly one backward direction in this build (plan
+    83 D2), unlike /grill's multi-target write-seed. There is no
+    --target-stage flag.
+
+    Returns 0 on success (prints {"seed_path": ...} as JSON to stdout).
+    Returns 2 on missing/invalid required fields.
+    """
+    from ._seed import build_seed, write_seed
+
+    feature = getattr(args, "feature", None) or ""
+    feature_dir = getattr(args, "feature_dir", None)
+    prior_conclusion = getattr(args, "prior_conclusion", None) or ""
+    invalidating_evidence = getattr(args, "invalidating_evidence", None) or ""
+    must_satisfy = getattr(args, "must_satisfy", None) or ""
+    provenance = getattr(args, "provenance", None) or ""
+    cycle_count_raw = getattr(args, "cycle_count", None)
+    if cycle_count_raw is None:
+        cycle_count_raw = "1"
+    carried_raw = getattr(args, "carried_findings", None)
+    if carried_raw is None:
+        carried_raw = "[]"
+
+    if not feature_dir:
+        sys.stderr.write(
+            "fix_helper write-seed: --feature-dir <dir> required\n"
+        )
+        return 2
+    if not prior_conclusion:
+        sys.stderr.write(
+            "fix_helper write-seed: --prior-conclusion required\n"
+        )
+        return 2
+    if not invalidating_evidence:
+        sys.stderr.write(
+            "fix_helper write-seed: --invalidating-evidence required\n"
+        )
+        return 2
+    if not must_satisfy:
+        sys.stderr.write(
+            "fix_helper write-seed: --must-satisfy required\n"
+        )
+        return 2
+    if not provenance:
+        sys.stderr.write(
+            "fix_helper write-seed: --provenance required\n"
+        )
+        return 2
+
+    try:
+        cycle_count = int(cycle_count_raw)
+    except (ValueError, TypeError):
+        sys.stderr.write(
+            "fix_helper write-seed: --cycle-count must be an "
+            "integer, got {0!r}\n".format(cycle_count_raw)
+        )
+        return 2
+
+    try:
+        carried_findings = json.loads(carried_raw)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "fix_helper write-seed: --carried-findings must be a "
+            "JSON array string: {0}\n".format(exc)
+        )
+        return 2
+    if not isinstance(carried_findings, list):
+        sys.stderr.write(
+            "fix_helper write-seed: --carried-findings must decode "
+            "to a JSON array, got {0}\n".format(type(carried_findings).__name__)
+        )
+        return 2
+
+    try:
+        seed = build_seed(
+            feature=feature,
+            prior_conclusion=prior_conclusion,
+            invalidating_evidence=invalidating_evidence,
+            must_satisfy=must_satisfy,
+            provenance=provenance,
+            cycle_count=cycle_count,
+            carried_findings=carried_findings,
+        )
+    except ValueError as exc:
+        sys.stderr.write("fix_helper write-seed: {0}\n".format(exc))
+        return 2
+
+    try:
+        seed_path = write_seed(feature_dir, seed)
+    except OSError as exc:
+        sys.stderr.write(
+            "fix_helper write-seed: cannot write fix-seed.json: {0}\n".format(exc)
+        )
+        return 2
+
+    sys.stdout.write(json.dumps({"seed_path": seed_path}, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Registry + parser construction
 # ---------------------------------------------------------------------------
@@ -218,6 +325,12 @@ _SUBCOMMAND_REGISTRY = [
             "offer gate). Exit 0 = in-window; exit 1 = out-of-window."
         ),
         cmd_in_fix_window,
+    ),
+    (
+        "write-seed",
+        "Build + write fix-seed.json (scope-change backward re-entry arm; "
+        "target_stage=\"spec\" fixed — plan 83 D2).",
+        cmd_write_seed,
     ),
 ]
 
@@ -302,6 +415,83 @@ def _register_subcommands(subparsers):
                 help=(
                     "Feature directory path (e.g. specs/001-auth). "
                     "tasks/ and spec.md are resolved relative to it."
+                ),
+            )
+
+        elif verb == "write-seed":
+            sp.add_argument(
+                "--feature",
+                default="",
+                metavar="STR",
+                help="Feature slug / id (non-empty; passed to build_seed).",
+            )
+            sp.add_argument(
+                "--feature-dir",
+                required=True,
+                dest="feature_dir",
+                metavar="DIR",
+                help=(
+                    "Feature directory path (e.g. specs/001-auth/). "
+                    "fix-seed.json is written here."
+                ),
+            )
+            sp.add_argument(
+                "--prior-conclusion",
+                required=True,
+                dest="prior_conclusion",
+                metavar="TEXT",
+                help=(
+                    "The named working-list item's original diagnosis, now "
+                    "proven to be a scope change."
+                ),
+            )
+            sp.add_argument(
+                "--invalidating-evidence",
+                required=True,
+                dest="invalidating_evidence",
+                metavar="TEXT",
+                help=(
+                    "The quoted finding evidence plus the scope-change "
+                    "classification reason (or the bare classification "
+                    "judgment for a case-3 conversational defect)."
+                ),
+            )
+            sp.add_argument(
+                "--must-satisfy",
+                required=True,
+                dest="must_satisfy",
+                metavar="TEXT",
+                help="What the re-run must additionally resolve.",
+            )
+            sp.add_argument(
+                "--provenance",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Pointer to the source report, or the literal "
+                    "'conversational (in-window user report; no report "
+                    "file)' for a case-3 conversational defect."
+                ),
+            )
+            sp.add_argument(
+                "--cycle-count",
+                default="1",
+                dest="cycle_count",
+                metavar="N",
+                help=(
+                    "Bounded-compounding-loop counter (int >= 1). "
+                    "Default: 1."
+                ),
+            )
+            sp.add_argument(
+                "--carried-findings",
+                default="[]",
+                dest="carried_findings",
+                metavar="JSON_ARRAY",
+                help=(
+                    "JSON array string of prior finding descriptions "
+                    "carried forward (each multi-item bounce item's own "
+                    "reasoning, per plan 83 OQ-4). Default: '[]'."
                 ),
             )
 

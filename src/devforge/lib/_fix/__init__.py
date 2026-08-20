@@ -27,6 +27,17 @@ Verbs (Phase 1):
                       short (plan-08 discipline) and the detection is
                       deterministic rather than model-judged.
 
+Verbs (Phase 2, plan 83 D5):
+  write-seed        — build + write specs/[feature]/fix-seed.json, the
+                      scope-change backward re-entry seed for /devforge:specify
+                      to consume. source="fix" / target_stage="spec" fixed
+                      internally (plan 83 D2: no "breakdown" target stage
+                      ships in this build). Verdict-gating (the D3
+                      AskUserQuestion at /devforge:fix's PHASE-1 bounce,
+                      built into fix/main.md at plan 83 Phase 3)
+                      lives in the command layer — this verb writes
+                      unconditionally when called. See _seed.py.
+
 _state.py decision: NOT built.
   Rationale: /fix's back-half (verify-touched loop, review panel,
   forcing-functions gate, hard gate, wip-commit) is owned entirely by the
