@@ -1,6 +1,6 @@
 # 82 — `/devforge:spec-check`: subject resolution + mandatory run
 
-**Status:** ✅ **Phases 0–6 BUILT 2026-08-19** — Phase 0 ratified all items (D5 sub-fork = a-ii, D7 = c, D6 with the narrow reading confirmed); build commits `55fa1ab` / `b6d834b` / `e1ba862` / `5d56a47` / `45bc760` / `5b73269`, plus Phase 6's D14 amendment + full cross-reference sweep. **Phase 7 (consumer e2e) PENDING — user-driven HARD GATE, NOT run: this work is build-verified, NOT consumer-validated.**
+**Status:** ✅ **DONE (build) 2026-08-19** (Phases 0–6, commits `55fa1ab` / `b6d834b` / `e1ba862` / `5d56a47` / `45bc760` / `5b73269` / `24256c5`); **Phase 7 consumer e2e DEFERRED 2026-08-20 — maintainer intends to run it (NOT waived; build-verified, NOT consumer-validated; the five known-answer cases in Phase 7 are the anchor).** Phase 0 ratified all items (D5 sub-fork = a-ii, D7 = c, D6 with the narrow reading confirmed); Phase 6 delivered the in-place D14 amendment + the full cross-reference sweep.
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-17.
 **Premises re-verified:** 2026-08-19 against the shipped plan 81 and the created plan 85 — the two with a substantive touchpoint here. **Plans 79 and 80 shipped alongside plan 81 on 2026-08-18 and were checked: no premise in this file rests on either, and neither reaches a site this plan reads or edits** (verified 2026-08-19 — zero `memory` references in `src/devforge/lib/_spec_check/`, `src/agents/spec-formalizer.md` and `src/commands/spec-check/main.md`, and plan 79's memory prose in `src/commands/plan/main.md` is a different site from the PHASE-0a block Phase 5 adds; file overlap is not site overlap). Stale premises are corrected in place with dated markers; **no D-item, no OQ and no recommendation moved, and the plan is still NOT STARTED** — a re-verification is not a ratification. *(That last clause described the state at re-verification time and was superseded hours later the same day: Phase 0 closed on 2026-08-19 and every D-item and OQ is now ratified. The point it makes is unchanged — the re-verification itself ratified nothing; the separate per-item confirmation recorded below did.)*
@@ -1305,15 +1305,23 @@ rediscovering it.
    `COVERAGE_STATUSES`, `_SKIPPED_STATUSES`, `marked formalized but has no constraint`,
    `Checked {0} of {1}`, `from that input alone`, `find-handoffs --require`,
    `disable-model-invocation`.
-5. **Start at Phase 1 — Phase 0 CLOSED 2026-08-19 and nothing is left to ratify.** *(This
-   step read "Start at Phase 0, and read OQ-1's resolution before ratifying D6" until that
-   date; it is rewritten rather than deleted because a resuming session that re-opens
-   ratification would re-litigate settled picks.)* **Read every
-   `**Ratified 2026-08-19:**` paragraph before building** — they are the contract the
-   build phases implement, and three of them narrow the build: **D5(a-ii)** keeps
-   `disable-model-invocation: true`, so Phase 5's frontmatter diff is EMPTY and the
+5. **Start at Phase 7 — Phases 0–6 are DONE 2026-08-19 (see the status line's commits);
+   nothing is left to ratify or build.** Phase 7 is the user-driven consumer e2e — the
+   five known-answer cases — DEFERRED 2026-08-20, not waived. *(This step read "Start at
+   Phase 0, and read OQ-1's resolution before ratifying D6" until 2026-08-19, then "Start
+   at Phase 1 — Phase 0 CLOSED 2026-08-19 and nothing is left to ratify" until 2026-08-20;
+   each rewrite is recorded rather than deleted, because a resuming session that re-opens
+   ratification would re-litigate settled picks, and one that re-enters Phase 1 would
+   rebuild shipped code.)* **Read every
+   `**Ratified 2026-08-19:**` paragraph before scoring Phase 7 or touching anything
+   nearby** — they are the contract the shipped build implements, and three of them bound
+   what a Phase-7 result may be blamed on: **D5(a-ii)** KEPT
+   `disable-model-invocation: true`, so Phase 5's frontmatter diff was EMPTY and the
    plan-63 carve-out is untouched; **D7(c)** fails closed on absent `z3-solver` with no
-   `install.sh` change; **D6** is run-mandatory only, never verdict-binding. The intended
+   `install.sh` change, which is exactly what case 5 exercises, so a block there is the
+   ratified design and not a finding; **D6** is run-mandatory only, never verdict-binding —
+   a run that blocks `/devforge:plan` on a REVISE-SPEC verdict is a DEFECT, not the
+   feature. The intended
    sibling grill-mandatory change is `85-GRILL-MANDATORY-AUTO-ACCEPT-PLAN.md`, not this
    one *(recorded 2026-08-19: it exists, is NOT STARTED, and awaits its own Phase 0)* —
    **and OQ-2's ratified content-hash predicate is now a standing constraint on that
