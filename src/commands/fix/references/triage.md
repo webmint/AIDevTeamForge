@@ -19,7 +19,7 @@ STOP and recommend `/devforge:specify` when ANY working-list item is a feature/a
 
 - WHICH item triggered the bounce (its `title`).
 - WHY it is a scope change, not a defect repair (which row of the table above it falls under — e.g. "this adds a new validation rule the spec never specified" or "this changes the data model").
-- That the right home is a fresh `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` cycle, because the change needs a spec decision + plan + atomic breakdown, not a gated in-place fix.
+- That the right home is a fresh `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:breakdown` cycle, because the change needs a spec decision + plan + atomic breakdown, not a gated in-place fix.
 
 Do NOT partially remediate around a bounced item. `/devforge:fix` either remediates a working list of pure defect repairs, or it bounces.
 
