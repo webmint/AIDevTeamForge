@@ -1,6 +1,6 @@
 # 86 — Fowler refactoring gaps: five instruction-only closures
 
-**Status:** IN PROGRESS — **Phase 0 RATIFIED 2026-08-23**: D2 = (a) titled bold block in §3.6; D3 = DECLARE-ALWAYS; D4 = all six smells; D5 = yes, both the plan-side guidance AND the §6.1 clarification; OQ-1 = mixed-tasks-only with the objective trigger. D1 and Phase 1 were pre-ratified by maintainer directive 2026-08-18 (*"i want close this gap"*); OQ-2 was RESOLVED 2026-08-18 from the code. **One scope AMENDMENT ratified at the same sitting: Phase 5 gains a THIRD site, `src/agents/architect.md` Rule 9** — see the amendment note under D5. Phases 1–6 are cleared to build.
+**Status:** ✅ **DONE (build) 2026-08-23 — Phases 0–6 shipped** (`88832f3` Phase 0 / `d6f51be` F1 / `aa03419` F4 / `e0fb8e4` F2 / `6b46678` F3 / `e249898` F5, plus the Phase-6 records commit this line rides in). **Phase 7 consumer observation DEFERRED — user-driven HARD GATE, NOT run: this is BUILD-VERIFIED, NOT CONSUMER-VALIDATED**, and no phase above may claim otherwise. **Phase 0 RATIFIED 2026-08-23**: D2 = (a) titled bold block in §3.6; D3 = DECLARE-ALWAYS; D4 = all six smells; D5 = yes, both the plan-side guidance AND the §6.1 clarification; OQ-1 = mixed-tasks-only with the objective trigger. D1 and Phase 1 were pre-ratified by maintainer directive 2026-08-18 (*"i want close this gap"*); OQ-2 was RESOLVED 2026-08-18 from the code. **One scope AMENDMENT ratified at the same sitting: Phase 5 gains a THIRD site, `src/agents/architect.md` Rule 9** — see the amendment note under D5. Phases 1–6 are cleared to build.
 
 **Validity re-verified 2026-08-23** against the tree after plans 81/82/83/84/87 shipped: all thirty-three `## Verified mechanics` rows still hold in substance. Four of the five fix surfaces (`src/agents/code-reviewer.md`, `src/constitution.md`, `src/commands/breakdown/main.md`, `src/commands/audit/references/best-practices-checklist.md`) were not touched at all since drafting; `src/commands/plan/main.md` was changed by plans 82 and 83, but only at PHASE 0a.7 / PHASE 0a.8, nowhere near F5's PHASE 1.3 landing site. Only DIGITS rotted (`plan/main.md` facts 19–20 shifted by roughly +24 lines: sub-question 5 now reads at `:388`, the list still runs 1–11). **Grep the quoted string, never the `:NNN`** — the plan already said so and the rot proves it.
 **Branch:** `develop-2.0-init`
@@ -57,8 +57,9 @@ already work rather than repairs of mechanisms that do not:
   whole-codebase at `/devforge:audit` (fact 23).
 
 **The five gaps below are what that evaluation found missing.** The maintainer directed
-F1's closure explicitly (*"i want close this gap"*); F2–F5 are proposed here and are
-unratified.
+F1's closure explicitly (*"i want close this gap"*); F2–F5 were proposed here and were
+unratified at drafting — **all four were RATIFIED 2026-08-23 and all five have shipped.**
+This paragraph records the drafting state; the status line at the top of this file governs.
 
 **The incident that exposed F1.** In a consumer install, a single task duplicated an
 existing builder function into a second builder, verbatim except for one call option. That
@@ -526,6 +527,37 @@ Scope, three sites stating ONE standard:
   diff. **Appended, never renumbered** (fact 28). **Cite the two-hats rule by concept-name,
   never by `§`-number** (fact 9).
 
+**SCOPE AMENDMENT, ratified 2026-08-23 during the build — check 10 also carries an
+EXISTENCE arm, not only the declared-content arm above.** Origin: the Phase-2
+instruction-reviewer observed that both sibling carry lanes get a PHASE-3.5 existence gate
+(`verify-property-coverage` catches an orphaned pure-builder target,
+`verify-dead-code-coverage` catches an unfolded row), while this lane gets none — a gate is
+out of bounds here — and check 10 as first drafted closed with *"when the task declares no
+partition, report nothing here"*. Net effect: a constitution **MUST** with **zero detection
+surface anywhere in the pipeline**. Accepted, because closing it costs nothing this plan
+forbids: prose inside an ALREADY-EXISTING check is **no new check number, no gate, no
+Python**, and `code-reviewer` already reads both the task file and the diff.
+
+**The arm is bounded, and the bound is the whole point.** It is a
+**declaration-consistency** check, NEVER an intent re-derivation: it does not ask whether a
+task *should* have partitioned as a design judgment, it asks whether the task file's OWN two
+conjuncts are both VISIBLE IN THE TASK FILE (a Files-table row whose `Action` is `Modify`
+touching an existing function the task does not delete, AND a `**Spec criteria**:` AC whose
+observable behavior the task changes) and flags the absence only then. The finding must NAME
+the row and the AC it read — the same grounding idiom checks 8 and 9 already close with, and
+what keeps this from becoming the noise generator plan 19's precision stance exists to
+prevent.
+
+**The two severities are deliberately split and must not be flattened:** a CONTRADICTED
+declaration is **High** (the diff contradicts the task's own contract — the stronger claim);
+a MISSING declaration is **Medium** (an authoring omission). The anti-manufacture rule
+survives verbatim in substance for CONTENT: never invent partition content for an undeclared
+surface, never infer which surfaces were meant to be preserving.
+
+**This does NOT reopen the no-gate constraint** and sets no precedent for F3 — D3's
+declaration is unchecked BY RATIFIED DECISION, which is a different situation from F2's,
+where nothing had been decided either way.
+
 **Verify:**
 
 - Instruction-reviewer clean; claude-code-guide clean.
@@ -967,12 +999,69 @@ never from a Status line.
    references"*. It sits inside check 9, the check plan 71 added
    (`71-POST-CHANGE-CONSEQUENCE-PLAN.md:65`). **Phases 1 and 2 edit this file and must not
    introduce a second one; repairing the existing one is a separate routing.**
-2. **`17-IMPLEMENT-PER-TASK-PANEL-PLAN.md:47` cites `src/agents/code-reviewer.md:70`** for
-   the `### Verdict:` line, which lives at `:72` today (fact 27). Phase 1 shifts that file
-   further. Pre-existing anchor rot; route separately.
+2. **`17-IMPLEMENT-PER-TASK-PANEL-PLAN.md:47` and `:373` cite `src/agents/code-reviewer.md:70`**
+   for the `### Verdict:` line. **Digit refreshed 2026-08-23: that line was `:72` when this
+   plan was drafted and is `:75` after Phases 1 and 2 landed** — this build shifted it
+   twice, exactly as fact 27 predicted. A SECOND citing site (`:373`) was found at Phase 6
+   that the original entry did not name. Pre-existing anchor rot; route separately, and
+   **grep `### Verdict:` rather than trusting any of these three digits.**
 3. **Plans 05 and 10 call the structural-integration check `§7`** when the shipped file
    numbers it **8** (fact 28). Same class as (2); recorded so Phase 1 does not "fix" it by
    renumbering the live file.
+4. **`src/agents-AUTHORING.md:127` anchors the severity enum to a path that DOES NOT EXIST.**
+   It reads *"Anchored to `src/devforge/lib/_audit/findings_schema.py:49`"*; there is no
+   `_audit/findings_schema.py` in the tree at all, and `SEVERITY_ENUM` actually lives at
+   `src/devforge/lib/_shared/findings_schema.py:46` (`CATEGORY_ENUM` is its neighbour at
+   `:47`–`:54`). **Surfaced 2026-08-23 by the Phase-1 instruction-reviewer and verified
+   independently**; it is a true dangling reference, not anchor rot — the file was moved or
+   the enum was extracted to `_shared/` and this citation was never updated. **Pre-existing
+   and NOT owned here.** Phases 1 and 2 read this line as the severity-vocabulary
+   constraint and are unaffected by the wrong path (the enum's VALUES are correct);
+   repairing it inside this plan's commits would make it invisible to whoever owns
+   `src/agents-AUTHORING.md`, which is the same argument items (2) and (3) rest on.
+5. **`src/agents/architect.md` Rule 9 cites the constitution by `§`-number.** Its Consequence
+   forcing step reads *"the constitution's §3.5 (No dead code)"* — the same agent-file
+   violation as item 1's, in a second file, and it sits inside the byte-unchanged six
+   forcing steps Phase 5 was forbidden to touch. Surfaced 2026-08-23 while Phase 5 edited
+   Rule 9. **Pre-existing, NOT owned here**, and left alone for the same reason as items
+   (1)–(3): a silent repair inside this plan's commits hides it from whoever owns it. Phase
+   5's own added sentence correctly cites by concept name (*"the constitution's Minimal
+   Changes rule (Workflow Rules section)"*), so the file's `§` count did not grow.
+6. **The implementer-side minimal-scope lines were CONSIDERED and deliberately NOT
+   amended — recorded so a later session does not read the omission as an oversight.**
+   Many agent files carry a one-line analog of §6.1 (e.g. `src/agents/backend-engineer.md`,
+   `design-auditor.md`: *"Minimal scope — change only what the task requires; no speculative
+   work"*). **Counts, measured 2026-08-23 rather than estimated** — `grep -c "Minimal scope"
+   src/agents/*.md` hits **19 files** (18 besides `architect.md` itself, whose Rule 9 heading
+   also matches), and `grep -l "only what the task requires"` hits **11**. Phase 5's author
+   first reported "eight" and this plan briefly recorded that number; the Phase-5
+   instruction-reviewer caught it, so **grep the current tree rather than quoting any of
+   these figures** — they are a dated snapshot, not a fact about the design. Phase 5's author
+   flagged these lines as *"the same contradiction shape as §6.1 and Rule 9, one layer
+   further down"*. **Checked 2026-08-23 and the claim does not hold.**
+   Those rules are scoped to *"what the **TASK** requires"*, and a decomposed preparatory
+   task's requirement IS the restructuring — so the engineer executing it is doing exactly
+   what its task requires, and nothing contradicts. The §6.1 / Rule 9 contradiction was
+   different IN KIND: absolute bans on *refactoring*, read by the party PROPOSING it, where
+   the proposal has no task to authorize it yet. The Phase-5 instruction-reviewer tested this
+   independently and reached the same conclusion by a sharper route: **`/devforge:breakdown`'s
+   decomposition IS the scoping mechanism the implementer's rule already trusts** — a task
+   file that names the restructuring as its own content makes "only what the task requires"
+   and "do the restructuring" the same instruction. The contradiction was a PLAN-TIME problem
+   and does not recur at execution time. **No implementer-side edit is owed, and Phase 5's
+   three sites are therefore complete rather than a partial pass.**
+7. **`src/agents/code-reviewer.md:26` (check 1) is ambiguous about which constitution rules
+   are Critical.** It reads *"check every change against the constitution's NON-NEGOTIABLE
+   rules … A constitution violation is always Critical — never downgrade it."* Read broadly
+   that seems to cover EVERY constitution rule, including §3.6's, which would contradict
+   check 10's `High`. **It is NOT a live contradiction and Phase 2 deliberately did not
+   touch it.** Verified 2026-08-23: `NON-NEGOTIABLE` is a FORMAL TAG applied only to
+   **Section 2 — Architecture Rules** (`src/devforge/lib/_constitute/_render.py:237`,
+   `src/commands/constitute/main.md:95`); it tags §3.6 nowhere, and the string appears in
+   `src/constitution.md` ZERO times. So check 1's mandate does not reach the Design
+   Principles material and check 10's `High` is safe. **Recorded so a future editor does not
+   "fix" check 10's severity upward under the broad misreading.** Tightening check 1 would
+   change constitution-violation severity semantics fleet-wide — far outside this plan.
 
 ---
 
@@ -982,10 +1071,14 @@ never from a Status line.
    checkable in under a minute. **If rows 1, 5, 6, 17, 18, 20, 31 or 33 no longer hold, stop
    and re-derive**: they are the scope and constraint argument, and D2's decision, D3's
    shape, F2's landing site and OQ-2's answer all rest on them.
-2. **Read Phase 0 first.** D2–D5 and OQ-1 are unratified; **OQ-2 is already resolved
-   (2026-08-18, from the code) and ratifies nothing else.** **Phase 1 is the exception
-   and may run before Phase 0 closes** — D1 and the phase itself are pre-ratified by the
-   2026-08-18 maintainer directive, and no other decision in this file constrains it.
+2. **Phase 0 is CLOSED — every decision is ratified and every build phase has shipped.**
+   D1 (2026-08-18 directive), D2–D5 and OQ-1 (all 2026-08-23, as recommended), OQ-2
+   (2026-08-18, from the code). **Two scope AMENDMENTS were ratified beyond the plan as
+   drafted and are recorded at their decision sites, not here**: Phase 5's third site
+   (`src/agents/architect.md` Rule 9, under D5) and check 10's existence arm (under
+   Phase 2's scope). **Nothing in Phases 0–6 remains to do.** The ONLY open work is Phase 7,
+   the consumer observation, which is the maintainer's to run — read its five known-answer
+   anchors before running it, and score cases 1 and 3 as a PAIR.
 3. Read **`src/agents/code-reviewer.md` in full** before touching it — not just check 8.
    Check 9's shape, the `## Output` template, `## Rules` item 1's new-file search sentence,
    and the `## Boundaries & Handoffs` scope sentence all constrain what Phases 1 and 2 may
