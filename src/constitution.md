@@ -227,7 +227,7 @@ _Run /devforge:constitute to populate with business domain terms, rules, and con
 ## 6. Workflow Rules
 
 ### 6.1 Minimal Changes [universal]
-Every code change MUST impact as little code as possible. Do not refactor, improve, or "clean up" code outside the scope of the current task. A bug fix changes the bug. A feature adds the feature. Nothing more.
+Every code change MUST impact as little code as possible. Do not refactor, improve, or "clean up" code outside the scope of the current task. A bug fix changes the bug. A feature adds the feature. Nothing more. A preparatory restructuring the feature's `plan.md` records — one that makes the in-scope change possible and carries its own preservation contract — is INSIDE the scope of the current task by that record, because what this rule bans is unplanned drive-by editing; restructuring not written into `plan.md` before the work starts stays banned by it.
 
 ### 6.2 Semantic Understanding [universal]
 Before renaming or replacing any identifier, VERIFY:
