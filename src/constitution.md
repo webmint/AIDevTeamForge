@@ -124,6 +124,12 @@ function process(input) {
 - A layer-wide restriction inside shared code changes behavior for every caller, including callers nobody checked. A broadened rule inside a shared service MUST name every current caller it affects, in the plan.
 - This is the tie-breaker against KISS's "fewest touch points" instinct: the smallest API diff is not the narrowest semantic blast radius. When the two conflict for a behavior-restricting change, blast radius wins.
 
+**Two-hats (separating behavior change from restructuring):**
+- A unit of work wears one hat at a time: it adds or alters behavior, or it restructures existing code without altering behavior. A unit that does BOTH — it touches an existing function it does not delete, AND it changes observable behavior — is MIXED, and a mixed unit MUST partition the functions and files it touches into two named surfaces: **behavior-changing** (the observable result is deliberately different afterwards) and **behavior-preserving** (code moved, extracted, renamed, or re-shaped, and the observable result must come out identical).
+- Both conditions are required. Work that only restructures existing code, and work that only adds or alters behavior, wears a single hat and partitions nothing — there is no degenerate partition to write down.
+- Every behavior-preserving surface carries a preservation contract: a stated postcondition that this surface's observable result is unchanged, in the same terms the spec's Behavior preservation criteria and "Must not break" constraints use. A surface called behavior-preserving that states no such postcondition is asserted, not declared.
+- The partition is written where the work is decomposed, not reconstructed later from the diff. Unpartitioned, a mixed change arrives as one undifferentiated changeset in which no reader can tell which hunks were meant to preserve behavior — and a restructuring defect hiding among intended behavior changes is exactly what wearing both hats at once produces.
+
 ### 3.7 Check Before You Build [universal]
 
 **Before writing anything generic or reusable, search first.** The codebase may already have:

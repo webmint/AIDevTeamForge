@@ -349,8 +349,8 @@ For each task in the validated decomposition, render its skeleton via the helper
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then fill its placeholders and write the result to `specs/NNN-<feature>/tasks/NNN-<title>.md` via Write. Fill these per task:
 
 - **Header fields**: Agent (from the Agent Assignment table), Depends on, Blocks, Spec criteria (`AC-N`), Review checkpoint (Yes/No — see below), Context docs (see below), plus Property targets on dedicated property-test tasks only (see the Property-test tasks subsection below), and Dead code removal on the owning task of any `/devforge:plan`-declared change-induced dead code (see the Change-induced dead-code removal subsection below).
-- **Files table**, **Description**, **Change Details** — from the Phase 1 file analysis.
-- **Contracts** (`Expects` / `Produces`) — per the Contract Generation Rules below.
+- **Files table**, **Description**, **Change Details** — from the Phase 1 file analysis, plus the behavior-changing / behavior-preserving surface partition on a mixed task (see the Two-hats partition subsection below).
+- **Contracts** (`Expects` / `Produces`) — per the Contract Generation Rules below; on a mixed task each behavior-preserving surface also carries its preservation postcondition in `Produces` (see the Two-hats partition subsection below).
 - **Done When** — task-specific testable conditions; the helper-emitted skeleton already carries the standing tsc/lint/no-secrets/no-debug conditions.
 - **Completion Notes** — leave the helper-emitted Completion Notes skeleton empty — it is the read contract that the `/devforge:implement` consumer will fill on completion.
 
@@ -390,6 +390,16 @@ The flag emits a `**Dead code removal**: <text>` line immediately after the `**P
 Contrast with the property-test lane above: that lane creates a DEDICATED `qa-engineer` task because its rationale is coverage (a test author is a distinct unit of work). Dead-code removal is the opposite — its rationale is atomicity, so it is never its own task; it rides the task that makes the code dead.
 
 /devforge:verify confirms each carried row's anchor token is absent from the post-change code (plan 71 Phase 4).
+
+### Two-hats partition (mixed behavior-change + restructuring tasks)
+
+A task is MIXED when both conditions hold, and both are checkable against the task file you just wrote: its Files table has at least one row whose `Action` is `Modify` and whose change touches an existing function the task does not delete, AND its `**Spec criteria**:` line names at least one acceptance criterion whose observable behavior this task changes. A mixed task MUST partition the functions and files it touches into **behavior-changing** surfaces (the observable result is deliberately different afterwards) and **behavior-preserving** surfaces (code moved, extracted, renamed, or re-shaped, observable result identical) — the constitution's Two-hats rule. A task that only restructures existing code, and a task that only adds or changes behavior, wears a single hat: it gets no partition, and you never fill one in trivially to satisfy the shape.
+
+The partition lands in the task's `## Change Details` section, on the entries already written there: label each `- In <path>:` entry — and, where one file holds both kinds of change, each named function under it — behavior-changing or behavior-preserving. Each behavior-preserving surface additionally carries a preservation contract in `### Produces` (see the Contract Generation Rules below): a postcondition asserting that surface's observable result is unchanged, written against a semantic identifier like every other contract item — e.g. "`get cartTotals()` in `CartBLoC.ts` returns the same value as before this task". A behavior-preserving label with no matching `Produces` item declares nothing anyone can check.
+
+Both halves ride sections the orchestrator already fills, and that placement is deliberate: the partition is per-surface prose no fixed header field could hold, and the preservation postcondition belongs in `Produces` because `Produces` is already the channel the `/devforge:implement` consumer verifies by reading the source. The labels themselves are what `code-reviewer`'s Two-hats partition check reads a mixed task's diff against. Render mixed tasks with the base `render-task-file` invocation — this lane adds NO flag and NO header line, unlike the property-test and dead-code lanes above.
+
+Produce the partition HERE, at decomposition, rather than leaving it to be reconstructed at review: Phase 1's file analysis is where it is already known which touched files this change only restructures, and once the task has become one diff that knowledge is gone — a reviewer would have to re-derive which hunks were meant to preserve behavior from the change itself, which is the one thing a diff cannot show.
 
 ### Contract Generation Rules
 
