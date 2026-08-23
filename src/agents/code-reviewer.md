@@ -30,10 +30,11 @@ Read ALL changed files before forming any finding. Work the changeset through th
 5. **Concurrency & thread-safety** — WHEN the changed code involves concurrency (it spawns threads / goroutines / workers, uses async/await over shared state, runs work in parallel, or touches shared mutable state reachable from more than one execution context): check for unguarded shared mutable state, check-then-act (TOCTOU) races, missing or inconsistent synchronization (locks / atomics), non-atomic read-modify-write on shared state, lock ordering that risks deadlock, and async interleaving hazards (unawaited work, mutation across an `await` / suspension point). This is a static read for concurrency hazards from the code alone — no runtime, no stress test. SKIP it entirely for single-threaded, sequential code; never manufacture a concurrency finding where the code has no concurrency. Ground each finding in the specific shared state plus the two access paths that can interleave. A data race that can corrupt shared state is Critical or High.
 6. **Code quality** — naming clear and consistent with codebase conventions; no dead code, debug logs, or commented-out blocks (see item 9 for change-induced dead code specifically); functions have a single responsibility; no scope creep beyond the task/spec.
 7. **Memory check** — cross-reference `.devforge/memory.md` for known pitfalls related to the changed code.
-8. **Structural integration** — for each **newly created** file/module in the changeset:
-   - Search the repo for existing modules with similar responsibility or interface shape (Glob by likely names; Grep for similar function/class signatures; check sibling directories).
-   - If a similar module exists, classify the new code as an **intentional parallel** (explicit design reason — e.g. versioned API, A/B variant — which must be justified in spec/plan) or a **duplicate / parallel rewrite** (same responsibility implemented again, ignoring existing code).
-   - One targeted search pass, not a full repo audit. Skip files that only edit existing modules.
+8. **Structural integration** — two arms, file-level and function-level:
+   - **File-level** — for each **newly created** file/module in the changeset, search the repo for existing modules with similar responsibility or interface shape (Glob by likely names; Grep for similar function/class signatures; check sibling directories).
+   - **File-level (classification)** — if a similar module exists, classify the new code as an **intentional parallel** (explicit design reason — e.g. versioned API, A/B variant — which must be justified in spec/plan) or a **duplicate / parallel rewrite** (same responsibility implemented again, ignoring existing code).
+   - **Function-level** — for each **newly added** function/method inside a file the changeset only modifies, search that same module plus its obvious siblings for a near-identical function. A verbatim or near-verbatim copy of one existing sibling — differing only in literals or a single argument — is a **duplicate**; the same copy is an **intentional parallel** that passes when the task file, plan or spec declares and justifies it. The finding is one sibling copied, not a count of repeated logic — the constitution's DRY rule still owns when a recurring pattern earns an abstraction.
+   - One targeted search pass per arm, not a full repo audit. The file-level arm skips files that only edit existing modules; the function-level arm covers new-function duplication inside them.
 9. **Change-induced dead code** — WHEN this task's diff adds a dominating condition (an early return, a narrowed or newly-added guard, or a removed call) above or around a branch, arm, function, parameter, or import it thereby makes unreachable: confirm the now-dead code is deleted in the SAME diff, not left in place. Leaving code the change stranded violates the constitution's No dead code rule (§3.5) even when the task's declared scope is only the condition change — deleting code a change renders unreachable is in-scope by rule, not scope creep, so never excuse it as out-of-scope. Ground the finding in the specific dominating condition plus the exact branch/symbol it strands.
 
 ## Output
@@ -42,7 +43,7 @@ Report findings; do not modify code (read-only).
 
 Severity: Critical / High / Medium / Info. Verdict: APPROVE / REQUEST CHANGES / BLOCK.
 
-Structural-integration verdict per new file: `INTEGRATED | INTENTIONAL_PARALLEL | DUPLICATE`. A `DUPLICATE` is Critical (the change rewrote what already existed). An `INTENTIONAL_PARALLEL` without spec/plan justification is High.
+Structural-integration verdict per new file and per newly added function inside a modified file: `INTEGRATED | INTENTIONAL_PARALLEL | DUPLICATE`. A file-level `DUPLICATE` is Critical (the change rewrote what already existed); a function-level `DUPLICATE` is High. An `INTENTIONAL_PARALLEL` without the justification its arm requires — spec/plan for a new file; the task file, plan or spec for a new function — is High.
 
 Format:
 
@@ -68,6 +69,7 @@ Format:
 
 ### Structural Integration
 - [new-file]: INTEGRATED | INTENTIONAL_PARALLEL (reason: ...) | DUPLICATE (existing: [path])
+- [new-function in modified-file]: INTEGRATED | INTENTIONAL_PARALLEL (reason: ...) | DUPLICATE (existing: [path:function])
 
 ### Verdict: APPROVE / REQUEST CHANGES / BLOCK
 ```
@@ -80,7 +82,7 @@ Format:
 
 ## Rules
 
-1. Read ALL changed files before giving any feedback. For newly created files, also run a single targeted search for pre-existing modules with overlapping responsibility.
+1. Read ALL changed files before giving any feedback. For newly created files, also run a single targeted search for pre-existing modules with overlapping responsibility; for functions newly added to modified files, a single targeted search for a near-identical sibling in the same module.
 2. Constitution first — it is the highest authority; cite findings by `file:line` with the exact issue, never a vague "fix types".
 3. Distinguish real issues from style preferences.
 4. Read `constitution.md` before deciding; check `.devforge/memory.md` for prior lessons.
