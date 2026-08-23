@@ -31,6 +31,8 @@ It self-registers on PATH; restart Claude Code afterward. **Context7** and **Chr
 
 Copies `.claude/`, `.devforge/`, `docs/`, `CLAUDE.md`, `constitution.md`, and `.mcp.json` into the project. Artifact directories (`specs/`, `bugs/`, `audits/`) are created by the commands that write them. Then open the project in Claude Code and run the one-time setup chain.
 
+Non-English operators can have Claude reply in another language: set the `language` key in `~/.claude/settings.json` (every project on your machine) or in `.claude/settings.local.json` (this project only — Claude Code "keeps it out of git when it creates the file; if you create it by hand, add it to `.gitignore` yourself"). Do not use `.claude/settings.json`, which `install.sh` overwrites. The installed `CLAUDE.md` keeps every file artifact and commit message in English regardless; the setting applies to conversation only.
+
 To push template improvements to an already-installed project without clobbering your customizations:
 
 ```bash
