@@ -62,6 +62,8 @@ Design notes
   staging all paths and call it a benign no-op rather than an error.
   This lets the orchestrator pass optional paths (grill-seed.json,
   data-model.md) without crashing when the run did not write them.
+- Advisory-only Cyrillic scan on staged files + label, stderr-only,
+  never affects exit code or JSON (plan 87).
 
 Stdlib only. Python 3.8+.
 """
@@ -286,6 +288,10 @@ def _cmd_commit_artifacts(args):
         for err in stage_errors:
             sys.stderr.write("commit-artifacts: warning: {0}\n".format(err))
 
+    # Advisory only (D1-D3, plan 87): bare statement, return value discarded,
+    # never gates the commit — see _warn_non_english_artifacts below.
+    _warn_non_english_artifacts(commit_repo, label)
+
     # --- Commit ---
     err = _git_commit(commit_repo, message)
     if err is not None:
@@ -309,6 +315,89 @@ def _cmd_commit_artifacts(args):
     }
     sys.stdout.write(json.dumps(result_obj) + "\n")
     return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
+# Advisory language guard (Cyrillic detector)
+#
+# Tripwire, not a control (D1): warns on stderr and changes nothing else --
+# not the exit code, not either stdout JSON shape, not whether the commit
+# happens. Deliberately placed after the verb handler rather than beside the
+# four _git_* primitives above so this section's own local `import re` (its
+# only new import) cannot shift a single line number inside the verb
+# handler above, including its staging-error handling.
+# ---------------------------------------------------------------------------
+
+import re  # noqa: E402 -- local on purpose, see module note above
+
+# Cyrillic (Basic) + Cyrillic Supplement, U+0400-U+052F (D2). Covers every
+# letter modern Ukrainian needs (i U+0456, yi U+0457, ye U+0454, g U+0491).
+# Historic Cyrillic Extended blocks are deliberately out of range.
+_CYRILLIC_RANGE_RE = re.compile(u"[\u0400-\u052F]")
+
+
+def _contains_cyrillic(text):
+    # type: (str) -> bool
+    """Pure predicate: True if text contains a Cyrillic codepoint (U+0400-U+052F)."""
+    return bool(_CYRILLIC_RANGE_RE.search(text))
+
+
+def _warn_non_english_artifacts(commit_repo, label):
+    # type: (Path, str) -> None
+    """Advisory-only Cyrillic scan over what is about to be committed.
+
+    Enumerates the staged set from git (never from --paths -- a staged
+    directory expands to many files) via `git diff --cached --name-only -z`,
+    reads each staged file's worktree bytes, decodes UTF-8 with
+    errors="replace", and scans for Cyrillic text. Also scans label, which
+    covers the whole commit message since "[WIP] " is ASCII. A staged
+    deletion has no worktree file and is skipped.
+
+    Warns on stderr per offending file/label and never raises: the entire
+    body runs inside one try/except so a detector failure cannot fail the
+    commit (fail-soft, D1). Callers must invoke this as a bare, discarded
+    statement -- it returns nothing and must never gate control flow.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(commit_repo), "diff", "--cached", "--name-only", "-z"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GIT_TIMEOUT,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "git diff --cached --name-only failed (rc={0}): {1}".format(
+                    result.returncode, (result.stderr or result.stdout).strip()
+                )
+            )
+        staged_paths = [p for p in result.stdout.split("\0") if p]
+
+        for rel_path in staged_paths:
+            file_path = commit_repo / rel_path
+            if not file_path.is_file():
+                # Staged deletion (or otherwise absent from the worktree) --
+                # nothing to read.
+                continue
+            content = file_path.read_bytes().decode("utf-8", errors="replace")
+            if _contains_cyrillic(content):
+                sys.stderr.write(
+                    "commit-artifacts: warning: non-English (Cyrillic) text in "
+                    "{0} — artifacts must be English (advisory, commit "
+                    "proceeds)\n".format(rel_path)
+                )
+
+        if _contains_cyrillic(label):
+            sys.stderr.write(
+                "commit-artifacts: warning: non-English (Cyrillic) text in "
+                "commit label — artifacts must be English (advisory, "
+                "commit proceeds)\n"
+            )
+    except Exception as exc:  # noqa: BLE001 -- fail-soft by design (D1)
+        sys.stderr.write(
+            "commit-artifacts: warning: language check skipped: {0}\n".format(exc)
+        )
 
 
 # ---------------------------------------------------------------------------

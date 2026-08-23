@@ -39,6 +39,18 @@ Coverage (all 6 required arms + edge cases):
   - Empty string in --paths list → benign skip, no crash.
   - Verb called with no subcommand → exit 1.
 
+  Language guard (advisory Cyrillic detector):
+  - Cyrillic in a staged file → commit succeeds, exit 0, stdout JSON
+    byte-identical in shape to the ASCII case, stderr names that file.
+  - Pure-ASCII run → no language warning on stderr at all.
+  - Cyrillic in --label → warning fires, commit proceeds, committed message
+    unchanged.
+  - Detector exception → exactly ONE "language check skipped" warning,
+    commit still succeeds, exit 0.
+  - Enumeration returncode != 0 (git fails without raising) → same single
+    "language check skipped" warning, never a silent no-op, commit succeeds.
+  - Direct unit test of the pure _contains_cyrillic predicate.
+
 Design notes:
 - Each test creates its own git tempdir (real git init) to avoid cross-test
   contamination.
@@ -73,6 +85,7 @@ from _artifact._cli import (  # noqa: E402
     EXIT_OK,
     EXIT_ERR,
     _cmd_commit_artifacts,
+    _contains_cyrillic,
     main,
 )
 
@@ -694,6 +707,256 @@ class TestCommitSucceedsEvenIfShaReadFails(unittest.TestCase):
             )
             self.assertIn("[WIP] spec: finding2", result.stdout,
                           msg="Commit must exist in git history even when SHA read fails")
+
+
+# ---------------------------------------------------------------------------
+# Language guard: advisory Cyrillic detector (plan 87 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestCommitArtifactsLanguageGuard(unittest.TestCase):
+    """The advisory Cyrillic scan inside commit-artifacts.
+
+    D1: advisory-only -- never touches the exit code or either stdout JSON
+    shape. Cases (1) and (2) below are scored as a PAIR: a detector that
+    catches Cyrillic by warning on everything fails the pure-ASCII case.
+    """
+
+    def test_cyrillic_in_staged_file_warns_and_commit_succeeds(self):
+        """(1) Cyrillic in a staged file: commit succeeds, stdout JSON shape
+        unchanged, stderr names the offending file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _ = _init_git_repo(tmpdir)
+
+            spec_file = root / "spec.md"
+            spec_file.write_text(u"# Spec\n\nПривіт, це не англійська.\n", encoding="utf-8")
+
+            code, stdout, stderr = _run_main([
+                "commit-artifacts",
+                "--paths", json.dumps([str(spec_file)]),
+                "--label", "spec: 013-cyrillic-file",
+                "--root", str(root),
+            ])
+
+            # Exit code and stdout JSON shape are BYTE-IDENTICAL to the ASCII
+            # happy path (D3): committed:true, message, a 40-hex head_sha.
+            self.assertEqual(code, EXIT_OK, msg="stderr: " + stderr)
+            out = json.loads(stdout.strip())
+            self.assertTrue(out["committed"])
+            self.assertEqual(out["message"], "[WIP] spec: 013-cyrillic-file")
+            self.assertIn("head_sha", out)
+            self.assertRegex(out["head_sha"], r"^[0-9a-f]{40}$")
+            self.assertEqual(sorted(out.keys()), ["committed", "head_sha", "message"])
+
+            # The commit itself still landed with exactly the named file.
+            stat_files = _commit_files_in_stat(root)
+            self.assertIn("spec.md", stat_files)
+
+            # The warning names the offending file, in the exact D3 shape.
+            self.assertIn(
+                "commit-artifacts: warning: non-English (Cyrillic) text in "
+                "spec.md",
+                stderr,
+            )
+            self.assertIn("advisory, commit proceeds", stderr)
+
+    def test_pure_ascii_run_has_no_language_warning(self):
+        """(2) A pure-ASCII run prints no language warning at all -- the
+        false-positive floor, scored as a pair with (1)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _ = _init_git_repo(tmpdir)
+
+            spec_file = root / "spec.md"
+            spec_file.write_text("# Spec\n\nPlain English only.\n")
+
+            code, stdout, stderr = _run_main([
+                "commit-artifacts",
+                "--paths", json.dumps([str(spec_file)]),
+                "--label", "spec: 014-ascii-only",
+                "--root", str(root),
+            ])
+
+            self.assertEqual(code, EXIT_OK, msg="stderr: " + stderr)
+            out = json.loads(stdout.strip())
+            self.assertTrue(out["committed"])
+
+            self.assertNotIn("Cyrillic", stderr)
+            self.assertNotIn("language check skipped", stderr)
+            self.assertEqual(stderr.strip(), "")
+
+    def test_cyrillic_in_label_warns_and_commit_proceeds(self):
+        """(3) Cyrillic in --label: warning fires, commit proceeds, the
+        committed message is unchanged (label text is never altered)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _ = _init_git_repo(tmpdir)
+
+            spec_file = root / "spec.md"
+            spec_file.write_text("# Spec\n")
+
+            label = u"spec: 015-Привіт"  # "Привіт"
+            code, stdout, stderr = _run_main([
+                "commit-artifacts",
+                "--paths", json.dumps([str(spec_file)]),
+                "--label", label,
+                "--root", str(root),
+            ])
+
+            self.assertEqual(code, EXIT_OK, msg="stderr: " + stderr)
+            out = json.loads(stdout.strip())
+            self.assertTrue(out["committed"])
+            # The committed message carries the label VERBATIM -- unchanged.
+            self.assertEqual(out["message"], u"[WIP] {0}".format(label))
+
+            self.assertIn(
+                "commit-artifacts: warning: non-English (Cyrillic) text in "
+                "commit label",
+                stderr,
+            )
+
+            # git log confirms the same unaltered message actually landed.
+            result = subprocess.run(
+                ["git", "-C", str(root), "log", "-1", "--format=%s"],
+                capture_output=True, text=True, check=True, env=_git_env(),
+            )
+            self.assertEqual(result.stdout.strip(), u"[WIP] {0}".format(label))
+
+    def test_detector_exception_is_fail_soft_and_commit_succeeds(self):
+        """(4) A detector exception is swallowed: exactly ONE 'language check
+        skipped' warning, and the commit still succeeds with exit 0."""
+        import _artifact._cli as cli_mod  # noqa: E402 (import inside test ok)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _ = _init_git_repo(tmpdir)
+
+            spec_file = root / "spec.md"
+            spec_file.write_text("# Spec\n")
+
+            original_contains_cyrillic = cli_mod._contains_cyrillic
+
+            def _boom(text):
+                raise RuntimeError("simulated detector failure")
+
+            try:
+                cli_mod._contains_cyrillic = _boom
+
+                code, stdout, stderr = _run_main([
+                    "commit-artifacts",
+                    "--paths", json.dumps([str(spec_file)]),
+                    "--label", "spec: 016-detector-exception",
+                    "--root", str(root),
+                ])
+            finally:
+                cli_mod._contains_cyrillic = original_contains_cyrillic
+
+            # The commit must still succeed -- the detector can never fail it.
+            self.assertEqual(code, EXIT_OK, msg="stderr: " + stderr)
+            out = json.loads(stdout.strip())
+            self.assertTrue(out["committed"])
+
+            # Exactly ONE skip warning, never a traceback.
+            self.assertEqual(
+                stderr.count("commit-artifacts: warning: language check skipped:"),
+                1,
+                msg="stderr: " + stderr,
+            )
+            self.assertIn("simulated detector failure", stderr)
+            self.assertNotIn("Traceback", stderr)
+
+            # The commit itself actually landed.
+            result = subprocess.run(
+                ["git", "-C", str(root), "log", "--oneline", "-1"],
+                capture_output=True, text=True, check=True, env=_git_env(),
+            )
+            self.assertIn("[WIP] spec: 016-detector-exception", result.stdout)
+
+    def test_enumeration_nonzero_returncode_is_fail_soft(self):
+        """Finding 1 regression: a nonzero returncode from the staged-set
+        enumeration (git failing WITHOUT raising) must still surface through
+        the single fail-soft 'language check skipped' line rather than
+        going dark, and must never fail the commit."""
+        import _artifact._cli as cli_mod  # noqa: E402 (import inside test ok)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _ = _init_git_repo(tmpdir)
+
+            spec_file = root / "spec.md"
+            spec_file.write_text("# Spec\n")
+
+            original_run = cli_mod.subprocess.run
+
+            def _rc1_on_enumeration(cmd, *args, **kwargs):
+                if "--name-only" in cmd and "-z" in cmd:
+                    return subprocess.CompletedProcess(
+                        cmd, 1, stdout="", stderr="simulated git failure"
+                    )
+                return original_run(cmd, *args, **kwargs)
+
+            try:
+                cli_mod.subprocess.run = _rc1_on_enumeration
+
+                code, stdout, stderr = _run_main([
+                    "commit-artifacts",
+                    "--paths", json.dumps([str(spec_file)]),
+                    "--label", "spec: 017-enum-rc-nonzero",
+                    "--root", str(root),
+                ])
+            finally:
+                cli_mod.subprocess.run = original_run
+
+            # The commit must still succeed -- a failed enumeration is
+            # advisory-only, never a commit failure.
+            self.assertEqual(code, EXIT_OK, msg="stderr: " + stderr)
+            out = json.loads(stdout.strip())
+            self.assertTrue(out["committed"])
+
+            # Exactly ONE skip warning naming the underlying git failure,
+            # never a traceback -- this is the tripwire the finding closes:
+            # a silent, trace-free empty staged list is no longer possible.
+            self.assertEqual(
+                stderr.count("commit-artifacts: warning: language check skipped:"),
+                1,
+                msg="stderr: " + stderr,
+            )
+            self.assertIn("git diff --cached --name-only failed", stderr)
+            self.assertIn("simulated git failure", stderr)
+            self.assertNotIn("Traceback", stderr)
+
+            # The commit itself actually landed.
+            result = subprocess.run(
+                ["git", "-C", str(root), "log", "--oneline", "-1"],
+                capture_output=True, text=True, check=True, env=_git_env(),
+            )
+            self.assertIn("[WIP] spec: 017-enum-rc-nonzero", result.stdout)
+
+
+class TestContainsCyrillicPredicate(unittest.TestCase):
+    """Direct unit test of the pure _contains_cyrillic predicate."""
+
+    def test_ascii_string_is_false(self):
+        self.assertFalse(_contains_cyrillic("Hello, world! 123 -- plain ASCII."))
+
+    def test_empty_string_is_false(self):
+        self.assertFalse(_contains_cyrillic(""))
+
+    def test_ukrainian_letters_are_true(self):
+        # i (U+0456), yi (U+0457), ye (U+0454), g (U+0491) -- every letter
+        # modern Ukrainian needs beyond the shared Cyrillic set (D2).
+        for ch in (u"і", u"ї", u"є", u"ґ"):
+            self.assertTrue(
+                _contains_cyrillic(u"prefix-{0}-suffix".format(ch)), msg=repr(ch)
+            )
+
+    def test_cyrillic_supplement_block_char_is_true(self):
+        # U+0501 CYRILLIC SMALL LETTER KOMI DE -- inside the Supplement block
+        # (U+0500-U+052F), which rides along with the Basic block (D2).
+        self.assertTrue(_contains_cyrillic(u"prefix-ԁ-suffix"))
+
+    def test_out_of_range_boundary_chars_are_false(self):
+        # U+03FF (Greek, below the range) and U+0531 (Armenian AYB, just
+        # past U+052F, outside the range) -- confirms the range is
+        # bounded, not "any non-ASCII".
+        self.assertFalse(_contains_cyrillic(u"\u03ff"))
+        self.assertFalse(_contains_cyrillic(u"\u0531"))
 
 
 if __name__ == "__main__":
