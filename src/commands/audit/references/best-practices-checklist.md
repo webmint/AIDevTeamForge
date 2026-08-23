@@ -84,6 +84,51 @@ Duplication & divergence  (Category: duplication)
   already diverged.)
 
 
+Responsibility placement & data shape  (Category: named on each entry below;
+two entries offer a choice — see the Which Category rule closing the section)
+- Feature Envy (Category: system_design) — a function that works mostly on
+  another object's data: it pulls several fields off one collaborator and
+  computes what that collaborator should have computed itself. Quote the
+  function and the run of foreign field accesses inside it.
+- Data Clumps (Category: best_practice) — the same three-or-more values
+  travelling together through several signatures or call sites with no named
+  type binding them. Quote two signatures that carry the same group.
+- Primitive Obsession (Category: best_practice) — a domain concept carried as
+  a bare string, number, or boolean, so its validation or formatting rule is
+  open-coded at every use instead of living in one type (a money amount as a
+  float, an ID as a raw string). Quote the primitive declaration and one site
+  that open-codes its rule.
+- Message Chains (Category: best_practice) — a caller reaching through a
+  chain of intermediaries (`a.b().c().d`, `obj["x"]["y"]["z"]`) so it is
+  coupled to the shape of every hop, not just the object it holds. Quote the
+  full chain expression.
+- Shotgun Surgery (Category: system_design or duplication) — one conceptual
+  change forces many small edits scattered across modules: one new enum case,
+  field, or config key means editing N files that each hold a fragment of the
+  same decision. Quote two of the scattered fragments and name the single
+  change that would have to touch both.
+- Divergent Change (Category: system_design or duplication) — one module gets
+  edited for several unrelated reasons, each reason touching a different
+  cluster of code inside it. Quote one function from each of two clusters and
+  name the unrelated reason each cluster changes for. (The System design
+  section's SOLID-at-scale bullet is the same defect at a coarser resolution:
+  it observes responsibility breadth, while this entry names the clusters and
+  their reasons — which the quote demand above forces. When you can name the
+  clusters and the reason each changes for, file Divergent Change; when you
+  can only observe the breadth, file SOLID-at-scale. Do not file both from one
+  report.)
+- Which Category: for Shotgun Surgery, look at what the scattered sites
+  contain. If they are distinct code that one responsibility should have
+  owned in one place, it is `Category: system_design`. If they are
+  near-identical copies, so the change lands N times only because the logic
+  was copied instead of shared, it is `Category: duplication`. For Divergent
+  Change, look at the module itself. If each cluster is a distinct concern
+  that should have lived in its own module, it is `Category: system_design`.
+  If the module is itself a near-duplicate of a sibling carrying the same
+  bundle of unrelated concerns, it is `Category: duplication`. State which
+  one and why.
+
+
 Constitution-principle adherence  (Category: matches the violated dimension;
 also add the [CONSTITUTION-VIOLATION] tag)
 - Read the constitution rules provided in your brief (the orchestrator supplies

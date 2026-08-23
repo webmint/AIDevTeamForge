@@ -60,7 +60,7 @@ Read these in full at the phase where each is needed. The adversarial preamble +
 
 - `references/adversarial-preamble.md` — the ADVERSARIAL AUDIT MODE preamble (Phase 3, every agent).
 - `references/mislogic-checklist.md` — the Mislogic Hunt Checklist (Phase 3, every agent).
-- `references/best-practices-checklist.md` — the system-design + language/framework best-practices + duplication + constitution-principle adherence hunt checklist (Phase 3, every agent). Injected verbatim alongside the mislogic checklist; each section names the `Category` its findings carry.
+- `references/best-practices-checklist.md` — the system-design + language/framework best-practices + duplication + responsibility-placement/data-shape + constitution-principle adherence hunt checklist (Phase 3, every agent). Injected verbatim alongside the mislogic checklist; each section names the `Category` its findings carry.
 - `references/refutation-preamble.md` — the REFUTATION / second-opinion preamble + the per-finding verdict output contract (Phase 4.2.5, every refuter). Load-bearing prompt text — `render-verify-brief` injects it verbatim into each refuter brief; do not paraphrase, summarize, or templatize it.
 - `references/report-format.md` — the report skeleton `render-report` produces (orientation for Phase 5; the helper owns the actual render).
 - `references/hotspot-scoring.md` — the risk-score formula, weights, defaults, and knobs for `--top N` mode (Phase 2, hotspot only).
