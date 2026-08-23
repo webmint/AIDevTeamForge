@@ -1,6 +1,6 @@
 # 87 — Artifact language guard: every byte written to a file stays English
 
-**Status:** PHASE 0 RATIFIED 2026-08-23 (by the maintainer, in-session — D1–D5 all decided, no item left open). Phases 1–3 cleared to build. Phase 4 is a user-driven HARD GATE and has NOT run.
+**Status:** ✅ DONE (build) 2026-08-23 — **Phases 0–3 complete.** Phase 0 RATIFIED 2026-08-23 (by the maintainer, in-session — D1–D5 all decided, no item left open); Phase 1 (`src/CLAUDE.md` item 15 + the `README.md` note) and Phase 2 (the advisory Cyrillic detector + its tests) were built and committed the same day; Phase 3 (sweep + records) is this pass. **Phase 4 consumer observation is DEFERRED — a user-driven HARD GATE that has NOT run. Build-verified, NOT consumer-validated.**
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-23.
 
