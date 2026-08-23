@@ -1,6 +1,6 @@
 # 86 — Fowler refactoring gaps: five instruction-only closures
 
-**Status:** ✅ **DONE (build) 2026-08-23 — Phases 0–6 shipped** (`88832f3` Phase 0 / `d6f51be` F1 / `aa03419` F4 / `e0fb8e4` F2 / `6b46678` F3 / `e249898` F5, plus the Phase-6 records commit this line rides in). **Phase 7 consumer observation DEFERRED — user-driven HARD GATE, NOT run: this is BUILD-VERIFIED, NOT CONSUMER-VALIDATED**, and no phase above may claim otherwise. **Phase 0 RATIFIED 2026-08-23**: D2 = (a) titled bold block in §3.6; D3 = DECLARE-ALWAYS; D4 = all six smells; D5 = yes, both the plan-side guidance AND the §6.1 clarification; OQ-1 = mixed-tasks-only with the objective trigger. D1 and Phase 1 were pre-ratified by maintainer directive 2026-08-18 (*"i want close this gap"*); OQ-2 was RESOLVED 2026-08-18 from the code. **One scope AMENDMENT ratified at the same sitting: Phase 5 gains a THIRD site, `src/agents/architect.md` Rule 9** — see the amendment note under D5. Phases 1–6 are cleared to build.
+**Status:** ✅ **DONE (build) 2026-08-23 — Phases 0–6 shipped** (`88832f3` Phase 0 / `d6f51be` F1 / `aa03419` F4 / `e0fb8e4` F2 / `6b46678` F3 / `e249898` F5, plus the Phase-6 records commit this line rides in). **Phase 7 consumer observation DEFERRED TO POST-RELEASE — user-driven HARD GATE, NOT run. The maintainer stated 2026-08-23 that they will run it AFTER THE RELEASE; it is NOT WAIVED, and the plan is closed as DONE (build) on that basis.** This is **BUILD-VERIFIED, NOT CONSUMER-VALIDATED**, and no phase above may claim otherwise — the five known-answer anchors in Phase 7 are the standing recipe whenever that run happens. **Phase 0 RATIFIED 2026-08-23**: D2 = (a) titled bold block in §3.6; D3 = DECLARE-ALWAYS; D4 = all six smells; D5 = yes, both the plan-side guidance AND the §6.1 clarification; OQ-1 = mixed-tasks-only with the objective trigger. D1 and Phase 1 were pre-ratified by maintainer directive 2026-08-18 (*"i want close this gap"*); OQ-2 was RESOLVED 2026-08-18 from the code. **One scope AMENDMENT ratified at the same sitting: Phase 5 gains a THIRD site, `src/agents/architect.md` Rule 9** — see the amendment note under D5. Phases 1–6 are cleared to build.
 
 **Validity re-verified 2026-08-23** against the tree after plans 81/82/83/84/87 shipped: all thirty-three `## Verified mechanics` rows still hold in substance. Four of the five fix surfaces (`src/agents/code-reviewer.md`, `src/constitution.md`, `src/commands/breakdown/main.md`, `src/commands/audit/references/best-practices-checklist.md`) were not touched at all since drafting; `src/commands/plan/main.md` was changed by plans 82 and 83, but only at PHASE 0a.7 / PHASE 0a.8, nowhere near F5's PHASE 1.3 landing site. Only DIGITS rotted (`plan/main.md` facts 19–20 shifted by roughly +24 lines: sub-question 5 now reads at `:388`, the list still runs 1–11). **Grep the quoted string, never the `:NNN`** — the plan already said so and the rot proves it.
 **Branch:** `develop-2.0-init`
@@ -797,7 +797,9 @@ Scope:
 
 ---
 
-### Phase 7 — Consumer observation *(user-driven HARD GATE)*
+### Phase 7 — Consumer observation *(user-driven HARD GATE — DEFERRED TO POST-RELEASE 2026-08-23, NOT WAIVED)*
+
+**Standing, not cancelled.** The maintainer deferred this run to after the release by explicit statement on 2026-08-23. Nothing below is discharged, nothing below has been observed, and the plan's DONE status covers the BUILD only. Whoever runs this reads the five anchors as written — they were authored before any of the five fixes shipped, so they are a known-answer regression anchor rather than an exploratory run.
 
 **Known-answer anchors.** The correct outcome is known in advance for each case, so this is
 a regression anchor rather than an exploratory run. **This is the ONLY place F1's
