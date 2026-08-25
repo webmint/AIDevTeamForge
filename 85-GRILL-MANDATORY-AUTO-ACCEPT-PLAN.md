@@ -1237,7 +1237,44 @@ scope argument, and each is checkable in under a minute.
 
 ---
 
-### Phase 1 — The freshness stamp + the clean predicate
+### Phase 1 — The freshness stamp + the clean predicate + the pass merge
+
+> **RECONCILED 2026-08-25 — this phase's scope GREW and its purpose SHIFTED. The heading
+> and the two original items below are kept; read this note first, because one of them is
+> now used for something else.**
+>
+> **(a) The stamp is still built, but it is no longer a GATE INPUT.** D4 ratified the hash
+> as RECORDED, NOT ENFORCED — the gate never reads freshness. The stamp is a VISIBILITY
+> field. Build it exactly as described; just do not let anything downstream branch on it.
+>
+> **(b) NEW and REQUIRED — persist the adversary status.** D3's ratified predicate is
+> `adversary_status ∈ {complete, clean}`. `consume-tmp` already COMPUTES that value
+> (`status` ∈ `complete` / `clean` / `failed` / `missing`) and **nothing persists it today**.
+> PHASE 6 must record it into `grill-state.json` beside the stamp. **Without this the
+> Phase-2 gate has nothing to read** — it is the single load-bearing addition of the
+> reconciliation.
+>
+> **(c) NEW — the 2-pass union merge (D2).** D2 was ratified AGAINST this plan's own
+> recommendation, so no phase mentions it. Build a `_grill/` merge that unions two passes'
+> validated findings into one working list, deduped. **Model it on `/devforge:audit`'s
+> `merge-passes` (plan 12, `_audit/_merge.py`) for the union SHAPE only — do NOT reuse that
+> module.** It clusters by file and computes CROSS-AGENT corroboration, and grill has ONE
+> finder, so its cross-agent half is meaningless here. Grill's merge is purely cross-pass.
+>
+> **Extra Verify items for (b) and (c), in addition to the list below:**
+>
+> - A test asserts each of the four `consume-tmp` statuses round-trips into
+>   `grill-state.json` and back — `complete` and `clean` distinctly, since the gate accepts
+>   both and a merge of the two would hide the distinction the D3 ratification rests on.
+> - A test asserts a state file written BEFORE this change (no status field) reads back as
+>   NOT gate-satisfying rather than crashing or defaulting to satisfied. **Defaulting to
+>   satisfied would be a silent escape hatch** in exactly the shape D3 refused.
+> - A test asserts the merge is a UNION, not an intersection or a majority — a finding
+>   present in exactly ONE pass MUST survive. This is the test that pins D2's ratified
+>   mechanism against the spec-check analogy that was corrected at ratification.
+> - A test asserts the merge dedups an identical finding appearing in BOTH passes to one
+>   entry.
+
 
 **Route: python-engineer → python-reviewer, test-first. Every function gets a test that
 actually runs, in the same turn, with production input shapes** (round-trip through the
@@ -1295,8 +1332,16 @@ the pipeline inconsistency OQ-1 warns about rendered in helper code.
 
 Scope:
 
-- A new `breakdown_helper` verb implementing D4's three-conjunct predicate, failing closed
-  with a stderr message the command copies VERBATIM. **Model it on `verify-spec-check`
+- A new `breakdown_helper` verb implementing **D3's RATIFIED predicate**, failing closed
+  with a stderr message the command copies VERBATIM.
+
+  > **RECONCILED 2026-08-25 — this bullet said "D4's three-conjunct predicate" and that is
+  > now WRONG.** D4 was ratified as RECORDED, NOT ENFORCED, so **freshness is not a gate
+  > condition at all**. The verb checks exactly two things: `specs/<dir>/grill.md` EXISTS,
+  > and the recorded `adversary_status` in `grill-state.json` is `complete` or `clean`.
+  > It reads neither the disposition nor the hash. A build that implements a freshness
+  > conjunct has shipped the design D3 explicitly rejected — the one that penalizes acting
+  > on findings. **Model it on `verify-spec-check`
   first**, then on the `verify-*` family's exit convention for naming and in-command
   placement (fact 16); `specify_helper find-handoffs --require` (fact 19) remains the older
   precedent for the no-override stance and is no longer the closest one. No `--force`, no
@@ -1311,10 +1356,18 @@ Scope:
 
 **Verify:**
 
-- `tests/lib/` green, with the verb's own tests covering: `grill.md` absent → exit 2;
-  present + complete + hash-matching → exit 0; present but state not complete → exit 2;
-  present but hash-diverged → exit 2; feature dir missing → the same failure shape as the
-  sibling `verify-*` gates.
+- `tests/lib/` green, with the verb's own tests covering the **RATIFIED** cases:
+  `grill.md` absent → exit 2; present + `adversary_status: complete` → exit 0; present +
+  `adversary_status: clean` → **exit 0** (a successful pass that grounded no attack);
+  present + `adversary_status: failed` → exit 2; present + `adversary_status: missing` →
+  exit 2; present with NO recorded status (a pre-change state file) → exit 2; feature dir
+  missing → the same failure shape as the sibling `verify-*` gates.
+
+  > **RECONCILED 2026-08-25 — one case in the original list was INVERTED.** It read
+  > *"present but hash-diverged → exit 2"*. Under D4's ratified recorded-not-enforced
+  > stance the correct assertion is **hash-diverged → exit 0**, and that case is now
+  > OQ-2's e2e anchor 4. **Add it as a unit test too**, phrased so its intent is
+  > unmistakable: a stale report PASSES, and the staleness is visible in the artifact.
 - **The blocked run does NOT flip `plan.md`'s `**Status**:`** — verified by ordering, and
   by a test if the flip is reachable from the helper layer.
 - The gate's stderr names `/devforge:grill` as the required next step, in the arm-shape
@@ -1333,8 +1386,21 @@ to `.claude/commands/devforge/grill.md`).
 
 Scope, in `src/commands/grill/main.md`:
 
+- **PHASE 2 / PHASE 3 — the 2-pass quorum wiring (NEW, D2).** Dispatch the adversary
+  TWICE, consume + validate each pass into its own pool, then UNION the two pools into the
+  single working list PHASE 4 refutes. **One refutation pass over the union, never two** —
+  refuting per-pass triples the cost and produces two partitions nothing reconciles. Model
+  the per-pass file naming on `/devforge:audit`'s `validated-p<pass>.json` → `merged.json`
+  (fact: that command already ships this shape), and keep every path inside `$WORKDIR` so
+  the single end-of-run sweep still reaches it.
 - **PHASE 6** — surface the Phase-1 clean predicate alongside the existing render ack, so
-  PHASE 7 branches on a value rather than a re-derivation.
+  PHASE 7 branches on a value rather than a re-derivation. **The predicate is evaluated
+  over the partition derived from the UNION** (D5's ratified amendment), not per-pass.
+- **PHASE 6 — record the adversary status** into `grill-state.json` (Phase 1(b)), inside
+  the existing unconditional artifact commit. **When the two passes disagree — one
+  `complete`, one `failed` — record the STRONGER, since a union that received real findings
+  from either pass did receive adversarial review.** State that rule in the text rather
+  than leaving it to the build.
 - **PHASE 7 — a leading no-entry clause, then unchanged.** The phase opens by naming the
   clean case: present the no-findings result in D2's permitted wording, write NO seed,
   **sweep `$WORKDIR`**, end. The existing four-option `AskUserQuestion` and its arms sit
