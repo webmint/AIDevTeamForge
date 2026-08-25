@@ -1346,6 +1346,17 @@ Scope:
   placement (fact 16); `specify_helper find-handoffs --require` (fact 19) remains the older
   precedent for the no-override stance and is no longer the closest one. No `--force`, no
   `--skip` flag (zero-escape-hatch policy).
+- **INHERITED DEFECT, routed here 2026-08-25 because THIS phase creates the reliance:**
+  `_grill/_state.py`'s `read_state` crashes with `AttributeError` on a file that is valid
+  JSON but not an object (a top-level array), while its own docstring promises it *"Returns
+  None on OSError … or json.JSONDecodeError (corrupt content)"*. Pre-existing and NOT
+  introduced by Phase 1 — surfaced by the Phase-1 python-reviewer, which correctly declined
+  to fix it there. **It lands here because the gate is the first caller that reads a
+  `grill-state.json` it did not itself just write**, so a corrupt or hand-edited state file
+  becomes reachable input for the first time. Left unfixed, the gate answers a corrupt state
+  file with a Python traceback instead of the BLOCKED message this phase's whole contract is
+  built on. Fix it as part of the verb's input handling — an explicit non-dict check
+  returning `None`, so the gate's own absent-state path handles it — and add the test.
 - A new `/devforge:breakdown` entry-side gate block calling it, placed **after PHASE 0a's
   plan resolution** (where the plan path first exists) and **before PHASE 0b's status
   flip** (D3's second cost). The sub-phase label is this phase's to choose; the ordering

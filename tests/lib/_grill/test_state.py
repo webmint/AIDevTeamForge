@@ -1,12 +1,16 @@
 """Tests for src/devforge/lib/_grill/_state.py.
 
 Coverage:
-  state_path       — returns absolute path ending in grill-state.json
-  read_state       — missing file, corrupt JSON, round-trip, unknown-key tolerance
-  write_state      — atomic write; parent dir created on demand
-  flip_phase       — from absent state, from existing state, with status, empty raises
-  GrillState       — default values, list field isolation
-  GRILL_PHASES     — constant contains the expected flow phases
+  state_path          — returns absolute path ending in grill-state.json
+  read_state          — missing file, corrupt JSON, round-trip, unknown-key tolerance
+  write_state         — atomic write; parent dir created on demand
+  flip_phase          — from absent state, from existing state, with status, empty raises
+  GrillState          — default values, list field isolation
+  GRILL_PHASES        — constant contains the expected flow phases
+  adversary_ran       — True for complete/clean (each its own test), False for
+                         failed/missing/unset, pre-change-file round trip
+  compute_plan_sha256 — write/read round trip stability, single-char-edit
+                         sensitivity, unicode content
 """
 
 import json
@@ -25,11 +29,17 @@ if str(_LIB_DIR) not in sys.path:
 from _grill._state import (  # noqa: E402
     GRILL_PHASES,
     GrillState,
+    adversary_ran,
+    compute_plan_sha256,
     flip_phase,
     read_state,
     state_path,
     write_state,
 )
+# adversary_status vocabulary: the values below are asserted from
+# _shared._consume's own constants, not re-typed as bare literals, so this
+# test file cannot drift from the source of truth it is verifying against.
+from _shared._consume import STATUS_FAILED, STATUS_MISSING  # noqa: E402
 
 
 class TestStatePath(unittest.TestCase):
@@ -284,6 +294,120 @@ class TestGrillPhasesConstant(unittest.TestCase):
 
     def test_phases_is_tuple(self):
         self.assertIsInstance(GRILL_PHASES, tuple)
+
+
+class TestAdversaryStatusDefault(unittest.TestCase):
+    def test_default_adversary_status_empty_string(self):
+        """Never defaults to a satisfying value — the unset sentinel is ''."""
+        self.assertEqual(GrillState().adversary_status, "")
+
+    def test_default_plan_sha256_empty_string(self):
+        self.assertEqual(GrillState().plan_sha256, "")
+
+
+class TestAdversaryRan(unittest.TestCase):
+    def test_true_for_complete(self):
+        """Own test — the gate accepts 'complete'."""
+        state = GrillState(adversary_status="complete")
+        self.assertTrue(adversary_ran(state))
+
+    def test_true_for_clean(self):
+        """Own test, NOT folded into the 'complete' case — a clean run (the
+        adversary ran and grounded zero findings) is a genuine pass and the
+        whole design rests on this distinction being visible on its own.
+        """
+        state = GrillState(adversary_status="clean")
+        self.assertTrue(adversary_ran(state))
+
+    def test_false_for_failed_missing_and_unset(self):
+        self.assertFalse(adversary_ran(GrillState(adversary_status=STATUS_FAILED)))
+        self.assertFalse(adversary_ran(GrillState(adversary_status=STATUS_MISSING)))
+        self.assertFalse(adversary_ran(GrillState(adversary_status="")))
+
+    def test_pre_change_file_round_trips_to_not_ran(self):
+        """A grill-state.json written WITHOUT adversary_status (simulating a
+        file from before this field existed) must read back successfully
+        with adversary_status == '' and adversary_ran() == False — never a
+        crash, and never a silent default to satisfied.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "grill-state.json")
+            pre_change_data = {
+                "phase": "report",
+                "feature_dir": "specs/001-auth",
+                "status": "complete",
+                "out_path": "specs/001-auth/grill.md",
+                "scope_files": [],
+                "agent_assignments": [],
+            }
+            with open(sp, "w", encoding="utf-8") as fh:
+                json.dump(pre_change_data, fh)
+
+            state = read_state(sp)
+
+            self.assertIsNotNone(state)
+            self.assertEqual(state.adversary_status, "")
+            self.assertFalse(adversary_ran(state))
+
+
+class TestComputePlanSha256(unittest.TestCase):
+    def test_round_trip_stable(self):
+        """Same content, re-read, re-hashed → identical digest."""
+        with tempfile.TemporaryDirectory() as td:
+            plan_path = os.path.join(td, "plan.md")
+            with open(plan_path, "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\nSome plan content.\n")
+
+            digest_1 = compute_plan_sha256(plan_path)
+            digest_2 = compute_plan_sha256(plan_path)
+            self.assertEqual(digest_1, digest_2)
+            self.assertEqual(len(digest_1), 64)  # sha256 hex digest length
+
+    def test_persisted_on_state_survives_write_read_round_trip(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path = os.path.join(td, "plan.md")
+            with open(plan_path, "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\nOriginal content.\n")
+            digest = compute_plan_sha256(plan_path)
+
+            sp = os.path.join(td, "grill-state.json")
+            write_state(sp, GrillState(plan_sha256=digest))
+            loaded = read_state(sp)
+
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.plan_sha256, digest)
+
+    def test_single_character_edit_changes_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path = os.path.join(td, "plan.md")
+            with open(plan_path, "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\nOriginal content.\n")
+            original_digest = compute_plan_sha256(plan_path)
+
+            with open(plan_path, "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\nOriginel content.\n")  # one char changed
+            edited_digest = compute_plan_sha256(plan_path)
+
+            self.assertNotEqual(original_digest, edited_digest)
+
+    def test_unicode_content_hashes_without_error(self):
+        """compute_plan_sha256 opens 'rb' (raw bytes, no text decoding), so
+        non-ASCII plan content carries no real risk -- this test documents
+        that rather than guarding against a plausible failure. Uses
+        non-alphabetic Unicode (an em dash, accented Latin, an emoji) so the
+        test file's own content stays English per this repo's file-content
+        convention, while still exercising multi-byte UTF-8 sequences.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            plan_path = os.path.join(td, "plan.md")
+            with open(plan_path, "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\nCafé naıve — done \U0001F600.\n")
+
+            digest = compute_plan_sha256(plan_path)
+
+            self.assertEqual(len(digest), 64)
+            # Stable on re-hash, same as the ASCII case.
+            self.assertEqual(digest, compute_plan_sha256(plan_path))
 
 
 if __name__ == "__main__":
