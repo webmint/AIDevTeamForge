@@ -1,6 +1,6 @@
 # 85 — `/devforge:grill`: mandatory run + auto-accept the clean verdict
 
-**Status:** NOT STARTED (build) — **D3 and D4 RATIFIED 2026-08-24 in an interactive session; D1, D2, D5–D8 and OQ-1–OQ-3 remain OPEN.** ⚠ **D3 was ratified AGAINST its own drafted recommendation** — the fail-closed presence+freshness gate is REJECTED because it creates a loop that penalizes acting on findings (see D3's ratification block). One precondition was discharged in the same session: the corpus-wide `update.sh` remedy claim was corrected across five sites (see D3's `## Discharged precondition` note). No other `src/` edit before the remaining items close. **AMENDED 2026-08-23 — reconciled against three plans that shipped AFTER this file was drafted: plan 81 (F6, 2026-08-18), plan 82 (DONE build 2026-08-19) and plan 83 (DONE build 2026-08-20). Nothing was ratified by that pass.** What it changed: **D4's predicate and OQ-1's hand-off shape are now externally CONSTRAINED** — plan 82 ratified the content hash (its OQ-2) and the name-it-for-the-user arm (its D5(a-ii)), so both stop being open forks and become confirm-or-diverge-with-an-argument; **the plan-83 coordination debt this plan inherited is recorded DISCHARGED as a verified no-op**; and **D6's sweep list is refreshed** against the surfaces plans 82/83 created or rewrote. Every dated note below narrows a decision space; **none picks an option, and every D/OQ heading keeps its `*(OPEN…)*` marker.**
+**Status:** NOT STARTED (build) — **PHASE 0 IS CLOSED: every D-item and OQ ratified (D3 + D4 on 2026-08-24; D1, D2, D5–D8 and OQ-1–OQ-3 on 2026-08-25).** Two ratifications DIVERGE from this file's own recommendations and both are argued at their decision: **D3** (the fail-closed freshness gate is REJECTED — it penalizes acting on findings) and **D2** (a 2-pass quorum IS built, over this plan's recommendation of none). ⚠ **D3 was ratified AGAINST its own drafted recommendation** — the fail-closed presence+freshness gate is REJECTED because it creates a loop that penalizes acting on findings (see D3's ratification block). One precondition was discharged in the same session: the corpus-wide `update.sh` remedy claim was corrected across five sites (see D3's `## Discharged precondition` note). No other `src/` edit before the remaining items close. **AMENDED 2026-08-23 — reconciled against three plans that shipped AFTER this file was drafted: plan 81 (F6, 2026-08-18), plan 82 (DONE build 2026-08-19) and plan 83 (DONE build 2026-08-20). Nothing was ratified by that pass.** What it changed: **D4's predicate and OQ-1's hand-off shape are now externally CONSTRAINED** — plan 82 ratified the content hash (its OQ-2) and the name-it-for-the-user arm (its D5(a-ii)), so both stop being open forks and become confirm-or-diverge-with-an-argument; **the plan-83 coordination debt this plan inherited is recorded DISCHARGED as a verified no-op**; and **D6's sweep list is refreshed** against the surfaces plans 82/83 created or rewrote. Every dated note below narrows a decision space; **none picks an option, and every D/OQ heading keeps its `*(OPEN…)*` marker.**
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-17.
 
@@ -197,7 +197,36 @@ and **this plan proposes touching none of them** (see `## Non-goals`).
 
 Each carries a recommendation and the argument against it.
 
-### D1 — What CLEAN means for a command with no deterministic layer *(OPEN — the load-bearing decision)*
+### D1 — What CLEAN means for a command with no deterministic layer *(RATIFIED 2026-08-25 — option (a), STRICT)*
+
+> **RATIFIED 2026-08-25 — (a) STRICT: CLEAN when `confirmed`, `contested` AND `uncertain`
+> are all empty.** `dismissed` may be non-empty. The intermediate option this decision
+> names (tolerate `uncertain`) was on the table and was DECLINED.
+>
+> **Scope narrowed by D3's ratification — read this before applying D1 anywhere.** The gate
+> reads `adversary_status`, never cleanliness, so **D1 no longer governs the gate at all.**
+> It governs exactly one thing: whether PHASE 7's HUMAN GATE fires (D5's auto-accept arm).
+> A build session that wires the CLEAN predicate into the `breakdown_helper` verb has
+> misread both decisions.
+>
+> **Why `uncertain` blocks — the asymmetry argument, which is stronger than the plan's own.**
+> An `uncertain` finding is one the refuter could not resolve. Auto-accepting on it means
+> **the weakest evidence state produces the strongest action** — no human ever sees it. That
+> is backwards on its face, independent of how often it happens.
+>
+> **Why (b) was rejected: fact 8 makes it unsafe, not merely weaker.** PROCEED is reachable
+> via the all-accepted-as-risk branch, where findings SURVIVED refutation and the classifier
+> judged none plan-fatal. Under (b) such a run would auto-accept and the human would never
+> see confirmed findings — the exact inverse of what a report with a headline is for.
+>
+> ⚠ **Interaction with D2's ratified quorum, recorded so it is not discovered at e2e.** D1
+> STRICT and a union-merged 2-pass quorum push the SAME way: both make CLEAN harder to
+> reach. Together they may make auto-accept fire so rarely that this plan ships the friction
+> of a mandatory gate with none of the smoothing that was supposed to justify it. **This is
+> measurable and Phase 5 MUST measure it** — see OQ-2's ratified anchor 4. It is an accepted
+> risk with a named observation, not an oversight.
+
+
 
 **The problem, stated exactly.** Plan 82's D5 could define clean as *"the solver was `sat`
 and every subject resolved"* — a claim with a deterministic core. **Grill has no such
@@ -242,7 +271,53 @@ authors itself. That is fine — the hand-written literal is exactly the all-emp
 but a build session must not "simplify" by having the predicate re-derive from
 `validated.json`, because the two paths converge on `partition.json` and nothing else.
 
-### D2 — The honest bound: auto-accept certifies THIS RUN, not the plan *(OPEN)*
+### D2 — The honest bound: auto-accept certifies THIS RUN, not the plan *(RATIFIED 2026-08-25 — a quorum IS built, DIVERGING from the recommendation below)*
+
+> **RATIFIED 2026-08-25 — grill v1 GETS a fixed 2-pass quorum. The recommendation below
+> (no quorum) is OVERRIDDEN by maintainer decision.**
+>
+> **The mechanism is `/devforge:audit`'s, NOT `/devforge:spec-check`'s, and confusing the two
+> would invert the purpose.** The decision was taken as "like spec-check"; checking the two
+> mechanisms showed the analogy points at the wrong one, and the correction is recorded here
+> because a future session reading "quorum" would otherwise build the wrong rule:
+>
+> | | spec-check (its D13) | audit `--passes` (plan 12) |
+> |---|---|---|
+> | rule | **majority** — a contradiction is CONFIRMED only when the same conflicting set reproduces across a majority of passes | **union** — every pass's findings are merged into one working list |
+> | effect | FEWER findings, MORE clean verdicts | MORE findings, WIDER recall |
+> | purpose | reproducibility of a soft English→logic FORMALIZATION | catching what a single pass missed |
+>
+> **spec-check's quorum has no grill analog because grill has no formalization step** — its
+> quorum exists to stabilize a translation, and there is no translation here.
+>
+> **And majority would work AGAINST the reason for adding a quorum at all.** The strongest
+> recorded objection to this whole plan is that an auto-accepted clean verdict reads as an
+> endorsement. The cure for that is making CLEAN HARD to reach. A majority rule SUPPRESSES a
+> finding that appeared in only one pass, making clean verdicts MORE common and the
+> endorsement problem WORSE.
+>
+> **Ratified shape: 2 adversary passes → UNION the findings → ONE refutation pass over the
+> union.** Union widens recall; refutation suppresses false positives. They are
+> complementary and this exact composition already ships (plan 12's union merge feeding plan
+> 19's refutation stage in `/devforge:audit`). **One refutation pass, not two** — refuting
+> each pass separately triples the cost instead of doubling it and produces two partitions
+> nothing reconciles.
+>
+> **What this buys and what it does not.** It raises detection power and directly weakens
+> the endorsement objection, which the no-quorum recommendation below could only mitigate
+> with copy discipline. It does NOT make the verdict deterministic — two passes are still
+> two samples.
+>
+> **The copy rule below SURVIVES UNCHANGED and is not softened by the quorum.** The clean arm
+> says *"the adversary found nothing that survived cross-examination."* It must NEVER say the
+> plan is sound, proven, or validated. Two passes do not license a stronger claim than one.
+>
+> **Cost, stated where it compounds:** this doubles the adversary half of a command whose
+> wall-clock is unmeasured, and D7 was ratified the same day as "accept the cost, measure at
+> e2e". **The two decisions compound, and the number Phase 5 records is now the number for
+> the 2-pass shape** — there will be no separate single-pass baseline.
+
+
 
 **Grill has no D13-style quorum (fact 13).** One adversary, one pass. Run-to-run variance
 means a second run may find what this one missed, and nothing in the design bounds that.
@@ -522,7 +597,34 @@ OQ-1 (fact 21) reached the same conclusion from the other direction and deferred
 genuinely harder than a presence check; this plan pays that cost rather than deferring it,
 and the ratifier should confirm that trade explicitly.**
 
-### D5 — Auto-accept wiring in `main.md` *(OPEN)*
+### D5 — Auto-accept wiring in `main.md` *(RATIFIED 2026-08-25 — as recommended)*
+
+> **RATIFIED 2026-08-25, all three parts as recommended: PHASE 7 is ENTERED and its HUMAN
+> GATE does not fire; the phase opens with a leading clause naming the clean arm; the CLEAN
+> predicate is exposed by the helper, not re-derived in prose.**
+>
+> **Fact 10 decides the first part and it is not a style call.** PHASE 7 owns the ONLY
+> `rm -rf "$WORKDIR"` sweep, and `$WORKDIR` is a FIXED literal cleared at the START of the
+> next run — so "skip PHASE 7 on clean" would strand scratch **silently**, persisting
+> between runs rather than accumulating visibly. Entering the phase with its gate dormant
+> satisfies plan 39 (no arm entered ⇒ no seed) and Rule 10 (sweep last, exactly once)
+> simultaneously; skipping cannot satisfy both.
+>
+> **The leading-clause requirement is load-bearing, not editorial.** PHASE 7's arms are
+> enumerated over the user's PICK, and on the clean path no pick exists — so the arm where
+> no pick is bound must be named FIRST or the phase tests an unbound variable. Plan 82's
+> Phase 4 records the identical lesson for spec-check's PHASE 6; grill has the same defect
+> in waiting plus the scratch sweep as an extra consequence.
+>
+> **Helper-exposed predicate, per the recommendation:** this predicate decides whether a
+> human is consulted, and a prose-derived branch on a value the orchestrator computes itself
+> is the softest possible form of that decision.
+>
+> **Amended by D2's ratified quorum:** the predicate is evaluated over the partition
+> produced from the UNION of both passes — one partition, not two. Nothing about D1's
+> three-bucket test changes; only its input is now the merged working list.
+
+
 
 **Non-clean (per D1) — unchanged.** Any surviving finding, or any recommendation other
 than PROCEED including KILL, and PHASE 7 fires exactly as it does today: the four-way
@@ -568,7 +670,30 @@ arrays. The defence is that this predicate DECIDES whether a human is consulted,
 prose-derived branch on a value the orchestrator computes itself is the softest possible
 form of that decision.
 
-### D6 — The Rule-1 reversal is a formal amendment, lighter than plan 82's D14 reversal *(OPEN)*
+### D6 — The Rule-1 reversal is a formal amendment, lighter than plan 82's D14 reversal *(RATIFIED 2026-08-25 — keep the flag; amendment NARROWS)*
+
+> **RATIFIED 2026-08-25 — `disable-model-invocation: true` STAYS on `/devforge:grill`, and
+> the Rule-1 amendment NARROWS rather than deletes.** Plan 63's 13/7 carve-out is therefore
+> NOT reopened, no description trim is owed, and this plan contributes NO count delta —
+> exactly the shape plan 82 ratified at its D5(a-ii) and shipped.
+>
+> **The preserved list below ships IN the amendment**, so no future session reads the
+> reversal as broader than it is: the USER still owns every non-clean verdict at PHASE 7;
+> all four dispositions survive, KILL included; the cross-pick and Dismiss-analog arms are
+> unchanged; grill still never modifies `plan.md` or `spec.md`. What becomes mandatory is
+> that the grill RAN — and, per D3's ratified predicate, that it ran to a `complete` or
+> `clean` adversary status.
+>
+> **The `src/CLAUDE.md` bracket legend is a DELETE, not an edit** — the sweep list's most
+> easily-missed item. Plan 82 de-bracketed `/devforge:spec-check`, so `[/devforge:grill]` is
+> the LAST bracketed step in the chain; de-bracketing it leaves ZERO, and the legend then
+> describes notation the file no longer uses. **Retire the line; do not reword it.**
+>
+> **Wording model, ratified: plan 82's `#### /devforge:spec-check` catalog entry.** It
+> already renders D3's spine and OQ-1's hand-off in consumer-facing prose. Follow it; do not
+> invent a second phrasing for the same idea one entry away.
+
+
 
 **What is being amended, and by what authority.** Unlike spec-check, **no ratified plan
 decision forbids grill-mandatory.** Plan 62's D14 has no grill counterpart. What exists is:
@@ -784,7 +909,42 @@ text says *"descriptions"* (fact 22). Once that description sentence no longer s
 moves** — so Phase 4 must amend plan 63's OQ-2 text under BOTH arms, and only the counts
 are arm-conditional.
 
-### D7 — The wall-clock cost line *(OPEN — obligatory; three files assert this plan owes it)*
+### D7 — The wall-clock cost line *(RATIFIED 2026-08-25 — accept the cost, e2e MUST record the number)*
+
+> **RATIFIED 2026-08-25 — accept the full cost in v1; Phase 5's e2e is OBLIGATED to record
+> measured wall-clock. The coherent alternative this decision names — decline D3+D5 until
+> plan 70's Phase 2 produces a number, keeping only Phase 1 — was on the table and was
+> DECLINED**, on the ground that plan 70's Phase 2 is itself deferred to post-release, so
+> waiting is waiting without a defined end.
+>
+> **What D3's ratification changed, and it is why this bet is smaller than the one D7 was
+> written against.** Under the rejected freshness predicate the per-feature cost was
+> UNBOUNDED — every `plan.md` revision forced another full run — so an honest cost line would
+> have had to be a distribution over an unknown number of revisions. It is now **exactly one
+> run per feature**, so D7 needs a single measured number.
+>
+> **What D2's ratification changed in the other direction:** that one run is now a 2-pass
+> adversary with a union merge, so the number Phase 5 records is for the 2-pass shape and
+> **no single-pass baseline will exist**. The two decisions compound and both were taken the
+> same day with that visible.
+>
+> **The revival lever is ROUTED, and this is the part that must not be lost:** if the measured
+> cost proves unacceptable, the answer is profiling-driven optimization (plan 70's Phase 3,
+> which opens from numbers only) — **NEVER gate dilution.** "The gate is slow" is precisely
+> the argument that manufactures a carve-out when no other route is named, so the route is
+> named here in advance.
+>
+> **The obligation this discharges:** plan 82's OQ-1 asserts in three tracked files that this
+> plan's Phase 0 owes a wall-clock cost line. **This block is that line**, and its honest
+> content is that the number does not exist yet and Phase 5 must produce it.
+>
+> **Both alternatives stay REJECTED for the reasons already recorded**: a reduced "mandatory
+> profile" makes the choice between profiles an escape hatch by construction, and skipping
+> refutation on mandatory runs removes the false-positive suppressor exactly where cry-wolf
+> costs most — a concern D2's ratified union merge makes STRONGER, not weaker, since union
+> widens the finding pool refutation has to filter.
+
+
 
 > **NOTE 2026-08-24 — D3's ratification makes this obligation EASIER, not harder, and the
 > reason is worth stating before anyone treats the missing number as a blocker.** Under the
@@ -834,7 +994,24 @@ preference with no incident behind it (see `## Origin`). **A coherent Phase-0 an
 decline D3+D5 until plan 70's Phase 2 produces a per-command number for grill, keeping
 only Phase 1.** That answer should be on the table, not treated as obstruction.
 
-### D8 — Two mandatory adversarial stages now exist in sequence *(OPEN)*
+### D8 — Two mandatory adversarial stages now exist in sequence *(RATIFIED 2026-08-25 — independent, with plan 82's gate recorded as LIVE)*
+
+> **RATIFIED 2026-08-25 — the two plans ratify and ship INDEPENDENTLY, and D8's own closing
+> rule is hereby DISCHARGED: this plan was ratified with plan 82's gate already SHIPPED and
+> LIVE** (`/devforge:plan` PHASE 0a.8, built 2026-08-19), not as a hypothetical.
+>
+> **The policy question was answered explicitly rather than by accumulation.** The pipeline
+> now carries two mandatory adversarial stages, and they are NOT the same kind of thing: one
+> is a hash comparison over an already-rendered report backed by a deterministic solver; the
+> other is a bounded adversarial pass with no deterministic core. **The asymmetry in how they
+> treat freshness is principled and is argued at D3** — it tracks whether the step has a
+> cheap core, not whether one of them was under-designed.
+>
+> **Combined per-feature cost, recorded once so nobody meets it as a surprise:** plan 82's
+> gate (negligible — a hash) plus ONE `/devforge:grill` run at D2's ratified 2-pass shape.
+> Bounded, not open-ended.
+
+
 
 > **NOTE 2026-08-24 — the policy question this decision names is now materially cheaper to
 > answer, and the two gates are no longer the same KIND of thing.** After D3's ratification
@@ -890,7 +1067,22 @@ the grill number that still does not exist (fact 26).
 
 ## Open questions (Phase 0)
 
-### OQ-1 — Does `/devforge:breakdown` auto-invoke `/devforge:grill`, or name it?
+### OQ-1 — Does `/devforge:breakdown` auto-invoke `/devforge:grill`, or name it? *(RESOLVED 2026-08-25)*
+
+*Resolved:* **NAME IT, never run it.** The blocked arm copies the helper's BLOCKED message
+verbatim and names `/devforge:grill` as the required next step; this run is over, the user
+runs grill, then re-invokes `/devforge:breakdown`.
+
+This confirms the externally-constrained answer rather than re-deciding it: this OQ's own
+text calls consistency with plan 82 *"a stated dependency, not a preference"*, and plan 82
+ratified D5(a-ii) and shipped it. Picking auto-invoke would have been a deliberate override
+of a stated dependency and owed an argument that two adversarial preconditions SHOULD hand
+off differently. **The recorded counter is NOT withdrawn** — a named-not-run gate costs the
+user a round trip — but the pipeline demonstrably already pays that cost one stage upstream,
+which is evidence about its tolerability. It also composes with D6's ratified keep-the-flag:
+a command that is not model-invocable cannot be auto-invoked anyway.
+
+
 
 When the gate fails, `/devforge:breakdown` either runs `/devforge:grill` itself (possible
 only under D6's model-invocable arm) or names it for the user to type.
@@ -931,7 +1123,38 @@ way, because what becomes mandatory is that the check RAN, not who typed it"* li
 D6 now has a shipped instance behind it. **This note determines nothing by itself: Phase 0
 still records the pick.**
 
-### OQ-2 — The e2e known-answer anchors
+### OQ-2 — The e2e known-answer anchors *(RESOLVED 2026-08-25 — anchor 3 REPLACED, anchor 4 ADDED)*
+
+*Resolved:* **four anchors, not three.** ⚠ **The original anchor 3 (staleness) is MOOT and
+is REPLACED** — D3's ratified gate does not read freshness at all, so there is no freshness
+conjunct left to fail. A build session that implements the old anchor 3 is testing a
+mechanism this plan decided not to build.
+
+The ratified set:
+
+1. **Planted defect** — a `plan.md` carrying a disqualifying defect the adversary should
+   ground MUST produce a surviving finding, MUST NOT auto-accept, and MUST fire PHASE 7.
+   *Sub-question resolved as recommended:* use a defect class the adversary is KNOWN to
+   catch, so this tests the GATE rather than the adversary — a failure caused by adversary
+   variance would be uninterpretable.
+2. **Clean** — a sound `plan.md` MUST auto-accept: report written, report committed,
+   PHASE 7's human gate never fires, `$WORKDIR` swept, `/devforge:breakdown` proceeds.
+3. **Failed adversary (REPLACES staleness)** — a run whose adversary status is `failed` or
+   `missing` MUST NOT satisfy the gate, even though a report exists. This is D3's
+   no-escape-hatch ratification made observable, and it is the anchor most likely to be
+   skipped because a report IS present on disk.
+4. **Stale-but-accepted, and the auto-accept RATE (NEW)** — a `grill.md` whose recorded
+   plan hash no longer matches the current `plan.md` MUST still PASS the gate, and the
+   staleness MUST be visible in the artifact. This pins D4's ratified
+   visibility-not-enforcement stance, which nothing else observes. **In the same run,
+   RECORD AS A NUMBER how often auto-accept actually fires** — D1's STRICT predicate and
+   D2's union quorum both push CLEAN out of reach, and if auto-accept nearly never fires
+   this plan shipped a mandatory gate's friction with none of its smoothing. That number is
+   the only evidence that risk was ever checked.
+
+**Also record wall-clock in the same run** — D7's ratified obligation, for the 2-pass shape.
+
+
 
 Three cases whose correct outcome is known in advance, so Phase 5 is a regression anchor
 rather than an exploratory run:
@@ -951,7 +1174,18 @@ rather than an exploratory run:
 adversary). **Recommend the former** — this plan changes when grill runs, not what it
 finds, and a case-1 failure caused by adversary variance would be uninterpretable.
 
-### OQ-3 — Does KILL need distinct gate handling?
+### OQ-3 — Does KILL need distinct gate handling? *(RESOLVED 2026-08-25 — OUT OF SCOPE)*
+
+*Resolved:* **OUT OF SCOPE, on D3's spine rather than on convenience.** A gate that read
+KILL would be a gate reading the verdict — the design D3 explicitly refuses, and the one
+that would let a single stochastic pass halt a feature.
+
+**The consequence is stated plainly rather than buried: under this plan a KILLed design does
+NOT block `/devforge:breakdown`.** KILL routes through PHASE 7 to the human, who owns the
+call. That is the accepted cost of a spine that never reads the verdict, and a ratifier who
+finds it unacceptable is rejecting D3, not adjusting this question.
+
+
 
 A KILL disposition arguably should block `/devforge:breakdown` harder than an absent report
 does — the design was judged fatally flawed, yet under D3 the gate passes because
