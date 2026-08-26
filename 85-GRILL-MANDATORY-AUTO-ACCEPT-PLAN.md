@@ -1390,6 +1390,43 @@ Scope:
 
 ---
 
+### Phase 2b — CLI wiring for the Phase-1 helpers *(ADDED 2026-08-26)*
+
+**Route: python-engineer → python-reviewer, test-first.**
+
+**A gap in this plan, not a discovery about the code.** Phase 1 deliberately registered NO
+CLI verbs (*"a later phase wires the CLI"*), and Phase 3's route is instruction-author —
+**instruction-only, so it cannot write Python.** Neither phase claims the wiring, so
+`partition_is_clean` and `merge_two_passes` would have shipped as library functions no
+command could reach, and Phase 3's `main.md` would have referenced verbs that do not exist.
+Caught before Phase 3 was authored; recorded here rather than absorbed silently, because the
+same seam (a build phase and an instruction phase with no Python phase between them) can
+recur.
+
+Scope, in `src/devforge/lib/_grill/_cli.py`:
+
+- Expose the CLEAN predicate. **Prefer riding `render-report`'s existing stdout ack over a
+  new verb** — PHASE 6 already calls it, and one fewer round trip is one fewer place the
+  orchestrator can re-derive the value in prose (D5's helper-owns-shape ratification). If
+  the ack shape cannot carry it cleanly, a dedicated verb is acceptable; state which and why.
+- Expose the 2-pass UNION merge as a verb taking two pool paths and printing the merged bare
+  array, mirroring `/devforge:audit`'s `merge-passes --pools` contract closely enough that a
+  reader of both sees one pattern.
+- Persist `adversary_status` and `plan_sha256` — whichever verb PHASE 6 already calls to
+  advance state is the natural carrier, so the write lands INSIDE the existing unconditional
+  artifact commit rather than adding a second write point (fact 11).
+
+**Verify:**
+
+- `tests/lib/_grill/` green, with a test per verb exercising the real CLI entry point (argv
+  in, exit code + stdout out), not just the underlying function.
+- The clean value the CLI reports equals `partition_is_clean`'s return for the same input —
+  pinned by a test, so the two cannot drift.
+- **No verb exposes a hash COMPARISON**, only the recorded value (D4).
+- `git status --short` shows no `src/commands/` change — this phase is helper-side only.
+
+---
+
 ### Phase 3 — `main.md` rewiring: auto-accept-clean
 
 **Route: instruction-author → instruction-reviewer + claude-code-guide** (this file ships
