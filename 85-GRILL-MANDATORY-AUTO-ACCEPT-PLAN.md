@@ -1427,6 +1427,33 @@ Scope, in `src/devforge/lib/_grill/_cli.py`:
 
 ---
 
+### Process observation — a two-route phase can orphan half of itself *(2026-08-26)*
+
+**Recorded because it is repeatable, not because it was costly here.** Phase 2 owned TWO
+halves with DIFFERENT routes: the `breakdown_helper` verb (python-engineer) and its
+`main.md` invocation (instruction-author). Only the Python half was dispatched. It reported
+success, was reviewed, and was committed — and the phase looked done, because the half that
+existed was healthy and the half that did not exist emitted no signal at all.
+
+**The verb itself was honest.** Its docstring said *"NOT YET called from
+`src/commands/breakdown/main.md` as of this commit — that wiring is separately routed and
+still pending"*, and a reviewer had already corrected an earlier present-tense phrasing of
+exactly that sentence. It was read, approved as accurate, and it WAS accurate. **A sentence
+describing an unfinished migration is not an alarm — it reads as a calm fact, which is
+precisely why it is easy to walk past.**
+
+What caught it was not vigilance but a DIFFERENT task's verification: Phase 4 was writing
+prose asserting that `/devforge:breakdown` requires a grill run, and went to check whether
+that was true. `grep -rn "verify-grill-ran" src/commands/` returned zero. Had Phase 4 not
+had a reason to check, the prose would have shipped aspirational.
+
+**The generalizable rule:** when a phase spans two routes, the phase is not complete when
+the first route reports success. Either dispatch both before committing either, or record
+the outstanding half where the phase's own Verify will trip on it — a forward-reference
+docstring inside the delivered half is not that place, because nothing reads it back.
+
+---
+
 ### Recorded debt — `_grill/` test infrastructure *(2026-08-26, NOT owned by any phase here)*
 
 Two review findings were deliberately DEFERRED during Phases 2/2b because both are test
