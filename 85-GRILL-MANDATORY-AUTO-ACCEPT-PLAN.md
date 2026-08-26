@@ -1,6 +1,6 @@
 # 85 — `/devforge:grill`: mandatory run + auto-accept the clean verdict
 
-**Status:** NOT STARTED (build) — **PHASE 0 IS CLOSED: every D-item and OQ ratified (D3 + D4 on 2026-08-24; D1, D2, D5–D8 and OQ-1–OQ-3 on 2026-08-25).** Two ratifications DIVERGE from this file's own recommendations and both are argued at their decision: **D3** (the fail-closed freshness gate is REJECTED — it penalizes acting on findings) and **D2** (a 2-pass quorum IS built, over this plan's recommendation of none). ⚠ **D3 was ratified AGAINST its own drafted recommendation** — the fail-closed presence+freshness gate is REJECTED because it creates a loop that penalizes acting on findings (see D3's ratification block). One precondition was discharged in the same session: the corpus-wide `update.sh` remedy claim was corrected across five sites (see D3's `## Discharged precondition` note). No other `src/` edit before the remaining items close. **AMENDED 2026-08-23 — reconciled against three plans that shipped AFTER this file was drafted: plan 81 (F6, 2026-08-18), plan 82 (DONE build 2026-08-19) and plan 83 (DONE build 2026-08-20). Nothing was ratified by that pass.** What it changed: **D4's predicate and OQ-1's hand-off shape are now externally CONSTRAINED** — plan 82 ratified the content hash (its OQ-2) and the name-it-for-the-user arm (its D5(a-ii)), so both stop being open forks and become confirm-or-diverge-with-an-argument; **the plan-83 coordination debt this plan inherited is recorded DISCHARGED as a verified no-op**; and **D6's sweep list is refreshed** against the surfaces plans 82/83 created or rewrote. Every dated note below narrows a decision space; **none picks an option, and every D/OQ heading keeps its `*(OPEN…)*` marker.**
+**Status:** ✅ **DONE (build) 2026-08-26 — Phases 0–4 shipped** (`10cc8ec` + `ad0cd50` Phase 0 / `3f86a58` phase reconciliation / `56f7a74` Phase 1 / `58e01be` Phase 2 verb / `63262d3` Phase 2b CLI / `143be80` Phase 3 / `c0711b3` the PROCEED wording fix / `1b6b27a` Phase 4 + the gate WIRING / `4c08908` the stakes hint). **Phase 5 consumer e2e DEFERRED — user-driven HARD GATE, NOT run. The maintainer stated 2026-08-26 that it will be run AFTER the implementations queued behind it, as one batch; it is NOT WAIVED, and the plan closes as DONE (build) on that basis.** This is **BUILD-VERIFIED, NOT CONSUMER-VALIDATED** and no phase above may claim otherwise. **PHASE 0 IS CLOSED: every D-item and OQ ratified (D3 + D4 on 2026-08-24; D1, D2, D5–D8 and OQ-1–OQ-3 on 2026-08-25).** Two ratifications DIVERGE from this file's own recommendations and both are argued at their decision: **D3** (the fail-closed freshness gate is REJECTED — it penalizes acting on findings) and **D2** (a 2-pass quorum IS built, over this plan's recommendation of none). ⚠ **D3 was ratified AGAINST its own drafted recommendation** — the fail-closed presence+freshness gate is REJECTED because it creates a loop that penalizes acting on findings (see D3's ratification block). One precondition was discharged in the same session: the corpus-wide `update.sh` remedy claim was corrected across five sites (see D3's `## Discharged precondition` note). No other `src/` edit before the remaining items close. **AMENDED 2026-08-23 — reconciled against three plans that shipped AFTER this file was drafted: plan 81 (F6, 2026-08-18), plan 82 (DONE build 2026-08-19) and plan 83 (DONE build 2026-08-20). Nothing was ratified by that pass.** What it changed: **D4's predicate and OQ-1's hand-off shape are now externally CONSTRAINED** — plan 82 ratified the content hash (its OQ-2) and the name-it-for-the-user arm (its D5(a-ii)), so both stop being open forks and become confirm-or-diverge-with-an-argument; **the plan-83 coordination debt this plan inherited is recorded DISCHARGED as a verified no-op**; and **D6's sweep list is refreshed** against the surfaces plans 82/83 created or rewrote. Every dated note below narrows a decision space; **none picks an option, and every D/OQ heading keeps its `*(OPEN…)*` marker.**
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-17.
 
@@ -1623,7 +1623,19 @@ Scope: every item in D6's sweep list, plus:
 
 ---
 
-### Phase 5 — Consumer e2e *(user-driven HARD GATE)*
+### Phase 5 — Consumer e2e *(user-driven HARD GATE — DEFERRED 2026-08-26, NOT WAIVED)*
+
+**Standing, not cancelled.** The maintainer deferred this run on 2026-08-26 to be executed once the
+implementations queued behind this plan are done, as one batch rather than per-plan. Nothing below is
+discharged and nothing below has been observed; the DONE status covers the BUILD only.
+
+**Two numbers exist NOWHERE ELSE and this run is the only thing that produces them.** First, wall-clock
+for the ratified 2-pass shape (D7) — plan 70's Phase 2 is itself deferred, so no per-command figure for
+`/devforge:grill` exists in this repo at all. Second, and this one checks a risk THIS PLAN CREATED: the
+**rate at which auto-accept actually fires**. D1's STRICT predicate and D2's union quorum both push CLEAN
+further out of reach, so if auto-accept nearly never fires, this plan shipped a mandatory gate's friction
+with none of the smoothing that justified building it. **Record it as a NUMBER** — an unrecorded rate
+cannot be compared against anything later.
 
 Run OQ-2's three known-answer anchors in a consumer install.
 
