@@ -783,6 +783,89 @@ class TestMergePassesVerb(unittest.TestCase):
         self.assertIn("no_passed.json", err,
                       msg="Error should name the offending file; got: " + repr(err))
 
+    # --- crash-on-malformed-input fix: non-dict elements inside a pool ---
+    #
+    # Previously a non-dict element (e.g. a bare string or int) inside a
+    # pool's findings list reached _merge.py's finding.get(...) accessors
+    # unguarded and raised an unhandled AttributeError, printing a full
+    # Python traceback instead of the clean stderr + exit 2 every other
+    # malformed-shape branch in this function already produces.
+
+    def test_bare_list_with_non_dict_element_exits_2_no_traceback(self):
+        """A bare-JSON-array pool containing a non-dict element must not crash."""
+        p1 = self._write_pool("non_dict_element.json", ["not-a-dict", 123])
+        code, data, err = self._run_merge([p1])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err,
+                         msg="Should not produce a raw traceback")
+        self.assertNotIn("AttributeError", err)
+        self.assertIn(
+            "non_dict_element.json", err,
+            msg="Error should name the offending file; got: " + repr(err),
+        )
+
+    def test_passed_wrapper_with_non_dict_element_exits_2_no_traceback(self):
+        """The {'passed': [...]} wrapper shape gets the same non-dict-element guard."""
+        p1 = self._write_pool(
+            "passed_non_dict_element.json",
+            {"passed": ["not-a-dict", 123], "discarded": []},
+        )
+        code, data, err = self._run_merge([p1])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err,
+                         msg="Should not produce a raw traceback")
+        self.assertNotIn("AttributeError", err)
+        self.assertIn(
+            "passed_non_dict_element.json", err,
+            msg="Error should name the offending file; got: " + repr(err),
+        )
+
+    def test_non_dict_element_in_middle_pool_of_three_names_right_file(self):
+        """N=3 pools; the malformed one is neither first nor last (post-sort) —
+        the error must name THAT pool's path, not either well-formed one.
+
+        Filenames are chosen so lexical sort (the CLI always sorts resolved
+        paths for deterministic pass order) places the malformed file in the
+        middle: 'aaa_...' < 'mmm_...' < 'zzz_...'.
+        """
+        f1 = _make_finding_dict(line=10)
+        f3 = _make_finding_dict(line=11)
+        p1 = self._write_pool("aaa_good.json", [f1])
+        p2 = self._write_pool("mmm_bad.json", [{"file": "x"}, "not-a-dict"])
+        p3 = self._write_pool("zzz_good.json", [f3])
+        code, data, err = self._run_merge([p1, p2, p3])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err)
+        self.assertIn(
+            "mmm_bad.json", err,
+            msg="Error should name mmm_bad.json specifically; got: " + repr(err),
+        )
+        self.assertNotIn("aaa_good.json", err)
+        self.assertNotIn("zzz_good.json", err)
+
+    def test_three_well_formed_pools_still_merge_correctly(self):
+        """Regression guard: N=3 well-formed pools merge exactly as before the
+        fix (the fix only adds a check inside the existing parse loop).
+
+        Same defect location across all three passes (within TOL) collapses
+        to one finding with pass_count=3.
+        """
+        f1 = _make_finding_dict(line=10)
+        f2 = _make_finding_dict(line=11)
+        f3 = _make_finding_dict(line=12)
+        p1 = self._write_pool("three_p1.json", {"passed": [f1]})
+        p2 = self._write_pool("three_p2.json", {"passed": [f2]})
+        p3 = self._write_pool("three_p3.json", [f3])
+        code, data, err = self._run_merge([p1, p2, p3])
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0].get("pass_count"), 3)
+        tags = data[0].get("tags", [])
+        self.assertTrue(
+            any("[MULTI-PASS:3]" in t for t in tags),
+            msg="Expected [MULTI-PASS:3] tag; tags={0}".format(tags),
+        )
+
     # --- Fix 3: glob + explicit overlap → pass_count equals unique file count ---
     def test_glob_and_explicit_overlap_deduplicates(self):
         """A glob token and an explicit path that both expand to the same file

@@ -986,7 +986,12 @@ def cmd_merge_passes(args: argparse.Namespace) -> int:
     merge_passes(pools) and writes the merged bare JSON array to stdout.
 
     Returns 0 on success.
-    Returns 2 on no matching files, unreadable file, or malformed JSON.
+    Returns 2 on no matching files, unreadable file, malformed JSON, or a
+    pool whose resolved findings list contains a non-dict element (this used
+    to raise an unhandled AttributeError deep inside merge_passes's
+    finding.get(...) calls; every other malformed-shape branch in this
+    function already produces a clean stderr message + exit 2, so that
+    inconsistency was a defect in the error contract, not a gap).
     """
     import glob as _glob
 
@@ -1066,6 +1071,22 @@ def cmd_merge_passes(args: argparse.Namespace) -> int:
             sys.stderr.write(
                 "audit_helper merge-passes: pool file {0!r} must be a JSON "
                 "array or an object with a 'passed' key\n".format(path)
+            )
+            return 2
+
+        # Every element of the resolved findings list must be a JSON object.
+        # merge_passes reads finding.get("file", ...) etc. on each element;
+        # a non-dict element (e.g. a bare string or int) crashes that with
+        # an unhandled AttributeError instead of the clean exit-2 every
+        # other malformed-shape branch above produces. Checked here, once,
+        # after pool_findings is resolved from EITHER branch, so both the
+        # bare-array and the "passed"-wrapper shapes are covered by one
+        # check. path is named in the message since --pools accepts N
+        # files and "a pool file is bad" would not be actionable.
+        if not all(isinstance(f, dict) for f in pool_findings):
+            sys.stderr.write(
+                "audit_helper merge-passes: pool file {0!r} must contain "
+                "only JSON objects (ParsedFinding dicts)\n".format(path)
             )
             return 2
 
