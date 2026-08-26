@@ -1,11 +1,11 @@
 """_cmds_commit -- wip-commit verb for implement_helper and fix_helper.
 
 Stage only the explicitly named paths, compose a commit message per
-wrapper/standalone convention, and commit.  After a successful commit,
-clear the wip.md marker.
+wrapper/standalone convention, and commit.  After a successful TASK or FIX
+commit, clear the wip.md marker (FINAL mode does NOT -- see below).
 
-Two modes
----------
+Three modes
+-----------
 TASK mode (/implement):   --files + --task-file + --index + --number + --title all present.
   Stages source touched_files + task_file + index (standalone) or only source
   touched_files (wrapper).  Message: "[WIP] task: <title> (Task NNN)" (standalone)
@@ -16,13 +16,30 @@ FIX mode (/fix):          --files + --title present; --task-file, --index, --num
   task file or index to stage).  Message: "[WIP] fix: <title>" (standalone)
   / "[TICKET-ID] - <title>" (wrapper; no "(Task NNN)" suffix).
 
+FINAL mode (/fix cold lane, plan 88 D3): --files + --title + --final + --scope
+  present; --task-file, --index, --number ALL absent (same all-or-none rule as
+  FIX mode -- final mode IS a task-less commit).  Stages ONLY the touched files
+  (identical staging to FIX mode).  Message: "fix(<scope>): <title>" (standalone,
+  a clean Conventional-Commits commit -- no "[WIP]" prefix, because no
+  /devforge:finalize run will ever squash a cold-lane commit) / "[TICKET-ID] -
+  <title>" (wrapper; fork 2 arm (i) -- SAME shape as FIX mode, because the
+  wrapper-mode commit lands in a client-owned product repo whose log
+  convention this framework does not own).  --scope is required with --final
+  and rejected otherwise (same all-or-none style as the task triple).  CRITICAL:
+  final mode does NOT clear .devforge/wip.md -- a cold run wrote no marker
+  (there is no feature dir, so D2 skips the window gate that would otherwise
+  guarantee /devforge:implement has drained), and clearing one it did not
+  write would destroy /devforge:implement's crash-recovery state.
+
 MIXED (some but not all of --task-file/--index/--number present): rejected with
-  EXIT_ERR and a clear stderr message naming the missing arguments.
+  EXIT_ERR and a clear stderr message naming the missing arguments.  --final
+  combined with the task triple is rejected the same way (final mode is
+  task-less by construction).
 
 Algorithm
 ---------
-1. Parse --files (JSON array).  Mode detection (task / fix / mixed) from
-   --task-file, --index, --number.
+1. Parse --files (JSON array).  Mode detection (task / fix / final / mixed) from
+   --task-file, --index, --number, --final, --scope.
 2. Resolve workspace via resolve_workspace(--root): gives install_root,
    source_root, is_wrapper.  Config is loaded from install_root.
 3. Read .devforge/project-config.json for COMMIT_ATTRIBUTION.
@@ -31,22 +48,23 @@ Algorithm
      to get the SOURCE repo branch; extract [A-Z]+-[0-9]+ ticket token
      (e.g. `bugfix/ABC-123` → `ABC-123`); fall back to full branch name.
    - STANDALONE mode: ticket-id is unused (non-wrapper message format).
-5. Compose message per mode (see Two modes above).
+5. Compose message per mode (see Three modes above).
 6. Append COMMIT_ATTRIBUTION: in STANDALONE mode, append verbatim when non-empty
    (empty/absent → no append). In WRAPPER mode, NO attribution is appended — the
    SOURCE repo commit must carry no AI traces (D5 / Phase 6 belt-and-suspenders).
-   Attribution rules are IDENTICAL in task and fix modes.
+   Attribution rules are IDENTICAL in task, fix and final modes.
 7. Stage paths individually (`git add -- <path>`). NEVER `git add -A`.
    TASK mode:
    - WRAPPER: stage ONLY source touched_files in the SOURCE repo (task_file and
      index are wrapper artifacts, left uncommitted per D1).
    - STANDALONE: stage source touched_files + task_file + index together.
-   FIX mode (both wrapper and standalone): stage ONLY source touched_files.
+   FIX and FINAL modes (both wrapper and standalone): stage ONLY source touched_files.
 8. Commit in the TARGET repo:
    - WRAPPER mode:   `git -C <source_root> commit -m <msg>` in SOURCE repo.
    - STANDALONE mode: `git commit -m <msg>` (single repo).
 9. Capture the new HEAD SHA from the TARGET repo.
-10. Clear wip.md in the INSTALL root (wrapper artifacts, always install-root).
+10. Clear wip.md in the INSTALL root (wrapper artifacts, always install-root) --
+    TASK and FIX modes only.  FINAL mode does NOT clear it (plan 88 D3).
 11. Emit JSON {committed: true, head_sha: "...", message: "..."} to stdout.
 
 Arguments (argparse):
@@ -59,6 +77,12 @@ Arguments (argparse):
                        relative in wrapper mode; not staged per D1).
   --number    <str>    Optional. Task number string, e.g. "001".
   --title     <str>    Required. Task title.
+  --final              Optional flag. Final-commit mode (plan 88 D3, cold-fix
+                       lane). Requires --scope; rejected together with any of
+                       --task-file/--index/--number.
+  --scope     <str>    Optional. Conventional-Commits scope for FINAL mode's
+                       standalone "fix(<scope>): <title>" subject. Required
+                       when --final is passed; rejected otherwise.
   --root      <path>   Optional. Install root; defaults to cwd.
 
 Emitted JSON (stdout, exit 0):
@@ -66,7 +90,7 @@ Emitted JSON (stdout, exit 0):
 
 Exit codes:
   0 — committed successfully.
-  1 — I/O / config error (message on stderr).
+  1 — I/O / config / argument error (message on stderr).
   2 — git staging or commit failure (message on stderr).
 
 Design notes:
@@ -91,10 +115,21 @@ Design notes:
   STANDALONE mode the value is appended directly to the message body (no extra
   newline added); if absent (key not in config), no attribution line is added.
   In WRAPPER mode attribution is SUPPRESSED entirely — the source-repo WIP commit
-  must carry no AI traces (D5 / Phase 6).  These rules apply equally in task and
-  fix modes.
+  must carry no AI traces (D5 / Phase 6).  These rules apply equally in task,
+  fix and final modes.
 - Staging safety: each path is staged individually so an unrelated dirty file
   in the working tree is NEVER committed.  git add -A is never used.
+- Plan 88 D3 (final mode, the cold-fix lane): a cold /devforge:fix run has no
+  feature dir, so D2 skips the in-fix-window gate that guarantees
+  /devforge:implement has drained.  Consequently --final must NOT clear
+  .devforge/wip.md -- a cold run wrote no marker, and clearing one it did not
+  write would destroy /devforge:implement's crash-recovery state for a run
+  that may still be in flight.  Fork 2 (wrapper message shape) keeps the
+  wrapper arm identical to FIX mode's "[TICKET-ID] - <title>" rather than
+  imposing Conventional Commits on a client-owned product repo whose log
+  convention this framework does not own; the accepted cost is that a cold
+  wrapper fix on a ticket-less branch (e.g. "develop") produces
+  "[develop] - <title>".
 - subprocess timeout: 30 s per git call. Generous but bounded.
 - git -C <path>: used for all source-repo operations in wrapper mode so the
   implementation never changes the process working directory.
@@ -207,21 +242,40 @@ def _extract_ticket_id(branch):
 
 
 def _compose_message(is_wrapper, ticket_id, title, number, attribution,
-                     fix_mode=False):
-    # type: (bool, str, str, str, str, bool) -> str
+                     fix_mode=False, final_mode=False, scope=""):
+    # type: (bool, str, str, str, str, bool, bool, str) -> str
     """Compose the commit message with optional attribution.
 
-    Task mode (fix_mode=False):
+    Task mode (fix_mode=False, final_mode=False):
       wrapper:     "[TICKET-ID] - <title> (Task NNN)"
       non-wrapper: "[WIP] task: <title> (Task NNN)"
 
-    Fix mode (fix_mode=True):
+    Fix mode (fix_mode=True, final_mode=False):
       wrapper:     "[TICKET-ID] - <title>"    (no "(Task NNN)" suffix)
       non-wrapper: "[WIP] fix: <title>"       (no "(Task NNN)" suffix)
 
-    Attribution is appended verbatim when non-empty (identical rule for both modes).
+    Final mode (final_mode=True; plan 88 D3 -- the cold-fix lane's terminal
+    commit, a clean Conventional-Commits commit rather than a "[WIP]" one,
+    since no /devforge:finalize run will ever squash it):
+      wrapper:     "[TICKET-ID] - <title>"    (fork 2 arm (i) -- SAME shape as
+                    fix mode; the wrapper commit lands in a client-owned
+                    product repo whose log convention this framework does
+                    not own)
+      non-wrapper: "fix(<scope>): <title>"    (no "[WIP]" prefix, no
+                    "(Task NNN)" suffix)
+    final_mode takes priority over fix_mode when both would otherwise apply
+    (cmd_wip_commit never sets both at once; this keeps the composer's own
+    precedence explicit rather than relying solely on caller discipline).
+
+    Attribution is appended verbatim when non-empty (identical rule across
+    all three modes).
     """
-    if fix_mode:
+    if final_mode:
+        if is_wrapper:
+            subject = "[{0}] - {1}".format(ticket_id, title)
+        else:
+            subject = "fix({0}): {1}".format(scope, title)
+    elif fix_mode:
         if is_wrapper:
             subject = "[{0}] - {1}".format(ticket_id, title)
         else:
@@ -330,11 +384,15 @@ def add_args_wip_commit(parser):
     # type: (object) -> None
     """Register wip-commit arguments on the given subparser.
 
-    Two modes are supported:
-      Task mode (/implement): --files + --task-file + --index + --number + --title.
-      Fix mode  (/fix):       --files + --title only (--task-file/--index/--number absent).
+    Three modes are supported:
+      Task mode  (/implement): --files + --task-file + --index + --number + --title.
+      Fix mode   (/fix):       --files + --title only (--task-file/--index/--number absent).
+      Final mode (/fix cold lane, plan 88 D3): --files + --title + --final +
+                 --scope (--task-file/--index/--number absent, same as fix mode).
     Providing some but not all of --task-file/--index/--number is rejected at
-    runtime with EXIT_ERR (mixed-mode error).
+    runtime with EXIT_ERR (mixed-mode error), as is --final combined with any
+    of them.  --scope is required when --final is passed and rejected
+    otherwise (same all-or-none discipline).
     """
     parser.add_argument(
         "--files",
@@ -372,7 +430,30 @@ def add_args_wip_commit(parser):
     parser.add_argument(
         "--title",
         required=True,
-        help="Task title string (required in both task and fix modes).",
+        help="Task title string (required in task, fix and final modes).",
+    )
+    parser.add_argument(
+        "--final",
+        action="store_true",
+        default=False,
+        help=(
+            "Final-commit mode (plan 88 D3, the cold-fix lane). Emits a clean "
+            "Conventional-Commits 'fix(<scope>): <title>' commit in standalone "
+            "mode (no '[WIP]' prefix -- no /devforge:finalize run will ever "
+            "squash it) or keeps the wrapper '[TICKET-ID] - <title>' shape in "
+            "wrapper mode. Requires --scope. Rejected together with any of "
+            "--task-file/--index/--number. Does NOT clear .devforge/wip.md."
+        ),
+    )
+    parser.add_argument(
+        "--scope",
+        required=False,
+        default="",
+        help=(
+            "Conventional-Commits scope for final mode's standalone "
+            "'fix(<scope>): <title>' subject. Required when --final is "
+            "passed; rejected otherwise."
+        ),
     )
     parser.add_argument(
         "--root",
@@ -388,7 +469,7 @@ def add_args_wip_commit(parser):
 
 def cmd_wip_commit(args):
     # type: (object) -> int
-    """Stage named paths and create a WIP commit (task mode or fix mode).
+    """Stage named paths and create a commit (task / fix / final mode).
 
     Task mode (/implement) — all of --task-file, --index, --number are present:
       In WRAPPER mode:
@@ -402,24 +483,37 @@ def cmd_wip_commit(args):
         - Stage source touched_files + task_file + index all in the single repo.
         - Message: "[WIP] task: <title> (Task NNN)".
 
-    Fix mode (/fix) — none of --task-file, --index, --number are present:
+    Fix mode (/fix) — none of --task-file, --index, --number, --final are present:
       Stage ONLY source touched_files in both wrapper and standalone mode.
       Message: "[WIP] fix: <title>" (standalone) / "[TICKET-ID] - <title>" (wrapper).
       Attribution and ticket-id derivation are identical to task mode.
-      No "(Task NNN)" suffix.
+      No "(Task NNN)" suffix.  wip.md IS cleared (same as task mode).
 
-    Mixed mode (some but not all of --task-file/--index/--number present):
+    Final mode (/fix cold lane, plan 88 D3) — --final is present (and therefore
+    --scope is required; --task-file/--index/--number must be absent):
+      Stage ONLY source touched_files (identical staging to fix mode).
+      Message: "fix(<scope>): <title>" (standalone) / "[TICKET-ID] - <title>"
+      (wrapper; fork 2 arm (i) — same shape as fix mode).  wip.md is NOT
+      cleared — a cold run wrote no marker, and D2 skips the in-fix-window
+      gate that would otherwise guarantee /devforge:implement has drained,
+      so clearing it here could destroy an in-flight /devforge:implement
+      run's crash-recovery state.
+
+    Mixed mode (some but not all of --task-file/--index/--number present), OR
+    --final combined with any of --task-file/--index/--number, OR --final
+    without --scope, OR --scope without --final:
       Rejected immediately with EXIT_ERR and a descriptive stderr message.
 
     Parameters
     ----------
     args : argparse.Namespace
-        Parsed arguments: files, task_file, index, number, title, root.
+        Parsed arguments: files, task_file, index, number, title, final,
+        scope, root.
 
     Returns
     -------
     int
-        0 on success; 1 on config/I/O error; 2 on git failure.
+        0 on success; 1 on config/I/O/argument error; 2 on git failure.
     """
     install_root = Path(getattr(args, "root", ".")).resolve()
 
@@ -447,9 +541,23 @@ def cmd_wip_commit(args):
     index = getattr(args, "index", "") or ""
     number = getattr(args, "number", "") or ""
     title = getattr(args, "title", "") or ""
+    final = bool(getattr(args, "final", False))
+    scope = getattr(args, "scope", "") or ""
 
     if not title:
         sys.stderr.write("wip-commit: --title is required\n")
+        return EXIT_ERR
+
+    # --- --final / --scope all-or-none (plan 88 D3) ---
+    if final and not scope:
+        sys.stderr.write(
+            "wip-commit: --scope is required when --final is passed\n"
+        )
+        return EXIT_ERR
+    if scope and not final:
+        sys.stderr.write(
+            "wip-commit: --scope is only valid together with --final\n"
+        )
         return EXIT_ERR
 
     # --- Mode detection ---
@@ -467,12 +575,19 @@ def cmd_wip_commit(args):
             missing.append("--number")
         sys.stderr.write(
             "wip-commit: mixed mode — provide all of --task-file, --index, "
-            "--number (task mode) or none of them (fix mode). "
+            "--number (task mode) or none of them (fix/final mode). "
             "Missing: {0}\n".format(", ".join(missing))
         )
         return EXIT_ERR
 
-    fix_mode = task_absent  # True → fix mode; False → task mode
+    if final and task_present:
+        sys.stderr.write(
+            "wip-commit: --final cannot be combined with --task-file/--index/"
+            "--number (final mode is task-less)\n"
+        )
+        return EXIT_ERR
+
+    fix_mode = task_absent  # True → fix or final mode; False → task mode
 
     # --- Load project config (from install_root where .devforge/ lives) ---
     try:
@@ -504,11 +619,11 @@ def cmd_wip_commit(args):
     # In wrapper mode the commit lands in the source repo, so attribution is
     # suppressed here.  In standalone mode attribution is applied normally —
     # the single repo follows the Commit Convention the user opted into.
-    # Attribution suppression rule is identical in task and fix modes.
+    # Attribution suppression rule is identical in task, fix and final modes.
     message_attribution = "" if is_wrapper else attribution
     message = _compose_message(
         is_wrapper, ticket_id, title, number, message_attribution,
-        fix_mode=fix_mode,
+        fix_mode=fix_mode, final_mode=final, scope=scope,
     )
 
     # --- Stage paths individually (NEVER git add -A) ---
@@ -553,15 +668,22 @@ def cmd_wip_commit(args):
         )
         return EXIT_ERR
 
-    # --- Clear wip.md (always in the INSTALL root's .devforge/) ---
-    devforge_dir = workspace.install_root / ".devforge"
-    try:
-        clear_wip_marker(str(devforge_dir))
-    except OSError as exc:
-        # Non-fatal: commit already succeeded; warn but don't fail.
-        sys.stderr.write(
-            "wip-commit: warning: could not clear wip.md: {0}\n".format(exc)
-        )
+    # --- Clear wip.md (INSTALL root's .devforge/) — TASK and FIX modes only ---
+    # Plan 88 D3 / Trap 4: a FINAL-mode (cold /devforge:fix) run wrote no
+    # wip.md marker (D2 skips the in-fix-window gate that would otherwise
+    # guarantee /devforge:implement has drained), so clearing one here would
+    # destroy another, possibly still-in-flight, /devforge:implement run's
+    # crash-recovery state.  This branch must stay a `not final` guard, never
+    # an unconditional clear.
+    if not final:
+        devforge_dir = workspace.install_root / ".devforge"
+        try:
+            clear_wip_marker(str(devforge_dir))
+        except OSError as exc:
+            # Non-fatal: commit already succeeded; warn but don't fail.
+            sys.stderr.write(
+                "wip-commit: warning: could not clear wip.md: {0}\n".format(exc)
+            )
 
     # --- Emit result JSON ---
     result = {

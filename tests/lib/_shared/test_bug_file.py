@@ -68,7 +68,13 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _shared.bug_file import file_bugs, _slugify, _scan_highest_bug_number  # noqa: E402
+from _shared.bug_file import (  # noqa: E402
+    file_bugs,
+    close_bug,
+    _slugify,
+    _scan_highest_bug_number,
+    _STATUS_LINE_PREFIX,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +620,261 @@ class TestFileBugsEdgeCases(unittest.TestCase):
         self.assertEqual(len(paths), 2)
         for p in paths:
             self.assertTrue(os.path.isfile(p))
+
+
+# ---------------------------------------------------------------------------
+# close_bug (plan 88 D4) -- round-tripped through the real producer
+# (file_bugs), never a hand-authored fixture.
+# ---------------------------------------------------------------------------
+
+
+class TestCloseBug(unittest.TestCase):
+    """close_bug tests build their input via file_bugs -- the SAME writer
+    /devforge:report-bug and /devforge:verify use -- then close it."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.bugs_dir = os.path.join(self.tmp, "bugs")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _file_one(self, **kwargs):
+        """Write one real bug file via file_bugs; return its path."""
+        paths = file_bugs(
+            bugs_dir=self.bugs_dir,
+            issues=[_issue(**kwargs)],
+            feature_spec_path="specs/001-cart/spec.md",
+            date="2026-06-16",
+        )
+        self.assertEqual(len(paths), 1)
+        return paths[0]
+
+    def _set_status(self, bug_path, new_status):
+        """Test-only helper: manually transition Status, mirroring the
+        real manual Open -> In Progress edit storage-rules.md documents
+        (there is no producer that ever writes anything but 'Open')."""
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        content = content.replace(
+            "**Status**: Open", "**Status**: {0}".format(new_status), 1
+        )
+        with open(bug_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+    # --- Happy path: the three fields ---
+
+    def test_status_flipped_to_fixed(self):
+        bug_path = self._file_one()
+        close_bug(bug_path, "2026-08-26", "Root cause: null guard added.")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Status**: Fixed", content)
+        self.assertNotIn("**Status**: Open", content)
+
+    def test_fixed_date_filled(self):
+        bug_path = self._file_one()
+        close_bug(bug_path, "2026-08-26", "Root cause: null guard added.")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Fixed**: 2026-08-26", content)
+
+    def test_fix_notes_replaced(self):
+        bug_path = self._file_one()
+        close_bug(bug_path, "2026-08-26", "Root cause: null guard added.")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("Root cause: null guard added.", content)
+        self.assertNotIn("_Filled in after resolution._", content)
+
+    def test_multiline_fix_notes_preserved(self):
+        bug_path = self._file_one()
+        notes = (
+            "Root cause: cart total was not defaulted.\n"
+            "What changed: added a null-coalescing guard in src/cart.py.\n"
+            "Commit: abc1234."
+        )
+        close_bug(bug_path, "2026-08-26", notes)
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn(notes, content)
+
+    # --- Byte-identity outside the three changed fields ---
+
+    def test_byte_identity_outside_three_fields(self):
+        bug_path = self._file_one()
+        with open(bug_path, encoding="utf-8") as fh:
+            original_lines = fh.read().split("\n")
+
+        close_bug(bug_path, "2026-08-26", "Root cause: null guard added; commit abc1234.")
+
+        with open(bug_path, encoding="utf-8") as fh:
+            new_lines = fh.read().split("\n")
+
+        self.assertEqual(len(original_lines), len(new_lines))
+        diff_indices = [
+            i for i in range(len(original_lines))
+            if original_lines[i] != new_lines[i]
+        ]
+        self.assertEqual(
+            len(diff_indices), 3,
+            "Expected exactly 3 changed lines (Status, Fixed, Fix Notes body); "
+            "got: {0}".format(diff_indices),
+        )
+        for i in diff_indices:
+            self.assertTrue(
+                original_lines[i].startswith("**Status**: ")
+                or original_lines[i].startswith("**Fixed**: ")
+                or original_lines[i] == "_Filled in after resolution._",
+                "Unexpected changed line {0}: {1!r}".format(i, original_lines[i]),
+            )
+
+    # --- Reject already-Fixed / unrecognized Status, WITHOUT writing ---
+
+    def test_already_fixed_exits_and_writes_nothing(self):
+        """Close once (Open -> Fixed), then close AGAIN: the second call
+        must raise and must NOT touch the file further."""
+        bug_path = self._file_one()
+        close_bug(bug_path, "2026-08-26", "First closure.")
+        with open(bug_path, encoding="utf-8") as fh:
+            after_first_close = fh.read()
+
+        with self.assertRaises(ValueError):
+            close_bug(bug_path, "2026-08-27", "Second closure attempt.")
+
+        with open(bug_path, encoding="utf-8") as fh:
+            after_second_attempt = fh.read()
+        self.assertEqual(
+            after_first_close, after_second_attempt,
+            "A rejected close_bug call must write NOTHING",
+        )
+
+    def test_unrecognized_status_rejected_writes_nothing(self):
+        bug_path = self._file_one()
+        self._set_status(bug_path, "Won't Fix")
+        with open(bug_path, encoding="utf-8") as fh:
+            before = fh.read()
+
+        with self.assertRaises(ValueError):
+            close_bug(bug_path, "2026-08-26", "Attempted closure.")
+
+        with open(bug_path, encoding="utf-8") as fh:
+            after = fh.read()
+        self.assertEqual(before, after)
+
+    def test_in_progress_status_accepted(self):
+        bug_path = self._file_one()
+        self._set_status(bug_path, "In Progress")
+        close_bug(bug_path, "2026-08-26", "Root cause found; fix applied.")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Status**: Fixed", content)
+
+    def test_hand_written_fix_notes_rejected_writes_nothing(self):
+        """python-reviewer finding 1: an Open/In Progress bug whose owner
+        already hand-wrote real notes into ## Fix Notes (before this
+        automated close ever ran) must be REJECTED, not silently
+        overwritten -- fail-closed, never clobber hand-written content."""
+        bug_path = self._file_one()
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        content = content.replace(
+            "_Filled in after resolution._",
+            "Investigated manually: root cause is a stale cache entry.",
+            1,
+        )
+        with open(bug_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+        with open(bug_path, encoding="utf-8") as fh:
+            before = fh.read()
+        # Status is still Open -- confirms the rejection is specifically the
+        # placeholder-absent path, not the Status gate.
+        self.assertIn("**Status**: Open", before)
+
+        with self.assertRaises(ValueError):
+            close_bug(bug_path, "2026-08-26", "Automated closure attempt.")
+
+        with open(bug_path, encoding="utf-8") as fh:
+            after = fh.read()
+        self.assertEqual(
+            before, after,
+            "close_bug must not overwrite hand-written Fix Notes content",
+        )
+
+    # --- Input validation ---
+
+    def test_missing_bug_file_raises(self):
+        with self.assertRaises(ValueError):
+            close_bug(
+                os.path.join(self.tmp, "bugs", "999-nonexistent.md"),
+                "2026-08-26",
+                "notes",
+            )
+
+    def test_empty_date_raises(self):
+        bug_path = self._file_one()
+        with self.assertRaises(ValueError):
+            close_bug(bug_path, "", "notes")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Status**: Open", content)
+
+    def test_empty_fix_notes_raises(self):
+        bug_path = self._file_one()
+        with self.assertRaises(ValueError):
+            close_bug(bug_path, "2026-08-26", "")
+        with open(bug_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Status**: Open", content)
+
+    # --- Atomic write hygiene ---
+
+    def test_no_tmp_files_left_after_close(self):
+        bug_path = self._file_one()
+        close_bug(bug_path, "2026-08-26", "notes")
+        entries = os.listdir(self.bugs_dir)
+        tmp_files = [e for e in entries if e.startswith(".tmp-bug-close-")]
+        self.assertEqual(tmp_files, [])
+
+    def test_close_bug_returns_none(self):
+        """close_bug's return value is None -- callers read success by the
+        absence of a raised exception, not a return value."""
+        bug_path = self._file_one()
+        result = close_bug(bug_path, "2026-08-26", "notes")
+        self.assertIsNone(result)
+
+    # --- Anchoring: lookalike text inside prose bodies must not be matched ---
+
+    def test_does_not_match_status_lookalike_inside_description(self):
+        """python-reviewer finding 2: the Description body's lookalike line
+        must itself BEGIN with the literal '**Status**: Open' prefix -- a
+        mid-sentence occurrence never exercises line.startswith() anchoring
+        at all. close_bug must still flip only the REAL header field (first
+        in document order) and leave this prose line byte-unchanged."""
+        lookalike = "**Status**: Open is what our competitor's tracker shows."
+        bug_path = self._file_one(description=lookalike)
+
+        with open(bug_path, encoding="utf-8") as fh:
+            original_lines = fh.read().split("\n")
+        # Sanity: the fixture really does put two lines starting with the
+        # exact same prefix into the file, with the real field first.
+        matching = [i for i, l in enumerate(original_lines)
+                    if l.startswith(_STATUS_LINE_PREFIX)]
+        self.assertEqual(len(matching), 2, "Expected exactly 2 lookalike lines")
+        real_idx, prose_idx = matching[0], matching[1]
+        self.assertEqual(original_lines[real_idx], "**Status**: Open")
+        self.assertEqual(original_lines[prose_idx], lookalike)
+
+        close_bug(bug_path, "2026-08-26", "notes")
+
+        with open(bug_path, encoding="utf-8") as fh:
+            new_lines = fh.read().split("\n")
+        # The FIRST occurrence (the real header field) flipped to Fixed.
+        self.assertEqual(new_lines[real_idx], "**Status**: Fixed")
+        # The SECOND occurrence (the prose lookalike) is byte-unchanged.
+        self.assertEqual(new_lines[prose_idx], lookalike)
 
 
 if __name__ == "__main__":

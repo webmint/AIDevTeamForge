@@ -236,7 +236,13 @@ def _write_wip_md(root):
 
 
 def _make_fake_args(**kwargs):
-    """Return a simple namespace-like object for testing cmd_wip_commit."""
+    """Return a simple namespace-like object for testing cmd_wip_commit.
+
+    final/scope (plan 88 D3 -- final-commit mode): default to False/"" so
+    every PRE-EXISTING call site (which never passes them) is byte-identical
+    -- cmd_wip_commit reads them via getattr(..., default), so an explicit
+    False/"" here and an absent attribute are indistinguishable to it.
+    """
     class _Args:
         pass
     a = _Args()
@@ -245,6 +251,8 @@ def _make_fake_args(**kwargs):
     a.index = kwargs.get("index", "")
     a.number = kwargs.get("number", "")
     a.title = kwargs.get("title", "Define types")
+    a.final = kwargs.get("final", False)
+    a.scope = kwargs.get("scope", "")
     a.root = kwargs.get("root", ".")
     return a
 
@@ -338,6 +346,73 @@ class TestComposeMessage(unittest.TestCase):
         msg_default = _compose_message(False, "", "Do thing", "007", "")
         msg_explicit = _compose_message(False, "", "Do thing", "007", "", fix_mode=False)
         self.assertEqual(msg_default, msg_explicit)
+
+    # --- Final mode (final_mode=True; plan 88 D3, the cold-fix lane) ---
+
+    def test_final_mode_standalone_conventional_commit_shape(self):
+        """Standalone final mode: 'fix(<scope>): <title>' -- no '[WIP]' prefix."""
+        msg = _compose_message(
+            False, "", "null guard", "", "", final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "fix(cart): null guard")
+
+    def test_final_mode_standalone_no_wip_prefix(self):
+        msg = _compose_message(
+            False, "", "null guard", "", "", final_mode=True, scope="cart",
+        )
+        self.assertNotIn("[WIP]", msg)
+        self.assertNotIn("Task", msg)
+
+    def test_final_mode_standalone_with_attribution(self):
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        msg = _compose_message(
+            False, "", "null guard", "", attr, final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "fix(cart): null guard" + attr)
+
+    def test_final_mode_wrapper_keeps_fix_mode_shape(self):
+        """Fork 2 arm (i): wrapper final mode keeps '[TICKET-ID] - <title>'
+        -- IDENTICAL to fix mode's wrapper shape, not 'fix(scope):'."""
+        msg = _compose_message(
+            True, "ABC-99", "null guard", "", "", final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "[ABC-99] - null guard")
+        self.assertNotIn("fix(", msg)
+        self.assertNotIn("Task", msg)
+
+    def test_final_mode_wrapper_branch_name_fallback(self):
+        """Fork 2's accepted cost: a cold wrapper fix on a ticket-less branch
+        (e.g. 'develop') produces '[develop] - <title>' via the SAME
+        _extract_ticket_id fallback fix mode already uses."""
+        msg = _compose_message(
+            True, "develop", "null guard", "", "", final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "[develop] - null guard")
+
+    def test_final_mode_wrapper_with_attribution_suppressed_by_caller(self):
+        """_compose_message itself appends whatever attribution it is given;
+        cmd_wip_commit is what suppresses wrapper attribution (D5) -- this
+        test documents that the composer does not special-case it itself."""
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        msg = _compose_message(
+            True, "ABC-99", "null guard", "", attr, final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "[ABC-99] - null guard" + attr)
+
+    def test_final_mode_takes_priority_over_fix_mode(self):
+        """final_mode=True with fix_mode=True (as cmd_wip_commit always passes,
+        since task_absent implies fix_mode=True) still produces the final shape."""
+        msg = _compose_message(
+            False, "", "null guard", "", "", fix_mode=True, final_mode=True, scope="cart",
+        )
+        self.assertEqual(msg, "fix(cart): null guard")
+
+    def test_final_mode_false_unaffected_by_scope_argument(self):
+        """Passing a non-empty scope with final_mode=False (default) must NOT
+        leak into the fix/task shapes -- scope is final-mode-only."""
+        msg = _compose_message(False, "", "null guard", "", "", fix_mode=True, scope="cart")
+        self.assertEqual(msg, "[WIP] fix: null guard")
+        self.assertNotIn("cart", msg)
 
 
 # ---------------------------------------------------------------------------
@@ -1772,6 +1847,552 @@ class TestCmdWipCommitMixedMode(unittest.TestCase):
         self.assertEqual(rc, EXIT_ERR)
         self.assertIn("mixed mode", err)
         self.assertIn("--task-file", err)
+
+
+# ---------------------------------------------------------------------------
+# Final mode integration tests — standalone (plan 88 D3, cold-fix lane)
+# ---------------------------------------------------------------------------
+
+
+class TestCmdWipCommitFinalModeStandalone(unittest.TestCase):
+    """Integration tests for cmd_wip_commit final mode in a standalone repo.
+
+    Final mode: --files + --title + --final + --scope present; --task-file,
+    --index, --number all absent.  Expected: stage only touched files,
+    message "fix(<scope>): <title>", exit 0, wip.md is LEFT IN PLACE
+    (the critical Trap-4 divergence from task/fix mode).
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root, _ = _init_git_repo(self.tmpdir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stage_file(self, relpath, content="# fix\n"):
+        full = self.root / relpath
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(content)
+        env = _git_env()
+        subprocess.run(
+            ["git", "add", "--", str(full)],
+            cwd=str(self.root), capture_output=True, env=env, check=True,
+        )
+        return relpath
+
+    def test_final_mode_standalone_message_format(self):
+        """Standalone final mode: message is 'fix(<scope>): <title>'."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/cart.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/cart.py"]),
+            task_file="", index="", number="",
+            title="null cart total guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertEqual(msg, "fix(cart): null cart total guard")
+
+    def test_final_mode_standalone_no_wip_prefix(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/cart.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/cart.py"]),
+            task_file="", index="", number="",
+            title="null cart total guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertNotIn("[WIP]", msg)
+        self.assertNotIn("Task", msg)
+
+    def test_final_mode_standalone_stages_only_touched_files(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+        self._stage_file("src/b.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py", "src/b.py"]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        committed = _git_log_name_only(self.root)
+        self.assertIn("src/a.py", committed)
+        self.assertIn("src/b.py", committed)
+        for cf in committed:
+            self.assertNotIn("tasks", cf)
+            self.assertNotIn("README", cf)
+
+    def test_final_mode_standalone_with_attribution(self):
+        """Final mode standalone: attribution IS appended (same rule as fix/task)."""
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        _write_project_config(self.root, workspace_mode="standalone",
+                              commit_attribution=attr)
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        expected = "fix(cart): null guard" + attr
+        self.assertEqual(msg, expected)
+
+    def test_final_mode_standalone_exit_ok_json_output(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        import io
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            args = _make_fake_args(
+                files=json.dumps(["src/a.py"]),
+                task_file="", index="", number="",
+                title="null guard",
+                final=True, scope="cart",
+                root=str(self.root),
+            )
+            rc = cmd_wip_commit(args)
+        finally:
+            output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+
+        self.assertEqual(rc, EXIT_OK)
+        result = json.loads(output.strip())
+        self.assertTrue(result["committed"])
+        self.assertIsInstance(result["head_sha"], str)
+        self.assertGreater(len(result["head_sha"]), 0)
+        self.assertEqual(result["message"], "fix(cart): null guard")
+
+    def test_final_mode_standalone_wip_md_NOT_cleared(self):
+        """CRITICAL (Trap 4): --final must NOT clear .devforge/wip.md.
+
+        A cold run wrote no marker; clearing one it did not write would
+        destroy /devforge:implement's crash-recovery state.
+        """
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        wip_path = self.root / ".devforge" / "wip.md"
+        self.assertTrue(wip_path.exists(), "wip.md must exist before commit")
+        self._stage_file("src/a.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertTrue(
+            wip_path.exists(),
+            "wip.md must be LEFT IN PLACE after a --final commit (plan 88 D3 Trap 4)",
+        )
+        # Content must be untouched too -- not merely present but reset/rewritten.
+        self.assertIn("WIP Marker", wip_path.read_text())
+
+    def test_final_mode_standalone_unrelated_file_stays_uncommitted(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        dirty = self.root / "src" / "unrelated.py"
+        dirty.write_text("# not part of this fix\n")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+
+        committed = _git_log_name_only(self.root)
+        for cf in committed:
+            self.assertNotIn("unrelated", cf)
+
+    def test_final_mode_empty_files_returns_exit_findings(self):
+        """python-reviewer finding 5: a valid --final --scope x combination
+        with --files '[]' has nothing to stage (final mode is task-less, so
+        there is no task_file/index fallback either) -- it falls through to
+        the SAME shared nothing-to-commit git-level guard the generic
+        test_nothing_to_commit_returns_exit_findings test exercises for task
+        mode: git commit fails, and the helper surfaces EXIT_FINDINGS
+        rather than swallowing the error."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+
+        import io
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            args = _make_fake_args(
+                files=json.dumps([]),
+                task_file="", index="", number="",
+                title="null guard",
+                final=True, scope="x",
+                root=str(self.root),
+            )
+            rc = cmd_wip_commit(args)
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+
+        self.assertEqual(rc, EXIT_FINDINGS)
+        self.assertTrue(len(err.strip()) > 0)
+        # wip.md must still be left in place even on this failure path --
+        # the clear only happens after a successful commit, and this run
+        # never reaches it.
+        self.assertTrue((self.root / ".devforge" / "wip.md").exists())
+
+
+# ---------------------------------------------------------------------------
+# Final mode integration tests — wrapper (plan 88 D3, cold-fix lane)
+# ---------------------------------------------------------------------------
+
+
+class TestCmdWipCommitFinalModeWrapper(unittest.TestCase):
+    """Integration tests for cmd_wip_commit final mode in wrapper layout.
+
+    Final mode wrapper: stage ONLY source touched_files in the SOURCE repo;
+    message "[TICKET-ID] - <title>" (fork 2 arm (i) -- SAME shape as fix
+    mode, NOT "fix(scope):"); attribution suppressed (D5 traceless); wip.md
+    in the INSTALL root is LEFT IN PLACE (Trap 4).
+    """
+
+    def setUp(self):
+        self.install_tmpdir = tempfile.mkdtemp()
+        self.install_root = Path(self.install_tmpdir)
+        self.source_name = "src-repo"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.install_tmpdir, ignore_errors=True)
+
+    def _setup_wrapper_final(self, source_branch="bugfix/ABC-123", attribution=""):
+        source_dir = _init_source_repo(
+            self.install_root, self.source_name, source_branch
+        )
+        _write_project_config(
+            self.install_root,
+            workspace_mode="wrapper",
+            commit_attribution=attribution,
+            project_root=self.source_name,
+        )
+        _write_wip_md(self.install_root)
+        return source_dir
+
+    def _stage_source_file(self, source_dir, relpath, content="// fix\n"):
+        full = source_dir / relpath
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(content)
+        env = _git_env()
+        subprocess.run(
+            ["git", "add", "--", str(full)],
+            cwd=str(source_dir), capture_output=True, env=env, check=True,
+        )
+        return relpath
+
+    def test_final_mode_wrapper_keeps_fix_mode_message_shape(self):
+        """Fork 2 arm (i): wrapper final mode is '[TICKET-ID] - <title>',
+        NOT 'fix(scope): <title>'."""
+        source_dir = self._setup_wrapper_final("bugfix/ABC-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertEqual(msg, "[ABC-456] - null guard")
+        self.assertNotIn("fix(", msg)
+
+    def test_final_mode_wrapper_branch_without_ticket_full_branch_fallback(self):
+        """Fork 2's accepted cost: a cold wrapper fix on a ticket-less branch
+        produces '[<full-branch-name>] - <title>'."""
+        source_dir = self._setup_wrapper_final("develop-no-ticket")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertEqual(msg, "[develop-no-ticket] - null guard")
+
+    def test_final_mode_wrapper_stages_only_source_files(self):
+        source_dir = self._setup_wrapper_final("bugfix/ABC-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+
+        committed = _git_log_name_only(source_dir)
+        self.assertIn(src_file, committed)
+        for cf in committed:
+            self.assertNotIn("tasks", cf)
+            self.assertNotIn("specs", cf)
+
+    def test_final_mode_wrapper_no_attribution_d5(self):
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        source_dir = self._setup_wrapper_final("bugfix/ABC-456", attribution=attr)
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertNotIn("Co-Authored-By", msg)
+        self.assertEqual(msg, "[ABC-456] - null guard")
+
+    def test_final_mode_wrapper_wip_md_NOT_cleared_in_install_root(self):
+        """CRITICAL (Trap 4), wrapper arm: --final must NOT clear the INSTALL
+        root's .devforge/wip.md."""
+        source_dir = self._setup_wrapper_final("bugfix/ABC-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        wip_path = self.install_root / ".devforge" / "wip.md"
+        self.assertTrue(wip_path.exists())
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="cart",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertTrue(
+            wip_path.exists(),
+            "wip.md must be LEFT IN PLACE after a wrapper --final commit (Trap 4)",
+        )
+
+    def test_final_mode_wrapper_commit_lands_in_source_repo(self):
+        source_dir = self._setup_wrapper_final("bugfix/ABC-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        import io
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            args = _make_fake_args(
+                files=json.dumps([src_file]),
+                task_file="", index="", number="",
+                title="null guard",
+                final=True, scope="cart",
+                root=str(self.install_root),
+            )
+            rc = cmd_wip_commit(args)
+        finally:
+            output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+
+        self.assertEqual(rc, EXIT_OK)
+        result = json.loads(output.strip())
+        actual_source_sha = _git_head_sha(source_dir)
+        self.assertEqual(result["head_sha"], actual_source_sha)
+
+
+# ---------------------------------------------------------------------------
+# --final / --scope all-or-none rejection (plan 88 D3)
+# ---------------------------------------------------------------------------
+
+
+class TestFinalScopeAllOrNone(unittest.TestCase):
+    """--final requires --scope; --scope is rejected without --final;
+    --final is rejected together with the task triple."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root, _ = _init_git_repo(self.tmpdir)
+        _write_project_config(self.root, workspace_mode="standalone")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _run(self, **kwargs):
+        import io
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            args = _make_fake_args(**kwargs, root=str(self.root))
+            rc = cmd_wip_commit(args)
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+        return rc, err
+
+    def test_final_without_scope_rejected(self):
+        rc, err = self._run(
+            files=json.dumps([]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("--scope", err)
+        self.assertIn("--final", err)
+
+    def test_scope_without_final_rejected(self):
+        rc, err = self._run(
+            files=json.dumps([]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=False, scope="cart",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("--scope", err)
+        self.assertIn("--final", err)
+
+    def test_final_with_task_triple_rejected(self):
+        """--final combined with the task triple is rejected (final mode is
+        task-less by construction)."""
+        rc, err = self._run(
+            files=json.dumps([]),
+            task_file="tasks/001.md", index="tasks/README.md", number="001",
+            title="null guard",
+            final=True, scope="cart",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("--final", err)
+
+    def test_final_true_scope_empty_string_treated_as_missing(self):
+        """An empty --scope value (not merely an absent flag) is treated as
+        missing -- '' is falsy, matching the file's existing all-or-none
+        convention for the task triple."""
+        rc, err = self._run(
+            files=json.dumps([]),
+            task_file="", index="", number="",
+            title="null guard",
+            final=True, scope="",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("--scope is required when --final is passed", err)
+
+
+# ---------------------------------------------------------------------------
+# Unchanged-behavior regression: task and fix modes still compose their
+# existing messages after the final-mode extension (plan 88 Phase 1 verify).
+# ---------------------------------------------------------------------------
+
+
+class TestUnchangedBehaviorAfterFinalModeExtension(unittest.TestCase):
+    """A dedicated regression class (on top of the pre-existing task/fix
+    tests above, which are themselves unedited) proving the two shipped
+    modes are byte-identical after the final-mode extension: neither mode
+    ever sees --final/--scope, and cmd_wip_commit's new final/scope reads
+    default to False/"" via getattr, so these calls behave exactly as they
+    did before Deliverable 1 landed."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root, _ = _init_git_repo(self.tmpdir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_task_mode_message_unchanged(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        env = _git_env()
+        for name in ("tasks/001-define-types.md", "tasks/README.md"):
+            f = self.root / name
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("# content\n")
+            subprocess.run(["git", "add", "--", str(f)], cwd=str(self.root),
+                          capture_output=True, env=env, check=True)
+
+        args = _make_fake_args(
+            files=json.dumps([]),
+            task_file="tasks/001-define-types.md",
+            index="tasks/README.md",
+            number="001",
+            title="Define types",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertEqual(msg, "[WIP] task: Define types (Task 001)")
+        # wip.md must still be cleared -- task mode is unaffected by Deliverable 1.
+        self.assertFalse((self.root / ".devforge" / "wip.md").exists())
+
+    def test_fix_mode_message_unchanged(self):
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        f = self.root / "src" / "a.py"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("# fix\n")
+        env = _git_env()
+        subprocess.run(["git", "add", "--", str(f)], cwd=str(self.root),
+                      capture_output=True, env=env, check=True)
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="", index="", number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertEqual(msg, "[WIP] fix: null guard")
+        # wip.md must still be cleared -- fix mode is unaffected by Deliverable 1.
+        self.assertFalse((self.root / ".devforge" / "wip.md").exists())
 
 
 if __name__ == "__main__":

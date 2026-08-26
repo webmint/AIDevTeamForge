@@ -5,6 +5,17 @@ than /verify can file bugs with a custom Source field.
 
 Public surface
 --------------
+  close_bug(bug_file_path, date, fix_notes) -> None
+      Plan 88 D4 -- the cold-fix lane's single bugs/ write.  Flips exactly
+      the ONE named bug file's own **Status**: line from Open/In Progress to
+      Fixed, fills its empty **Fixed**: line with date, and replaces its
+      ## Fix Notes placeholder body with fix_notes.  Every other byte is
+      preserved.  Raises ValueError (writing NOTHING) if the file is
+      missing, if date/fix_notes is empty, or if the file's own Status is
+      not Open/In Progress (already Fixed, or unrecognized).  Atomic write
+      (mkstemp + os.replace), matching file_bugs's convention.  See the
+      close_bug docstring below for the full contract.
+
   file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify")
       -> list[str]
 
@@ -330,3 +341,153 @@ def file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify"):
         written.append(out_path)
 
     return written
+
+
+# ---------------------------------------------------------------------------
+# close_bug (plan 88 D4 -- the cold-fix lane's single bugs/ write)
+# ---------------------------------------------------------------------------
+
+_STATUS_LINE_PREFIX = "**Status**: "
+_FIXED_LINE_PREFIX = "**Fixed**: "
+_FIX_NOTES_HEADING = "## Fix Notes"
+_FIX_NOTES_PLACEHOLDER = "_Filled in after resolution._"
+_CLOSABLE_STATUSES = ("Open", "In Progress")
+
+
+def close_bug(bug_file_path, date, fix_notes):
+    # type: (str, str, str) -> None
+    """Flip a single bug file's own Status to Fixed (plan 88 D4).
+
+    Mutates exactly three fields in bug_file_path; every other byte is
+    preserved:
+      1. **Status**: Open | In Progress  ->  **Status**: Fixed
+      2. the empty **Fixed**:  line      ->  **Fixed**: <date>
+      3. the ## Fix Notes placeholder body ("_Filled in after resolution._")
+         -> fix_notes
+
+    Anchoring: each field is located by its OWN line start
+    (`**Status**: `, `**Fixed**: `) or by the `## Fix Notes` heading plus its
+    known literal placeholder body -- never by a substring match, so
+    lookalike text legitimately appearing inside `## Description` /
+    `## Evidence` prose is never mistaken for the bug's own fields.
+
+    Parameters
+    ----------
+    bug_file_path : str
+        Path to the bugs/NNN-*.md file to close (the ONE file a caller such
+        as cold-mode /devforge:fix was handed).
+    date : str
+        YYYY-MM-DD.  REQUIRED -- the caller supplies it; this function never
+        calls the clock (matches file_bugs's convention).
+    fix_notes : str
+        Root cause / what changed / the commit SHA -- replaces the Fix
+        Notes placeholder body verbatim.  May contain embedded newlines.
+
+    Raises
+    ------
+    ValueError
+        - date or fix_notes is empty
+        - bug_file_path does not exist (or is not a regular file)
+        - the file's own Status is not "Open" or "In Progress" (already
+          Fixed, or an unrecognized value) -- rejected WITHOUT writing
+        - the file has no **Status**: line or no **Fixed**: line (a
+          malformed or foreign file) -- rejected WITHOUT writing
+        - the ## Fix Notes body is no longer the placeholder -- hand-edited
+          (an Open/In Progress bug whose owner already wrote real notes
+          before this automated close ever ran) or previously closed --
+          rejected WITHOUT writing, so hand-written content is never
+          silently overwritten
+
+    On success the file is atomically replaced (tempfile.mkstemp +
+    os.replace), matching file_bugs's atomic-write convention.
+    """
+    if not date:
+        raise ValueError("close_bug: date is required")
+    if not fix_notes:
+        raise ValueError("close_bug: fix_notes is required")
+    if not os.path.isfile(bug_file_path):
+        raise ValueError(
+            "close_bug: bug file not found: {0}".format(bug_file_path)
+        )
+
+    with open(bug_file_path, "r", encoding="utf-8") as fh:
+        content = fh.read()
+    lines = content.split("\n")
+
+    status_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith(_STATUS_LINE_PREFIX):
+            status_idx = i
+            break
+    if status_idx is None:
+        raise ValueError(
+            "close_bug: no **Status**: line found in {0}".format(bug_file_path)
+        )
+
+    current_status = lines[status_idx][len(_STATUS_LINE_PREFIX):].strip()
+    if current_status not in _CLOSABLE_STATUSES:
+        raise ValueError(
+            "close_bug: {0} has Status '{1}' (expected Open or In Progress) "
+            "-- already closed or unrecognized, refusing to write".format(
+                bug_file_path, current_status
+            )
+        )
+
+    fixed_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith(_FIXED_LINE_PREFIX):
+            fixed_idx = i
+            break
+    if fixed_idx is None:
+        raise ValueError(
+            "close_bug: no **Fixed**: line found in {0}".format(bug_file_path)
+        )
+
+    heading_idx = None
+    for i, line in enumerate(lines):
+        if line == _FIX_NOTES_HEADING:
+            heading_idx = i
+            break
+    if heading_idx is None:
+        raise ValueError(
+            "close_bug: no '## Fix Notes' section found in {0}".format(
+                bug_file_path
+            )
+        )
+
+    placeholder_idx = None
+    for i in range(heading_idx + 1, len(lines)):
+        if lines[i] == _FIX_NOTES_PLACEHOLDER:
+            placeholder_idx = i
+            break
+    if placeholder_idx is None:
+        raise ValueError(
+            "close_bug: '## Fix Notes' body in {0} is no longer the "
+            "placeholder -- hand-edited (real notes already written) or "
+            "previously closed -- refusing to overwrite it".format(
+                bug_file_path
+            )
+        )
+
+    lines[status_idx] = _STATUS_LINE_PREFIX + "Fixed"
+    lines[fixed_idx] = _FIXED_LINE_PREFIX + date
+    lines[placeholder_idx] = fix_notes
+
+    new_content = "\n".join(lines)
+
+    out_dir = os.path.dirname(bug_file_path) or "."
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=".tmp-bug-close-",
+        suffix=".md",
+        dir=out_dir,
+    )
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            fh.write(new_content)
+        os.replace(tmp_path, bug_file_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

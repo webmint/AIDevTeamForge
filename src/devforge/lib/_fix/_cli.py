@@ -17,6 +17,11 @@ Verbs (Phase 2, plan 83 D5):
   write-seed        — build + write fix-seed.json (scope-change backward
                       re-entry arm, target_stage="spec" fixed)
 
+Verbs (plan 88 Phase 1, D4):
+  close-bug         — flip a bugs/NNN-*.md file's own Status to Fixed
+                      (cold mode's single bugs/ write; owned by
+                      _shared.bug_file.close_bug)
+
 OQ decisions recorded in _fix/__init__.py and the individual submodules:
   OQ-1 persisted findings     → _findings.py
   OQ-2 narrow finding scope   → _scope.py
@@ -279,6 +284,52 @@ def cmd_write_seed(args):
     return 0
 
 
+def cmd_close_bug(args):
+    # type: (argparse.Namespace) -> int
+    """Flip a bugs/NNN-*.md file's own Status to Fixed (plan 88 D4).
+
+    Cold-mode /devforge:fix's single bugs/ write: after PHASE 6's hard gate
+    approves and the commit lands, this flips exactly the ONE bug file it
+    was handed -- Status -> Fixed, the empty Fixed: line -> --date, and the
+    Fix Notes placeholder -> --fix-notes.  Every other byte of the file is
+    preserved (owned by _shared.bug_file.close_bug -- helper-owns-shape).
+
+    Returns 0 on success (prints {"closed": true, "bug_file": ...} JSON to
+    stdout).  Returns 2 on a missing/empty required argument, a missing bug
+    file, or a bug file whose Status is not Open/In Progress (already
+    closed, or unrecognized) -- rejected WITHOUT writing.
+    """
+    from _shared.bug_file import close_bug
+
+    bug_file = getattr(args, "bug_file", None) or ""
+    date = getattr(args, "date", None) or ""
+    fix_notes = getattr(args, "fix_notes", None) or ""
+
+    if not bug_file:
+        sys.stderr.write("fix_helper close-bug: --bug-file is required\n")
+        return 2
+    if not date:
+        sys.stderr.write("fix_helper close-bug: --date is required\n")
+        return 2
+    if not fix_notes:
+        sys.stderr.write("fix_helper close-bug: --fix-notes is required\n")
+        return 2
+
+    try:
+        close_bug(bug_file, date, fix_notes)
+    except ValueError as exc:
+        sys.stderr.write("fix_helper close-bug: {0}\n".format(exc))
+        return 2
+
+    sys.stdout.write(
+        json.dumps(
+            {"closed": True, "bug_file": bug_file}, indent=2, sort_keys=True
+        )
+        + "\n"
+    )
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Registry + parser construction
 # ---------------------------------------------------------------------------
@@ -331,6 +382,16 @@ _SUBCOMMAND_REGISTRY = [
         "Build + write fix-seed.json (scope-change backward re-entry arm; "
         "target_stage=\"spec\" fixed — plan 83 D2).",
         cmd_write_seed,
+    ),
+    (
+        "close-bug",
+        (
+            "Flip the ONE named bugs/NNN-*.md file's own Status to Fixed "
+            "after cold-mode /devforge:fix's commit lands (plan 88 D4 — the "
+            "single bugs/ write). Rejects a file whose Status is not "
+            "Open/In Progress — exits 2, writes nothing."
+        ),
+        cmd_close_bug,
     ),
 ]
 
@@ -492,6 +553,37 @@ def _register_subcommands(subparsers):
                     "JSON array string of prior finding descriptions "
                     "carried forward (each multi-item bounce item's own "
                     "reasoning, per plan 83 OQ-4). Default: '[]'."
+                ),
+            )
+
+        elif verb == "close-bug":
+            sp.add_argument(
+                "--bug-file",
+                required=True,
+                dest="bug_file",
+                metavar="PATH",
+                help=(
+                    "Path to the bugs/NNN-*.md file to close (the ONE file "
+                    "cold mode was handed)."
+                ),
+            )
+            sp.add_argument(
+                "--date",
+                required=True,
+                metavar="YYYY-MM-DD",
+                help=(
+                    "Resolution date. REQUIRED — the caller supplies it; "
+                    "this verb never calls the clock."
+                ),
+            )
+            sp.add_argument(
+                "--fix-notes",
+                required=True,
+                dest="fix_notes",
+                metavar="TEXT",
+                help=(
+                    "Root cause / what changed / the commit SHA — replaces "
+                    "the Fix Notes placeholder body verbatim."
                 ),
             )
 
