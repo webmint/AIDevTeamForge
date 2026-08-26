@@ -1427,6 +1427,37 @@ Scope, in `src/devforge/lib/_grill/_cli.py`:
 
 ---
 
+### Recorded debt — `_grill/` test infrastructure *(2026-08-26, NOT owned by any phase here)*
+
+Two review findings were deliberately DEFERRED during Phases 2/2b because both are test
+infrastructure and both belong to ONE split rather than to whichever diff happened to
+surface them. Recorded together so they do not survive as two forgotten threads:
+
+1. **Two duplicated `_finding()` fixture helpers** across `tests/lib/_grill/test_cli.py` and
+   `tests/lib/_grill/test_cli_phase1_wiring.py`, with different signatures. If the finding
+   shape ever gains or loses a required key, both copies need updating in lockstep and
+   nothing enforces it.
+2. **`test_cli_phase1_wiring.py` crossed 600 lines** as a direct consequence of Phase 2b's
+   own fix set adding tests to it — the reviewer flagged it rather than restructuring tests
+   beyond what was asked, which was the right call.
+
+**Also recorded, and NOT this plan's to fix:** `_audit/_cli.py`'s `cmd_merge_passes` carries
+the IDENTICAL non-dict-element crash that Phase 2b fixed in the grill copy — it was
+inherited from the pattern grill mirrored. Repairing it inside this plan's commits would
+hide it from whoever owns `/devforge:audit`.
+
+**And a stale instruction surfaced while dispatching this plan's build:**
+`.claude/agents/python-engineer.md` tells every dispatched engineer to read
+`src/devforge/lib/wizard_render.py` as a conventions model (DELETED by plan 30), claims the
+live helpers are stubs whose originals sit in `.vault/devforge/lib/` (that directory does
+NOT exist; the helpers are 1300–1400 lines), and exempts two deleted files from its
+module-split thresholds while citing a completed plan for a pending removal. **The threshold
+rule ITSELF is not the stale part** — Phase 2b's process finding stands on it — but the
+surrounding context misinforms every `python-engineer` dispatch. Maintainer-side file, not
+emitted to consumers. Reported to the maintainer 2026-08-26; disposition not yet given.
+
+---
+
 ### Phase 3 — `main.md` rewiring: auto-accept-clean
 
 **Route: instruction-author → instruction-reviewer + claude-code-guide** (this file ships
