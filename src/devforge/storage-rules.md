@@ -216,7 +216,7 @@ verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 tria
 summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
 finalize     → squashes WIP commits + surgical docs/ updates via tech-writer
 report-bug   → creates bugs/NNN-description.md
-fix          → writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/NNN-name/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two (no bugs/ files written either way)
+fix          → FEATURE lane: writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/NNN-name/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the verdict gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two. COLD lane (typed with a bugs/NNN-*.md argument): writes a clean fix(scope): commit AND flips that ONE bug file to Fixed; its bounce recommends /devforge:research, writes no seed, and leaves the bug Open. Creates no bugs/ file in either lane
 audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
 
@@ -380,7 +380,8 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 - report-bug — standalone manual bug reporting
 
 ### How Bug Files Are Resolved
-- Manual: the user edits `**Status**: Fixed` after resolving the issue (the `Open → In Progress → Fixed` lifecycle is not driven by any command)
+- Manual: the user edits `**Status**: Fixed` after resolving the issue — the ordinary path, and the only one for a bug nobody routes through a command
+- `/devforge:fix` cold lane: `/devforge:fix bugs/NNN-<slug>.md` flips that ONE file to `Fixed` itself — filling the `**Fixed**:` date and the `## Fix Notes` body — once its remediation passes the gates. It never creates a bug file and never touches a bug file it was not handed; hand-written `## Fix Notes` are never overwritten (it refuses the close instead)
 - Re-running `/devforge:verify` re-proves the ACs against the remediated diff
 
 ## Cleanup Rules

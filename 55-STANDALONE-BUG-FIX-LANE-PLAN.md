@@ -1,6 +1,22 @@
 # 55 — Standalone Bug-Fix Lane
 
-**Status**: DEFERRED (analysis captured, NOT started — no code) — 2026-07-10 on `develop-2.0-init`
+> **⚠ SUPERSEDED 2026-08-26 by `88-COLD-FIX-BUGS-LANE-PLAN.md`, which BUILT this lane (Phases 0–4; Phase 5 consumer e2e NOT run).** Do not build from this file, and do not treat its `## Open decisions` as open. **It is retained because its analysis is the reasoning plan 88 rests on and its divergences are the record of what plan 88 did NOT build.**
+>
+> **How plan 88 answered this file's four open decisions:**
+>
+> - **D-command-surface → Option 1** (overload `/devforge:fix` with a cold entry), this file's own lowest-churn recommendation. No sibling command; Option 2's proliferation smell was not spent.
+> - **D-batch → single**, matching this file's lean. One bug file per run; batch drain is an explicit non-goal.
+> - **D-writeback → AUTOMATIC, which is the OPPOSITE of this file's lean.** This file leaned manual to preserve plan 26 D4; plan 88 ratified the flip (`fix_helper close-bug` fills `**Status**`, `**Fixed**:` and `## Fix Notes` after the hard gate). Plan 26 D4 was amended in place the same day, narrowly — the CREATION ban survives absolutely; only the close moved. The deciding evidence this file lacked: `bugs/` had **no consumer at all**, so the lifecycle had a producer, a status field, and nothing that ever advanced it.
+> - **D-diagnosis-agent → inline code-read ONLY.** Plan 88 shipped the mandatory confirm-against-live-code step (a bug FILE is a capture, not a confirmation) with a hard STOP when the defect cannot be located. **It did NOT build the `runtime-debugger` escalation arm this file proposed** — that half is unbuilt and unclaimed.
+>
+> **⚠ Two things this file designed that plan 88 did NOT build — do not read them as shipped:**
+>
+> 1. **The CBM blast-radius tripwire** (`## Candidate shape` step 3). Plan 88's bounce is the defect-repair-vs-change triage, a judgment classification — **not** a caller/cross-layer measurement, and there is no numeric bound anywhere in the lane (plan 88 ratified "no numeric scope cap" deliberately, since file count is a proxy for the wrong quantity). This file's "fails toward rigor" mechanism does not exist.
+> 2. **Decoupled standalone firing of stage-coupled floor gates** (`## The load-bearing design principle`, coupling caveat). Plan 88 sidestepped this rather than solving it: the cold lane runs the CODE gates that were never stage-coupled (scope-aware verify + self-repair, the four-reviewer panel, the forcing-functions gate, the human hard gate), and simply has no design-anchor or AC gate to fire because it has no feature. **The general decoupling problem this file names is still open.**
+>
+> **⚠ The revival trigger was NOT satisfied as written.** This file demanded instrumentation first — 3–4 bugs with file counts, gated-surface hits, and reviewer-count evidence. **No such measurement was ever taken.** Plan 88 was authorized by a maintainer statement on 2026-08-25 that the friction was already observed, plus the separately verified no-consumer finding. That is a weaker evidentiary base than this file asked for, and plan 88 records it as such — **a future session must not cite plan 88 as proof that the middle band was measured.**
+
+**Status**: SUPERSEDED — built by plan 88 on 2026-08-26 (see the note above). Previously: DEFERRED (analysis captured, NOT started — no code) — 2026-07-10 on `develop-2.0-init`
 **Author basis**: competitive-landscape review (Spec Kit / BMAD / Kiro / Task Master / Agent OS / Cline-Roo / AIDLC) → scope-adaptive-depth discussion → narrowed to the bug-fix middle band.
 
 ## Why this exists

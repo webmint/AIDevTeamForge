@@ -1,6 +1,8 @@
 # 88 — The cold-fix lane: `bugs/NNN-*.md` becomes the third `/devforge:fix` findings source
 
-**Status:** **Phase 0 RATIFIED 2026-08-26 by the maintainer — D1–D7 and OQ-1–OQ-7 all decided, every item AS RECOMMENDED, nothing left open.** The three named forks were picked explicitly: **D3 = fork 1 (a)** (extend `implement_helper wip-commit` with a final-commit mode) **+ fork 2 (i)** (wrapper keeps `[TICKET-ID] - <title>`, the `[develop] - <title>` fallback string seen and accepted); **D4 = (b)** the `close-bug` helper verb over a new `_shared/bug_file.py` function, so **Phase 1 carries TWO deliverables**; **D6 = reading (i)** — the rubric lives in `src/CLAUDE.md`, `/devforge:report-bug` Rule 8 stays byte-unchanged and gains no forward pointer. **Phases 1–4 are CLEARED for build. Phase 5 remains the user-driven consumer e2e HARD GATE and has NOT run** — everything built will be build-verified, NOT consumer-validated. Every counter-argument recorded before ratification survives verbatim; see `## Phase 0 ratification record`.
+**Status:** **Phase 0 RATIFIED 2026-08-26 by the maintainer — D1–D7 and OQ-1–OQ-7 all decided, every item AS RECOMMENDED, nothing left open.** The three named forks were picked explicitly: **D3 = fork 1 (a)** (extend `implement_helper wip-commit` with a final-commit mode) **+ fork 2 (i)** (wrapper keeps `[TICKET-ID] - <title>`, the `[develop] - <title>` fallback string seen and accepted); **D4 = (b)** the `close-bug` helper verb over a new `_shared/bug_file.py` function, so **Phase 1 carries TWO deliverables**; **D6 = reading (i)** — the rubric lives in `src/CLAUDE.md`, `/devforge:report-bug` Rule 8 stays byte-unchanged and gains no forward pointer. **Phases 1–4 are ✅ DONE (build) 2026-08-26** — Phase 1 `92592c5`, Phase 2 `bf0c4b9`, Phase 3 `7ec8f69`, Phase 4 the docs commit this line rides in. **Phase 5 remains the user-driven consumer e2e HARD GATE and has NOT run** — everything built is build-verified, NOT consumer-validated. Every counter-argument recorded before ratification survives verbatim; see `## Phase 0 ratification record`.
+
+⚠ **This plan SUPERSEDES `55-STANDALONE-BUG-FIX-LANE-PLAN.md`** (DEFERRED 2026-07-10), which designed this same lane and which this plan's own sweep list did NOT name — it was found by Phase 4's `bugs/` sweep and marked superseded 2026-08-26. Two things plan 55 designed are **NOT built** (its CBM blast-radius tripwire; decoupled standalone firing of stage-coupled floor gates), and **its instrumentation trigger — 3–4 measured bugs — was never satisfied**. Read its note before citing this plan as evidence about the middle band.
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-25.
 
@@ -795,6 +797,26 @@ assumption are all **ratified as costs, not discharged as concerns.**
 
 **Phases 1–4 are CLEARED for build. Phase 5 has NOT run.**
 
+### Review outcomes that resolved WITHOUT a change *(recorded 2026-08-26)*
+
+Two review findings were raised during the build, judged correct, and closed with no edit. **They
+are recorded because an unrecorded no-change outcome is indistinguishable from an unnoticed
+finding**, and a later reviewer would otherwise raise each again.
+
+1. **claude-code-guide, Phase 3 — a `CLAUDE.md` instruction to run a Bash check is MODEL-FOLLOWED,
+   not guaranteed.** The offer's arm 1 tells the model to verify the window with
+   `fix_helper in-fix-window`, and nothing in Claude Code enforces that it actually does.
+   **Accepted, no change.** The offer is model judgment by design (D6's own honest bound says so),
+   the fail-closed clause is already present — any non-zero result, helper-unavailable included,
+   is treated as not-in-window — and the mechanical net is D5's in-command bounce, which runs
+   inside the command where a helper call IS deterministic. **Making the rubric enforceable would
+   mean a gate, which D6 explicitly refuses.**
+2. **Phase-3 nit — arm 3's "in or out of window" wording.** Flagged as possibly loose.
+   **Accepted as-is, no change.** Arm 3 is the change-not-a-repair route, and its correctness is
+   genuinely window-independent: a behavior or architecture change needs the full chain whether or
+   not a feature happens to be open. Narrowing the clause would have implied a window condition
+   that does not exist.
+
 ---
 
 ## Phases
@@ -844,7 +866,7 @@ lead to different builds. **All four were picked — see the record above:**
 
 ---
 
-### Phase 1 — The commit mode *(the ONLY Python phase)*
+### Phase 1 — The commit mode *(the ONLY Python phase)* — ✅ DONE 2026-08-26 (`92592c5`)
 
 **Route: python-engineer → python-reviewer, test-first.** No `.claude/`-shipping file changes
 here, so no claude-code-guide pass is owed by this phase.
@@ -896,7 +918,7 @@ other line is byte-identical.
 
 ---
 
-### Phase 2 — `src/commands/fix/` — the cold-mode arm
+### Phase 2 — `src/commands/fix/` — the cold-mode arm — ✅ DONE 2026-08-26 (`bf0c4b9`)
 
 **Route: instruction-author → instruction-reviewer + claude-code-guide.** `main.md` ships into
 `.claude/commands/devforge/` and this phase touches its frontmatter, so the integration pass is
@@ -959,7 +981,7 @@ file contradicts itself.
 
 ---
 
-### Phase 3 — `src/CLAUDE.md` + the catalog + the `report-bug` reconciliation
+### Phase 3 — `src/CLAUDE.md` + the catalog + the `report-bug` reconciliation — ✅ DONE 2026-08-26 (`7ec8f69`)
 
 **Route: instruction-author → instruction-reviewer + claude-code-guide** (`src/CLAUDE.md` ships
 as the consumer's root `CLAUDE.md`).
@@ -968,8 +990,16 @@ Scope:
 
 - **`src/CLAUDE.md` — the three-arm offer.** Rewrite `### Conversational fix-or-file offer`
   (fact 28) per D6. **Keep it TIGHT** — plan 08's always-on-trim discipline binds this section;
-  every line costs tokens in every session. Arm 1's three AND-ed conditions and its
-  `in-fix-window` check are byte-unchanged; arms 2 and 3 are added; the discriminator sentence
+  every line costs tokens in every session. Arm 1 is **semantically preserved, restructured to
+  bullets** — its three AND-ed conditions and its `in-fix-window` invocation (including the
+  fail-closed clause treating any non-zero result, helper-unavailable included, as not-in-window)
+  carry over verbatim, but the section moved from one paragraph to a lead sentence plus three
+  bullets plus a closing constraint, so "byte-unchanged" would overclaim. ⚠ **The closing
+  fallback clause legitimately NARROWED from three conditions to two**: it used to read *"if any
+  is absent (the defect is unconfirmed, you originated it, or no feature is in that window),
+  offer only `/devforge:report-bug`"*, and window-absence is now ABSORBED BY ARM 2 rather than
+  routed to file-only — that is the change this plan exists to make, not a regression. Arms 2
+  and 3 are added; the discriminator sentence
   names defect-repair-vs-change and **explicitly not file count**.
 - **`src/CLAUDE.md` — the `#### /devforge:fix` catalog entry: a FULL-PARAGRAPH REWRITE, not a
   two-clause patch.** That one paragraph carries **five** falsified clauses (fact 29), and it
@@ -1029,7 +1059,7 @@ Scope:
 
 ---
 
-### Phase 4 — Docs sweep + dated reconciliation notes
+### Phase 4 — Docs sweep + dated reconciliation notes — ✅ DONE 2026-08-26 (the docs commit this phase rides in)
 
 **Route: instruction-author → instruction-reviewer** for every `src/` and plan-document edit.
 
@@ -1065,6 +1095,37 @@ Scope:
   §4 replacement workflow and §5 accepted cost describe the *pre-plan-26* world and its D1
   already carries a supersession banner. **Deciding not to touch it is the decision; leaving it
   unmentioned is how a later session "harmonizes" it by mistake.**
+
+#### Phase-4 check results *(recorded 2026-08-26)*
+
+- **`27-REPORT-BUG-COMMAND-PLAN.md` — CHECKED, NO EDIT.** The trigger condition was not met: it
+  asserts neither *"`bugs/` has no consumer"* nor *"the lifecycle is manual-only"*. Its one
+  now-narrowed sentence reports what plan 26 D4 says (*"`/fix` writes NO `bugs/` file"*) as the
+  PREMISE for building `/devforge:report-bug` — and plan 26 D4 is itself amended in place by this
+  build, so a reader following that pointer lands on the amended text. **Recorded so the check is
+  not repeated.**
+- **`21-DROP-FIX-REFACTOR-PLAN.md` — CHECKED, NO EDIT, deliberate.** Its three `bugs/` hits are
+  all inside removal instructions describing v1 text being deleted (`/fix bugs/NNN-*.md` usage
+  examples). They are historical records of a removal, not live claims, and its D1 already
+  carries the plan-26 supersession banner.
+- **`55-STANDALONE-BUG-FIX-LANE-PLAN.md` — NOT IN THIS PLAN'S SWEEP LIST; found by the sweep and
+  EDITED.** See the ⚠ note in the status line at the top of this file. **This is the plan
+  omission the sweep instruction anticipated**, and it is the most consequential one: plan 55
+  designed this same lane in July and was sitting DEFERRED with four open decisions, so a future
+  session could have built it a second time.
+- **`91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md` — NOT IN THIS PLAN'S SWEEP LIST; found by
+  the sweep and EDITED (status only).** It referred to plan 88 as `NOT STARTED` at two sites, one
+  of them inside its OQ-4 statement. Only the status parentheticals and a one-sentence
+  corroboration were added; **OQ-4's substance and recommendation are untouched** and remain
+  correct — this build changed no
+  bug-file naming, and the cold lane resolves a bug file by the path the user types, so a rename
+  would break a user-facing argument form.
+- **`README.md`, `src/manifest.json`, `/devforge:implement`, `/devforge:review`,
+  `/devforge:verify`, `/devforge:configure` — CHECKED, NO EDIT.** Every `bugs/` hit in these is
+  still true after the build: the artifact-directory note, the `projectOwned` "NEVER overwrite"
+  pattern, the wrapper-isolation artifact list, `/devforge:review`'s findings-only claim (it
+  still writes no `bugs/` file), `/devforge:verify` PHASE 9 as a creator (unchanged), and the
+  lint-ignore exclusion list.
 
 **Commits: one per phase, no AI-attribution trailer** (this repo's commits carry none — match
 the trailer-free convention), lowercase terse subject with a scope prefix matching

@@ -789,6 +789,8 @@ skip and precisely why skipping it ships instructions that contradict the code.
 
 ## Non-goals
 
+> **⚠ NOTE ADDED 2026-08-26 — `88-COLD-FIX-BUGS-LANE-PLAN.md` did NOT make `/devforge:fix` a fourth seed producer, and that was FORCED rather than chosen.** Plan 88 gave `/devforge:fix` a second, feature-less COLD lane whose scope-change bounce is a real bounce with a real diagnosis — exactly the shape this plan turned into a seed for the feature lane. It writes **no seed**, because this plan's seed model is feature-scoped by construction: `write_seed` builds its path as `os.path.join(feature_dir, "fix-seed.json")` and `--feature-dir` is `required=True`, so a run with no feature directory has nowhere to put a seed and no consumer glob that would find it. Emitting one would have required a feature-less carrier, a new consumer block and a `/devforge:research` consumer that does not exist — three new mechanisms. **Nothing in this plan changed; the producer count is still three** (`/devforge:grill`, `/devforge:spec-check`, `/devforge:fix`'s feature lane). ⚠ **The recorded cost:** a cold bounce's diagnosis is spoken to the user and then lost, which is the same loss this plan fixed for the in-window bounce. A future session that observes cold bounces being re-derived has a real plan to write — a feature-less seed carrier plus a `/devforge:research` consumer — and should argue it from that observation, not from symmetry with this plan.
+
 - **Any change to `/devforge:grill` or `/devforge:spec-check` behavior.** They
   are the pattern being mirrored, not modified — no change to their verbs,
   gating, seed filenames, or consumer contracts.
