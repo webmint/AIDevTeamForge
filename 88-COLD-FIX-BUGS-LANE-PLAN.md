@@ -1,6 +1,6 @@
 # 88 — The cold-fix lane: `bugs/NNN-*.md` becomes the third `/devforge:fix` findings source
 
-**Status:** NOT STARTED — awaiting Phase-0 ratification (D1–D7 + OQ-1–OQ-7 unanswered). Nothing below is decided; every decision carries a recommendation and at least one recorded alternative.
+**Status:** **Phase 0 RATIFIED 2026-08-26 by the maintainer — D1–D7 and OQ-1–OQ-7 all decided, every item AS RECOMMENDED, nothing left open.** The three named forks were picked explicitly: **D3 = fork 1 (a)** (extend `implement_helper wip-commit` with a final-commit mode) **+ fork 2 (i)** (wrapper keeps `[TICKET-ID] - <title>`, the `[develop] - <title>` fallback string seen and accepted); **D4 = (b)** the `close-bug` helper verb over a new `_shared/bug_file.py` function, so **Phase 1 carries TWO deliverables**; **D6 = reading (i)** — the rubric lives in `src/CLAUDE.md`, `/devforge:report-bug` Rule 8 stays byte-unchanged and gains no forward pointer. **Phases 1–4 are CLEARED for build. Phase 5 remains the user-driven consumer e2e HARD GATE and has NOT run** — everything built will be build-verified, NOT consumer-validated. Every counter-argument recorded before ratification survives verbatim; see `## Phase 0 ratification record`.
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-25.
 
@@ -116,6 +116,15 @@ Every row was confirmed by opening the named file or by the named fetch. **The q
 the anchor; the digit is a dated hint** — this repo has documented anchor rot, so grep the
 string, never the `:NNN`.
 
+⚠ **Dated caution, added 2026-08-26: `src/CLAUDE.md` has been edited since these facts were
+gathered** (`/devforge:grill` became mandatory before `/devforge:breakdown`), so the text
+surrounding facts **28, 29, 29a and 29b** has moved even where their quoted strings have not.
+**Those four rows were verified 2026-08-25 and Phase 3 MUST re-verify all four against the LIVE
+file before editing it** — re-derive from what is there, never from a pre-computed position.
+The rows themselves are deliberately left as-recorded (not renumbered, not rewritten): they are
+the dated observation Phase 3 checks against, and silently refreshing them would destroy the
+only record of what changed.
+
 | # | Fact | Evidence |
 |---|------|----------|
 | 1 | `/devforge:fix`'s frontmatter `description` closes *"Never invents a defect, never accepts a free-text bug description, never writes `bugs/`."* | `src/commands/fix/main.md:3` |
@@ -188,13 +197,16 @@ the skills page — custom commands were merged into skills, and the page states
 
 ---
 
-## Decisions — ALL OPEN, awaiting Phase-0 ratification
+## Decisions — ALL RATIFIED 2026-08-26, every one as recommended
 
 Each carries the rule, the alternatives, the reasoning, and the strongest counter-argument.
 **The counter-arguments are load-bearing: a decision ratified with its counter-argument deleted
-cannot be re-opened honestly later.**
+cannot be re-opened honestly later** — so every one below is retained verbatim, unedited by the
+ratification. **Phase 0 is closed; nothing in this section is open.** The `RECOMMENDED RULE`
+lead on each decision is the wording that was ratified; where a decision named a fork, the
+picked arm is in its heading marker.
 
-### D1 — Cold-mode trigger + intake: an explicit bugs-file argument, code-confirmed before remediation *(OPEN)*
+### D1 — Cold-mode trigger + intake: an explicit bugs-file argument, code-confirmed before remediation *(RATIFIED 2026-08-26 — as recommended)*
 
 **RECOMMENDED RULE.** Cold mode is entered by, and only by, an explicit bugs-file argument:
 `/devforge:fix bugs/NNN-<slug>.md`. The trigger is **mechanical** — `$ARGUMENTS` names a path
@@ -237,7 +249,7 @@ day gets the in-window path's "no findings" STOP instead of a pointer to the col
 empty-list STOP (fact 7) in Phase 2, and it is cheap precisely because that sentence already
 talks about cold bugs.
 
-### D2 — Cold mode skips feature resolution (0.2), the window gate (0.3) and the findings read (0.4) *(OPEN)*
+### D2 — Cold mode skips feature resolution (0.2), the window gate (0.3) and the findings read (0.4) *(RATIFIED 2026-08-26 — as recommended, all three bypassed)*
 
 **RECOMMENDED RULE.** On the cold path the orchestrator runs PHASE 0.1's preflight and then
 goes straight to establishing `$WORKDIR` and reading the bug file. **Three sub-phases do not
@@ -298,7 +310,7 @@ build note (`--final` must not clear the wip marker) and it is a mitigation, **n
 equivalence** — a cold fix run concurrently with a live `/devforge:implement` is an unguarded
 state this plan accepts and records rather than closes.
 
-### D3 — The commit path: one clean `fix(scope):` commit, via an extended `wip-commit` *(OPEN — two forks)*
+### D3 — The commit path: one clean `fix(scope):` commit, via an extended `wip-commit` *(RATIFIED 2026-08-26 — fork 1 (a), fork 2 (i))*
 
 **RECOMMENDED RULE.** A cold fix ends in exactly **one clean Conventional-Commits
 `fix(scope): <description>` commit — no `[WIP]` prefix.** The reason is mechanical, not
@@ -373,7 +385,7 @@ guarantees `/devforge:implement` has drained (fact 22). **D2 removes that guaran
 not write destroys another command's crash-recovery state. **This is a fact about the code, not
 an open fork**, and Phase 1's verify criteria pin it.
 
-### D4 — The single `bugs/` write: flip the consumed file to Fixed *(OPEN — one fork)*
+### D4 — The single `bugs/` write: flip the consumed file to Fixed *(RATIFIED 2026-08-26 — fork (b), the `close-bug` helper verb)*
 
 **RECOMMENDED RULE.** Cold mode gains **exactly one** `bugs/` write, on **exactly one** file —
 the bug file passed as the argument — performed **only** after the PHASE-6 hard gate approves
@@ -443,7 +455,7 @@ is that the light lane is cheap, and an orchestrator Edit is genuinely three lin
 as the cost.** The reply is that the three lines are three lines *of a file format*, and this
 repo has already paid once (plan 27 D4) to stop two commands hand-rolling that format.
 
-### D5 — The cold-mode bounce: to `/devforge:research`, and NO seed *(OPEN)*
+### D5 — The cold-mode bounce: to `/devforge:research`, and NO seed *(RATIFIED 2026-08-26 — as recommended)*
 
 **RECOMMENDED RULE.** Cold-mode triage applies the **same** defect-repair-vs-change
 classification `references/triage.md` already carries — no second rubric, no cold-specific
@@ -478,7 +490,7 @@ field is added** — the schema (fact 13) has `In Progress`, but claiming a boun
 `In Progress` would be false the moment the user does nothing. **A status the framework cannot
 keep true is worse than one it does not set.**
 
-### D6 — A three-arm routing rubric in `src/CLAUDE.md` *(OPEN — carries a live collision)*
+### D6 — A three-arm routing rubric in `src/CLAUDE.md` *(RATIFIED 2026-08-26 — reading (i); counter-argument retained UNRESOLVED)*
 
 **RECOMMENDED RULE.** Extend the existing `### Conversational fix-or-file offer` (fact 28) from
 two arms to three:
@@ -541,7 +553,7 @@ command's answer is the one printed in the transcript. **This is the strongest o
 `/devforge:research` remains correct for arm 3 — but a Phase-5 observer who sees the pointer
 win over the rubric has found a real defect in (i), and the repair is (ii).
 
-### D7 — No numeric scope cap *(OPEN)*
+### D7 — No numeric scope cap *(RATIFIED 2026-08-26 — as recommended)*
 
 **RECOMMENDED RULE.** v1's *"recommends `/specify` if bug affects more than 5 files"*
 (fact 24) is **deliberately NOT reproduced.** The cold lane has no file-count threshold, no LOC
@@ -569,9 +581,17 @@ information.
 
 ---
 
-## Open questions (OQ-N) — ALL OPEN
+## Open questions (OQ-N) — ALL ANSWERED 2026-08-26
+
+**Every OQ below was answered as recommended.** Each carries an `**ANSWERED 2026-08-26:**` line
+stating the recorded answer; the reasoning beneath it is the reasoning that was ratified, and
+the warnings and residuals it records are ratified alongside it rather than discharged by it.
 
 ### OQ-1 — A bug file that cites no file
+
+**ANSWERED 2026-08-26:** as recommended — D1's code-confirmation step SUPPLIES `files_cited`,
+and a bug whose defect cannot be located in live code STOPS the run rather than degrading to a
+prose-driven edit.
 
 `--file` is optional on `/devforge:report-bug` (fact 13a), so a bug file may render
 `| (unknown) | (see evidence) |` and carry no usable `files_cited`. `resolve-scope` would then
@@ -587,6 +607,9 @@ description, which is the free-text intake D1 refuses.
 
 ### OQ-2 — Does cold mode run the full back half?
 
+**ANSWERED 2026-08-26: YES** — the full back half runs unchanged. **The plan's
+proportionality argument therefore stands as written and was not weakened at ratification.**
+
 **RECOMMENDATION: YES, unchanged.** PHASES 2–7 run exactly as they do today — agent dispatch,
 scope-aware `verify-touched` with self-repair, the four-reviewer panel, the forcing-functions
 gate, and the two-stage hard gate — with only PHASE 6's commit call differing per D3. **This is
@@ -599,6 +622,11 @@ copied** (plan 26 D6), so cold mode inherits it at zero maintenance cost.
 re-argued from scratch — a cold lane that skips the panel is a hand-fix with extra steps.
 
 ### OQ-3 — Commit vehicle for the bug-file Status flip
+
+**ANSWERED 2026-08-26:** as recommended, mode-dependent — standalone rides the same
+`fix(scope):` commit; wrapper rides `artifact_helper commit-artifacts` into the install repo,
+**and its `[WIP] ` label prefix is ACCEPTED** (bookkeeping, install-repo, harmless). **No second
+commit composer is built for it** — that is the duplication D3 fork 1 refuses.
 
 **RECOMMENDATION: mode-dependent, because the repos differ.**
 
@@ -623,6 +651,9 @@ bookkeeping commit is the duplication D3 fork 1 refuses.
 
 ### OQ-4 — Memory read in cold mode
 
+**ANSWERED 2026-08-26:** as recommended — the PHASE-2 memory read is UNCHANGED; no new key, no
+new read, no change to `_shared/memory.py`.
+
 **RECOMMENDATION: unchanged.** PHASE 2 already reads `memory_excerpt` from the re-captured
 preflight JSON and instructs the orchestrator to SELECT the entries bearing on the cited files.
 Cold mode inherits it verbatim — nothing about the excerpt is feature-scoped, and *"a fix that
@@ -630,6 +661,11 @@ trips a known pitfall is a second finding, not a fix"* applies identically to a 
 **No new key, no new read, no change to `_shared/memory.py`.**
 
 ### OQ-5 — Verify-PHASE-9 bugs on sealed features
+
+**ANSWERED 2026-08-26:** as recommended — cold-fixing a sealed feature's CODE is ACCEPTABLE
+(the seal is about artifacts, not source), **and the honest residual is ratified alongside it,
+not discharged by it**: the sealed feature's `verification.md` keeps asserting ACs proved
+against a diff that has since changed, and nothing in this plan updates it.
 
 A `Source: verify` bug carries a real `**Feature**` path (fact 13), and its feature may since
 have been sealed by `/devforge:summarize` / `/devforge:finalize`. Cold-fixing it re-touches
@@ -649,6 +685,10 @@ should — re-proving ACs is `/devforge:verify`'s job and it is feature-scoped.
 
 ### OQ-6 — Plan 63's 13/7 model-invocable counts
 
+**ANSWERED 2026-08-26:** as recommended — counts UNCHANGED, `/devforge:fix` stays
+`disable-model-invocation: true` and human-typed, no description trim, **no count delta**. The
+standing rule below binds: if a future phase ever needs to state the counts, it reads them LIVE.
+
 **RECOMMENDATION: unchanged.** `/devforge:fix` keeps `disable-model-invocation: true` (fact 2)
 and stays human-typed. **This plan contributes NO count delta** and owes no description trim.
 Cold mode does not make `/devforge:fix` safer to auto-invoke — it makes it reachable in more
@@ -658,6 +698,10 @@ situations, which is an argument for keeping the human in the loop, not against 
 state the counts, it **reads them LIVE at ship time** and never applies a pre-computed delta.
 
 ### OQ-7 — Scratch-dir reuse
+
+**ANSWERED 2026-08-26:** as recommended — the two scratch literals are REUSED unchanged, **and
+the serial-runs assumption they rest on is recorded as part of the answer**: a future change
+that makes any `/devforge:fix` path concurrent invalidates this answer and re-opens OQ-7.
 
 Cold mode reuses the fixed literals `${TMPDIR:-/tmp}/forge-fix` and
 `${TMPDIR:-/tmp}/forge-implement-review` unchanged.
@@ -670,15 +714,60 @@ makes any `/devforge:fix` path concurrent invalidates this answer.
 
 ---
 
+## Phase 0 ratification record
+
+**Ratification authority: the maintainer's in-session statement of 2026-08-26**, following the
+2026-08-25 a-vs-b direction decision recorded in `## Origin`. That statement is the whole
+closure authority for Phase 0 — **not a fresh per-item re-derivation**, and not this document's
+own recommendations agreeing with themselves.
+
+**Every item was ratified AS RECOMMENDED — D1–D7 and OQ-1–OQ-7, nothing amended, nothing left
+open.** The four items Phase 0 flagged as needing an explicit pick were each picked explicitly:
+
+- **D3 fork 1 = (a)** — extend `implement_helper wip-commit` with a final-commit mode, over a
+  new `fix_helper` verb. This re-affirms plan 26's own 2026-06-19 "extend the one binary, never
+  a second composer" note rather than reversing it. **D3 fork 2 = (i)** — wrapper mode keeps
+  `[TICKET-ID] - <title>`; **the `[develop] - <title>` fallback string was seen at ratification
+  and ACCEPTED**, so a Phase-5 observer reading it has found the ratified design, not a defect.
+  **The `--final` + `--scope` shape is a RECOMMENDATION, not a ratified interface** — Phase 1
+  may diverge from it by stating a reason. **The `wip-commit` naming debt stays recorded** and
+  was not repaired.
+- **D4 fork = (b)** — the `close-bug` helper verb over a new function in
+  `_shared/bug_file.py`, on the helper-owns-shape argument and plan 26's chartered deferral.
+  **The ratifier acknowledged that this arm diverges from the drafting brief's "only Python is
+  D3" framing**; the divergence is accepted, not smoothed. **Consequence: Phase 1 carries TWO
+  deliverables**, and remains the only Python phase.
+- **D6 = reading (i)** — the three-arm rubric lives in `src/CLAUDE.md`; `/devforge:report-bug`
+  Rule 8 stays **byte-unchanged** and **no forward pointer to `/devforge:fix` is added to that
+  command**. ⚠ **The pick was made WITH its counter-argument explicitly retained as UNRESOLVED**:
+  under (i) the command's own PHASE-4 pointer (naming `/devforge:research` / `/devforge:specify`)
+  and the conversational rubric can give a user two different answers in one session, and the
+  command's answer is the one printed in the transcript. **A Phase-5 observation of that
+  contradiction is the named trigger to re-open D6 as reading (ii)** — see Phase 5's anchor 3.
+- **OQ-2 = YES** — the full back half runs unchanged, so the proportionality argument stands as
+  written.
+
+**No counter-argument was deleted, softened or answered away by this ratification.** Each
+decision's `*Counter-argument, recorded:*` block is the pre-ratification text, verbatim. The
+same holds for every `⚠` bound: D2's accepted unguarded concurrent-`/devforge:implement` state,
+D3's naming debt and fallback string, D5's lost-diagnosis bound, D6's unresolved objection,
+OQ-3's accepted `[WIP] ` label, OQ-5's stale `verification.md`, and OQ-7's serial-runs
+assumption are all **ratified as costs, not discharged as concerns.**
+
+**Phases 1–4 are CLEARED for build. Phase 5 has NOT run.**
+
+---
+
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)*
+### Phase 0 — Ratification *(doc-only — CLOSED 2026-08-26)*
 
 **Objective:** ratify or amend D1–D7 and answer OQ-1–OQ-7, recording each answer in this file
-with its reasoning. **Nothing else may start.**
+with its reasoning. **Nothing else may start.** **Discharged 2026-08-26** — see
+`## Phase 0 ratification record` above.
 
-Four items need an explicit pick rather than a nod, because each has a named fork whose arms
-lead to different builds:
+Four items needed an explicit pick rather than a nod, because each has a named fork whose arms
+lead to different builds. **All four were picked — see the record above:**
 
 - **D3 fork 1** (extend `wip-commit` vs a new `fix_helper` verb) and **fork 2** (wrapper
   message shape) — fork 2's cost is a literal string a Phase-5 observer will read.
@@ -694,15 +783,25 @@ lead to different builds:
 
 **Verify:**
 
+**All criteria below were checked and PASS on 2026-08-26.**
+
 - `grep -n "^### D[1-7] " 88-COLD-FIX-BUGS-LANE-PLAN.md` returns seven lines and **every one
-  carries a ratification marker with a date** — no `*(OPEN)*` remains anywhere in the file.
-- `grep -n "^### OQ-[1-7] " 88-COLD-FIX-BUGS-LANE-PLAN.md` returns seven lines, each with a
-  recorded answer.
-- **Every decision still carries its counter-argument.** A ratified decision with its
-  counter-argument deleted cannot be re-opened honestly.
-- The status line at the top names the ratification date and which phases are cleared.
+  carries a `*(RATIFIED 2026-08-26 …)*` marker**. ✔
+- `grep -n "^### OQ-[1-7] " 88-COLD-FIX-BUGS-LANE-PLAN.md` returns seven lines, and **each
+  section opens with an `**ANSWERED 2026-08-26:**` line**. ✔
+- **No open marker survives on any heading or in either section title** — check with
+  `grep -n "OPEN" 88-COLD-FIX-BUGS-LANE-PLAN.md`, which must return **only** the three lines
+  that QUOTE the token while describing this criterion, plus prose uses of the word in the
+  decision bodies. ⚠ **This criterion cannot be written as "the string `(OPEN` appears zero
+  times", because stating the criterion creates an occurrence of it** — score it on the
+  headings and the two section titles, not on a raw count. ✔
+- **Every decision still carries its counter-argument, verbatim and unedited.** A ratified
+  decision with its counter-argument deleted cannot be re-opened honestly. ✔ — and the same
+  holds for the `⚠` bounds, which are ratified as costs rather than discharged.
+- The status line at the top names the ratification date and which phases are cleared. ✔
 - **D6's collision is resolved by a stated reading, not by silence.** A Phase 0 that ratifies
-  D6 without naming (i) or (ii) has left Phase 3 to pick by drift.
+  D6 without naming (i) or (ii) has left Phase 3 to pick by drift. ✔ — **(i)**, with the
+  counter-argument retained UNRESOLVED and Phase 5's anchor 3 named as the re-open trigger.
 
 ---
 
@@ -1109,9 +1208,17 @@ cold one.
 (fact 23's precedent). **The only mechanical net in this plan is D5's in-command bounce**,
 which fires after the user has already typed the command.
 
-**Trap 8 — missing D6's collision with `/devforge:report-bug` Rule 8** (fact 18). Rule 8
-forbids that command from chaining into `/devforge:fix`. Phase 0 picks reading (i) or (ii); a
-Phase 3 that edits Rule 8 without that pick has decided by drift.
+**Trap 8 — editing `/devforge:report-bug` Rule 8** (fact 18). Rule 8 forbids that command from
+chaining into `/devforge:fix`, and **Phase 0 ratified reading (i) on 2026-08-26: Rule 8 stays
+BYTE-UNCHANGED and no forward pointer is added there.** A Phase 3 that touches it has left the
+ratified design. ⚠ **This does not make `report-bug/main.md` a no-op file** — D4's three-site
+manual-lifecycle correction lands in it under either reading (Trap 5).
+
+**Trap 9 — treating fact rows 28/29/29a/29b as still-current.** `src/CLAUDE.md` was edited
+after 2026-08-25 (grill became mandatory before `/devforge:breakdown`), so the text around
+those anchors has moved. **Phase 3 re-verifies all four against the LIVE file** and re-derives
+its edit from what it finds — see the dated caution under `## Verified mechanics`. The rows are
+deliberately NOT refreshed: they are the dated observation the re-verification checks against.
 
 **The working tree is uncommitted throughout**, and several plans this file cites are
 working-tree state, so any "shipped" claim about them means reviewed-but-uncommitted rather
