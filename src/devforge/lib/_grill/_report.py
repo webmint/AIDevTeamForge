@@ -410,7 +410,7 @@ def _render_disposition(disposition, rationale, re_entry_target, out):
     if disposition == "PROCEED":
         out.append(
             "> The grill attack found no disqualifying plan-level defect. "
-            "The plan is sound to execute."
+            "Proceed to `/devforge:breakdown`."
         )
     elif disposition == "REVISE-PLAN":
         out.append(

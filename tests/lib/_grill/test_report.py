@@ -18,6 +18,8 @@ render_report:
   - non-RE-ENTER-UPSTREAM with re_entry_target set -> ValueError
   - all-empty partition -> valid report, no crash, appendix absent
   - empty partition with PROCEED -> appendix absent, disposition PROCEED
+  - PROCEED guidance line omits "sound"/"proven"/"validated"/"safe"
+  - PROCEED guidance line still names /devforge:breakdown as the next step
 
 write_grill_report:
   - creates grill.md in a temp feature_dir
@@ -421,6 +423,40 @@ class TestRenderReportDispositionGuidance(unittest.TestCase):
     def test_proceed_guidance_text(self):
         result = render_report(**_minimal_render_kwargs(disposition="PROCEED"))
         self.assertIn("no disqualifying plan-level defect", result)
+
+    def test_proceed_guidance_omits_endorsement_claims(self):
+        # /devforge:grill has no deterministic prover -- its findings are LLM
+        # output filtered by a grounding gate and a refutation pass. The PROCEED
+        # guidance line may report what the process concluded (no disqualifying
+        # finding survived), but must never claim the plan itself is sound,
+        # proven, validated, or safe -- a claim that also has to stay honest if
+        # PROCEED is ever reached with an accepted-risk finding on record.
+        # Assert on the banned WORD SET, not the exact sentence, so a harmless
+        # future rephrase never needs a test edit.
+        result = render_report(**_minimal_render_kwargs(disposition="PROCEED"))
+        guidance_lines = [ln for ln in result.splitlines() if ln.startswith("> ")]
+        self.assertEqual(
+            len(guidance_lines),
+            1,
+            "expected exactly one blockquote guidance line for PROCEED",
+        )
+        guidance = guidance_lines[0].lower()
+        for banned in ("sound", "proven", "validated", "safe"):
+            self.assertNotIn(
+                banned,
+                guidance,
+                "PROCEED guidance must not contain {0!r}: {1}".format(
+                    banned, guidance_lines[0]
+                ),
+            )
+
+    def test_proceed_guidance_still_names_next_step_command(self):
+        # The endorsement clause was replaced, not dropped -- the line still
+        # has to tell the reader what to do next, matching the register of the
+        # other three disposition branches, each of which names its own next
+        # command.
+        result = render_report(**_minimal_render_kwargs(disposition="PROCEED"))
+        self.assertIn("/devforge:breakdown", result)
 
     def test_revise_plan_guidance_text(self):
         result = render_report(**_minimal_render_kwargs(disposition="REVISE-PLAN"))

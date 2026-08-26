@@ -82,7 +82,7 @@ both are surfaced in the headline, never buried).
 [the orchestrator's CLASSIFY rationale — why this disposition]
 
 > [verdict-specific guidance — the helper renders one of:]
-> - PROCEED — the grill attack found no disqualifying plan-level defect; the plan is sound to execute (run `/devforge:breakdown`).
+> - PROCEED — the grill attack found no disqualifying plan-level defect; proceed to `/devforge:breakdown`.
 > - REVISE-PLAN — the defects are real but correctable at the plan level; revise `plan.md`, then re-run (re-`/devforge:plan` / hand-patch, optionally re-`/devforge:grill`). If you choose `Revise plan` at the human gate, the orchestrator emits a `grill-seed.json` (`target_stage="plan"`) that `/devforge:plan` consumes on re-entry, so the re-`/devforge:plan` is directed, not a repeat.
 > - RE-ENTER-UPSTREAM — the defect is rooted upstream; re-enter at the named stage (`/devforge:specify` for `spec`, `/devforge:discover` for `discovery`, `/devforge:research` for `research`). If you choose `Re-enter upstream` at the human gate, the orchestrator emits a `grill-seed.json` for that stage so the re-run is directed, not a repeat.
 > - KILL — the defect is fundamental; the plan should be abandoned (re-`/devforge:plan` with a wholly different approach).
