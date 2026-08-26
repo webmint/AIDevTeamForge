@@ -297,9 +297,9 @@ def render_hint(signals, plan_path):
 
     return (
         "**High-stakes plan detected**: {0}.\n"
-        "Consider running /devforge:grill for a design-level adversarial review "
-        "before /devforge:breakdown decomposes this plan into tasks (optional, not "
-        "a gate).\n"
+        "/devforge:grill is required before /devforge:breakdown will decompose "
+        "this plan into tasks -- run it now while the plan is still fresh in "
+        "context, rather than being stopped at that gate later.\n"
         "\n"
         "/devforge:grill {1}\n"
     ).format(reason_str, plan_path)

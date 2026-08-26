@@ -724,6 +724,36 @@ class RenderHintUnitTests(unittest.TestCase):
         last_line = text.strip().splitlines()[-1]
         self.assertEqual(last_line, "/devforge:grill specs/001-x/plan.md")
 
+    def test_hint_names_grill_as_required_not_optional(self):
+        """/devforge:breakdown carries a mandatory grill entry gate (PHASE
+        0a.6) -- the hint must tell the author to run grill NOW because it is
+        required before /devforge:breakdown, not merely suggest considering
+        it. Pins the substantive claim (required + name both commands),
+        not the exact sentence, so a harmless rephrase doesn't need a test
+        edit. Also pins the stale phrasing's absence so it cannot silently
+        drift back."""
+        signals = {"large_blast_radius": True, "file_count": 9}
+        text = render_hint(signals, "specs/001-x/plan.md")
+
+        # Stale optional-sounding phrasing must be gone.
+        self.assertNotIn("Consider running", text)
+        self.assertNotIn("optional, not", text)
+        self.assertNotIn("not a gate", text)
+
+        # Both commands named.
+        self.assertIn("/devforge:grill", text)
+        self.assertIn("/devforge:breakdown", text)
+
+        # Substantive claim: grill is required before breakdown will run.
+        self.assertIn("required", text)
+
+        # Must NOT claim the gate reads the verdict or freshness, and must
+        # NOT imply revising the plan invalidates the grill run.
+        self.assertNotIn("verdict", text)
+        self.assertNotIn("disposition", text)
+        self.assertNotIn("stale", text)
+        self.assertNotIn("invalidat", text)
+
 
 if __name__ == "__main__":
     unittest.main()
