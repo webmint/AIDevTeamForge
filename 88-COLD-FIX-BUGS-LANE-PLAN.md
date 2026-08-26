@@ -396,7 +396,10 @@ already has slots for (fact 13):
 2. the empty `**Fixed**: ` line → `**Fixed**: <YYYY-MM-DD>` (the orchestrator supplies the
    date; the helper never calls the clock, matching `report_bug_helper write-bug`)
 3. the `## Fix Notes` body — the literal `_Filled in after resolution._` → the root cause, what
-   changed, and the commit SHA `wip-commit` returned
+   changed, and the commit SHA `wip-commit` returned. ⚠ **The SHA half of this clause was
+   NARROWED BY MODE on 2026-08-26** — in standalone the bug file rides the very commit that
+   mints the SHA, so it carries the commit SUBJECT line instead; in wrapper the SHA clause holds
+   unchanged. See `## Open questions` → OQ-3 → `#### Sequencing resolution`.
 
 **⚠ Read the schema, do not assume it.** The completion fields are `**Fixed**:` and
 `## Fix Notes` — **there is no `Fixed date` field and no `Fix Notes` bold field**; those names
@@ -648,6 +651,42 @@ the code commit. **Phase 0 should decide whether that is acceptable (it is bookk
 install repo, and harmless) or whether the wrapper arm needs its own non-WIP path.**
 RECOMMENDED: **accept it**, and say why in the plan record — a second commit-composer for a
 bookkeeping commit is the duplication D3 fork 1 refuses.
+
+#### Sequencing resolution — D4 ↔ OQ-3 conflict *(discovered by python-reviewer during Phase 1; resolved by the orchestrator 2026-08-26)*
+
+**The conflict.** Ratified D4 says the flip happens *"only after the hard gate approves and the
+commit lands"* and that `## Fix Notes` carries *"the commit SHA `wip-commit` returned"*.
+Ratified OQ-3 says standalone uses *"the same `fix(scope):` commit — `--files` simply includes
+the bug path."* **In standalone those cannot both hold: a SHA cannot be written into a file that
+rides the commit which mints that SHA.** Neither item is withdrawn; the conflict is real and was
+latent in both ratifications.
+
+**The resolution. OQ-3 controls the VEHICLE; D4's SHA clause is narrowed BY MODE** — because the
+vehicle is forced by repo topology (a wrapper's bug file and its code are in different repos)
+while the SHA is only a convenience reference:
+
+- **Standalone** — after the Stage-B gate approves, call `close-bug` **FIRST**, then
+  `wip-commit --final` with the bug file included in `--files`. **ONE commit**, satisfying OQ-3
+  exactly. The fix notes carry root cause + what changed + **the commit SUBJECT line**, not a
+  SHA. D4's *"after the hard gate approves"* holds; its *"and the commit lands"* is what
+  narrows — the flip precedes the commit it rides in.
+- **Wrapper** — the code commit lands in the SOURCE repo first, so `wip-commit --final` returns
+  a real `head_sha` before the flip is written. **D4's SHA clause holds unchanged here**: the
+  fix notes DO carry the returned source-commit SHA. The flip then rides
+  `artifact_helper commit-artifacts` in the install repo, with OQ-3's accepted `[WIP] ` label.
+
+⚠ **State the per-mode difference explicitly wherever it is emitted; do NOT average the two into
+one order.** A single averaged instruction is wrong in one mode or the other — in standalone it
+would demand a SHA that does not exist yet, and in wrapper it would stage a forge artifact into
+the product repo. **Phase 2 shipped it as two separate labelled blocks** in
+`src/commands/fix/main.md` PHASE 6's cold arm, and `## Outputs of this command` states the
+same split.
+
+⚠ **The standalone order has a non-atomic window Phase 2 must keep visible**: `close-bug` writes
+the flip to disk BEFORE the commit exists, so a `wip-commit --final` failure leaves a flipped-but-
+uncommitted bug file. That is not a clean rollback point, and re-running `close-bug` exits 2 (the
+file is no longer `Open`). The emitted recovery instruction is to resolve the failure and re-run
+ONLY the commit call.
 
 ### OQ-4 — Memory read in cold mode
 
