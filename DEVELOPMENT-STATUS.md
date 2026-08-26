@@ -38,7 +38,7 @@ Always included: `code-reviewer`, `qa-engineer`, `qa-reviewer`, `runtime-debugge
 By project type: `frontend-engineer`, `backend-engineer`, `architect`, `mobile-engineer`
 By detected stack: `db-engineer`, `devops-engineer`, `design-auditor`, `api-designer`, `performance-analyst`, `migration-engineer`
 By config: `ac-verifier` (when `ac_verification_mode != "off"`)
-Adversarial commands: `devils-advocate` (`/devforge:grill` — opt-in, plan 23), `spec-formalizer` (`/devforge:spec-check` — user-typed, and `/devforge:plan` requires a fresh report from it; plans 62 + 82)
+Adversarial commands: `devils-advocate` (`/devforge:grill` — user-typed, and `/devforge:breakdown` requires that it ran; plans 23 + 85), `spec-formalizer` (`/devforge:spec-check` — user-typed, and `/devforge:plan` requires a fresh report from it; plans 62 + 82)
 
 `install.sh` (via `generate-agents.py`) generates the full agent set from `src/agents/*.md`; `/devforge:configure` then prunes `.claude/agents/` to the project's natures based on detected stack and config (including AC verification mode).
 

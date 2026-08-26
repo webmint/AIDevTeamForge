@@ -22,7 +22,7 @@ After approval (Phase 5), `/devforge:breakdown` WIP-commits these artifacts — 
 ## Context in the Workflow
 
 ```
-/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
+/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:grill → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
 `/devforge:breakdown` runs AFTER the plan is approved, BEFORE task execution. The plan describes HOW the feature maps to the architecture; `/devforge:breakdown` decomposes that into atomic, independently-verifiable units of work with explicit dependencies and contracts.
@@ -64,12 +64,35 @@ Read the sibling handoff via the helper:
 .devforge/lib/breakdown_helper read-plan-handoff <resolved-path>
 ```
 
-- Stdout `no-handoff` → no sibling `plan-handoff.json` exists. Tell the user `"No structured plan handoff; decomposing from plan.md directly."` and proceed to Phase 0b with the resolved path. The decomposition input comes from reading `plan.md` directly in Phase 0 and Phase 1. One caveat: if `plan.md` contains a `### Pure-Builder Targets` section, run `.devforge/lib/plan_helper finalize-handoff <resolved-path>` NOW to produce the missing handoff (the producer is idempotent) — the Phase 3.5 property-coverage gate fail-closes on declared-but-handoff-less targets, so producing it here avoids a late halt; when `plan.md` has no such section, no action is needed (that gate skips cleanly).
-- A `## Upstream plan seeds` block (Layer Map / File Impact / Key Design Decisions / Dependencies / Risks, plus a trailing `### Pure-Builder Targets (property-test lane)` sub-block when `/devforge:plan` declared any pure-builder targets) → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the authoritative decomposition input — Phase 1 (Deep file analysis) and Phase 2 (Decomposition) are driven by these seeds, not by re-scanning the spec. When the `### Pure-Builder Targets (property-test lane)` sub-block is present and non-empty, its targets drive Phase 3's property-test task emission rule and the Phase 3.5 property-coverage gate. Then proceed to Phase 0b with the resolved path.
+- Stdout `no-handoff` → no sibling `plan-handoff.json` exists. Tell the user `"No structured plan handoff; decomposing from plan.md directly."` and proceed to Phase 0a.6 with the resolved path. The decomposition input comes from reading `plan.md` directly in Phase 0 and Phase 1. One caveat: if `plan.md` contains a `### Pure-Builder Targets` section, run `.devforge/lib/plan_helper finalize-handoff <resolved-path>` NOW to produce the missing handoff (the producer is idempotent) — the Phase 3.5 property-coverage gate fail-closes on declared-but-handoff-less targets, so producing it here avoids a late halt; when `plan.md` has no such section, no action is needed (that gate skips cleanly).
+- A `## Upstream plan seeds` block (Layer Map / File Impact / Key Design Decisions / Dependencies / Risks, plus a trailing `### Pure-Builder Targets (property-test lane)` sub-block when `/devforge:plan` declared any pure-builder targets) → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the authoritative decomposition input — Phase 1 (Deep file analysis) and Phase 2 (Decomposition) are driven by these seeds, not by re-scanning the spec. When the `### Pure-Builder Targets (property-test lane)` sub-block is present and non-empty, its targets drive Phase 3's property-test task emission rule and the Phase 3.5 property-coverage gate. Then proceed to Phase 0a.6 with the resolved path.
 
 Exit 2 means the sibling `plan-handoff.json` is malformed, the wrong handoff kind, or the wrong schema version — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
 **Change-induced dead code (MUST-delete kill-list).** The `read-plan-handoff` seeds block above surfaces the decomposition seed sub-sections only — it does NOT carry the change-induced dead-code rows. Read those from `plan.md`'s `### Change-Induced Dead Code` table directly, the same `plan.md` this phase's no-handoff path and Phase 0 / Phase 1 read as the full source. When that table holds ≥1 MUST-delete row (columns File | Anchor token | Kind | Why dead), surface a `### Change-Induced Dead Code (MUST-delete)` sub-block listing each row (file — anchor token — kind — why dead) in your next user-facing message, and state that these are MUST-delete obligations — dead by the constitution's §3.5 (No dead code) — whose removal Phase 2's decomposition and Phase 3's task-writing fold into the owning task. When `plan.md` has no such table, there is no kill-list; surface nothing (no empty sub-block, no "none" line).
+
+## PHASE 0a.6: Grill gate (MANDATORY)
+
+`/devforge:breakdown` requires that `/devforge:grill` has already run for the resolved plan. This phase is a gate only — it blocks the run when no completed grill run is recorded for that plan, and does nothing else. There is no user gate here; do not invoke `AskUserQuestion`.
+
+Check the grill run via the helper:
+
+```bash
+.devforge/lib/breakdown_helper verify-grill-ran --plan <resolved-path>
+```
+
+The verb is read-only — it never flips a `**Status**:` line and never writes a file. It resolves `grill.md` and its sibling `grill-state.json` from the resolved plan's own directory (`<feature-dir>/grill.md`, `<feature-dir>/grill-state.json`), and it passes only when BOTH conditions hold: the report exists, AND the adversary status recorded in the state file is `complete` or `clean`. `clean` passes because an adversary that ran and grounded no attack is a successful adversarial pass, not a failed one; `failed` and `missing` do NOT pass even when a `grill.md` sits on disk, because that dispatch produced no usable output. What this gate establishes is therefore that the grill RAN — not merely that a report file exists. Handle the exit code:
+
+- Exit 0 → a `grill.md` sits next to the plan and its sibling state records an adversary run that produced output. Stdout is a JSON ack carrying `ran`, `report_path`, and `adversary_status`; surface the `report_path` value to the user in one line, e.g. `"Grill ran for this plan: <report_path>."` Then proceed to Phase 0b with the resolved path.
+- Exit 2 → BLOCKED. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr is already the complete user-facing message: on the four grill-state causes — no `grill.md` next to the plan, a `grill.md` whose sibling `grill-state.json` is missing / unreadable / not a valid state object, a state file carrying no recorded adversary run at all, an adversary dispatch that did not complete — it names the cause, states that this gate is mandatory with no override, and carries the `/devforge:grill <plan-path>` line to run next. The fifth cause is the resolved `plan.md` itself being unreadable, which prints the plain `breakdown_helper: cannot read plan: <path>` line and names no next command (running `/devforge:grill` would not repair a bad plan path). Add nothing to either shape and drop nothing from it.
+
+`/devforge:grill` is user-invoked: name it, never run it yourself. On the BLOCKED path this run is over — the user runs `/devforge:grill`, then re-invokes `/devforge:breakdown`, which restarts at Phase 0a.
+
+This gate reads PRESENCE and the RECORDED ADVERSARY STATUS only — never the report's disposition, and never its freshness. A grill report recommending KILL satisfies it exactly as a PROCEED one does, because the human owns the disposition at the Phase 4 approval gate. A STALE report — a `grill.md` written against an earlier `plan.md` — satisfies it too, and deliberately so: a freshness condition would mean that acting on the report's own findings by revising the plan invalidates the report and buys another full adversarial run, while ignoring those findings costs nothing, and a gate that charges you for taking its findings seriously is worse than no gate. Do not add a verdict condition, a freshness condition, an override flag, or a skip arm to this phase: the helper offers none of them, and a future session must not "strengthen" the gate into one that reads the disposition or re-hashes the plan.
+
+This phase runs BEFORE Phase 0b's Draft → Approved flip by design — a plan that cannot be decomposed must not be flipped to Approved.
+
+Sub-phase numbers are per-command: the `0a.6` label is local to `/devforge:breakdown` and carries no correspondence to the number any other command gives its own entry gate, so a future session must not renumber this phase to match one.
 
 ## PHASE 0b: Status flip + gates
 

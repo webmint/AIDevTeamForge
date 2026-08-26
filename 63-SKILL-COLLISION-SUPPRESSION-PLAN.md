@@ -250,6 +250,30 @@ to both (plus a `storage-rules.md` CODE-class row) is REQUIRED work, not a free 
   true` as *"Description not in context, full skill loads when you invoke"*) — the
   description therefore consumes no always-on context and no trim is owed. **`grill`'s half
   of the quoted reason is untouched and still accurate.**
+  **(AMENDED 2026-08-26 — the KEEP decision stands; the OTHER half of the quoted reason has
+  now also expired, so NEITHER quoted description survives and the sentence above naming
+  `grill` as still accurate is superseded.)**
+  `85-GRILL-MANDATORY-AUTO-ACCEPT-PLAN.md`'s ratified **D6 KEEPS `disable-model-invocation:
+  true` on `grill`**, so **the 13/7 counts are again unchanged, this carve-out is NOT
+  reopened, and no description trim is owed** — but that plan's Phase 4 rewrote `grill`'s
+  `description` closing sentence from *"Opt-in — never an auto-gate."* to *"Human-typed
+  only — `/devforge:breakdown` requires that it RAN, never that its disposition binds."*,
+  because a grill run is now a precondition of `/devforge:breakdown`. The command is still
+  typed by the user and still never auto-invoked; the blocked `/devforge:breakdown` NAMES it
+  rather than running it. **So both halves of the reason are replaced, not the decision:**
+  keeping the flag on `grill` now rests on D6's own argument — the skill listing has a
+  budget scaling at ~1% of the context window and drops the descriptions of the
+  LEAST-invoked skills first, and `grill` is by construction among them, so flipping the
+  flag would buy unreliable awareness for a command the gate names anyway. Frontmatter
+  semantics re-verified against current docs 2026-08-26
+  (`https://code.claude.com/docs/en/slash-commands`, redirecting to
+  `https://code.claude.com/docs/en/skills` — the merged *"Extend Claude with skills"* page):
+  `disable-model-invocation` is *"Set to `true` to prevent Claude from automatically loading
+  this skill. Use for workflows you want to trigger manually with `/name`. … Default:
+  `false`"*, `description` is *"What the skill does and when to use it. Claude uses this to
+  decide when to apply the skill"* and is truncated at 1,536 characters in the listing, and
+  **all frontmatter fields are optional** — `name`, `argument-hint` and
+  `disable-model-invocation` on `grill` are all valid and none was changed.
 - **OQ-3 — plan 26 D2 reconcile:** plan `26-REINTRODUCE-FIX-PLAN.md` D2 specifies the model PROPOSES `/fix`
   and the USER invokes it (never model-invoked). If `/fix` drops the disable flag it becomes
   model-invocable — reconcile (amend plan 26 D2, or keep `/fix` a disable-flag exception). Flag it; do not

@@ -2650,10 +2650,10 @@ def cmd_verify_dead_code_coverage(args):
 # ---------------------------------------------------------------------------
 # Subcommand: verify-grill-ran
 #
-# Entry-side gate for /devforge:breakdown, INTENDED for PHASE 0a (the
-# plan-resolution phase) once wired -- NOT YET called from
-# src/commands/breakdown/main.md as of this commit (that wiring is
-# separately routed and still pending). NOT a PHASE 3.5 finalize gate
+# Entry-side gate for /devforge:breakdown, called from that command's
+# PHASE 0a.6 (the "Grill gate" block, seated between the PHASE 0a.5
+# upstream-handoff phase and the PHASE 0b Draft->Approved status flip)
+# in src/commands/breakdown/main.md. NOT a PHASE 3.5 finalize gate
 # like the six verify-* verbs above it. Modeled on plan_helper.py's
 # cmd_verify_spec_check (the same gate shape one pipeline stage upstream:
 # /devforge:plan requires a fresh /devforge:spec-check report the same
@@ -2687,9 +2687,9 @@ def _render_blocked_grill_ran(cause_line: str, plan_path: Path) -> str:
 
 
 def cmd_verify_grill_ran(args: argparse.Namespace) -> int:
-    """Mandatory presence gate for /devforge:grill, INTENDED to gate
-    /devforge:breakdown once wired -- NOT YET called from
-    src/commands/breakdown/main.md as of this commit.
+    """Mandatory presence gate for /devforge:grill, called from
+    /devforge:breakdown's own PHASE 0a.6 "Grill gate" block in
+    src/commands/breakdown/main.md.
 
     Usage: verify-grill-ran --plan <path-to-plan.md>
 
@@ -4052,10 +4052,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Deliberate departure from this file's positional-primary-path
     # convention (every other single-required-path verb here --
     # finalize-handoff and the four verify-* PHASE 3.5 gates above --
-    # takes its plan/tasks path positionally): a named --plan is intended
-    # to read unambiguously in the future breakdown/main.md PHASE 0a
-    # entry-gate bash block (not yet wired -- see cmd_verify_grill_ran's
-    # docstring), mirroring --spec's ergonomics in plan_helper.py's own
+    # takes its plan/tasks path positionally): a named --plan reads
+    # unambiguously in breakdown/main.md's PHASE 0a.6 entry-gate bash
+    # block, mirroring --spec's ergonomics in plan_helper.py's own
     # verify-spec-check registration above plan/main.md's PHASE 0a.8
     # bash block, which already emits --spec explicitly today.
     sp.add_argument(

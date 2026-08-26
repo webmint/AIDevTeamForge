@@ -150,7 +150,7 @@ State up front in your first user-facing message that you are running in grill-r
 
 This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/devforge:grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/devforge:grill` is opt-in, and no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
+When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — a `/devforge:grill` run writes a seed only when it reaches a RE-ENTER-UPSTREAM recommendation AND the user picks the matching re-entry at its human gate, and most runs never reach one), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Symptom clarification (rubric Q&A)
 

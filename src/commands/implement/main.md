@@ -40,7 +40,7 @@ Usage: `/devforge:implement` — no arguments. The command resolves the lowest-n
 ## Context in the Workflow
 
 ```
-/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
+/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:grill → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
 `/devforge:implement` runs AFTER `/devforge:breakdown` produces the task set, BEFORE `/devforge:review`. It consumes the structured `specs/NNN-<feature>/breakdown-handoff.json` (the producer-side handoff written by `/devforge:breakdown`) as its read contract: the orchestrator never re-derives task structure from the markdown task files — it reads the machine contract via `resolve-next-task` and the markdown task body via Read.

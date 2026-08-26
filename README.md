@@ -45,7 +45,7 @@ To push template improvements to an already-installed project without clobbering
 Setup (once):     /devforge:init-forge → /devforge:generate-docs → /devforge:configure → /devforge:constitute
 
 Per feature:      /devforge:research OR /devforge:discover → /devforge:specify → /devforge:spec-check
-                    → /devforge:plan → [/devforge:grill] → /devforge:breakdown → /devforge:implement
+                    → /devforge:plan → /devforge:grill → /devforge:breakdown → /devforge:implement
                     → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 
 Standalone:       /devforge:audit   /devforge:report-bug   /devforge:fix   /devforge:pr-review
@@ -53,7 +53,7 @@ Standalone:       /devforge:audit   /devforge:report-bug   /devforge:fix   /devf
 
 Every command is namespaced under `devforge:` so it never collides with a bundled or plugin skill of the same name; the `/` menu is fuzzy-searched, so typing `verify` still surfaces `/devforge:verify`. Thirteen of the twenty are model-invocable — propose one and Claude runs it once you agree. Seven are human-typed only: the four setup commands, `/devforge:grill`, `/devforge:spec-check`, and `/devforge:fix`.
 
-Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/devforge:plan` — you type it (nothing auto-runs it), and `/devforge:plan` blocks until a fresh report for that spec exists; that check is on the report's presence and freshness only, never on its verdict, so you still own every call it raises. `[/devforge:grill]` is optional (opt-in, for high-stakes plans). `/devforge:fix` is not a linear step — it's a proposal-only remediation loop the model offers off `/devforge:review`/`/devforge:verify`.
+Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/devforge:plan` — you type it (nothing auto-runs it), and `/devforge:plan` blocks until a fresh report for that spec exists; that check is on the report's presence and freshness only, never on its verdict, so you still own every call it raises. `/devforge:grill` is required before `/devforge:breakdown` — you type it too (nothing auto-runs it), and `/devforge:breakdown` blocks until a grill report exists for that plan; that check is on the report's presence and its recorded adversary run only, never on its freshness and never on its disposition, so a KILL report unblocks `/devforge:breakdown` exactly as a PROCEED one does and you still own every call it raises. `/devforge:fix` is not a linear step — it's a proposal-only remediation loop the model offers off `/devforge:review`/`/devforge:verify`.
 
 ## Commands
 
@@ -71,7 +71,7 @@ Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/
 - **`/devforge:specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
 - **`/devforge:spec-check`** *(required before `/devforge:plan`; you type it)* — SMT consistency prover for the spec's acceptance criteria: resolves each criterion's subject against the code, formalizes what resolves, and proves (via Z3) whether the criteria contradict each other → `spec-check.md`. Recommends CONSISTENT / REVISE-SPEC / DISMISS; you check the translation and own every verdict it raises, while a clean result is accepted without asking. `/devforge:plan` blocks until this report exists and still matches the spec — presence and freshness only, never the verdict. A consistency prover, not a mind-reader. Needs `z3-solver` (a one-time `pip install z3-solver`, not installed by the template).
 - **`/devforge:plan`** — Technical plan from the approved spec: architecture, data model, API contracts, research → `plan.md`.
-- **`/devforge:grill`** *(optional)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own the verdict.
+- **`/devforge:grill`** *(required before `/devforge:breakdown`; you type it)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own every verdict it raises, while a run where nothing survived cross-examination is accepted without asking. `/devforge:breakdown` blocks until this report exists for the plan — presence and the recorded adversary run only, never freshness and never the disposition, so a KILL report unblocks it exactly as a PROCEED one does. What is mandatory is that the grill RAN, never that its disposition binds.
 - **`/devforge:breakdown`** — Ordered atomic tasks with dependencies, agent assignments, and Expects/Produces contracts → `tasks/`.
 - **`/devforge:implement`** — Drain tasks one at a time: assigned agent → scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → per-task hard gate before commit.
 - **`/devforge:review`** — Feature-level emergent cross-task review over the assembled diff (the issues per-task review can't see) → findings-only `review.md`.

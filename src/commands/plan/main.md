@@ -22,7 +22,7 @@ On approve, Phase 4 `[WIP]`-commits `spec.md` (whose `**Status**:` Phase 0b flip
 ## Context in the Workflow
 
 ```
-/devforge:research (optional) → /devforge:specify → /devforge:spec-check → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
+/devforge:research (optional) → /devforge:specify → /devforge:spec-check → /devforge:plan → /devforge:grill → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
 `/devforge:plan` runs AFTER the spec is approved, BEFORE task breakdown. It answers technical questions the spec intentionally left open (specs describe WHAT, plans describe HOW).
@@ -637,7 +637,7 @@ The helper reads that `plan-handoff.json` and prints a short "consider running `
 - **Non-empty stdout** → copy it VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 - **Empty stdout** → emit nothing and proceed silently to the `render-breakdown-handoff` step below. Empty output is the normal case for an ordinary plan and is NOT an error.
 
-This hint is ADVISORY and NON-BLOCKING: it never blocks the approve flow, never gates `/devforge:breakdown`, and the user is free to ignore it. `/devforge:grill` remains opt-in — the user chooses whether to run it. Like the other PHASE 4 helper calls, this step is best-effort; because `stakes-hint` always exits 0, there is no non-zero exit to handle here.
+This hint is ADVISORY and NON-BLOCKING: it never blocks the approve flow, it gates nothing on its own, and the user is free to ignore it. It is NOT what makes `/devforge:grill` happen — `/devforge:breakdown` carries its own entry gate that refuses to decompose a plan until a grill has run for it, and this hint neither implements nor substitutes for that gate. All the hint adds is that THIS plan is high-stakes, so the grill it will get anyway deserves extra attention. Like the other PHASE 4 helper calls, this step is best-effort; because `stakes-hint` always exits 0, there is no non-zero exit to handle here.
 
 Then emit the deterministic handoff block via the helper:
 
