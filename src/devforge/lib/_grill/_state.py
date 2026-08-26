@@ -106,15 +106,21 @@ def state_path(feature_dir: str) -> str:
 def read_state(path: str) -> Optional[GrillState]:
     """Read GrillState from a JSON file at path.
 
-    Returns None on OSError (file absent, permission denied) or
-    json.JSONDecodeError (corrupt content). Tolerates unknown keys by
-    filtering to known dataclass field names before construction.
+    Returns None on OSError (file absent, permission denied),
+    json.JSONDecodeError (corrupt content), or valid JSON whose top-level
+    value is not a JSON object (e.g. an array or a bare scalar) -- that
+    last case round-trips through json.load() successfully but has no
+    .items() to filter, so it is checked explicitly rather than left to
+    raise AttributeError. Tolerates unknown keys by filtering to known
+    dataclass field names before construction.
     """
     known = {f.name for f in dataclasses.fields(GrillState)}
     try:
         with open(path, "r", encoding="utf-8") as fh:
             raw = json.load(fh)
     except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
         return None
     filtered = {k: v for k, v in raw.items() if k in known}
     return GrillState(**filtered)

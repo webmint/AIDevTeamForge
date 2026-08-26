@@ -2648,6 +2648,200 @@ def cmd_verify_dead_code_coverage(args):
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: verify-grill-ran
+#
+# Entry-side gate for /devforge:breakdown, INTENDED for PHASE 0a (the
+# plan-resolution phase) once wired -- NOT YET called from
+# src/commands/breakdown/main.md as of this commit (that wiring is
+# separately routed and still pending). NOT a PHASE 3.5 finalize gate
+# like the six verify-* verbs above it. Modeled on plan_helper.py's
+# cmd_verify_spec_check (the same gate shape one pipeline stage upstream:
+# /devforge:plan requires a fresh /devforge:spec-check report the same
+# way /devforge:breakdown is intended to require /devforge:grill to have
+# run), with two deliberate narrowings from that model -- see
+# cmd_verify_grill_ran's docstring.
+# ---------------------------------------------------------------------------
+
+
+def _render_blocked_grill_ran(cause_line: str, plan_path: Path) -> str:
+    """Assemble the multi-line BLOCKED message for verify-grill-ran.
+
+    Modeled on plan_helper._render_blocked_spec_check: every arm names
+    /devforge:grill as the required next step and states the gate is
+    mandatory with no override (this verb offers no override flag of any
+    kind). Diverges from that model in one respect: never appends a
+    freshness-repair instruction and never mentions plan_sha256 -- see
+    cmd_verify_grill_ran's docstring for why a stale grill report
+    deliberately still passes this gate.
+    """
+    lines = [
+        "BLOCKED: /devforge:breakdown requires /devforge:grill to have "
+        "run for this plan.",
+        cause_line,
+        "This gate is mandatory, with no override.",
+        "",
+        "Run the following first, then retry /devforge:breakdown:",
+        "  /devforge:grill {0}".format(plan_path),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def cmd_verify_grill_ran(args: argparse.Namespace) -> int:
+    """Mandatory presence gate for /devforge:grill, INTENDED to gate
+    /devforge:breakdown once wired -- NOT YET called from
+    src/commands/breakdown/main.md as of this commit.
+
+    Usage: verify-grill-ran --plan <path-to-plan.md>
+
+    Read-only probe -- never flips a **Status**: line, never writes a
+    file. grill.md and grill-state.json are resolved as siblings of the
+    given plan.md (<feature-dir>/grill.md, <feature-dir>/grill-state.json).
+
+    Checks PRESENCE of the adversarial run ONLY, via two conditions
+    joined by AND, and no third:
+      1. <feature-dir>/grill.md exists.
+      2. grill-state.json's adversary_status is in the accepted set
+         ("complete" or "clean") -- read via _grill._state.adversary_ran(),
+         which is the single source of truth for that set; this function
+         does NOT re-derive it locally.
+
+    Two deliberate BEHAVIORAL narrowings from plan_helper's
+    verify-spec-check (the same gate shape one pipeline stage upstream)
+    -- a third, interface-level divergence (--plan as a flag rather than
+    this file's usual positional path argument) is explained at this
+    verb's argparse registration in build_parser(), not here:
+
+    - NEVER reads freshness. grill-state.json's plan_sha256 field is
+      RECORDED (by _grill._state.compute_plan_sha256) but never re-hashed,
+      never compared, and never named in any exit path here. A stale
+      grill report (grill.md produced against a since-edited plan.md)
+      still PASSES this gate. This is not an oversight: a freshness
+      condition would re-create a loop that penalizes acting on the
+      report's own findings -- ignore a finding and proceed immediately,
+      or act on it and pay for another full adversarial run before
+      /devforge:breakdown will run at all.
+    - NEVER reads the verdict/disposition. A KILL-disposition grill.md
+      satisfies this gate exactly like a PROCEED one. The human owns the
+      disposition at /devforge:breakdown's own approval gate, not this
+      helper.
+
+    Also NEVER offers an override -- no flag on this verb skips or
+    force-passes the gate.
+
+    Exit 0: both conditions above hold. Prints a JSON ack to stdout:
+        {"ran": true, "report_path": <str>, "adversary_status": <str>}
+      Deliberately carries no plan hash -- see the freshness narrowing
+      above.
+
+    Exit 2 (BLOCKED, stderr), one of five distinct causes:
+      (a) plan.md itself missing/unreadable -- the plain sibling-gate
+          failure shape this file's other verbs produce (a
+          "breakdown_helper: cannot read plan: <path>" line via _die()),
+          NOT the multi-line BLOCKED form: telling the user to run
+          /devforge:grill would be nonsensical when the plan path itself
+          is bad. Mirrors plan_helper.cmd_verify_spec_check's arm (a)
+          exactly.
+      (b) no grill.md exists next to the plan.
+      (c) grill.md exists but grill-state.json is missing, unreadable, or
+          not a JSON object (_grill._state.read_state returns None for
+          all three -- the last of which is this phase's own fix to that
+          module).
+      (d) state readable but adversary_status is the unset sentinel ""
+          -- a state file written before this field existed.
+      (e) adversary_status holds anything else outside the accepted set
+          (in practice "failed" or "missing", _shared._consume's other
+          two dispatch-outcome literals) -- the run happened but
+          produced nothing usable.
+      Every (b)-(e) message names /devforge:grill as the command to run
+      next (for the USER to type -- grill is human-typed only, this
+      helper never implies it will run it) and states the gate is
+      mandatory with no override.
+    """
+    plan_path_raw = args.plan
+    plan_path = Path(plan_path_raw)
+    if not plan_path.is_absolute():
+        plan_path = Path.cwd() / plan_path
+
+    # (a) plan.md missing/unreadable -- sibling-gate failure shape (same
+    # message _die() produces for every other plan-reading subcommand in
+    # this file), NOT the multi-line BLOCKED form.
+    try:
+        plan_path.read_bytes()
+    except OSError:
+        return _die("cannot read plan: {0}".format(plan_path_raw))
+
+    plan_path = plan_path.resolve()
+    feature_dir = plan_path.parent
+    report_path = feature_dir / "grill.md"
+
+    if not report_path.is_file():
+        # (b) no grill.md at all.
+        sys.stderr.write(
+            _render_blocked_grill_ran(
+                "no grill report exists for this plan — run "
+                "`/devforge:grill` first",
+                plan_path,
+            )
+        )
+        return 2
+
+    # Ensure _grill is importable from the same lib dir as this file.
+    _lib_dir = Path(__file__).resolve().parent
+    if str(_lib_dir) not in sys.path:
+        sys.path.insert(0, str(_lib_dir))
+
+    from _grill._state import adversary_ran, read_state, state_path  # type: ignore[import]
+
+    grill_state_path = state_path(str(feature_dir))
+    state = read_state(grill_state_path)
+    if state is None:
+        # (c) grill-state.json missing, unreadable, or not a JSON object.
+        sys.stderr.write(
+            _render_blocked_grill_ran(
+                "grill.md exists at {0} but its sibling grill-state.json "
+                "at {1} is missing, unreadable, or not a valid state "
+                "object — re-run required".format(
+                    report_path, grill_state_path
+                ),
+                plan_path,
+            )
+        )
+        return 2
+
+    if not state.adversary_status:
+        # (d) state readable but unset -- a pre-mechanism state file.
+        sys.stderr.write(
+            _render_blocked_grill_ran(
+                "the grill state at {0} carries no recorded adversary "
+                "run (a state file written before this mechanism "
+                "existed) — re-run required".format(grill_state_path),
+                plan_path,
+            )
+        )
+        return 2
+
+    if not adversary_ran(state):
+        # (e) e.g. "failed" or "missing" -- ran but produced nothing usable.
+        sys.stderr.write(
+            _render_blocked_grill_ran(
+                "the grill adversary dispatch recorded at {0} did not "
+                "complete (adversary_status: {1!r}) — re-run "
+                "required".format(grill_state_path, state.adversary_status),
+                plan_path,
+            )
+        )
+        return 2
+
+    ack = {
+        "ran": True,
+        "report_path": str(report_path),
+        "adversary_status": state.adversary_status,
+    }
+    sys.stdout.write(json.dumps(ack, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Phase 4 — task-file parsing helpers (for finalize-handoff).
 # ---------------------------------------------------------------------------
 
@@ -3840,6 +4034,40 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_verify_dead_code_coverage)
+
+    # verify-grill-ran
+    sp = sub.add_parser(
+        "verify-grill-ran",
+        help=(
+            "Mandatory entry-side gate for /devforge:breakdown: checks that "
+            "<feature-dir>/grill.md exists AND grill-state.json's "
+            "adversary_status is 'complete' or 'clean' (via "
+            "_grill._state.adversary_ran).  PRESENCE ONLY -- never reads "
+            "freshness (plan_sha256) or the grill verdict/disposition; no "
+            "override flag.  Exit 0 when the adversary ran; exit 2 "
+            "(BLOCKED) otherwise, naming /devforge:grill for the user to "
+            "run."
+        ),
+    )
+    # Deliberate departure from this file's positional-primary-path
+    # convention (every other single-required-path verb here --
+    # finalize-handoff and the four verify-* PHASE 3.5 gates above --
+    # takes its plan/tasks path positionally): a named --plan is intended
+    # to read unambiguously in the future breakdown/main.md PHASE 0a
+    # entry-gate bash block (not yet wired -- see cmd_verify_grill_ran's
+    # docstring), mirroring --spec's ergonomics in plan_helper.py's own
+    # verify-spec-check registration above plan/main.md's PHASE 0a.8
+    # bash block, which already emits --spec explicitly today.
+    sp.add_argument(
+        "--plan",
+        dest="plan",
+        required=True,
+        help=(
+            "Path to plan.md (grill.md and grill-state.json are resolved "
+            "as its siblings)."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_grill_ran)
 
     # finalize-handoff
     sp = sub.add_parser(

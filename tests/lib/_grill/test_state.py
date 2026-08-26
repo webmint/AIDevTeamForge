@@ -105,6 +105,30 @@ class TestReadState(unittest.TestCase):
                 loaded.agent_assignments, ["security-reviewer", "qa-reviewer"]
             )
 
+    def test_top_level_array_returns_none(self):
+        """Valid JSON but a top-level ARRAY (not an object) must return
+        None, not raise AttributeError from a bare `.items()` call on a
+        list. Pins the inherited-defect fix this phase closes: this is
+        the first caller (breakdown_helper's verify-grill-ran) that reads
+        a grill-state.json it did not itself just write, so a corrupt or
+        hand-edited state file is reachable input for the first time.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "grill-state.json")
+            with open(sp, "w", encoding="utf-8") as fh:
+                json.dump([1, 2, 3], fh)
+            self.assertIsNone(read_state(sp))
+
+    def test_top_level_scalar_returns_none(self):
+        """Valid JSON but a top-level scalar (e.g. a bare string) must
+        also return None -- same non-dict-JSON class as the array case
+        above, checked by the same isinstance guard."""
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "grill-state.json")
+            with open(sp, "w", encoding="utf-8") as fh:
+                json.dump("not an object", fh)
+            self.assertIsNone(read_state(sp))
+
     def test_unknown_keys_tolerated(self):
         with tempfile.TemporaryDirectory() as td:
             sp = os.path.join(td, "grill-state.json")

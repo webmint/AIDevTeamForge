@@ -7516,5 +7516,378 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
         self.assertNotIn("pairs: must contain at least one pair", out)
 
 
+# ---------------------------------------------------------------------------
+# Tests: verify-grill-ran
+# ---------------------------------------------------------------------------
+
+
+def _write_grill_report(feature_dir, content="# Grill: Test Feature\n\nSome content.\n"):
+    """Write a grill.md at feature_dir.
+
+    Content is irrelevant to the gate under test -- verify-grill-ran
+    checks presence + grill-state.json only, never grill.md's body -- so
+    it is kept minimal on purpose.
+    """
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    report_path = feature_dir / "grill.md"
+    report_path.write_text(content, encoding="utf-8")
+    return report_path
+
+
+def _write_grill_state_real(feature_dir, adversary_status, plan_sha256=""):
+    """Write grill-state.json via the REAL _grill._state.GrillState /
+    state_path / write_state -- round-tripped through the real producer
+    machinery (per real-fixture discipline), not hand-authored JSON.
+    """
+    from _grill._state import GrillState, state_path, write_state  # type: ignore[import]
+
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    sp = state_path(str(feature_dir))
+    state = GrillState(
+        phase="report",
+        feature_dir=str(feature_dir),
+        status="complete",
+        out_path=str(feature_dir / "grill.md"),
+        adversary_status=adversary_status,
+        plan_sha256=plan_sha256,
+    )
+    write_state(sp, state)
+    return sp
+
+
+def _write_pre_change_grill_state(feature_dir):
+    """Hand-author a grill-state.json shaped as it looked BEFORE
+    adversary_status/plan_sha256 existed.
+
+    No current producer can generate this shape -- mirrors
+    tests/lib/_grill/test_state.py's own
+    test_pre_change_file_round_trips_to_not_ran fixture, which documents
+    the same "no real producer for this shape" rationale.
+    """
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    sp = feature_dir / "grill-state.json"
+    data = {
+        "phase": "report",
+        "feature_dir": str(feature_dir),
+        "status": "complete",
+        "out_path": str(feature_dir / "grill.md"),
+        "scope_files": [],
+        "agent_assignments": [],
+    }
+    sp.write_text(json.dumps(data), encoding="utf-8")
+    return sp
+
+
+def _write_array_grill_state(feature_dir):
+    """Hand-author grill-state.json as a top-level JSON ARRAY.
+
+    Malformed shape no current producer can generate; exercises the
+    _grill/_state.py non-dict-JSON fix this phase ships (the inherited
+    defect this verb's existence makes reachable for the first time).
+    """
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    sp = feature_dir / "grill-state.json"
+    sp.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    return sp
+
+
+class VerifyGrillRanTests(_CwdIsolationBH):
+    """CLI-level tests for `breakdown_helper verify-grill-ran` (subprocess).
+
+    Mirrors test_plan_helper.py's VerifySpecCheckTests in shape (the same
+    gate one pipeline stage upstream): every grill-state.json fixture is
+    round-tripped through the real `_grill._state` producer machinery
+    except the two deliberately-malformed/deliberately-old-shaped cases
+    (_write_pre_change_grill_state, _write_array_grill_state), which no
+    current producer can generate.
+    """
+
+    def _feature_dir(self):
+        d = self.tmp_path / "specs" / "011-widget-catalog-search"
+        d.mkdir(parents=True)
+        return d
+
+    # ------------------------------------------------------------------
+    # (a) plan.md itself missing/unreadable
+    # ------------------------------------------------------------------
+
+    def test_plan_missing_sibling_gate_shape(self):
+        """(a) plan.md missing -- plain sibling-gate message, NOT the
+        multi-line BLOCKED form, and NEVER names /devforge:grill (running
+        it would be nonsensical when the plan path itself is bad)."""
+        missing = self.tmp_path / "specs" / "011-x" / "plan.md"
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(missing))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("breakdown_helper: cannot read plan:", result.stderr)
+        self.assertNotIn("BLOCKED:", result.stderr)
+        self.assertNotIn("/devforge:grill", result.stderr)
+
+    def test_relative_plan_path_missing_shows_raw_string_in_stderr(self):
+        """(a) with a RELATIVE --plan pointing at a nonexistent file: the
+        stderr carries the raw relative string the user passed, not the
+        resolved absolute path -- mirrors verify-spec-check's own arm (a)
+        test for the same reason (args.plan reported verbatim)."""
+        rel = "specs/011-x/plan.md"
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", rel)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "breakdown_helper: cannot read plan: {0}".format(rel), result.stderr
+        )
+        resolved = str((self.tmp_path / rel).resolve())
+        self.assertNotIn(resolved, result.stderr)
+
+    # ------------------------------------------------------------------
+    # (b) no grill.md next to the plan
+    # ------------------------------------------------------------------
+
+    def test_grill_report_absent_exits_2_blocked(self):
+        """(b) plan.md exists, no sibling grill.md -> BLOCKED, exit 2."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "BLOCKED: /devforge:breakdown requires /devforge:grill to have "
+            "run for this plan.",
+            result.stderr,
+        )
+        self.assertIn(
+            "no grill report exists for this plan — run "
+            "`/devforge:grill` first",
+            result.stderr,
+        )
+        self.assertIn("This gate is mandatory, with no override.", result.stderr)
+        self.assertIn(
+            "Run the following first, then retry /devforge:breakdown:",
+            result.stderr,
+        )
+        self.assertIn(
+            "  /devforge:grill {0}".format(plan_path.resolve()), result.stderr
+        )
+
+    # ------------------------------------------------------------------
+    # (c) grill.md present, grill-state.json missing/unreadable/malformed
+    # ------------------------------------------------------------------
+
+    def test_grill_state_absent_exits_2_blocked(self):
+        """(c) grill.md present, grill-state.json absent -> BLOCKED,
+        exit 2."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("BLOCKED:", result.stderr)
+        self.assertIn("grill-state.json", result.stderr)
+        self.assertIn("/devforge:grill", result.stderr)
+        self.assertIn("This gate is mandatory, with no override.", result.stderr)
+
+    def test_grill_state_top_level_array_exits_2_no_traceback(self):
+        """grill-state.json is valid JSON but a top-level ARRAY -> exit 2
+        with the BLOCKED message, NOT a Python traceback. Pins the
+        _grill/_state.py inherited-defect fix this phase ships: this verb
+        is the first caller that reads a grill-state.json it did not
+        itself just write."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_array_grill_state(d)
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("AttributeError", result.stderr)
+        self.assertIn("BLOCKED:", result.stderr)
+        self.assertIn("grill-state.json", result.stderr)
+
+    # ------------------------------------------------------------------
+    # (d) state readable but adversary_status unset
+    # ------------------------------------------------------------------
+
+    def test_pre_change_state_unset_status_exits_2_blocked(self):
+        """(d) grill-state.json readable but shaped as it looked BEFORE
+        adversary_status existed (only the pre-change keys) -> unset
+        status -> BLOCKED, exit 2."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_pre_change_grill_state(d)
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("BLOCKED:", result.stderr)
+        self.assertIn("no recorded adversary run", result.stderr)
+        self.assertIn("/devforge:grill", result.stderr)
+        self.assertIn("This gate is mandatory, with no override.", result.stderr)
+
+    # ------------------------------------------------------------------
+    # (e) adversary_status is "failed" or "missing"
+    # ------------------------------------------------------------------
+
+    def test_adversary_status_failed_exits_2_blocked(self):
+        """(e) adversary_status == 'failed' -- own test, exit 2."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_grill_state_real(d, adversary_status="failed")
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("BLOCKED:", result.stderr)
+        self.assertIn("did not complete", result.stderr)
+        self.assertIn("'failed'", result.stderr)
+        self.assertIn("/devforge:grill", result.stderr)
+
+    def test_adversary_status_missing_exits_2_blocked(self):
+        """(e) adversary_status == 'missing' -- own test, distinct from
+        'failed', exit 2."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_grill_state_real(d, adversary_status="missing")
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("BLOCKED:", result.stderr)
+        self.assertIn("did not complete", result.stderr)
+        self.assertIn("'missing'", result.stderr)
+
+    # ------------------------------------------------------------------
+    # Exit 0 -- adversary_ran() accepted statuses, each its own test
+    # ------------------------------------------------------------------
+
+    def test_adversary_status_complete_exits_0(self):
+        """adversary_status == 'complete' -> exit 0."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_grill_state_real(d, adversary_status="complete")
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        ack = json.loads(result.stdout)
+        self.assertEqual(ack["ran"], True)
+        self.assertEqual(ack["adversary_status"], "complete")
+        self.assertEqual(ack["report_path"], str((d / "grill.md").resolve()))
+
+    def test_adversary_status_clean_exits_0(self):
+        """adversary_status == 'clean' -> exit 0, its OWN test, not
+        folded into the 'complete' case -- a clean run (the adversary ran
+        and grounded no attack) is a genuinely successful adversarial
+        pass, and this distinction being independently visible is the
+        whole reason the status is persisted separately from a bare
+        pass/fail bit."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        _write_grill_state_real(d, adversary_status="clean")
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        ack = json.loads(result.stdout)
+        self.assertEqual(ack["ran"], True)
+        self.assertEqual(ack["adversary_status"], "clean")
+
+    # ------------------------------------------------------------------
+    # Freshness is DELIBERATELY not enforced -- a stale report PASSES
+    # ------------------------------------------------------------------
+
+    def test_stale_plan_sha256_still_passes_freshness_is_never_enforced(self):
+        """A grill-state.json recording a plan_sha256 that does NOT match
+        the current plan.md's real hash still EXITS 0. This pins the
+        ratified recorded-not-enforced stance: verify-grill-ran checks
+        presence of a completed adversarial run only, never freshness --
+        see cmd_verify_grill_ran's docstring for why a freshness
+        condition would penalize acting on the grill report's own
+        findings. This is the case a future "hardening" pass would most
+        plausibly break by adding a hash comparison; it must keep
+        passing."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        # Deliberately mismatched -- not the real hash of plan.md's content.
+        stale_hash = "0" * 64
+        _write_grill_state_real(
+            d, adversary_status="complete", plan_sha256=stale_hash
+        )
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        ack = json.loads(result.stdout)
+        self.assertEqual(ack["ran"], True)
+
+    def test_exit_0_ack_never_contains_plan_hash(self):
+        """The exit-0 ack carries no plan_sha256 key and no hash string at
+        all -- distinct from plan_helper's verify-spec-check, which DOES
+        carry spec_sha256; the divergence is deliberate (see docstring)."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        _write_grill_report(d)
+        recorded_hash = "abc123def456" + "0" * 52  # 64 hex chars, distinctive
+        _write_grill_state_real(
+            d, adversary_status="complete", plan_sha256=recorded_hash
+        )
+
+        result = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        ack = json.loads(result.stdout)
+        self.assertNotIn("plan_sha256", ack)
+        self.assertNotIn(recorded_hash, result.stdout)
+
+    # ------------------------------------------------------------------
+    # Zero-escape-hatch: no override/skip/force wording in any BLOCKED arm
+    # ------------------------------------------------------------------
+
+    def test_blocked_messages_name_grill_and_offer_no_override_flag(self):
+        """Every (b)-(e) BLOCKED stderr names /devforge:grill and offers
+        NO override/skip/force FLAG. The mandatory disclaimer sentence
+        itself uses the word 'override' ('...with no override.'), so this
+        checks for the absence of escape-hatch FLAG syntax
+        (--force / --skip / --override) rather than the bare word."""
+        d = self._feature_dir()
+        plan_path = d / "plan.md"
+        _write_minimal_plan(str(plan_path))
+
+        scenarios = []
+
+        # (b) no grill.md.
+        result_b = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        scenarios.append(result_b.stderr)
+
+        # (c) grill.md present, no state.
+        _write_grill_report(d)
+        result_c = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        scenarios.append(result_c.stderr)
+
+        # (d) unset status.
+        _write_pre_change_grill_state(d)
+        result_d = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        scenarios.append(result_d.stderr)
+
+        # (e) failed status.
+        (d / "grill-state.json").unlink()
+        _write_grill_state_real(d, adversary_status="failed")
+        result_e = _run_bh(self.tmp_path, "verify-grill-ran", "--plan", str(plan_path))
+        scenarios.append(result_e.stderr)
+
+        for stderr in scenarios:
+            self.assertIn("/devforge:grill", stderr)
+            self.assertNotIn("--force", stderr)
+            self.assertNotIn("--skip", stderr)
+            self.assertNotIn("--override", stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
