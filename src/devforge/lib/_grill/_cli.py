@@ -26,6 +26,25 @@ Phase 5 ships 2 verbs (report rendering + seed production):
   render-report          — render + write specs/<feature>/grill.md (Phase 5)
   write-seed             — build + write grill-seed.json backward handoff (human-gate re-entry arm)
 
+CLI wiring for three library-only helpers (previously unreachable from the
+command surface — see _partition.py / _merge.py / _state.py's GrillState
+docstrings):
+  merge-passes            — 2-pass UNION merge of validated-findings pools
+                             via _merge.merge_two_passes (new verb; the
+                             handler body lives in _merge_cli.py -- this
+                             file carries only registration + a two-line
+                             delegator, same SRP split as cmd_resolve_scope)
+  render-report           — ack gains a "clean" key, the verbatim return of
+                             _partition.partition_is_clean(partition); no
+                             new flag, existing --partition input is enough
+  check-status-and-flip   — gains optional --adversary-status /
+                             --plan-sha256 flags that persist GrillState's
+                             like-named fields; omitting either leaves the
+                             corresponding field UNCHANGED (never blanked);
+                             all requested mutations (phase/status flip +
+                             the two new fields) land in exactly ONE
+                             write_state() call, never two
+
 Key difference from _review/_cli.py:
   route-refutation passes priority=["code-reviewer", "qa-reviewer",
   "security-reviewer"] (architect-excluded) to route_refutation. /grill
@@ -40,6 +59,7 @@ import argparse
 import dataclasses
 import json
 import os
+import re
 import sys
 
 # ---------------------------------------------------------------------------
@@ -62,6 +82,28 @@ if _LIB_DIR not in sys.path:
 # its own conceptual domain without having generated them).
 _GRILL_REFUTER_PRIORITY = ["code-reviewer", "qa-reviewer", "security-reviewer"]
 
+# The four adversary_status values GrillState.adversary_status may hold
+# (mirrors _shared._consume's STATUS_* constants). Validated HERE, at the
+# CLI boundary, before any state read/write happens -- never deferred to
+# _state.py or to a downstream predicate. _state.py keeps its own private
+# _ADVERSARY_RAN_STATUSES tuple (only the 2 values that count as "ran");
+# this is the full 4-value set used to REJECT an unrecognised string rather
+# than silently persist it as a value adversary_ran() would then read as
+# "did not run".
+_KNOWN_ADVERSARY_STATUSES = ("complete", "clean", "failed", "missing")
+
+# Shape check for --plan-sha256: 64 hex characters, matching
+# hashlib.sha256(...).hexdigest()'s output shape (see
+# _state.compute_plan_sha256). This is a SHAPE check ONLY -- it never
+# recomputes or compares a hash. A comparison helper at this layer would
+# reopen a decision _state.py's own compute_plan_sha256 docstring records
+# as settled: plan_sha256 is recorded for human visibility only, and
+# nothing in this package compares it to a fresh re-hash. Validated
+# (like _KNOWN_ADVERSARY_STATUSES above) BEFORE any read/write, because a
+# malformed value here defeats the field's only job -- a human reading the
+# artifact to judge staleness is exactly a visibility failure otherwise.
+_SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
 
 # ---------------------------------------------------------------------------
 # Subcommand handlers
@@ -72,20 +114,68 @@ def cmd_check_status_and_flip(args):
     # type: (argparse.Namespace) -> int
     """Read current grill state, optionally flip phase/status, emit JSON.
 
-    Without --to: read current state (empty GrillState if none) and print.
-    With --to: call flip_phase, print resulting state.
-    Returns 0 on success, 1 on I/O error, 2 on ValueError (empty --to).
+    Without --to and without --adversary-status/--plan-sha256: read current
+    state (empty GrillState if none) and print. Pure read, no write.
+
+    With --to and/or --adversary-status and/or --plan-sha256, in any
+    combination: read current state ONCE (or start fresh), apply every
+    requested mutation to that SAME in-memory object, then call
+    write_state() exactly ONCE. Omitting a flag leaves the corresponding
+    field UNCHANGED -- it is never blanked by an unrelated flip or
+    field-only update. This does NOT call _state.flip_phase(): flip_phase
+    does its own internal read + write, and calling it here would make the
+    --to mutation land in a first write while the new-field mutations land
+    in a second, separate write -- each individually atomic, but the
+    SEQUENCE not. If the second write raised, the phase would already be
+    advanced on disk while adversary_status never landed, and the caller
+    would see only "exit 1, I/O error" with no way to tell that apart from
+    "nothing was written" -- the same inconsistent-state-with-no-signal
+    failure the omit-flag contract above exists to prevent, reached through
+    a failure window instead of an omitted flag. Inlining flip_phase's
+    phase/status assignment onto the one state object this handler already
+    holds, and writing once, removes that window entirely: either every
+    requested field lands, or none does.
+
+    --adversary-status is validated against _KNOWN_ADVERSARY_STATUSES, and
+    --plan-sha256 against _SHA256_HEX_RE (a SHAPE check only -- 64 hex
+    chars; this never recomputes or compares a hash, which would reopen the
+    decision that plan_sha256 is recorded for human visibility only), and
+    an empty --to is rejected the same way it always was -- all BEFORE any
+    read or write happens, so an invalid value never reaches disk (see this
+    module's _KNOWN_ADVERSARY_STATUSES / _SHA256_HEX_RE comments for why
+    the boundary, not a downstream predicate, owns these checks).
+
+    Returns 0 on success, 1 on I/O error, 2 on an empty --to or an
+    unrecognised --adversary-status / malformed --plan-sha256 value.
     """
-    from ._state import GrillState, flip_phase, read_state, state_path
+    from ._state import GrillState, read_state, state_path, write_state
 
     feature_dir = getattr(args, "feature_dir", ".") or "."
     to_phase = getattr(args, "to", None)
     to_status = getattr(args, "status", None)
+    adversary_status = getattr(args, "adversary_status", None)
+    plan_sha256 = getattr(args, "plan_sha256", None)
+
+    if adversary_status is not None and adversary_status not in _KNOWN_ADVERSARY_STATUSES:
+        sys.stderr.write(
+            "grill_helper check-status-and-flip: --adversary-status must be "
+            "one of {0}, got {1!r}\n".format(
+                ", ".join(_KNOWN_ADVERSARY_STATUSES), adversary_status
+            )
+        )
+        return 2
+
+    if plan_sha256 is not None and not _SHA256_HEX_RE.match(plan_sha256):
+        sys.stderr.write(
+            "grill_helper check-status-and-flip: --plan-sha256 must be a "
+            "64-character hexadecimal digest, got {0!r}\n".format(plan_sha256)
+        )
+        return 2
 
     sp = state_path(feature_dir)
 
-    if to_phase is None:
-        # Read-only mode.
+    if to_phase is None and adversary_status is None and plan_sha256 is None:
+        # Pure read-only mode: no flag requests a write.
         state = read_state(sp)
         if state is None:
             state = GrillState()
@@ -94,14 +184,31 @@ def cmd_check_status_and_flip(args):
         )
         return 0
 
-    # Flip mode.
-    try:
-        state = flip_phase(sp, to_phase, to_status)
-    except ValueError as exc:
+    if to_phase is not None and not to_phase.strip():
+        # Mirrors _state.flip_phase's own ValueError wording -- validated
+        # here, before the read, since this handler no longer calls
+        # flip_phase (see the docstring's single-write paragraph).
         sys.stderr.write(
-            "grill_helper check-status-and-flip: {0}\n".format(exc)
+            "grill_helper check-status-and-flip: to_phase must be non-empty\n"
         )
         return 2
+
+    # Single read-modify-write covering every requested mutation.
+    state = read_state(sp)
+    if state is None:
+        state = GrillState()
+
+    if to_phase is not None:
+        state.phase = to_phase
+        if to_status is not None:
+            state.status = to_status
+    if adversary_status is not None:
+        state.adversary_status = adversary_status
+    if plan_sha256 is not None:
+        state.plan_sha256 = plan_sha256
+
+    try:
+        write_state(sp, state)
     except OSError as exc:
         sys.stderr.write(
             "grill_helper check-status-and-flip: I/O error: {0}\n".format(exc)
@@ -387,6 +494,23 @@ def cmd_validate_findings(args):
 
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return 0
+
+
+def cmd_merge_passes(args):
+    # type: (argparse.Namespace) -> int
+    """Union-merge exactly 2 pass pools of validated findings; emit JSON.
+
+    Delegates entirely to _merge_cli.cmd_merge_passes (already a full
+    handler) -- same SRP-split pattern as cmd_resolve_scope above. See that
+    module's docstring for the full contract (UNION semantics, ordering,
+    the accepted pool shapes, and the non-dict-element rejection).
+
+    Returns:
+      0 — success (merged bare JSON array emitted to stdout)
+      2 — missing/unreadable/malformed pool file
+    """
+    from ._merge_cli import cmd_merge_passes as _impl
+    return _impl(args)
 
 
 # ---------------------------------------------------------------------------
@@ -720,8 +844,17 @@ def cmd_render_report(args):
            --finders-skipped <comma>  (skipped / not-installed finder names)
     Returns 0 on success, 2 on bad input.
     Output on stdout: JSON ack {"path": "<written>", "confirmed": N,
-                                 "contested": N, "dismissed": N, "uncertain": N}.
+                                 "contested": N, "dismissed": N, "uncertain": N,
+                                 "clean": bool}.
+    "clean" is the verbatim return of _partition.partition_is_clean(partition)
+    -- the SAME partition dict this handler already reads via --partition,
+    computed here rather than re-derived in prose by /devforge:grill's
+    PHASE 7 disposition step. This rides the existing ack instead of adding
+    a new verb: PHASE 6 already calls render-report, so one fewer round
+    trip is one fewer place the value can drift from partition_is_clean's
+    actual definition.
     """
+    from ._partition import partition_is_clean
     from ._report import render_report, write_grill_report
 
     partition_path = getattr(args, "partition", None)
@@ -825,6 +958,7 @@ def cmd_render_report(args):
         "contested": len((partition.get("contested") or [])),
         "dismissed": len((partition.get("dismissed") or [])),
         "uncertain": len((partition.get("uncertain") or [])),
+        "clean": partition_is_clean(partition),
     }
     sys.stdout.write(json.dumps(ack, indent=2, sort_keys=True) + "\n")
     return 0
@@ -968,6 +1102,11 @@ _SUBCOMMAND_REGISTRY = [
         cmd_validate_findings,
     ),
     (
+        "merge-passes",
+        "Union-merge exactly 2 pass pools of validated findings (fixed 2-pool UNION, not audit's N-pass generalization).",
+        cmd_merge_passes,
+    ),
+    (
         "route-refutation",
         "Group findings by author and assign each group a non-author refuter (Phase 4).",
         cmd_route_refutation,
@@ -1051,6 +1190,34 @@ def _register_subcommands(subparsers):
                 help=(
                     "Optional status to set alongside the phase flip "
                     "(e.g. 'complete'). Only used when --to is given."
+                ),
+            )
+            sp.add_argument(
+                "--adversary-status",
+                default=None,
+                dest="adversary_status",
+                metavar="STATUS",
+                help=(
+                    "Persist GrillState.adversary_status: one of "
+                    "complete | clean | failed | missing. Independent of "
+                    "--to -- may be passed alone or alongside a phase flip. "
+                    "Omit to leave the stored value UNCHANGED (never "
+                    "blanked)."
+                ),
+            )
+            sp.add_argument(
+                "--plan-sha256",
+                default=None,
+                dest="plan_sha256",
+                metavar="HEXDIGEST",
+                help=(
+                    "Persist GrillState.plan_sha256 (sha256 hex digest of "
+                    "the plan.md this grill run saw -- see "
+                    "_state.compute_plan_sha256). Must be exactly 64 "
+                    "hexadecimal characters (a shape check only -- nothing "
+                    "in this CLI compares it; recorded for human "
+                    "visibility ONLY). Independent of --to. Omit to leave "
+                    "the stored value UNCHANGED (never blanked)."
                 ),
             )
 
@@ -1206,6 +1373,24 @@ def _register_subcommands(subparsers):
                     "Optional subdirectory within repo-root (e.g. 'src'). "
                     "Tried first before repo-root when resolving paths "
                     "(default: empty — use repo-root directly)."
+                ),
+            )
+
+        elif verb == "merge-passes":
+            sp.add_argument(
+                "--pools",
+                nargs=2,
+                required=True,
+                metavar=("PASS_A", "PASS_B"),
+                help=(
+                    "Exactly 2 pool file paths to union-merge, in order: "
+                    "the first is pass_a, the second is pass_b. Each file "
+                    "must be a JSON array of ParsedFinding dicts or a "
+                    "validate-findings output object with a 'passed' key. "
+                    "pass_a's findings are emitted first and in full; a "
+                    "pass_b finding is appended only when its "
+                    "(file, line, pattern) identity was not already seen "
+                    "in pass_a."
                 ),
             )
 

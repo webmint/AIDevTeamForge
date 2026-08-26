@@ -89,6 +89,12 @@ write-seed (Phase 5):
   invalid target-stage                — returns 2
   happy path                          — returns 0, JSON ack + file written
   with --carried-findings             — returns 0, findings in seed JSON
+
+CLI wiring for three previously-library-only helpers (merge-passes new
+verb; render-report's ack "clean" key; check-status-and-flip's
+--adversary-status / --plan-sha256 flags) is covered in the sibling file
+test_cli_phase1_wiring.py, NOT here — this file only carries the registry
+verb-name/count update those additions required.
 """
 
 import dataclasses
@@ -250,6 +256,7 @@ class TestBuildParser(unittest.TestCase):
             "render-brief",
             "consume-tmp",
             "validate-findings",
+            "merge-passes",
             "route-refutation",
             "render-verify-brief",
             "consume-verdicts",
@@ -260,7 +267,7 @@ class TestBuildParser(unittest.TestCase):
         self.assertEqual(verbs, expected)
 
     def test_registry_length(self):
-        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 12)
+        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 13)
 
     def test_grill_refuter_priority_excludes_architect(self):
         self.assertNotIn("architect", _GRILL_REFUTER_PRIORITY)
