@@ -214,7 +214,7 @@ These rules apply to all framework work — not just audits. Audit findings are 
 
 ### Test-immediately-after-write for python helpers
 
-Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. No exceptions for size, complexity, "trivial" functions, or "covered by caller test" — every function gets its own test that runs. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `configure_helper render-config` → file → `constitute_helper read-configure` parser), not hand-authored fixtures.
+Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. No exceptions for size, complexity, "trivial" functions, or "covered by caller test" — every function gets its own test that runs. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `configure_helper reset` + `set-*` verbs → `.devforge/configure.yaml` → `constitute_helper read-configure` parser; `tests/lib/test_constitute_helper.py` does exactly this), not hand-authored fixtures.
 
 ### Sentence-level hallucination check for spec docs
 
