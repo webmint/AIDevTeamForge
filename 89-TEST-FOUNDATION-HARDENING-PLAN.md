@@ -1,8 +1,9 @@
 # 89 — Test-foundation hardening: the test OBLIGATION made as standing as the test RUN
 
-**Status:** NOT STARTED — awaiting Phase-0 ratification (D1–D6 + OQ-1–OQ-5 unanswered). Nothing below is decided; every decision carries a recommendation and at least one recorded alternative.
+**Status:** NOT STARTED — awaiting Phase-0 ratification (D1–D7 + OQ-1–OQ-6 unanswered). Nothing below is decided; every decision carries a recommendation and at least one recorded alternative.
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
+**Amended 2026-08-26 (same session, maintainer-directed): the obligation D2 creates must not be satisfiable by tests written merely to exist, nor by invented tests.** The amendment is APPEND-ONLY on every existing identifier — **D1–D6 and OQ-1–OQ-5 keep their numbers** (plan 90 cites this plan's OQ-3 by number) and **no existing phase was renumbered**. Its full footprint, so a reader diffing against an earlier copy knows what to look for: **D7** and **OQ-6** added; **Phase 2b** inserted letter-suffixed after Phase 2, and Phase 2's own scope extended to write one block from D7's rendering; **fact rows 7a, 8a and 8b** added (table 30 → **33** rows); **Phase 6 anchor 5** added (4 → **5** anchors, and anchor 5 is pair-scored); **Traps 8, 9 and 10** added (7 → **10**); **`## When resuming work` item 10** added (9 → **10** items); **`## Cross-plan coordination — plan 90` rewritten** — `src/agents/qa-reviewer.md` became a THIRD unconditional shared surface because D7 edits it and plan 90 edits a different part of the same file; and **`## What is actually being added`** grew to six items and four honest bounds.
 
 This plan document contains no private-client identifiers and is intended to be
 **committed normally**, unlike the deliberately-untracked plans 73/74/75.
@@ -85,9 +86,10 @@ finds the reasoning at the point where it would otherwise re-open them:
 
 ## What is actually being added
 
-Five things. **Phase 0 ratifies each independently — with one named exception, stated here
+Six things. **Phase 0 ratifies each independently — with TWO named exceptions, stated here
 rather than discovered mid-build: D4's recommended arm CONSUMES D2's output and is not
-buildable without it.** Every other pair is independent.
+buildable without it, and D7 is the counterweight to an incentive D2 CREATES.** Every other pair
+is independent.
 
 1. **One universal constitution rule** (Phase 2) — a titled bold block of test defaults
    appended inside a section that the drift detector actually tracks (D1). **Instruction-only.**
@@ -103,8 +105,13 @@ buildable without it.** Every other pair is independent.
 5. **One documentation repair** (Phase 5) — the `REGRESSION_GATE` config key is read by
    `/devforge:verify` and set by a `configure_helper` verb, but `/devforge:configure`'s spec
    never mentions it (D6). **Instruction-only.**
+6. **Three falsifiable clauses against vacuous tests** (Phases 2 and 2b) — appended to D1's
+   constitution block (the obligation layer, reaching every test author) and to
+   `qa-reviewer`'s existing checks and verdict vocabulary (the detection layer, reaching every
+   test regardless of who wrote it) (D7). **Instruction-only; no new agent, no new gate, no new
+   verdict value.**
 
-**⚠ Three honest bounds that must survive into every emitted sentence and every summary:**
+**⚠ Four honest bounds that must survive into every emitted sentence and every summary:**
 
 - **Nothing here is a gate.** Plan 75's tripwire holds in both halves: **zero new `verify-*`
   PHASE-3.5 gate numbers, zero new hard-fail validators, zero new check numbers.** D2 adds a
@@ -117,6 +124,11 @@ buildable without it.** Every other pair is independent.
 - **The obligation added is to WRITE tests; the coverage of those tests is not measured
   anywhere and this plan does not measure it** (D5). A future reader must not cite this plan
   as evidence that generated code is covered.
+- **Nothing MECHANICAL checks that a test is non-vacuous** (D7). The check is an LLM reviewer
+  judging LLM-written tests. **D7's claim is that the requirement is WRITTEN and the reviewer is
+  INSTRUCTED with named, falsifiable shapes — never that a vacuous test becomes impossible.**
+  Mutation testing is the mechanical answer and is deliberately NOT built; it is recorded as the
+  named strengthening path with a trigger.
 
 ---
 
@@ -144,7 +156,10 @@ string, never the `:NNN`.
 | 5 | **The emitted `### Always` list is exactly FIFTEEN items**; item 8 is *"**Lint everything** — linting must pass on all changed files before task completion"*; item 15 is plan 87's *"**English in files**"*. **No test analog exists** | `src/CLAUDE.md:203`–`:217` |
 | 6 | **`qa-engineer` is pointed at an empty page.** Its Rule 6 reads *"Read `constitution.md` before deciding (incl. its testing requirements)"* — and the constitution's testing requirements are fact 1's placeholder | `src/agents/qa-engineer.md:78`; `src/constitution.md:55`–`:60` |
 | 7 | **No coverage threshold exists anywhere.** `qa-engineer` says *"Run the coverage tool and identify uncovered code paths"* and *"Prioritize what to cover: business logic > error handling > edge cases > rendering"* — a priority order with **no number** | `src/agents/qa-engineer.md:44`–`:46` |
+| 7a | **`qa-engineer`'s philosophy already carries four of D7's clauses**, which is why D7's site (c) is a no-op: *"Test behavior, not implementation details"*, *"Each test tests ONE thing with a clear assertion"*, *"Mock external dependencies, not internal modules"*, step 2's *"For each AC, derive concrete test cases including edge cases and error paths"*, Rule 4's *"Run tests after writing — unrun tests don't count"* and Rule 5's *"Never weaken an assertion to make a test pass; fix the test or the code, not the bar"* | `src/agents/qa-engineer.md:24`–`:29`, `:34`, `:76`–`:77` |
 | 8 | **The framework's actual coverage lever is AC→test mapping, not a percentage**: `qa-reviewer` Rule 2 is *"Map every acceptance criterion to its tests before judging coverage; an unmapped AC is a gap, not an omission to overlook"* | `src/agents/qa-reviewer.md:62` |
+| 8a | ⚠ **`qa-reviewer` ALREADY says "vacuous" — and leaves it undefined.** Approach step 4: *"Judge assertion quality: each test should assert ONE thing clearly, test behavior not implementation details, and mock external dependencies rather than internal modules. **Flag weak, vacuous, or implementation-coupled assertions.**"*; Rule 3 repeats the behavior-not-implementation half. **So D7 does NOT introduce the concept — it makes an existing bare adjective falsifiable.** Its verdict vocabulary is exactly two tokens, `ADEQUATE / GAPS FOUND`, with per-gap severities `Critical / High / Medium / Info`; `tools:` is the locked read-only set `Read, Grep, Glob, Bash` | `src/agents/qa-reviewer.md:27`, `:63`, `:34`, `:43`, `:47`, `:4` |
+| 8b | **`qa-reviewer` sees EVERY test in the per-task panel, whoever wrote it.** `/devforge:implement` PHASE 6 fans out four reviewers and *"Give EACH the same inputs: the `touched_files`, the constitution, and the task body"* — so inline tests written by a stack engineer under fact 15's default are reviewed by `qa-reviewer` on the same pass. **And `ADEQUATE` is its panel clean token**: *"`clean` is `true` IFF EVERY reviewer returned its own clean token (`code-reviewer` `APPROVE`, `qa-reviewer` `ADEQUATE`, …)"*, so a non-ADEQUATE verdict keeps the bounded repair loop going | `src/commands/implement/main.md:183`, `:191`, `:177` |
 | 9 | `verify-touched` runs *"static checks (type-check + lint) first, then the build once, then tests last"* and states *"a project with no test command configured runs no tests (backward-compatible)"*. The self-repair cap (3) is helper-owned | `src/commands/implement/main.md:163` |
 | 9a | **The drop is silent in the code**: `_collect_verify_commands` registers a test command only `if test_cmd and test_cmd != _NA and test_cmd not in test_set` — a `null` or `"N/A"` value falls through with no signal, no warning, no field | `src/devforge/lib/_implement/_cmds_verify.py:311`–`:314` |
 | 9b | ⚠ **The fact is ALREADY on the wire and nobody reads it.** The `pass` payload carries `"test_commands_run": test_cmds` — so an EMPTY list on a `pass` means no test command executed. **`implement/main.md` never mentions the key.** It is absent from the `self_repair` / `failed` / `tooling_unavailable` payloads, but those are not approve paths | `_cmds_verify.py:613`–`:624`; `implement/main.md:163`–`:169` |
@@ -184,6 +199,12 @@ cannot be re-opened honestly later.**
 already has a consistent statement elsewhere in the framework, so this block introduces no new
 policy, only a standing one: the last sentence is `qa-engineer` Rule 5 promoted from agent prose
 to law, and the third is its *"Test behavior, not implementation details"* approach line.
+
+**⚠ AMENDED 2026-08-26 by D7 — the four sentences above are the BASE, not the whole block.**
+D7 appends three further clauses to this same §3.5 block, and **D7 carries the authoritative
+full rendering.** Phase 2 writes the block ONCE, from D7's rendering. **A ratifier who takes D1
+and declines D7 ships the four sentences alone** — which is a coherent outcome, and D7 states
+what it costs.
 
 **Why §3.5 and not §3.4, and it is mechanical rather than aesthetic.** §3.4 looks like the
 natural home and is the wrong one:
@@ -441,6 +462,176 @@ already surfaces the gate's status per run with a `note` field on every non-gati
 (fact 12), so a user who sees it run has a name to search for — and arm (a) is the recorded
 escalation if that proves insufficient.
 
+### D7 — The obligated tests must be able to fail: three falsifiable clauses *(OPEN — defence in depth FOR D2)*
+
+**Origin: a maintainer directive dated 2026-08-26**, given in the same session this plan was
+drafted. Paraphrased in English: the obligation must not be satisfiable by tests written merely
+so that tests exist, nor by invented tests.
+
+**RECOMMENDED RULE.** Three clauses, appended to D1's §3.5 block (the obligation layer) and
+mirrored as checks in `qa-reviewer` (the detection layer). **Each names an observable shape, not
+a quality.** The words *meaningful*, *reasonable*, *adequate-looking* and *quality* appear in
+none of the emitted text — they are judgment words, and a rule built on one is the escape hatch
+this repo's meta-rule forbids by name.
+
+1. **Expected-value provenance.** **Scoped to a test asserting the changed behavior D2 requires**
+   — that test's expected values come from the specification, the acceptance criterion, the
+   contract, or the task's `Produces` postconditions. **Running the implementation and recording
+   its output as the expectation is not a derivation** — a test whose expected value was produced
+   by the code under test asserts only that the code still does what it did, including its
+   defects. **A test pinning existing behavior this change does not alter is outside the clause**,
+   and the rendering below carries that scope in its own sentence rather than leaving it to be
+   inferred from the block's opening.
+2. **The test must be able to fail.** For every test, there is a change to the code under test
+   that makes it fail. **These three shapes have no such change and are findings:** a test whose
+   assertion checks a value the test itself configured a mock to return; a test that asserts a
+   tautology (a literal against itself, or a value the test just assigned); a test that invokes
+   the code under test and asserts nothing about the result, the raised error, or the observable
+   effect.
+3. **No restating the type checker.** A test whose only assertion is that a value has the type
+   its signature already declares is a finding. That proposition is proved at build time by the
+   `type_check_command` every task's Done-When line already requires.
+
+**Why this is DEFENCE IN DEPTH FOR D2, not an independent idea — and why declining it is a
+decision with a cost.** D2 adds a standing `Tests pass on changed files` checkbox to every task
+file. **That checkbox is a target, and a vacuous test ticks it.** The cheapest way to satisfy
+D2 is a test that cannot fail; D7 is the clause that makes the cheapest way a reportable finding
+instead. **This is the same shape as plan 82's D8 with plan 81's F3 — two layers over one
+failure, admission at authoring and refusal at review — and it is stated here rather than
+assumed.** ⚠ **A ratifier who takes D2 and declines D7 ships the incentive without the
+counterweight**, and should record that choice explicitly: today no box demands a test, so no
+box rewards a fake one; after D2 alone, one does.
+
+**Site (a) — D1's §3.5 block, the obligation layer. THIS IS THE AUTHORITATIVE FULL RENDERING**;
+Phase 2 writes the block once, from here:
+
+> **Tests are part of the change.** A change to observable behavior is complete only when a test
+> asserts that behavior and the project's configured test command passes on the changed files.
+> New behavior gets a test that asserts it; a repaired defect gets a test that fails without the
+> repair. Tests assert observable behavior, not implementation shape — a test that restates the
+> code it calls proves nothing. When a test and the code disagree, fix the test or fix the code;
+> never weaken an assertion to make a test pass.
+>
+> For a test asserting the changed behavior this rule requires, its expected values come from
+> the specification, the acceptance criterion, the contract, or the task's stated
+> postconditions. Running the implementation and recording its output as the expectation is not
+> a derivation — it asserts only that the code still does what it did. A test written to pin the
+> existing behavior of code this change does not alter is not such a test, and this paragraph
+> does not reach it.
+>
+> For every test there is a change to the code under test that makes it fail. A test that
+> asserts a value the test itself configured a mock to return, a test that asserts a literal
+> against itself or a value the test just assigned, and a test that calls the code under test
+> and asserts nothing about its result, its raised error, or its observable effect are each
+> defects in the test.
+>
+> A test whose only assertion is that a value has the type its signature already declares
+> restates the type checker and covers nothing.
+
+**Reconciliation with D1, verified:** D1's four sentences survive **verbatim and in order** as
+the block's first paragraph; D7 appends three paragraphs after them. The block keeps §3.5's
+inline `**Title.** prose` shape (fact 2c), gains no heading, and stays one rule to the parser
+(fact 2b) — so nothing about D1's host-section reasoning changes and no Python is touched.
+
+**Site (b) — `src/agents/qa-reviewer.md`, the detection layer.** Extend Approach step 4 and
+Rule 3 so the three shapes are named, **inside the file's existing structure**: no new section,
+no new agent, **no new verdict value** (the vocabulary stays exactly `ADEQUATE / GAPS FOUND`,
+fact 8a), no `tools:` change (it stays the locked read-only `Read, Grep, Glob, Bash`).
+
+**⚠ Read fact 8a before writing this: `qa-reviewer` ALREADY says *"Flag weak, vacuous, or
+implementation-coupled assertions"* at step 4.** D7 therefore does **not** introduce the concept
+and must not be described as doing so. **What it adds is falsifiability** — today *vacuous* is a
+bare adjective an LLM reviewer interprets freshly each run; after D7 it is three named shapes a
+reviewer can point at. Phase 2b extends that sentence rather than replacing it, so the existing
+`weak` and `implementation-coupled` arms survive.
+
+**Why `qa-reviewer` is the right and sufficient detector, verified rather than assumed
+(fact 8b):** `/devforge:implement`'s PHASE-6 panel gives every reviewer the same `touched_files`,
+so `qa-reviewer` reads **every test in the change regardless of who wrote it** — including the
+inline tests a stack engineer writes under fact 15's per-engineer default, which is precisely
+the path where no quality bar exists today. And `ADEQUATE` is its panel clean token, so a
+finding keeps the existing bounded repair loop going. **No new mechanism is required for D7 to
+have an effect; the existing one already sees the tests.**
+
+**Site (c) — `src/agents/qa-engineer.md`: a VERIFIED NO-OP, and the reasoning is the point.**
+Fact 7a records what its philosophy already mandates — behavior-not-implementation,
+one-assertion-per-test, derive test cases from each AC, never weaken an assertion, unrun tests
+don't count. The single clause it lacks is clause 1's expected-value provenance. **It is still
+not the right host, for a mechanical reason:** fact 15 makes inline tests the per-engineer
+default, so on most tasks `qa-engineer` is never dispatched at all and a rule living only there
+would miss the majority path. **The constitution reaches every implementing agent; `qa-engineer`
+reaches one.** Recording this as a no-op also keeps `qa-engineer.md` off the plan-90 shared
+surface list (see `## Cross-plan coordination — plan 90`), which is a real coordination saving
+and not merely tidy.
+
+**⚠ Honest bounds, stated the way plan 86's F3 states its own:**
+
+- **NOTHING MECHANICAL CHECKS THIS.** There is no gate, no `verify-*` verb, no validator and no
+  helper flag behind any of the three clauses. **The check is an LLM reviewer judging
+  LLM-written tests** — the same class of guarantee as F3's *"NOTHING CHECKS the declaration"*,
+  and weaker than it in one way F3 was not: F3's reader is a human opening a task file, while
+  D7's reader is a model in an autonomous loop.
+- **D7's claim is narrow and must be quoted narrowly:** the requirement is WRITTEN in law the
+  authoring agent reads, and the reviewing agent is INSTRUCTED with named shapes. **Vacuous
+  tests do not become impossible**, and no phase of this plan measures how many get through.
+- **The mechanical answer exists and is deliberately NOT built.** Mutation testing (`mutmut`,
+  `Stryker`, `cargo-mutants` and the like) answers clause 2 mechanically: it mutates the code
+  under test and reports which mutants no test kills, which is exactly "the test cannot fail"
+  made measurable. **Strengthening trigger, stated so it is checkable: the first observed
+  vacuous test — matching one of clause 2's three named shapes — that passed a `qa-reviewer`
+  panel and reached a completed task.** Until one is observed, D7 has demonstrated only that the
+  instruction can be followed. Building it is out of scope here: it is a new tool dependency per
+  ecosystem, a new runtime cost on every task, and a gate — all three of which this plan refuses.
+
+**Alternatives considered:**
+
+- *(a) A mechanical mutation-testing gate now.* REJECTED for this build per the bound above, and
+  recorded as the named strengthening path rather than as a rejected idea — the difference
+  matters, because a future plan should find a trigger here, not a refusal.
+- *(b) Put the clauses only in `qa-reviewer`, not the constitution.* REJECTED: detection without
+  obligation means the author was never told the rule and every finding is a surprise at review
+  time. **The two layers answer different questions** — what the author owed, and what the
+  reviewer checks.
+- *(c) Put the clauses only in the constitution.* REJECTED: an obligation nobody checks is D2's
+  problem restated one level up. Fact 8b shows the checker already exists and already reads the
+  tests, so the detection layer is nearly free.
+- *(d) A new `test-quality-reviewer` agent.* REJECTED — plan 41's reachability gate exists to
+  stop orphaned agents, plan 15 fixed the roster skeleton, and `qa-reviewer` already owns test
+  adequacy by its own `## Boundaries & Handoffs`. A second reviewer over the same files is the
+  duplication this repo repeatedly refuses.
+
+*Counter-argument, recorded, and it is the strongest one:* **D7 asks a model to detect a failure
+mode that models exhibit.** The reviewer that must catch a tautological assertion is the same
+class of system that wrote it, in the same run, under the same incentive to close the task — and
+clause 2's "there is a change that makes it fail" is a counterfactual the reviewer cannot
+execute, only reason about. **Accepted, unanswered, and it is exactly why mutation testing is
+named as the strengthening path with a concrete trigger** rather than dismissed. The partial
+reply is that the three shapes are syntactically recognizable — a mock's configured return
+value, a literal compared to itself, a call with no assertion — so this is nearer to pattern
+recognition than to judgment, which is the most that can be claimed without measurement.
+
+*Second counter-argument, recorded:* clause 1 forbids deriving expectations by running the
+implementation — which is **exactly how a legitimate characterization test is written** when
+pinning the behavior of untested legacy code before restructuring it, the practice plan 86's F3
+regression-net lane depends on. **This is a real tension and the resolution is scope, not
+exception:** D7's clause binds tests written to satisfy D2 — tests for a change to observable
+behavior — while a characterization test is written to preserve behavior nobody is changing.
+
+**The rendering above now carries that scope INLINE**, in clause 1's own two sentences: it opens
+*"For a test asserting the changed behavior this rule requires…"* and closes by naming the
+excluded case explicitly. **This is a narrowing of the clause's subject, not an exception to
+it** — there is no OR, no unless, and no judgment step; a test either asserts behavior this
+change alters or it does not, and the task's own Files table and acceptance criteria answer
+that. **So the tension is resolved in the emitted text rather than deferred to the reader**, and
+Phase 2's verify criterion asking instruction-reviewer whether the wording can be read as
+banning characterization tests is now a confirmation rather than an open risk.
+
+⚠ **The fallback stays recorded and Phase 0 still owns it:** if instruction-reviewer finds the
+scoped wording still reads as banning a behavior-pinning test, **clause 1 is the clause to drop
+— clauses 2 and 3 stand alone**, and that is a Phase-0 re-open rather than a Phase-2 wording
+tweak. Phase 2b's reviewer text is under the same constraint: it must not flag a
+characterization test.
+
 ---
 
 ## Open questions (OQ-N) — ALL OPEN
@@ -463,6 +654,13 @@ what a test must assert. It names **no framework, no file layout, no directory c
 number** — those are §3.4's `[project-specific]` territory (fact 1) and `/devforge:constitute`'s
 job. **A universal section that names a testing framework would be false on the next project**,
 and `{{TESTING}}` already exists for exactly that.
+
+**⚠ Dated note, 2026-08-26 — "as drafted" now refers to a LONGER block.** D7 appended three
+clauses to D1's block and carries its authoritative rendering. **This recommendation is
+UNCHANGED and is not contradicted:** D7's clauses constrain expected-value provenance, failability
+and type-checker restatement — **none of which is a framework, a file layout, a directory
+convention or a number.** They are obligation, not practice, by this OQ's own test. A ratifier
+re-reading "as drafted" should read D7's rendering, not D1's four sentences alone.
 
 ### OQ-3 — Does anything repair §3.4's emptiness, or is D1's relocation accepted as-is?
 
@@ -493,6 +691,13 @@ and **nothing in this plan feeds `compute-verdict` a new field.** ⚠ The coroll
 unticked, annotated Tests box does **not** produce a NEEDS WORK on its own. It is visible, not
 blocking, and no phase may describe it otherwise.
 
+**⚠ Dated note, 2026-08-26 — D7 does not change this answer.** D7 edits `qa-reviewer`, which
+also runs at `/devforge:review`, so a vacuous-test finding CAN reach `/devforge:verify` — but
+only through the **existing** plan-41 path by which confirmed review findings fold into the
+verdict. **No new field, no new input, no new verdict value** (D7 site (b) keeps the
+`ADEQUATE / GAPS FOUND` vocabulary intact, fact 8a). OQ-6, not this OQ, owns the severity
+question.
+
 ### OQ-5 — Do the two verified no-op test fixtures get touched?
 
 **RECOMMENDATION: no.** `tests/lib/_implement/test_cmds_resolve.py:177` and
@@ -502,16 +707,45 @@ an expected `render-task-file` output (fact 3d), so a fifth emitted line does no
 recording it stops the next session re-checking. The site that DOES need attention is fact 3c's
 count-named test, whose assertions pass while its name lies.
 
+### OQ-6 — What severity does a D7 clause-2 finding carry, and does it force GAPS FOUND?
+
+**The question is real because of fact 8b**, not invented: `ADEQUATE` is `qa-reviewer`'s panel
+clean token, so whether a vacuous-test finding blocks depends entirely on whether the reviewer
+may report it and still return `ADEQUATE`. **The live file leaves this open** — its format
+allows per-gap severities `Critical / High / Medium / Info` and a separate verdict line, and
+nothing states which severities force `GAPS FOUND` (fact 8a).
+
+**RECOMMENDATION: a finding matching one of clause 2's three named shapes is at least High, and
+High forces `GAPS FOUND`.** The floor is keyed on the named shapes, not on the reviewer's
+estimate of importance, so it adds no judgment step. The reasoning: **a test that cannot fail is
+indistinguishable in every observable way from no test at all**, and an absent test for a
+changed behavior is already a gap under Approach step 2. Reporting it as `Info` while returning
+`ADEQUATE` would let the panel close over a change whose only evidence is a test that proves
+nothing — and PHASE 6's bounded repair leg is exactly the mechanism built to fix it before the
+task completes.
+
+**Clauses 1 and 3 are deliberately NOT given a floor** and stay at the reviewer's existing
+severity discretion: a type-restating assertion (clause 3) is redundant rather than false, and a
+provenance violation (clause 1) can be a legitimate characterization test under D7's second
+counter-argument. **Only clause 2's shapes are unambiguous enough to carry a floor.**
+
+*Counter-argument, recorded:* a High floor means one contested reviewer call sends the whole
+four-reviewer panel round again, and the panel already caps at three rounds before escalating —
+so a false positive here costs a full re-fan-out and can burn the cap on a style disagreement.
+**Accepted as the cost**, and it is the same trade plan 86's F1 accepted when it set undeclared
+clones at High. Phase 6's anchor 5 is where the false-positive half is observed; **if the
+genuine test in that pair is flagged, this floor is the first thing to reconsider.**
+
 ---
 
 ## Phases
 
 ### Phase 0 — Ratification *(doc-only)*
 
-**Objective:** ratify or amend D1–D6 and answer OQ-1–OQ-5, recording each answer in this file
+**Objective:** ratify or amend D1–D7 and answer OQ-1–OQ-6, recording each answer in this file
 with its reasoning. **Nothing else may start.**
 
-Three items need an explicit pick rather than a nod:
+Five items need an explicit pick rather than a nod:
 
 - **D1's host section.** §3.5 versus §3.4 is decided by fact 2a, not by taste — a ratifier
   choosing §3.4 is choosing a rule with no drift detection and should say so.
@@ -520,16 +754,32 @@ Three items need an explicit pick rather than a nod:
   run in which no test executed — **stated in D2's counter-argument, and a ratifier must accept
   it explicitly rather than by omission.**
 - **D6's arm.** (a) adds a setup prompt and forces the count edits in fact 11; (b) does not.
+- **D7, AND its relationship to D2.** D7 is the counterweight to an incentive D2 creates.
+  **Taking D2 and declining D7 is permitted and must be recorded as a choice, not reached by
+  omission** — after D2 alone, a checkbox rewards a test that cannot fail. Phase 0 must ALSO
+  decide **whether clause 1 survives**: D7's second counter-argument shows it collides with
+  legitimate characterization tests, and **if the line cannot be drawn in emitted wording
+  without a judgment word, clause 1 is dropped and clauses 2–3 ship alone.**
+- **OQ-6's severity floor.** A High floor on clause 2 makes a finding block the panel; `Info`
+  makes the check toothless. **The pick determines whether D7 has any effect at all**, and it
+  cannot be deferred to Phase 2b.
 
 **Verify:**
 
-- `grep -n "^### D[1-6] " 89-TEST-FOUNDATION-HARDENING-PLAN.md` returns six lines and **every one
-  carries a ratification marker with a date** — no `*(OPEN)*` remains anywhere in the file.
-- `grep -n "^### OQ-[1-5] " 89-TEST-FOUNDATION-HARDENING-PLAN.md` returns five lines, each with a
+- `grep -n "^### D[1-7] " 89-TEST-FOUNDATION-HARDENING-PLAN.md` returns seven lines and **every
+  one carries a ratification marker with a date** — no `*(OPEN)*` remains anywhere in the file.
+- `grep -n "^### OQ-[1-6] " 89-TEST-FOUNDATION-HARDENING-PLAN.md` returns six lines, each with a
   recorded answer.
 - **Every decision still carries its counter-argument.**
 - The status line at the top names the ratification date and which phases are cleared.
 - **The D2 ↔ D4 dependency is resolved in writing**, not left implicit.
+- **The D2 → D7 counterweight is resolved in writing**, and if D7 is declined the record says so
+  in D2's own entry as well — a future reader must not find D2 ratified with no trace of the
+  incentive it was known to create.
+- **D7's clause-1 question is answered explicitly** (kept or dropped), because Phase 2 and Phase
+  2b write different text depending on it.
+- **D1–D6 and OQ-1–OQ-5 still carry their original numbers.** `grep -n "OQ-3" ` across the repo
+  still resolves to the §3.4 question — plan 90 cites it by number.
 
 ---
 
@@ -582,7 +832,13 @@ and left annotated when passed as `--unverified-box`.
 **Route: instruction-author → instruction-reviewer.** `constitution.md` does not ship into
 `.claude/`, so no claude-code-guide pass is owed.
 
-Scope, one file: `src/constitution.md` §3.5, one appended titled bold block per D1.
+Scope, one file: `src/constitution.md` §3.5, **ONE appended titled bold block carrying both D1's
+four sentences and D7's three clauses.**
+
+**⚠ Write the block ONCE, from D7's authoritative rendering.** D1 and D7 are separate decisions
+but one paragraph of emitted text; editing the same block in two phases would rewrite a
+paragraph this phase just wrote. **If Phase 0 declined D7, write D1's four sentences alone; if
+Phase 0 dropped D7's clause 1 only, omit that paragraph and keep the other two.**
 
 **⚠ Two placement constraints:**
 
@@ -607,6 +863,71 @@ Scope, one file: `src/constitution.md` §3.5, one appended titled bold block per
   (fact 2) and that this phase touched no Python.
 - **The expected drift is recorded, not fixed**: a note in the commit message that
   `verify-universal-defaults` will now report a §3.5 mismatch on pre-build installs by design.
+- **D1's four sentences appear verbatim and in order** as the block's first paragraph — diff
+  them against D7's rendering character for character.
+- **No judgment word reached the emitted text** — `grep -in "meaningful\|reasonable\|adequate\|
+  quality\|appropriate" src/constitution.md` returns no NEW line in §3.5. A clause resting on
+  one of those words has failed D7's own framing.
+- **Characterization tests are not banned by the emitted wording** (D7's second counter-argument)
+  — instruction-reviewer states explicitly whether clause 1's text can be read as forbidding a
+  behavior-pinning test written before a restructuring. **If it can, that is a Phase-0 re-open,
+  not a Phase-2 wording tweak.**
+
+---
+
+### Phase 2b — `qa-reviewer`'s three named shapes *(D7's detection layer)*
+
+**Why lettered, not numbered:** Phases 3, 4 and 6 are cited by number in D1, D3, D4, OQ-4,
+OQ-6, `## Cross-plan coordination — plan 90` and `## When resuming work`, and this repo has
+twice inserted a letter-suffixed phase rather than renumber (plan 81's Phase 5b, *"letter-suffixed
+so Phases 6/7 keep their cited numbers"*; plan 85's Phase 2b). **It sits after Phase 2 because
+the obligation should land before the check that enforces it**, though the two files are
+independent and either order builds.
+
+**Route: instruction-author → instruction-reviewer.** `src/agents/qa-reviewer.md` ships into the
+consumer's `.claude/agents/`, so **claude-code-guide is owed IF and ONLY IF this phase touches
+the file's fenced `yaml` meta-block.** It does not: `name`, `description`, `tools`, `model_tier`
+and `applies_to` are all byte-unchanged (fact 8a). **Record that as the reason the pass was not
+run, rather than silently skipping it.**
+
+Scope, one file: `src/agents/qa-reviewer.md`.
+
+- **Approach step 4** — extend the existing sentence *"Flag weak, vacuous, or
+  implementation-coupled assertions"* (fact 8a) with D7's three named shapes. **EXTEND, never
+  replace**: the `weak` and `implementation-coupled` arms are pre-existing and stay.
+- **Rule 3** — the behavior-not-implementation rule gains the failability clause, so the shapes
+  appear in both the Approach the agent follows and the Rules it is bound by, matching how the
+  file already states behavior-not-implementation twice.
+- **Severity** — per OQ-6's ratified answer, and nowhere else in the file.
+
+**⚠ Four things this phase must NOT do:** add a section to the file; add a verdict value (the
+vocabulary stays `ADEQUATE / GAPS FOUND`); change `tools:`; or create an agent. **D7 is
+instruction text inside an existing agent's existing structure.**
+
+**Verify:**
+
+- Instruction-reviewer clean. **The `yaml` meta-block is byte-identical** — diff it; this is
+  also what justifies not running claude-code-guide.
+- **`grep -n "ADEQUATE\|GAPS FOUND" src/agents/qa-reviewer.md` returns the same two tokens in the
+  same places** — no third verdict value, no renamed token. Capture the pre-change output first.
+- **The pre-existing `weak` and `implementation-coupled` arms survive** — BOTH greps are run and
+  BOTH still return step 4: `grep -n "weak" src/agents/qa-reviewer.md` and
+  `grep -n "implementation-coupled" src/agents/qa-reviewer.md`. An edit that replaced the
+  sentence has narrowed an existing check while claiming to widen it, and checking only one arm
+  would miss half of that.
+- **All three of D7's shapes are named concretely** — a mock's own configured return value, a
+  literal or just-assigned value asserted against itself, and a call with no assertion on
+  result / raised error / observable effect. **A sentence that says only "vacuous" has changed
+  nothing**, because that word was already there (fact 8a).
+- **No judgment word was introduced** — `grep -in "meaningful\|reasonable\|quality" src/agents/qa-reviewer.md`
+  returns no NEW line. ⚠ Note the file's `## Core Expertise` already says *"assertion quality"*
+  and its Approach step 4 already says *"Judge assertion quality"* — **those are pre-existing and
+  stay; the criterion is about NEW lines.** Capture the pre-change output first.
+- **`src/agents/qa-engineer.md` is byte-unchanged** — `git diff --stat src/agents/` names
+  `qa-reviewer.md` and nothing else. **D7 site (c)'s no-op is recorded in the commit message**,
+  with fact 7a's reasoning, so the next session does not re-open it.
+- **`scripts/verify-agent-reachability.py` passes** — the roster is unchanged, so a failure means
+  something unintended moved.
 
 ---
 
@@ -761,10 +1082,18 @@ part of this has been observed in a consumer install.
    Phase 6 runs**, per this repo's agent-only verification rule. **Part (a) does not depend on
    that check and is scored independently**, so a Phase 6 blocked on (b) still returns a verdict
    on whether the rule shipped.
+5. **The planted vacuous test, and its genuine twin — ONE anchor, TWO plants, scored as a PAIR
+   (D7).** In one task, plant BOTH: **(a)** a test matching D7's clause-2 shape most cheaply
+   recognized — it configures a mock to return a value and then asserts that same value, touching
+   the code under test in no way that could fail — and **(b)** a genuine test of the same unit
+   that asserts an observable behavioral outcome derived from the task's acceptance criterion.
+   Run `/devforge:implement` to the PHASE-6 panel. **MUST** produce: a `qa-reviewer` finding
+   naming plant (a), at the severity OQ-6 ratified and with the verdict that severity implies;
+   and **NO finding against plant (b).** Record `qa-reviewer`'s returned markdown VERBATIM.
 
 **Verify:**
 
-- All four anchors are scored **explicitly** — stated, not summarized.
+- All five anchors are scored **explicitly** — stated, not summarized.
 - **Anchors 1 and 2 are scored as a PAIR.** An implementation that annotates every task passes 2
   and fails 1; one that annotates none passes 1 and fails 2. **Neither is meaningful alone.**
 - **Anchor 2 records the exact task-file line as a STRING**, not as "looked right" — the
@@ -774,11 +1103,20 @@ part of this has been observed in a consumer install.
 - **Anchor 4's two parts are scored SEPARATELY**, and part (a) is scored even if the
   `claude-code-guide` check for part (b) has not been run. **Recording (a) as "passed" while
   silently skipping (b) is a failure of this criterion** — an unrun part is reported as unrun.
+- **Anchor 5's two plants are scored as a PAIR, and neither half is meaningful alone.** A
+  reviewer that flags every test passes the (a) half and fails the (b) half; one that flags
+  nothing passes (b) and fails (a). **This is the same pair logic as anchors 1+2 and as plan
+  86's F1 cases 1 and 3** — and anchor 5 is the ONLY place D7's false-positive rate is ever
+  observed. **Nothing this plan ships has measured it.**
+- **Anchor 5 records the finding's severity as a STRING** and whether the verdict token was
+  `ADEQUATE` or `GAPS FOUND` — that pair is OQ-6's answer meeting reality, and a run that
+  reports "it flagged it" without both values has not tested OQ-6.
 - **If it fails**, record the negative here with the artifacts and identify which mechanism
   produced it before proposing anything: a missing Done-When line is a D2 finding, a wrongly
   ticked box is a D4 finding, a silent drift check is a D1 finding (and specifically means the
-  block landed in an untracked section), an absent Key Rule is a D3 finding. **They have
-  different fixes.**
+  block landed in an untracked section), an absent Key Rule is a D3 finding, an unflagged plant
+  (a) or a flagged plant (b) is a D7 finding — and a flagged (b) specifically re-opens OQ-6's
+  severity floor. **They have different fixes.**
 - **A clean run is NOT evidence that generated code is better tested.** It is evidence that the
   obligation is present and that the no-test case is visible. **This plan measures no coverage
   and Phase 6 cannot produce that measurement** (D5).
@@ -789,19 +1127,28 @@ part of this has been observed in a consumer install.
 
 As of 2026-08-26, `90-E2E-TEST-LANE-PLAN.md` exists at repo root — drafted concurrently with
 this plan on the same day and likewise **NOT STARTED**. **Execution order is 89 before 90.**
-**TWO surfaces this plan edits unconditionally, and a THIRD that is conditional and probably
-never joins them:**
+**THREE surfaces this plan edits unconditionally, and a FOURTH that is conditional and probably
+never joins them.** ⚠ **The third was added on 2026-08-26 by D7 and is the newest and least
+obvious one** — a reader working from an earlier copy of this section will have a two-item list.
 
 - **`src/CLAUDE.md`** — this plan appends one item to the `### Always` list at its Phase 4.
   **Shared, unconditionally.**
 - **`src/devforge/storage-rules.md`** — this plan edits the task-file `## Done When` skeleton at
   its Phase 1. **Shared, unconditionally.**
+- **`src/agents/qa-reviewer.md`** — **NEW shared surface, added by D7.** This plan edits
+  **Approach step 4 and Rule 3** at its Phase 2b (the vacuous-test shapes). Plan 90 edits a
+  **different** part of the same file — one mirror sentence beside **step 6's** mobile-parity
+  note. **Different sentences, same file**, so the risk is a clobbered edit rather than a
+  contradiction: whichever ships second must read the file live and confirm the other's sentence
+  survives. **Both plans leave the fenced `yaml` meta-block byte-unchanged**, and this plan's
+  Phase 2b records that as its reason for not owing a claude-code-guide pass.
 - **`src/agents/qa-engineer.md`** — **CONDITIONAL, and the expected outcome is that this plan
   never touches it.** Only OQ-3's arm **(iii)** (repointing `qa-engineer` Rule 6 away from *"its
   testing requirements"*) would edit that file, and **(iii) is NOT recommended** — arm **(i),
-  accept and add nothing, is the recommendation.** This file joins the shared set **only if
-  Phase 0 ratifies (iii)**, so a reader must check OQ-3's RESOLVED answer before treating it as
-  contested.
+  accept and add nothing, is the recommendation.** ⚠ **D7 considered this file and left it
+  alone deliberately** (site (c), a verified no-op on fact 7a's evidence), so D7 does NOT move it
+  into the shared set. This file joins **only if Phase 0 ratifies OQ-3 arm (iii)**, so a reader
+  must check OQ-3's RESOLVED answer before treating it as contested.
 
 **Standing coordination rule, matching the plans 82/85 and 83/85 precedent: whichever of plans
 89 and 90 ships SECOND reads the LIVE text of every shared surface and re-derives ITS OWN edits —
@@ -824,6 +1171,18 @@ entries record earlier instances of it.
   D2 adds a checkbox and D4 decides whether it is ticked; neither blocks anything.
 - **A coverage threshold, at any layer.** D5 — declined with its counter-argument recorded. A
   future plan wanting one must build a reported, non-gating measurement first.
+- **Mutation testing.** D7 — `mutmut` / `Stryker` / `cargo-mutants` are the MECHANICAL answer to
+  "can this test fail," and building one is a new per-ecosystem tool dependency, a new runtime
+  cost on every task, and a gate. **Recorded as the NAMED strengthening path with a trigger** —
+  the first observed vacuous test matching a clause-2 shape that passed a `qa-reviewer` panel —
+  **not as a rejected idea.** A future plan should find a trigger here, not a refusal.
+- **A new test-quality agent, section, or verdict value.** D7 — `qa-reviewer` already owns test
+  adequacy, already reads every test in the panel (fact 8b), and keeps exactly the
+  `ADEQUATE / GAPS FOUND` vocabulary. Plan 41's reachability gate and plan 15's roster skeleton
+  are the standing reasons a second reviewer over the same files is not proposed.
+- **Any claim that vacuous tests become impossible.** D7's bound — the requirement is written and
+  the reviewer is instructed; **an LLM reviewer judging LLM-written tests is the mechanism, and
+  no phase of this plan measures how many get through.**
 - **AC→test-outcome mapping.** Chartered to the testForge20 e2e by `/devforge:verify`'s own text
   (fact 13). **This plan does not collect that deferral**, and a session that finds
   `--test-anchor` inert after this build has found the chartered state, not a regression.
@@ -882,8 +1241,9 @@ entries record earlier instances of it.
 
 **The one sentence that governs everything here:** the framework RUNS tests well and never says
 they must EXIST, so this plan states the obligation in the three standing places that already
-carry the lint obligation — the constitution, the task skeleton, the Key Rules — and makes the
-one path where zero tests run visibly honest instead of falsely green. **No gate is added.**
+carry the lint obligation — the constitution, the task skeleton, the Key Rules — makes the one
+path where zero tests run visibly honest instead of falsely green, and (D7) requires the
+obligated tests to be able to fail. **No gate is added.**
 
 **Trap 1 — putting the constitution block in §3.4.** It is the obvious home and it is
 undetected: `_UNIVERSAL_SECTIONS` is a closed tuple without `§3.4`, and the drift detector
@@ -919,6 +1279,24 @@ name, do not trust the suite.**
 **Trap 7 — claiming any of this measures coverage.** It does not. D5 declines every number, and
 the counter-argument that "coverage" is therefore unfalsifiable is **accepted, not answered**.
 
+**Trap 8 — describing D7 as "adding a vacuous-test check to `qa-reviewer`."** That agent ALREADY
+says *"Flag weak, vacuous, or implementation-coupled assertions"* (fact 8a). **D7 adds
+falsifiability, not the concept** — three named shapes replacing one bare adjective. A phase
+report claiming the check is new has misdescribed the diff, and a Phase 2b that REPLACES that
+sentence instead of extending it has silently dropped the `weak` and `implementation-coupled`
+arms.
+
+**Trap 9 — putting D7's clauses in `qa-engineer.md` because that is who writes tests.** Fact 15
+makes inline tests the per-engineer default, so on most tasks `qa-engineer` is never dispatched.
+**A rule living only there misses the majority path**, which is why site (a) is the constitution
+(reaching every implementing agent) and site (b) is `qa-reviewer` (reading every test in the
+panel, fact 8b). Site (c) is a deliberate no-op.
+
+**Trap 10 — reading D7 as making vacuous tests impossible.** It does not. The check is an LLM
+reviewer judging LLM-written tests, and clause 2's "there is a change that makes it fail" is a
+counterfactual the reviewer reasons about rather than executes. **Mutation testing is the
+mechanical answer, is named with a trigger, and is deliberately NOT built.**
+
 **The working tree is uncommitted throughout**, and several plans this file cites are
 working-tree state, so any "shipped" claim about them means reviewed-but-uncommitted rather than
 released. Re-check each from the code rather than from a Status line.
@@ -951,12 +1329,12 @@ released. Re-check each from the code rather than from a Status line.
 
 ## When resuming work
 
-1. **Read this file in full, then `## Verified mechanics` again** — **thirty rows** (seventeen
-   numbered, 1–17, plus thirteen lettered: 2a, 2b, 2c, 2d, 3a, 3b, 3c, 3d, 4a, 9a, 9b, 11a,
-   11b), each checkable in under a minute. **Count the live table rather than trusting this
-   number if you add or remove one.** **If rows 2, 2a, 2b, 3, 4, 4a, 9b or 11 no longer hold,
-   stop and re-derive**: they are D1's whole basis, D2's blast radius, D4's mechanism and D6's
-   gap.
+1. **Read this file in full, then `## Verified mechanics` again** — **thirty-three rows**
+   (seventeen numbered, 1–17, plus sixteen lettered: 2a, 2b, 2c, 2d, 3a, 3b, 3c, 3d, 4a, 7a, 8a,
+   8b, 9a, 9b, 11a, 11b), each checkable in under a minute. **Count the live table rather than
+   trusting this number if you add or remove one.** **If rows 2, 2a, 2b, 3, 4, 4a, 8a, 8b, 9b or
+   11 no longer hold, stop and re-derive**: they are D1's whole basis, D2's blast radius, D4's
+   mechanism, D7's two sites and its no-op, and D6's gap.
 2. **Read `src/devforge/lib/breakdown_helper.py`'s `cmd_render_task_file` in full before touching
    it** — the optional `--property-targets` / `--dead-code-removal` lines, their byte-identity
    guarantees and the fixed-lines comment all constrain Phase 1.
@@ -969,7 +1347,9 @@ released. Re-check each from the code rather than from a Status line.
    `_DONE_WHEN_FIXED_LINES`, `_UNIVERSAL_SECTIONS`, `_UNVERIFIED_ANNOTATION`,
    `test_commands_run`, `four_fixed_done_when`, `tsc/lint/no-secrets/no-debug`,
    `pass NO \`--unverified-box\` arguments`, `do NOT invent an ecosystem-default guess`,
-   `REGRESSION_GATE`, `Lint everything`, `## [Unreleased]`.
+   `REGRESSION_GATE`, `Lint everything`, `## [Unreleased]`, and — for D7 —
+   `Flag weak, vacuous, or implementation-coupled assertions`, `ADEQUATE`,
+   `Give EACH the same inputs`.
 6. **Invoke `claude-code-guide` to re-verify Claude Code memory semantics before writing or
    amending `src/CLAUDE.md`** — this repo's rule is agent-invocation, not a doc read, and the
    same route is what Phase 6's anchor 4(b) owes. Fact 16's source URL
@@ -979,21 +1359,33 @@ released. Re-check each from the code rather than from a Status line.
    **context, not enforced configuration** (fact 16). **If a future version makes it enforceable,
    D3's honest bound changes and must be re-derived, not extended.**
 7. **Route every edit through the house loops:** **python-engineer → python-reviewer, test-first**
-   for Phase 1; **instruction-author → instruction-reviewer** for Phase 2 and Phase 5's
+   for Phase 1; **instruction-author → instruction-reviewer** for Phase 2, Phase 2b and Phase 5's
    plan-document edits; **instruction-author → instruction-reviewer + claude-code-guide** for
    Phases 3 and 4 and for Phase 5's `configure/main.md` edit (all ship into a consumer's
-   `.claude/` or project root). **Phase 1 dispatches no instruction-author and Phases 2–5
-   dispatch no python-engineer** — a phase that finds itself needing the other has crossed its
-   own boundary and must stop.
+   `.claude/` or project root). ⚠ **Phase 2b is the one judgment call in that list**:
+   `qa-reviewer.md` DOES ship into `.claude/agents/`, but the phase touches no fenced `yaml`
+   meta-block, so the guide pass is not owed — **and the phase must RECORD that reasoning rather
+   than skip silently. If Phase 2b finds itself editing the `yaml` meta-block, the pass becomes
+   owed.**
+   **Phase 1 dispatches no instruction-author and Phases 2–5 dispatch no python-engineer** — a
+   phase that finds itself needing the other has crossed its own boundary and must stop.
 8. **Do not let Phase 3's momentum turn D4 into a gate.** The clause marks a box unverified; it
    does not block the approve path, does not change an exit code, and does not reach
    `compute-verdict` (OQ-4). **A version of D4 that halts the run has left this plan**, and
    Phase 3's verify criteria exist to catch it.
 9. **Check plan 90's ship status before touching any shared surface** (`src/CLAUDE.md`'s
-   `### Always` list, `storage-rules.md`'s Done-When skeleton, and — only if OQ-3 ratified
-   (iii) — `qa-engineer.md`). If plan 90 shipped first, **read those surfaces live and count
-   what is actually there** before writing Phase 1's or Phase 4's edit. ⚠ **Do not assume the
-   counts moved**: as drafted on 2026-08-26 plan 90 adds no `### Always` item and may add
-   nothing to `storage-rules.md` at all, so the live read may well find the same fifteen items
-   and four standing lines this plan was written against. **The rule is to look, not to expect a
-   delta.**
+   `### Always` list, `storage-rules.md`'s Done-When skeleton, **`qa-reviewer.md`**, and — only
+   if OQ-3 ratified (iii) — `qa-engineer.md`). If plan 90 shipped first, **read those surfaces
+   live and count what is actually there** before writing Phase 1's, Phase 2b's or Phase 4's
+   edit. ⚠ **Do not assume the counts moved**: as drafted on 2026-08-26 plan 90 adds no
+   `### Always` item and may add nothing to `storage-rules.md` at all, so the live read may well
+   find the same fifteen items and four standing lines this plan was written against. **The rule
+   is to look, not to expect a delta.** ⚠ **`qa-reviewer.md` is the one surface where BOTH plans
+   definitely write** — this plan at Approach step 4 + Rule 3, plan 90 beside step 6 — so read it
+   live and confirm the other's sentence survived.
+10. **Read `src/agents/qa-reviewer.md` in full before Phase 2b** — its Approach step 4 already
+    says *"vacuous"*, its Rules already say behavior-not-implementation twice, and its verdict
+    vocabulary is exactly two tokens. **D7 extends; it does not introduce.** Read
+    `src/agents/qa-engineer.md` too, and confirm fact 7a still holds before accepting site (c)'s
+    no-op — if that file has lost the clauses fact 7a cites, the no-op reasoning is stale and
+    D7's site list must be re-derived, not extended.

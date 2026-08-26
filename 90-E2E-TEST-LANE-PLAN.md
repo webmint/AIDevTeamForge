@@ -799,7 +799,10 @@ Scope, two files:
 `breakdown/main.md`. `qa-engineer.md` / `qa-reviewer.md` carry a fenced `yaml` meta-block
 rather than Claude Code frontmatter (the emitter builds the agent frontmatter), so the
 integration pass is likewise not owed here — **verify that reading against
-`src/agents-AUTHORING.md`'s meta-block contract before relying on it.**
+`src/agents-AUTHORING.md`'s meta-block contract before relying on it.** ⚠ **Leaving both
+meta-blocks byte-unchanged is a CROSS-PLAN commitment, not this plan's private choice**:
+plan 89's Phase 2b edits `qa-reviewer.md` too and rests on the same fact for the same
+excuse. **A meta-block edit here would silently invalidate that plan's stated reasoning.**
 
 Scope, three files:
 
@@ -829,7 +832,12 @@ Scope, three files:
   that actually chooses where the file lands, so the rule has to reach it and not only the
   task file.
 - **`src/agents/qa-reviewer.md`** — one mirror sentence beside step 6's mobile-parity
-  sentence, which stays byte-identical.
+  sentence, which stays byte-identical. ⚠ **SHARED SURFACE — read it live before editing.**
+  Plan 89's Phase 2b edits **Approach step 4** (extending *"Flag weak, vacuous, or
+  implementation-coupled assertions"* with its vacuous-test shapes) and **Rule 3** in this
+  same file. **Different sentences, so there is no contradiction to resolve — the hazard is
+  writing over them from a stale copy.** If plan 89 shipped first, its step-4 and Rule-3 text
+  must be present and byte-identical after this phase's edit.
 
 **⚠ The Agent Assignment table gains NO row.** The dedicated test-authoring row already
 routes this work (fact 18), and adding a parallel e2e row would create two rows that both
@@ -848,6 +856,13 @@ match a test-authoring task — a routing ambiguity where none exists today.
   runner-config exclude has reintroduced the judgment call the fork exists to remove.**
 - **`git diff src/agents/qa-engineer.md` shows the four mobile bullets unchanged**, and
   `git diff src/agents/qa-reviewer.md` shows step 6's existing sentence unchanged (OQ-2).
+- **`qa-reviewer.md`'s clobber check** — if plan 89 shipped first, its **Approach step 4**
+  and **Rule 3** text is present and byte-identical after this phase. Capture both
+  pre-change, and confirm `git diff` touches step 6 ONLY. **A diff that also rewrites step 4
+  has overwritten a shipped plan from a stale read**, which is the one failure this shared
+  surface can produce.
+- **Both agent files' fenced `yaml` meta-blocks are byte-identical** — diff them. This is
+  what justifies not running claude-code-guide here AND what plan 89's Phase 2b relies on.
 - **`grep -rn "## Mobile Testing" .` returns either the renamed heading (fork a) or the
   original plus a new sibling (fork b) — and in the fork-(a) case, ZERO stale references**
   anywhere in the repo. The pre-change grep returns exactly one line; capture it first.
@@ -981,20 +996,33 @@ Scope:
 Plans 89 and 90 were drafted in the same 2026-08-26 session. Plan 89 ships FIRST by intent.
 **Whichever ships second reads the LIVE text of each shared surface and re-derives its edit
 from what it finds — never a pre-computed diff.** This is the rule plans 82/85 and 83/85
-established. **Two surfaces are shared unconditionally, and a third is conditional:**
+established. **THREE surfaces are shared unconditionally, and a FOURTH is conditional**,
+matching plan 89's own lead-in — *"**THREE surfaces this plan edits unconditionally, and a
+FOURTH that is conditional and probably never joins them**"*:
 
 - **`src/CLAUDE.md`** (the `### Always` list and the `### Verification` section) — plan 89
-  edits it at its Phase 4. **Shared.**
+  appends one `### Always` item at its Phase 4. **Shared.**
 - **`src/devforge/storage-rules.md`** (the task-file `## Done When` skeleton) — plan 89
   edits it at its Phase 1. **Shared.**
+- **`src/agents/qa-reviewer.md`** — **Shared, and it is the NEWEST and least obvious of the
+  three**: plan 89 gained a **D7** (test-meaningfulness) on 2026-08-26 whose **Phase 2b**
+  edits that file at **Approach step 4** (extending *"Flag weak, vacuous, or
+  implementation-coupled assertions"*) and at **Rule 3**. **This plan edits a DIFFERENT part
+  of the same file** — one mirror sentence beside **step 6's** mobile-parity note (Phase 3
+  here). ⚠ **Different sentences, same file, so the risk is a CLOBBERED EDIT on a stale
+  read, not a contradiction**: whichever ships second reads the file live and confirms the
+  other's sentence survived. **Both plans leave the fenced `yaml` meta-block byte-unchanged**
+  — that is what excuses both from a claude-code-guide pass, and it is a shared commitment,
+  not this plan's private choice.
 - **`src/agents/qa-engineer.md`** — **CONDITIONAL, and the likely outcome is that plan 89
-  never touches it.** Its own OQ-3 offers three candidates and only arm **(iii)** (repoint
+  never touches it.** Its OQ-3 offers three candidates and only arm **(iii)** (repoint
   `qa-engineer` Rule 6 away from *"its testing requirements"*) would edit that file; **(iii)
-  is marked NOT recommended** and arm **(i) — accept, add nothing — is RECOMMENDED**. Plan
-  89's coordination section frames it the same way, its lead-in reading *"**TWO surfaces
-  this plan edits unconditionally, and a THIRD that is conditional and probably never joins
-  them**"* and its third bullet closing that a reader *"must check OQ-3's RESOLVED answer
-  before treating it as contested."*
+  is marked NOT recommended** and arm **(i) — accept, add nothing — is RECOMMENDED**. ⚠ **Plan
+  89's D7 considered this file and left it alone deliberately**, so that D7 does NOT move it
+  into the shared set; plan 89's own bullet says a reader *"must check OQ-3's RESOLVED answer
+  before treating it as contested."* (⚠ **`D7` is an overloaded token across the two plans** —
+  plan 89's D7 is test-meaningfulness; **this plan's D7 is the wall-clock cost line.** Every
+  cross-plan reference here names the plan.)
 
 **So Phase 5 must read plan 89's RESOLVED OQ-3 answer before treating `qa-engineer.md` as
 contested.** If OQ-3 resolved to (i) or (ii), this plan is that file's only editor and D5's
@@ -1124,12 +1152,18 @@ e2e lane has been observed.
   assumes nothing about the first beyond its existence.** ⚠ **The coordination rule in
   Phase 5 binds whichever ships second** — read the shared surfaces live. Plan 89 carries
   the reciprocal rule in its own `## Cross-plan coordination — plan 90` section: **TWO
-  surfaces are shared unconditionally** (it appends one `### Always` item to `src/CLAUDE.md`
-  at its Phase 4 and edits `storage-rules.md`'s `## Done When` skeleton at its Phase 1, so
-  both counts move under this plan's feet), and **`src/agents/qa-engineer.md` is shared only
-  if plan 89's OQ-3 ratifies its arm (iii)** — which that plan marks NOT recommended while
-  recommending arm (i), add nothing. Its lead-in states exactly that split: *"**TWO surfaces
-  this plan edits unconditionally, and a THIRD that is conditional and probably never joins
+  surfaces are shared unconditionally** — it appends one `### Always` item to `src/CLAUDE.md`
+  at its Phase 4, edits `storage-rules.md`'s `## Done When` skeleton at its Phase 1, and
+  (added 2026-08-26 by its **D7**) edits `src/agents/qa-reviewer.md` at **Approach step 4
+  and Rule 3** under its **Phase 2b**. ⚠ **`qa-reviewer.md` is the one to miss**: this plan
+  edits the same file at a **different** sentence (beside step 6's mobile-parity note), so
+  the hazard is a **clobbered edit on a stale read**, not a contradiction — and **both plans
+  commit to leaving the fenced `yaml` meta-block byte-unchanged.**
+  **`src/agents/qa-engineer.md` is a CONDITIONAL fourth**, shared only if plan 89's OQ-3
+  ratifies its arm (iii) — which that plan marks NOT recommended while recommending arm (i),
+  add nothing; **its D7 considered that file and deliberately left it alone**, so D7 did not
+  move it into the shared set. Plan 89's lead-in states the split: *"**THREE surfaces this
+  plan edits unconditionally, and a FOURTH that is conditional and probably never joins
   them**"*. ⚠ **Its standing rule binds the READ, not the edit**, and it explicitly makes no
   claim about what this plan writes.
 - **`66-PROPERTY-BASED-TESTING-AND-NARROWING-RULE-PLAN.md`** — the declaration-lane shape
@@ -1207,14 +1241,19 @@ says 29 fields / 37 keys and the code said 30 / 38 BEFORE this build (fact 21). 
 to a wrong number produces a differently wrong number. **Count the live tuples.**
 
 **Trap 7 — pre-computing the shared-surface edits against plan 89, or miscounting them.**
-**TWO surfaces are shared unconditionally** — `src/CLAUDE.md`'s `### Always` list and
-`storage-rules.md`'s `## Done When` skeleton — and plan 89 ships first, so both move.
-**`qa-engineer.md` is a THIRD only if plan 89's OQ-3 ratifies its arm (iii)**, which that
-plan marks NOT recommended while recommending arm (i) (add nothing). **Read plan 89's
-RESOLVED OQ-3 before treating that file as contested**, and read all three files named here
-live at Phase 5 rather than applying any diff computed here. ⚠ **Treating `qa-engineer.md`
-as shared when it is not is the mirror error**, and it costs D5's SECTION fork a
-re-derivation it does not owe.
+**THREE surfaces are shared unconditionally** — `src/CLAUDE.md`'s `### Always` list,
+`storage-rules.md`'s `## Done When` skeleton, and **`src/agents/qa-reviewer.md`** — and plan
+89 ships first, so all three move. ⚠ **The third is the one a stale reading misses**: it
+became shared only on 2026-08-26, when plan 89 gained its D7 and a Phase 2b editing that
+file at **Approach step 4 and Rule 3**. **This plan edits the same file at step 6**, so the
+hazard is a clobbered edit, not a contradiction — Phase 3 must confirm plan 89's sentences
+survived, and **neither plan may touch the fenced `yaml` meta-block.**
+**`qa-engineer.md` is a CONDITIONAL FOURTH**, shared only if plan 89's OQ-3 ratifies its arm
+(iii), which that plan marks NOT recommended while recommending arm (i) (add nothing).
+**Read plan 89's RESOLVED OQ-3 before treating that file as contested**, and read every file
+named here live rather than applying any diff computed in this plan. ⚠ **Treating
+`qa-engineer.md` as shared when it is not is the mirror error**, and it costs D5's SECTION
+fork a re-derivation it does not owe.
 
 **Trap 8 — treating a clean Phase-6 run as evidence the gap was real.** There is no
 incident behind this plan and none is claimed. A working lane demonstrates a working lane.
