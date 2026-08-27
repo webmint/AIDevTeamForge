@@ -376,7 +376,7 @@ Copy the helper's stdout VERBATIM into your next user-facing message as a fenced
 - **Header fields**: Agent (from the Agent Assignment table), Depends on, Blocks, Spec criteria (`AC-N`), Review checkpoint (Yes/No — see below), Context docs (see below), plus Property targets on dedicated property-test tasks only (see the Property-test tasks subsection below), and Dead code removal on the owning task of any `/devforge:plan`-declared change-induced dead code (see the Change-induced dead-code removal subsection below).
 - **Files table**, **Description**, **Change Details** — from the Phase 1 file analysis, plus the behavior-changing / behavior-preserving surface partition on a mixed task (see the Two-hats partition subsection below), and the `Regression net:` line on any task carrying a behavior-preserving surface with no covering test (see the Regression-net declaration subsection below).
 - **Contracts** (`Expects` / `Produces`) — per the Contract Generation Rules below; on a mixed task each behavior-preserving surface also carries its preservation postcondition in `Produces` (see the Two-hats partition subsection below).
-- **Done When** — task-specific testable conditions; the helper-emitted skeleton already carries the standing tsc/lint/no-secrets/no-debug conditions.
+- **Done When** — task-specific testable conditions; the helper-emitted skeleton already carries the standing tsc/lint/tests/no-secrets/no-debug conditions.
 - **Completion Notes** — leave the helper-emitted Completion Notes skeleton empty — it is the read contract that the `/devforge:implement` consumer will fill on completion.
 
 ### Property-test tasks (pure-builder targets)
@@ -665,7 +665,7 @@ After the block lands in the user-facing message, end the turn with one short co
 1. **Atomic tasks** — each task must be independently verifiable. Never bundle unrelated changes.
 2. **Explicit dependencies** — if task B uses something task A produces, mark it. Missing dependencies cause bugs.
 3. **One agent per task** — assign exactly ONE agent. If a task genuinely spans two stacks, split it into per-stack tasks joined by a dependency edge (per the Agent Assignment table's split-or-escalate rule) — never assign `architect` to write code.
-4. **Include verification in every task** — every task's Done When carries tsc + lint conditions (the helper-emitted skeleton already does).
+4. **Include verification in every task** — every task's Done When carries the standing tsc/lint/tests conditions (the helper-emitted skeleton already does).
 5. **Reference spec criteria** — every task maps to at least one acceptance criterion (`AC-N`).
 6. **All ACs covered** — every spec acceptance criterion must be addressed by at least one task (enforced by `verify-ac-coverage`).
 7. **Don't over-split** — a single find-and-replace across many files is ONE task, not many.
