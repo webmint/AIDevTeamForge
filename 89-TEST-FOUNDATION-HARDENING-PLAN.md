@@ -1,6 +1,6 @@
 # 89 — Test-foundation hardening: the test OBLIGATION made as standing as the test RUN
 
-**Status:** NOT STARTED — awaiting Phase-0 ratification (D1–D7 + OQ-1–OQ-6 unanswered). Nothing below is decided; every decision carries a recommendation and at least one recorded alternative.
+**Status:** **Phase 0 CLOSED 2026-08-27 — D1–D7 and OQ-1–OQ-6 ALL RATIFIED AS RECOMMENDED.** The five explicit picks were answered in-session by the maintainer: **D1** = §3.5 host (§3.4 declined for its zero drift detection); **D2 + D4 arm (b)** = BOTH taken, so the dependency is discharged rather than stranded; **D6** = arm (b), documentation-only; **D7** = taken IN FULL with **clause 1 KEPT** in its inline-scoped rendering; **OQ-6** = clause-2 findings floored at ≥ High, High forces `GAPS FOUND`. Everything off the pick-list ratified as recommended too. **Phases 1, 2, 2b, 3, 4 and 5 are CLEARED to build. Phase 6 remains a DEFERRED user-driven HARD GATE — build-verified is not consumer-validated.**
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
 **Amended 2026-08-26 (same session, maintainer-directed): the obligation D2 creates must not be satisfiable by tests written merely to exist, nor by invented tests.** The amendment is APPEND-ONLY on every existing identifier — **D1–D6 and OQ-1–OQ-5 keep their numbers** (plan 90 cites this plan's OQ-3 by number) and **no existing phase was renumbered**. Its full footprint, so a reader diffing against an earlier copy knows what to look for: **D7** and **OQ-6** added; **Phase 2b** inserted letter-suffixed after Phase 2, and Phase 2's own scope extended to write one block from D7's rendering; **fact rows 7a, 8a and 8b** added (table 30 → **33** rows); **Phase 6 anchor 5** added (4 → **5** anchors, and anchor 5 is pair-scored); **Traps 8, 9 and 10** added (7 → **10**); **`## When resuming work` item 10** added (9 → **10** items); **`## Cross-plan coordination — plan 90` rewritten** — `src/agents/qa-reviewer.md` became a THIRD unconditional shared surface because D7 edits it and plan 90 edits a different part of the same file; and **`## What is actually being added`** grew to six items and four honest bounds.
@@ -176,13 +176,20 @@ string, never the `:NNN`.
 
 ---
 
-## Decisions — ALL OPEN, awaiting Phase-0 ratification
+## Decisions — ALL RATIFIED 2026-08-27, every one as recommended
 
 Each carries the rule, the alternatives, the reasoning, and the strongest counter-argument.
 **The counter-arguments are load-bearing: a decision ratified with its counter-argument deleted
 cannot be re-opened honestly later.**
 
-### D1 — A universal test-obligation block in the constitution — inside §3.5, NOT §3.4 *(OPEN)*
+### D1 — A universal test-obligation block in the constitution — inside §3.5, NOT §3.4 *(RATIFIED 2026-08-27 — §3.5 host)*
+
+**RATIFIED 2026-08-27 — the §3.5 host, as recommended, and §3.4 was DECLINED ON THE RECORD for
+the reason fact 2a states: it is absent from `_UNIVERSAL_SECTIONS`, so a rule placed there gets
+no drift detection at all.** Alternative (b), a new numbered §3.9, stays rejected as Python;
+alternative (c), no constitution edit, stays rejected because the constitution is the read path
+that already goes looking for testing rules. **The decision is forced by the tuple, not chosen on
+taste** — a future session must not "tidy" the block into §3.4.
 
 **RECOMMENDED RULE.** Append one titled bold block to the END of `src/constitution.md`
 §3.5 Universal Code Quality, in the shape that section's seven existing rules already use
@@ -253,7 +260,24 @@ rendered constitution rests on the model composing it during `/devforge:constitu
 command regenerates the file wholesale from state. **This plan does not close that seam and must
 not claim to** — see `## Context for next session`, discovery 1.
 
-### D2 — A fifth standing Done-When line *(OPEN — the plan's only Python)*
+### D2 — A fifth standing Done-When line *(RATIFIED 2026-08-27 — BUILD; the plan's only Python)*
+
+**RATIFIED 2026-08-27 — BUILD the fifth standing line, as recommended**, unconditional in the
+skeleton, with the drafting brief's `skip only when…` phrasing rejected as the escape hatch it
+is.
+
+**⚠ Both dependencies on this decision are DISCHARGED, in writing, on the same date — neither
+was left implicit:**
+
+- **D2 ↔ D4.** **D4 arm (b) was ratified together with D2**, so the box this decision adds is
+  never ticked over a run that executed no test command. **Neither ships without the other's
+  ratification recorded here**: a future session that builds Phase 1 and skips Phase 3 has
+  broken a ratified pairing, not deferred an optional extra.
+- **D2 → D7.** **D7 was ratified IN FULL alongside D2**, so the incentive this checkbox creates
+  ships with its counterweight. The counter-argument below — that a ticked box is not a passing
+  test — was **accepted, not answered**, and it is D4 and D7 together that answer it. **D7 was
+  NOT declined**, so the "record the choice in D2's own entry" branch of Phase 0's Verify does
+  not fire; this sentence records that it did not.
 
 **RECOMMENDED RULE.** Add one entry to `_DONE_WHEN_FIXED_LINES` (fact 3), mirroring the
 type-check and lint lines' exact wording so the five read as one family:
@@ -315,7 +339,12 @@ every feature forever, for a duty the constitution (D1) and the Key Rules (D3) w
 in one, and the asymmetry is the finding. The task file is the only one of the three the
 implementing agent must tick.
 
-### D3 — A sixteenth emitted Key Rule, pure append *(OPEN)*
+### D3 — A sixteenth emitted Key Rule, pure append *(RATIFIED 2026-08-27 — as recommended)*
+
+**RATIFIED 2026-08-27 — build it, pure append as item 16**, items 1–15 byte-identical, on plan
+87's D4 precedent. Alternative (a), extending item 8, stays rejected; alternative (b), no Key
+Rule, stays rejected. **The bound ships with the decision:** fact 16's *"context, not enforced
+configuration"* means item 16 buys presence, never compliance.
 
 **RECOMMENDED RULE.** Append one item to `src/CLAUDE.md`'s `### Always` list (fact 5), keeping
 items 1–15 byte-identical:
@@ -353,7 +382,14 @@ as a **candidate convention only, nothing built**. **This plan adds without evic
 pretend otherwise.** A future session that finds the list past useful length has a real
 plan to write, and fact 16's 200-line target is the objective trigger for it.
 
-### D4 — The silent no-test path, surfaced through machinery that already exists *(OPEN — three arms; DEPENDS ON D2)*
+### D4 — The silent no-test path, surfaced through machinery that already exists *(RATIFIED 2026-08-27 — arm (b), instruction-only; D2 ratified with it)*
+
+**RATIFIED 2026-08-27 — arm (b), the instruction-only `--unverified-box` clause keyed on an
+empty `test_commands_run`, as recommended.** **D2 was ratified in the same session, so this
+arm's dependency is satisfied and Phase 3 is buildable.** Arm (a), the Python stderr WARN,
+stays the NAMED strengthening arm with its trigger intact — **the first observed run in which a
+package with no configured test command completed a task with the Tests box ticked.** Arm (c),
+build nothing, stays rejected. **Zero Python: `_cmds_verify.py` is not edited.**
 
 **RECOMMENDED RULE — arm (b), instruction-only.** In `/devforge:implement`'s PHASE-7 approve
 path, extend the existing `--unverified-box` determination with one mechanical clause:
@@ -403,7 +439,14 @@ CHECKS the declaration."* **Accepted.** The reply is that the trigger is a mecha
 rather than a belief (which is where F3's second bound bit), and that arm (a) remains available
 on an observed miss.
 
-### D5 — No numeric coverage threshold *(OPEN)*
+### D5 — No numeric coverage threshold *(RATIFIED 2026-08-27 — DECLINED, as recommended)*
+
+**RATIFIED 2026-08-27 — the threshold is DECLINED at every layer, as recommended**, and **the
+counter-argument is ACCEPTED as a standing bound rather than answered**: without any number,
+"coverage" stays unfalsifiable and this framework still cannot answer *"is this codebase
+tested?"* with evidence. **A future plan wanting a number builds a reported, non-gating
+measurement FIRST and argues a threshold only from the distribution it produces.** Nothing in
+this plan makes that easier and it must not be cited as a step toward it.
 
 **RECOMMENDED RULE.** This plan adds **no** coverage percentage, at any layer — not in the
 constitution block (D1), not in the Done-When line (D2), not in `qa-engineer`, not as a gate.
@@ -430,7 +473,14 @@ is exercised, and nothing in this framework can answer "is this codebase tested?
 argue a threshold only from the distribution that measurement produces — never the reverse.
 **Nothing in this plan makes that easier, and it should not be cited as a step toward it.**
 
-### D6 — Document `REGRESSION_GATE` in `/devforge:configure` *(OPEN — two arms)*
+### D6 — Document `REGRESSION_GATE` in `/devforge:configure` *(RATIFIED 2026-08-27 — arm (b), documentation only)*
+
+**RATIFIED 2026-08-27 — arm (b), documentation only, as recommended.** **Arm (a)'s seventh
+Phase-4 `AskUserQuestion` is DECLINED**, so `/devforge:configure` gains **no new wizard
+question**, Phase 3's *"all 23 detection-derived values"* and Phase 4's *"six fields"* counts
+stay byte-exact, and the setter table gains no row. Arm (c), leave it undocumented, stays
+rejected. **The counter-argument stands as the recorded cost:** a spec note is read by the
+model, not the user, and arm (a) remains the escalation if that proves insufficient.
 
 **RECOMMENDED RULE — arm (b), documentation only.** `/devforge:configure`'s spec gains a short
 note stating that `regression_gate` exists, defaults to `"full"`, is set by
@@ -462,7 +512,25 @@ already surfaces the gate's status per run with a `note` field on every non-gati
 (fact 12), so a user who sees it run has a name to search for — and arm (a) is the recorded
 escalation if that proves insufficient.
 
-### D7 — The obligated tests must be able to fail: three falsifiable clauses *(OPEN — defence in depth FOR D2)*
+### D7 — The obligated tests must be able to fail: three falsifiable clauses *(RATIFIED 2026-08-27 — IN FULL, clause 1 KEPT)*
+
+**RATIFIED 2026-08-27 — taken IN FULL, all three clauses, with CLAUSE 1 KEPT in its
+inline-scoped rendering.** **Phase 0's clause-1 question is therefore answered explicitly: KEPT,
+not dropped.** The characterization-test carve-out lives in the emitted sentence itself — *"For
+a test asserting the changed behavior this rule requires…"* plus the closing sentence naming the
+excluded case — so Phase 2 writes the three-paragraph rendering below in full. **The
+drop-clause-1 fallback stays RECORDED but was NOT exercised**; it remains the route if
+instruction-reviewer finds at Phase 2 that the scoped wording still reads as banning a
+behavior-pinning test, and that would be a Phase-0 re-open, not a wording tweak.
+
+**The D2 → D7 counterweight is discharged in writing:** D2 and D7 were ratified together, so the
+checkbox and the clause that stops it rewarding a fake test ship as one unit. Sites (a) and (b)
+build at Phases 2 and 2b; **site (c), `qa-engineer.md`, stays the ratified VERIFIED NO-OP** on
+fact 7a's evidence, which is why that file does not join the plan-90 shared surface list.
+Alternatives (a) mutation testing, (b) reviewer-only, (c) constitution-only and (d) a new agent
+all stay rejected as recorded. **Both counter-arguments survive verbatim and neither was
+answered by the ratification** — the model-judging-model objection is why mutation testing keeps
+its named trigger.
 
 **Origin: a maintainer directive dated 2026-08-26**, given in the same session this plan was
 drafted. Paraphrased in English: the obligation must not be satisfiable by tests written merely
@@ -634,9 +702,14 @@ characterization test.
 
 ---
 
-## Open questions (OQ-N) — ALL OPEN
+## Open questions (OQ-N) — ALL RESOLVED 2026-08-27
 
-### OQ-1 — Exact wording of D2's Done-When line
+### OQ-1 — Exact wording of D2's Done-When line *(RESOLVED 2026-08-27 — as recommended)*
+
+**RESOLVED 2026-08-27 — `Tests pass on changed files (see Development Commands section)`**,
+mirroring the tsc and lint lines verbatim in structure. **Both mechanical constraints bind
+Phase 1**: the line carries a `test`/`tests` token so fact 4a's existing scan matches it, and it
+is substring-unique in the rendered skeleton so `--unverified-box` marks one box, not two.
 
 **RECOMMENDATION:** `Tests pass on changed files (see Development Commands section)` — mirroring
 the type-check and lint lines verbatim in structure, so the five lines read as one family and
@@ -647,7 +720,12 @@ contain a token from fact 4a's scan list (`test`/`tests` — case-insensitive), 
 substring unique within the rendered skeleton, because `--unverified-box` matching is *"plain
 case-sensitive substring containment"* (fact 4). A wording that matches two boxes marks both.
 
-### OQ-2 — Does D1's block name a testing PRACTICE or only an OBLIGATION?
+### OQ-2 — Does D1's block name a testing PRACTICE or only an OBLIGATION? *(RESOLVED 2026-08-27 — obligation only)*
+
+**RESOLVED 2026-08-27 — OBLIGATION ONLY, as recommended, and the answer covers D7's three
+appended clauses too**: none of them is a framework, a file layout, a directory convention or a
+number, so the block passes this OQ's own test at its full ratified length. §3.4 keeps
+`{{TESTING}}` and `/devforge:constitute` keeps ownership of project testing detail.
 
 **RECOMMENDATION: obligation only, as drafted.** The block states when a change is complete and
 what a test must assert. It names **no framework, no file layout, no directory convention and no
@@ -662,7 +740,14 @@ and type-checker restatement — **none of which is a framework, a file layout, 
 convention or a number.** They are obligation, not practice, by this OQ's own test. A ratifier
 re-reading "as drafted" should read D7's rendering, not D1's four sentences alone.
 
-### OQ-3 — Does anything repair §3.4's emptiness, or is D1's relocation accepted as-is?
+### OQ-3 — Does anything repair §3.4's emptiness, or is D1's relocation accepted as-is? *(RESOLVED 2026-08-27 — arm (i), accept it)*
+
+**RESOLVED 2026-08-27 — arm (i), ACCEPT §3.4's emptiness, as recommended.** §3.4 keeps its
+placeholder and this plan adds nothing to it. Arm (ii)'s pointer is declined — fact 2d means it
+would be wiped on the first `/devforge:constitute` re-render and fact 2a means nothing would
+notice. **Arm (iii) is DECLINED, so `src/agents/qa-engineer.md` does NOT join the plan-90 shared
+surface list on this plan's account**, and `qa-engineer` Rule 6 stays byte-unchanged. ⚠ **Plan 90
+cites this OQ by number** — the number does not move.
 
 This is D1's counter-argument turned into a question, and it needs an explicit answer rather
 than silence. Three candidates:
@@ -681,7 +766,12 @@ than silence. Three candidates:
   vaguer one. ⚠ **`qa-engineer.md` is also a plan-90 shared surface**, so a change here would
   fall under the coordination rule below.
 
-### OQ-4 — Does anything need to change in `/devforge:verify` or `/devforge:review`?
+### OQ-4 — Does anything need to change in `/devforge:verify` or `/devforge:review`? *(RESOLVED 2026-08-27 — no changes)*
+
+**RESOLVED 2026-08-27 — NO, as recommended.** Neither command is edited by any phase.
+`compute-verdict` receives no new field, an unticked annotated Tests box produces no NEEDS WORK
+on its own, and D7's `qa-reviewer` edit reaches `/devforge:verify` only through the existing
+plan-41 path. **OQ-6, not this OQ, owns the severity question.**
 
 **RECOMMENDATION: no, and the reasoning is worth recording so it is not re-derived.**
 `/devforge:verify` already runs the assembled suite as a mechanical blocker and the regression
@@ -698,7 +788,11 @@ verdict. **No new field, no new input, no new verdict value** (D7 site (b) keeps
 `ADEQUATE / GAPS FOUND` vocabulary intact, fact 8a). OQ-6, not this OQ, owns the severity
 question.
 
-### OQ-5 — Do the two verified no-op test fixtures get touched?
+### OQ-5 — Do the two verified no-op test fixtures get touched? *(RESOLVED 2026-08-27 — untouched)*
+
+**RESOLVED 2026-08-27 — NO, they stay untouched, as recommended**, and **Phase 1 RECORDS the
+no-op** rather than passing over it silently. The site that does need work is fact 3c's
+count-named test, whose assertions pass while its name lies.
 
 **RECOMMENDATION: no.** `tests/lib/_implement/test_cmds_resolve.py:177` and
 `test_handoff_reader.py:186` embed the four-line block as hand-authored task-file INPUT, not as
@@ -707,7 +801,15 @@ an expected `render-task-file` output (fact 3d), so a fifth emitted line does no
 recording it stops the next session re-checking. The site that DOES need attention is fact 3c's
 count-named test, whose assertions pass while its name lies.
 
-### OQ-6 — What severity does a D7 clause-2 finding carry, and does it force GAPS FOUND?
+### OQ-6 — What severity does a D7 clause-2 finding carry, and does it force GAPS FOUND? *(RESOLVED 2026-08-27 — ≥ High, and High forces GAPS FOUND)*
+
+**RESOLVED 2026-08-27 — a finding matching one of clause 2's three named shapes is at least
+High, and High forces `GAPS FOUND`, as recommended.** The floor is keyed on the named shapes, so
+it adds no judgment step, and it is written at Phase 2b and **nowhere else in the file**.
+**Clauses 1 and 3 take NO floor** and stay at the reviewer's existing severity discretion.
+**The counter-argument is accepted as the cost:** a contested call re-fans the whole
+four-reviewer panel and can burn its three-round cap. **Phase 6 anchor 5's plant (b) is where
+that cost is observed, and a flagged (b) re-opens this floor.**
 
 **The question is real because of fact 8b**, not invented: `ADEQUATE` is `qa-reviewer`'s panel
 clean token, so whether a vacuous-test finding blocks depends entirely on whether the reviewer
@@ -740,10 +842,14 @@ genuine test in that pair is flagged, this floor is the first thing to reconside
 
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)*
+### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-08-27**
 
 **Objective:** ratify or amend D1–D7 and answer OQ-1–OQ-6, recording each answer in this file
 with its reasoning. **Nothing else may start.**
+
+**✅ CLOSED 2026-08-27 — see `## Phase 0 close record` below. Phases 1, 2, 2b, 3, 4 and 5 are
+cleared to build; Phase 6 stays a deferred user-driven HARD GATE.** The pick-list below is
+retained as the record of what needed an explicit answer, and every one of the five got one.
 
 Five items need an explicit pick rather than a nod:
 
@@ -780,6 +886,48 @@ Five items need an explicit pick rather than a nod:
   2b write different text depending on it.
 - **D1–D6 and OQ-1–OQ-5 still carry their original numbers.** `grep -n "OQ-3" ` across the repo
   still resolves to the §3.4 question — plan 90 cites it by number.
+
+---
+
+## Phase 0 close record
+
+**Ratified 2026-08-27 by the maintainer, in-session, answering the five explicit picks directly;
+everything off the pick-list ratified as recommended.** No item was amended, deferred, or
+declined except where a decision's own recommendation was to decline (D5's threshold, D6's arm
+(a), OQ-3's arms (ii)/(iii)) — those declines ARE the recommendation, not a departure from it.
+
+**The five picks, as answered:**
+
+| Pick | Answer |
+|---|---|
+| D1's host section | **§3.5** — §3.4 declined on the record for its zero drift detection (fact 2a) |
+| D4's arm + its D2 dependency | **arm (b)**, and **D2 ratified with it** — the dependency is discharged, not stranded |
+| D6's arm | **arm (b)**, documentation only — no new wizard question, no count edits |
+| D7 + its D2 relationship | **taken IN FULL, clause 1 KEPT** inline-scoped — D2 and D7 ship together |
+| OQ-6's severity floor | **≥ High on clause 2, High forces `GAPS FOUND`**; clauses 1 and 3 take no floor |
+
+**Two resolutions Phase 0's Verify demanded in writing, and where they live:** the **D2 ↔ D4**
+dependency and the **D2 → D7** counterweight are both recorded in **D2's own entry** as well as
+in D4's and D7's, so a reader arriving at D2 alone cannot miss that its checkbox ships with the
+two mechanisms that stop it lying. **D7 was not declined**, so D2's "record the choice" branch is
+noted as not-fired rather than left ambiguous.
+
+**What ratification did NOT change — recorded so a future session does not read closure as
+scope growth:**
+
+- **Every counter-argument survives verbatim.** D5's unfalsifiability objection, D2's
+  ticked-box-is-not-a-passing-test objection, D7's model-judging-model objection and OQ-6's
+  panel-cost objection are **accepted costs, not answered ones**. A ratified decision whose
+  counter-argument was deleted could not be re-opened honestly, and none was.
+- **Plan 75's tripwire still holds, both halves**: zero gates, zero `verify-*` numbers, zero
+  validators, zero new agents, zero new verdict values.
+- **Python remains D2 only.** D4 arm (a) was not taken, so `_cmds_verify.py` is untouched.
+- **The honest bounds are unchanged by ratification.** Nothing mechanical checks test
+  meaningfulness; no coverage is measured; a Key Rule is context, not enforcement. **Ratifying a
+  claim does not strengthen it.**
+- **Phase 6 is NOT cleared.** It is a deferred user-driven HARD GATE with five known-answer
+  anchors, two of them pair-scored. **Everything Phases 1–5 produce is build-verified and NOT
+  consumer-validated.**
 
 ---
 
