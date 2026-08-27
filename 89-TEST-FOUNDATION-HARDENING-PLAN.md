@@ -1,11 +1,11 @@
 # 89 — Test-foundation hardening: the test OBLIGATION made as standing as the test RUN
 
-**Status:** **✅ Phase 0 RATIFIED + Phases 1–5 DONE (build) 2026-08-27. Phase 6 DEFERRED.**
+**Status:** **✅ DONE (build) 2026-08-27 — Phases 0–5 complete. Phase 6 consumer e2e DEFERRED (maintainer decision 2026-08-27, NOT waived).**
 
 - **Phase 0 CLOSED 2026-08-27** — D1–D7 and OQ-1–OQ-6 ALL RATIFIED AS RECOMMENDED, the five explicit picks answered in-session by the maintainer: **D1** = §3.5 host (§3.4 declined for its zero drift detection); **D2 + D4 arm (b)** = BOTH taken, so the dependency is discharged rather than stranded; **D6** = arm (b), documentation-only; **D7** = taken IN FULL with **clause 1 KEPT** in its inline-scoped rendering; **OQ-6** = clause-2 findings floored at ≥ High, High forces `GAPS FOUND`. Commit `3521e34`.
 - **Phases 1, 2, 2b, 3 and 4 DONE (build) 2026-08-27**, python-reviewer + instruction-reviewer both SHIP-READY, full `tests/lib` suite green (11124+ passed; `test_breakdown_helper` 426). Commits: `1ead52d` Phase 1 · `8f4ffec` Phases 2 + 2b · `27cb30e` Phase 3 · `77beba1` Phase 4.
 - **Phase 5 DONE (build) 2026-08-27**, in this commit. Both halves landed: **D6's note in `src/commands/configure/main.md`** (arm (b), documentation-only — no new prompt, no count edits) and the documentation/reconciliation sweep (this status block, the dated build amendments recorded against Phases 1/2b/3 and facts 4a-i / 4a-ii, `CHANGELOG.md`, the repo-root index entry, and the `PLAN-STATUS-ARCHIVE.md` mirror). **Its Verify criterion now passes: `grep -rn "REGRESSION_GATE" src/commands/` returns hits in BOTH `verify/main.md` and `configure/main.md`.**
-- **Phase 6 remains a DEFERRED user-driven HARD GATE — build-verified is NOT consumer-validated.** No anchor has been run.
+- **Phase 6 consumer e2e DEFERRED 2026-08-27 by explicit maintainer decision — the maintainer intends to run it (NOT waived; build-verified, NOT consumer-validated).** No anchor has been run, and nothing in Phases 1–5 may be read as evidence any of them would pass. **The five known-answer anchors are the recipe for that run**, unchanged: the configured-test-command task, the `null`-test-command task, the §3.5 drift finding, the Key Rule shipped and loaded (whose part (b) owes a `claude-code-guide` check BEFORE the run), and the planted vacuous test beside its genuine twin. ⚠ **Two PAIR-scorings survive into that run and are what make it falsifiable** — anchors 1+2 are scored as a pair, and so are anchor 5's two plants, because a reviewer that catches the plant by flagging everything passes one half and fails the other. **Anchor 5 remains the ONLY place D7's false-positive rate will ever be observed.**
 
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
