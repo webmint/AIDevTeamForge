@@ -682,6 +682,12 @@ _LIB_DIR_P1 = REPO_ROOT_P1 / "src" / "devforge" / "lib"
 if str(_LIB_DIR_P1) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR_P1))
 
+import breakdown_helper  # noqa: E402 -- direct access to _DONE_WHEN_FIXED_LINES
+from _implement._cmds_complete import (  # noqa: E402
+    _tick_done_when_boxes,
+    _UNVERIFIED_ANNOTATION,
+)
+
 
 def _run_bh(cwd, *args):
     """Invoke breakdown_helper.py as a subprocess from cwd."""
@@ -1753,8 +1759,9 @@ class RenderTaskFileTests(_CwdIsolationBH):
         ):
             self.assertIn(header, output, "missing header: " + header)
 
-    def test_four_fixed_done_when_lines_verbatim(self):
-        """The four helper-owned Done-When lines appear verbatim."""
+    def test_five_fixed_done_when_lines_verbatim(self):
+        """The five helper-owned Done-When lines appear verbatim (plan 89 D2:
+        a Tests line joins the prior four)."""
         result = _run_bh(self.tmp_path, "render-task-file")
         self.assertEqual(result.returncode, 0, result.stderr)
         output = result.stdout
@@ -1763,8 +1770,164 @@ class RenderTaskFileTests(_CwdIsolationBH):
             "Type checker passes on changed files (see Development Commands section)",
             "Linter passes on changed files (see Development Commands section)",
             "No new secrets or credentials in code",
+            "Tests pass on changed files (see Development Commands section)",
         ):
             self.assertIn(line, output, "missing Done-When line: " + line)
+
+    def test_five_fixed_done_when_lines_exact_order(self):
+        """The five fixed Done-When lines appear in the exact APPENDED order
+        (plan 89 Phase 1: the Tests line is appended after the existing four,
+        matching storage-rules.md's skeleton byte-for-byte rather than being
+        inserted after the linter line)."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+        expected_order = [
+            "No debug artifacts left in changed files",
+            "Type checker passes on changed files (see Development Commands section)",
+            "Linter passes on changed files (see Development Commands section)",
+            "No new secrets or credentials in code",
+            "Tests pass on changed files (see Development Commands section)",
+        ]
+        positions = [output.index(line) for line in expected_order]
+        self.assertEqual(
+            positions,
+            sorted(positions),
+            "the five fixed Done-When lines are not in the expected order: "
+            + repr(expected_order),
+        )
+
+    def test_done_when_fixed_lines_list_literal_exact(self):
+        """_DONE_WHEN_FIXED_LINES (the Python source of truth) is exactly the
+        five-line list in the exact order render-task-file emits it -- pins
+        the list literal itself, not just its rendered substrings."""
+        self.assertEqual(
+            breakdown_helper._DONE_WHEN_FIXED_LINES,
+            [
+                "No debug artifacts left in changed files",
+                "Type checker passes on changed files (see Development Commands section)",
+                "Linter passes on changed files (see Development Commands section)",
+                "No new secrets or credentials in code",
+                "Tests pass on changed files (see Development Commands section)",
+            ],
+        )
+
+    def test_done_when_fixed_lines_match_storage_rules_skeleton(self):
+        """`_DONE_WHEN_FIXED_LINES` stays byte-consistent with the Done-When
+        skeleton documented in storage-rules.md (plan 89 Phase 1 Verify:
+        "storage-rules.md's skeleton and _DONE_WHEN_FIXED_LINES are
+        byte-consistent -- diff them line by line"). Reads storage-rules.md
+        from the repo tree -- not a hand-authored fixture -- so a future edit
+        to either file alone drifts LOUDLY instead of silently.
+
+        Extraction mirrors the heading-bounded regex idiom
+        `_cmds_complete.py`'s `_tick_done_when_boxes` already uses: from the
+        `## Done When` heading to the next `## ` heading (or EOF). The
+        skeleton's first two Done-When lines are task-specific bracketed
+        placeholders (`- [ ] [Testable condition ...]`,
+        `- [ ] [Another task-specific condition]`); only the five STANDING
+        lines that follow them are extracted and compared.
+        """
+        storage_rules_path = (
+            REPO_ROOT_P1 / "src" / "devforge" / "storage-rules.md"
+        )
+        text = storage_rules_path.read_text(encoding="utf-8")
+
+        heading = re.search(r"^## Done When\s*$", text, re.MULTILINE)
+        self.assertIsNotNone(
+            heading, "storage-rules.md has no '## Done When' heading"
+        )
+        section_start = heading.end()
+        next_heading = re.search(r"^## ", text[section_start:], re.MULTILINE)
+        section_end = (
+            section_start + next_heading.start() if next_heading else len(text)
+        )
+        section = text[section_start:section_end]
+
+        box_lines = re.findall(r"^- \[ \] (.+)$", section, re.MULTILINE)
+        standing_lines = [line for line in box_lines if not line.startswith("[")]
+
+        self.assertEqual(standing_lines, breakdown_helper._DONE_WHEN_FIXED_LINES)
+
+    def test_tests_done_when_line_contains_scan_token(self):
+        """OQ-1 mechanical constraint 1: the new line carries a token
+        (case-insensitive 'test'/'tests') from /devforge:implement's
+        --unverified-box scan list, so the existing scan matches it with no
+        change to the scan list itself."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tests_line = "Tests pass on changed files (see Development Commands section)"
+        self.assertIn(tests_line, result.stdout)
+        self.assertIn("test", tests_line.lower())
+
+    def test_tests_done_when_line_substring_unique(self):
+        """OQ-1 mechanical constraint 2: the new line's full text is
+        substring-unique within the rendered skeleton, so a single
+        --unverified-box substring match ticks/unticks exactly one box (fact
+        4's 'plain case-sensitive substring containment')."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+        tests_line = "Tests pass on changed files (see Development Commands section)"
+        self.assertEqual(
+            output.count(tests_line),
+            1,
+            "the Tests Done-When line must appear exactly once in the skeleton",
+        )
+        # And it must not be a substring of, nor contain as a substring, any
+        # of the other four fixed lines -- true substring-uniqueness, not
+        # merely a unique full-line match.
+        other_lines = [
+            "No debug artifacts left in changed files",
+            "Type checker passes on changed files (see Development Commands section)",
+            "Linter passes on changed files (see Development Commands section)",
+            "No new secrets or credentials in code",
+        ]
+        for other in other_lines:
+            self.assertNotIn(tests_line, other)
+            self.assertNotIn(other, tests_line)
+
+    def test_unverified_box_leaves_tests_line_unticked_and_annotated(self):
+        """Round-trips the REAL render-task-file skeleton through the REAL
+        mark-complete tick function: passing the Tests line as
+        --unverified-box leaves ONLY that box unticked and annotated, while
+        the other four fixed boxes are ticked (fact 4's `_tick_done_when_boxes`,
+        exercised directly rather than hand-authored as a fixture)."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skeleton = result.stdout
+        tests_line = "Tests pass on changed files (see Development Commands section)"
+
+        ticked = _tick_done_when_boxes(skeleton, [tests_line])
+
+        # The Tests box: unticked, annotated exactly once.
+        expected_tests_box = "- [ ] {0}{1}".format(tests_line, _UNVERIFIED_ANNOTATION)
+        self.assertIn(expected_tests_box, ticked)
+        self.assertEqual(ticked.count(_UNVERIFIED_ANNOTATION), 1)
+
+        # The other four fixed boxes: ticked, no annotation.
+        for other in (
+            "No debug artifacts left in changed files",
+            "Type checker passes on changed files (see Development Commands section)",
+            "Linter passes on changed files (see Development Commands section)",
+            "No new secrets or credentials in code",
+        ):
+            self.assertIn("- [x] {0}".format(other), ticked)
+
+    def test_unverified_box_reapply_is_idempotent(self):
+        """A second tick pass with the same --unverified-box substring does
+        not double-append the unverified annotation (fact 4's stated
+        idempotence across repair re-runs)."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skeleton = result.stdout
+        tests_line = "Tests pass on changed files (see Development Commands section)"
+
+        once = _tick_done_when_boxes(skeleton, [tests_line])
+        twice = _tick_done_when_boxes(once, [tests_line])
+
+        self.assertEqual(once, twice)
+        self.assertEqual(twice.count(_UNVERIFIED_ANNOTATION), 1)
 
     def test_task_specific_placeholder_lines_present(self):
         """Both distinct task-specific Done-When placeholders appear verbatim

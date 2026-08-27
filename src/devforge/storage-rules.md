@@ -187,6 +187,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - [ ] Type checker passes on changed files (see Development Commands section)
 - [ ] Linter passes on changed files (see Development Commands section)
 - [ ] No new secrets or credentials in code
+- [ ] Tests pass on changed files (see Development Commands section)
 
 ## Completion Notes
 

@@ -80,7 +80,7 @@ _SUBCOMMAND_REGISTRY = [
     (
         "verify-touched",
         (
-            "Run scope-aware type-check + lint + build over touched files. "
+            "Run scope-aware type-check + lint + build + test over touched files. "
             "Loads PACKAGE_STACKS from .devforge/project-config.json; "
             "longest-path-prefix matches each file to its package commands. "
             "Implements a self-repair counter (helper-owned cap=3): "

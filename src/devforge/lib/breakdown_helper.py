@@ -976,19 +976,30 @@ def cmd_render_findings_from_plan(args: argparse.Namespace) -> int:
 # Subcommand: render-task-file
 # ---------------------------------------------------------------------------
 
-# The four helper-owned Done-When lines (verbatim from storage-rules.md).
+# The five helper-owned Done-When lines (verbatim from storage-rules.md).
+# Plan 89 D2/OQ-1: the Tests line is APPENDED LAST, after "No new secrets or
+# credentials in code", not inserted after the linter line. Reasons: (1)
+# byte-stability -- every already-rendered task file's diff is one added
+# line at the end, never a reorder of the first four; (2) the existing four
+# lines declare no grouping principle (mechanical-check vs. hygiene), so
+# inserting to "group" the Development-Commands-section conditions would
+# invent a rule the skeleton never stated; (3) house precedent for a
+# standing ordered list is pure append (plan 87 D4's Key Rule 15, plan 86
+# F2's check 10). storage-rules.md's skeleton is the canonical reference
+# this list mirrors byte-for-byte, in this exact order.
 _DONE_WHEN_FIXED_LINES = [
     "No debug artifacts left in changed files",
     "Type checker passes on changed files (see Development Commands section)",
     "Linter passes on changed files (see Development Commands section)",
     "No new secrets or credentials in code",
+    "Tests pass on changed files (see Development Commands section)",
 ]
 
 
 def cmd_render_task_file(args: argparse.Namespace) -> int:
     """Emit the exact task-file skeleton from storage-rules.md §Task File Format.
 
-    All sections and the four fixed Done-When lines are helper-owned.
+    All sections and the five fixed Done-When lines are helper-owned.
     The LLM fills in placeholders. Exit 0 always (pure emitter).
 
     --property-targets (plan 66 WI-1): when passed and non-empty (after
@@ -1080,7 +1091,7 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
     lines.append("- [postcondition: what must be true in the codebase after this task completes]")
     lines.append("")
 
-    # Done When — task-specific placeholders + four fixed helper-owned lines.
+    # Done When — task-specific placeholders + five fixed helper-owned lines.
     lines.append("## Done When")
     lines.append("")
     lines.append("- [ ] [Testable condition specific to this task]")
