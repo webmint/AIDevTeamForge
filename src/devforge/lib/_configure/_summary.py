@@ -57,6 +57,11 @@ _SUMMARY_GROUPS = (
             "ac_runtime_api_base",
             "ac_runtime_cli_command",
             "regression_gate",
+            # e2e_command (plan 90 D1) joins here rather than a new
+            # single-field group — same precedent as regression_gate: this
+            # group is really "settings consumed at /devforge:verify time",
+            # not strictly AC-scoped, and neither field is AC-specific.
+            "e2e_command",
         ),
     ),
 )

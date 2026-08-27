@@ -67,6 +67,12 @@ FIELD_SCHEMA = (
 
     # Regression gate
     ("regression_gate",        "scalar"),
+
+    # E2E (plan 90 D1): the one command that runs the project's e2e suite.
+    # Empty string when the project has none — see FIELD_DEFAULTS below.
+    # Top-level (not per-package): an e2e suite is a property of the
+    # deployed product, not of a single package.
+    ("e2e_command",            "scalar"),
 )
 
 # Enum-restricted scalars; key = field name, value = allowed set.
@@ -90,6 +96,12 @@ ENUM_FIELDS = {
 # Only fields where None is NOT the right out-of-the-box value appear here.
 FIELD_DEFAULTS = {
     "regression_gate": "full",
+    # "" (not None) is the legitimate "no e2e suite" value (plan 90 D1);
+    # the structurally simpler default over inventing a discriminator —
+    # e2e_command has no analogous gating field the way ac_runtime_* has
+    # ac_verification_mode. A non-None default also keeps this field out
+    # of _cmds_verify.py's null-scalar check with no exemption needed.
+    "e2e_command": "",
 }
 
 # package_stack_array record field order — locked so emit is deterministic.

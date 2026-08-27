@@ -11,11 +11,11 @@ from typing import Dict, List, Optional, Tuple
 
 
 # Ordered list of keys in project-config.json.
-# 30 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 31 from configure.yaml (FIELD_SCHEMA, uppercased) +
 # 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
 #                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
 # 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
-# Total: 38 keys.
+# Total: 39 keys.
 _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (identity)
     "PROJECT_NAME",
@@ -66,6 +66,8 @@ _PROJECT_CONFIG_KEY_ORDER = (
     "AC_RUNTIME_CLI_COMMAND",
     # From configure.yaml (regression gate)
     "REGRESSION_GATE",
+    # From configure.yaml (e2e)
+    "E2E_COMMAND",
 )
 
 # Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".
@@ -125,7 +127,7 @@ def _build_project_config(
     uppercase project-config.json keys). Computes the 3 derived fields.
     Returns an ordered dict whose keys follow _PROJECT_CONFIG_KEY_ORDER.
 
-    configure.yaml fields: all 29 FIELD_SCHEMA entries.
+    configure.yaml fields: all 31 FIELD_SCHEMA entries.
     init.yaml fields: workspace_mode, project_root, project_state,
                       default_branch, packages_detected.
     Derived: WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST.

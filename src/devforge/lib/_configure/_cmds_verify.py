@@ -25,9 +25,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
     """Cross-check configure.yaml + project-config.json for correctness.
 
     Checks:
-    1. All 30 configure.yaml fields populated (non-null scalars, non-empty
+    1. All 31 configure.yaml fields populated (non-null scalars, non-empty
        arrays). AC runtime fields (3) are exempt when ac_verification_mode
        != "runtime-assisted". project_natures is required (empty → violation).
+       e2e_command needs no exemption: its FIELD_DEFAULTS baseline is ""
+       (not None), same mechanism as regression_gate, so this loop's
+       `value is None` check never fires for it on a fresh install or on
+       an existing configure.yaml written before this field existed.
     2. project-config.json exists and is valid JSON.
     3. Round-trip identity: configure.yaml fields appear in project-config.json
        with matching values; init.yaml fields appear with matching values.
@@ -51,7 +55,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     ac_mode = cfg_state.get("ac_verification_mode")
     ac_runtime_required = (ac_mode == "runtime-assisted")
 
-    # Check all 30 configure.yaml fields.
+    # Check all 31 configure.yaml fields.
     for name, kind in FIELD_SCHEMA:
         value = cfg_state.get(name)
         if name in _AC_RUNTIME_FIELDS and not ac_runtime_required:

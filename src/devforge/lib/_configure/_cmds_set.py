@@ -575,6 +575,32 @@ def cmd_set_ac_runtime_cli_command(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# E2E scalar setter (1).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_e2e_command(args: argparse.Namespace) -> int:
+    """Set e2e_command scalar.
+
+    The one command that runs the project's e2e suite (plan 90 D1). This
+    setter requires a non-empty value like every other plain scalar
+    setter (mirrors cmd_set_ac_runtime_url) — there is no "clear" verb.
+    A project with no e2e suite simply never calls this setter and stays
+    at the FIELD_DEFAULTS "" baseline.
+    """
+    try:
+        value = _validate_scalar(args.value, "e2e_command")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["e2e_command"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-e2e-command: {0}".format(err))
+    return 0
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     """Write a fresh defaults yaml. Idempotent: byte-identical on re-run."""
     try:

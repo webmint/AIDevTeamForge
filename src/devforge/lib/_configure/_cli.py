@@ -47,6 +47,7 @@ from ._cmds_set import (
     cmd_set_claude_tier_think,
     cmd_set_claude_tier_verify,
     cmd_set_dev_commands,
+    cmd_set_e2e_command,
     cmd_set_error_handlings,
     cmd_set_frameworks,
     cmd_set_languages,
@@ -324,6 +325,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp = subparsers.add_parser("set-ac-runtime-cli-command", help="Set ac_runtime_cli_command scalar.")
     sp.add_argument("value", help="AC runtime CLI command.")
     sp.set_defaults(func=cmd_set_ac_runtime_cli_command)
+
+    # ------------------------------------------------------------------
+    # E2E scalar setter.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "set-e2e-command",
+        help="Set e2e_command scalar (the one command that runs the project's e2e suite).",
+    )
+    sp.add_argument("value", help="E2E command.")
+    sp.set_defaults(func=cmd_set_e2e_command)
 
     # ------------------------------------------------------------------
     # Step 3: render-config / verify / summary.

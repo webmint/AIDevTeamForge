@@ -50,6 +50,16 @@ PACKAGE_STACKS_SECTION table, unknown placeholder exit 2,
 idempotent re-run, project-config.json missing exit 1, agent .md substituted,
 unknown placeholder leaves original file unchanged, UPPERCASE round-trip).
 
+Plan 90 Phase 1 coverage (added after the Step 1-4 counts above were
+written, so those counts are now one field / one key behind): the
+e2e_command scalar field — FIELD_SCHEMA/FIELD_DEFAULTS ("" empty-by-
+design, no ENUM_FIELDS entry), the set-e2e-command setter (plain scalar
+shape, not enum), E2E_COMMAND's position in _PROJECT_CONFIG_KEY_ORDER
+(immediately after REGRESSION_GATE), its "AC verification" summary
+group placement, and configure_helper verify's exit-0 behavior with
+e2e_command unset AND against a legacy configure.yaml written before
+this field existed (the upgrade-path regression the plan calls out).
+
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
 
@@ -157,12 +167,13 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_30_fields(self):
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 30)
+    def test_field_schema_has_31_fields(self):
+        # 30 + e2e_command (plan 90 Phase 1).
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 31)
 
-    def test_default_state_has_30_keys(self):
+    def test_default_state_has_31_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 30)
+        self.assertEqual(len(state), 31)
 
     def test_default_state_scalars_are_none(self):
         # Fields listed in FIELD_DEFAULTS have non-None defaults and are
@@ -180,6 +191,14 @@ class SchemaTests(unittest.TestCase):
         """regression_gate defaults to 'full' (non-None default via FIELD_DEFAULTS)."""
         state = configure_helper.default_state()
         self.assertEqual(state["regression_gate"], "full")
+
+    def test_default_state_e2e_command_is_empty_string(self):
+        """e2e_command defaults to '' (non-None default via FIELD_DEFAULTS,
+
+        plan 90 D1 — 'no e2e suite' is legitimately empty, not null).
+        """
+        state = configure_helper.default_state()
+        self.assertEqual(state["e2e_command"], "")
 
     def test_default_state_arrays_are_empty_list(self):
         state = configure_helper.default_state()
@@ -225,6 +244,7 @@ class SchemaTests(unittest.TestCase):
             "ac_runtime_api_base",
             "ac_runtime_cli_command",
             "regression_gate",
+            "e2e_command",
         ]
         self.assertEqual(names, expected)
 
@@ -501,7 +521,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 30 fields populated — comprehensive round-trip."""
+        """All 31 fields populated — comprehensive round-trip (incl. e2e_command)."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -544,6 +564,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "ac_runtime_api_base": "http://localhost:4000",
             "ac_runtime_cli_command": "npm run start",
             "regression_gate": "full",
+            "e2e_command": "npx playwright test",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -2843,6 +2864,261 @@ class SetRegressionGateTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(idx_rg, idx_ac + 1)
 
 
+class SetE2eCommandTests(_EnvIsolationMixin, unittest.TestCase):
+    """set-e2e-command — plain (non-enum) scalar setter (plan 90 D1/Phase 1).
+
+    Not an ENUM_FIELDS member (unlike regression_gate) — this setter mirrors
+    the plain-scalar shape (_validate_scalar), matching cmd_set_ac_runtime_url
+    / cmd_set_project_name: any non-empty value is accepted verbatim (after
+    strip), and an empty value is rejected exit 2 like every sibling plain
+    scalar setter. There is no "clear" verb — the FIELD_DEFAULTS "" baseline
+    is the only route back to "no e2e suite".
+    """
+
+    def test_value_accepted_and_stored(self):
+        proc = _run_configure(self.devforge_dir, "set-e2e-command", "npx playwright test")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["e2e_command"], "npx playwright test")
+
+    def test_value_is_stripped(self):
+        proc = _run_configure(self.devforge_dir, "set-e2e-command", "  npx cypress run  ")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["e2e_command"], "npx cypress run")
+
+    def test_empty_rejected(self):
+        # Mirrors every other plain scalar setter's empty-value behavior
+        # (e.g. SetClaudeTierTests.test_empty_rejected, ac_runtime_* setters).
+        proc = _run_configure(self.devforge_dir, "set-e2e-command", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"e2e_command", proc.stderr)
+
+    def test_overwrite_prior_value(self):
+        _run_configure(self.devforge_dir, "set-e2e-command", "npx playwright test")
+        _run_configure(self.devforge_dir, "set-e2e-command", "npx cypress run")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["e2e_command"], "npx cypress run")
+
+    def test_default_is_empty_string_before_any_set(self):
+        """e2e_command defaults to '' even before any setter is called."""
+        # No set-e2e-command call — default_state() supplies "".
+        state = configure_helper.default_state()
+        self.assertEqual(state["e2e_command"], "")
+
+    def test_default_is_empty_string_via_load_on_missing_configure_yaml(self):
+        """_load() returns '' when configure.yaml is absent (fresh install)."""
+        from _configure._state import _load
+        state = _load(self.devforge_dir)
+        self.assertEqual(state["e2e_command"], "")
+
+    def test_default_applied_to_existing_yaml_missing_field(self):
+        """_load() back-fills '' when configure.yaml exists but e2e_command is null."""
+        from _configure._state import _load
+        minimal_yaml = "project_name: old-install\ne2e_command: null\n"
+        yaml_path = self.devforge_dir / configure_helper.OUTPUT_FILE_NAME
+        yaml_path.write_text(minimal_yaml, encoding="utf-8")
+        state = _load(self.devforge_dir)
+        self.assertEqual(state["e2e_command"], "")
+
+    def test_round_trip_via_real_producer(self):
+        """E2E_COMMAND emitted in project-config.json after render-config (round-trip a)."""
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-e2e-command", "npx playwright test")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+        config_path = self.devforge_dir / "project-config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertIn("E2E_COMMAND", data)
+        self.assertEqual(data["E2E_COMMAND"], "npx playwright test")
+
+    def test_default_empty_string_emitted_in_project_config_when_not_set(self):
+        """E2E_COMMAND is '' in project-config.json when the field is never set (round-trip b)."""
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        # reset writes default_state() which has e2e_command="".
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+        config_path = self.devforge_dir / "project-config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertIn("E2E_COMMAND", data)
+        self.assertEqual(data["E2E_COMMAND"], "")
+
+    def test_e2e_command_key_position_after_regression_gate(self):
+        """E2E_COMMAND appears immediately after REGRESSION_GATE in key order."""
+        keys = list(configure_helper._PROJECT_CONFIG_KEY_ORDER)
+        idx_rg = keys.index("REGRESSION_GATE")
+        idx_e2e = keys.index("E2E_COMMAND")
+        self.assertEqual(idx_e2e, idx_rg + 1)
+
+    def test_render_config_key_order_deterministic_across_runs(self):
+        """Two consecutive render-config runs are byte-identical (round-trip d)."""
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-e2e-command", "npx playwright test")
+        config_path = self.devforge_dir / "project-config.json"
+
+        proc1 = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc1.returncode, 0, proc1.stderr.decode())
+        first = config_path.read_bytes()
+
+        proc2 = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc2.returncode, 0, proc2.stderr.decode())
+        second = config_path.read_bytes()
+
+        self.assertEqual(first, second)
+
+    def test_verify_exits_0_with_e2e_command_unset(self):
+        """configure_helper verify exits 0 with e2e_command unset (constraint 1).
+
+        An install that upgrades and then fails its own config check has
+        shipped a regression to every consumer at once — this is the
+        plan's own framing of the risk this test guards against.
+        """
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "test-project")
+        _run_configure(self.devforge_dir, "set-project-description", "A test project")
+        _run_configure(self.devforge_dir, "set-project-type", "Web App")
+        _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        _run_configure(self.devforge_dir, "set-frameworks", "React")
+        _run_configure(self.devforge_dir, "set-architectures", "MVC")
+        _run_configure(self.devforge_dir, "set-project-natures", "web")
+        _run_configure(self.devforge_dir, "set-error-handlings", "try-catch")
+        _run_configure(self.devforge_dir, "set-api-layers", "REST")
+        _run_configure(self.devforge_dir, "set-testings", "Jest")
+        _run_configure(self.devforge_dir, "set-build-tools", "vite")
+        _run_configure(self.devforge_dir, "set-build-commands", "npm run build")
+        _run_configure(self.devforge_dir, "set-type-check-commands", "npx tsc")
+        _run_configure(self.devforge_dir, "set-lint-commands", "npm run lint")
+        _run_configure(self.devforge_dir, "set-test-commands", "npm test")
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "src", "--language", "TypeScript",
+        )
+        _run_configure(self.devforge_dir, "set-project-structure", "--text", "src/")
+        _run_configure(self.devforge_dir, "set-dev-commands", "--text", "npm start")
+        _run_configure(self.devforge_dir, "set-architecture-details", "--text", "MVC pattern")
+        _run_configure(self.devforge_dir, "set-workflow-enforcement", "Strict")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "No")
+        _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
+        _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
+        _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
+        # e2e_command intentionally left unset — stays at FIELD_DEFAULTS "".
+
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn(b"verify: ok", proc.stderr)
+        self.assertNotIn(b"e2e_command", proc.stderr.lower())
+        self.assertNotIn(b"E2E_COMMAND", proc.stderr)
+
+    def test_verify_exits_0_on_legacy_yaml_missing_e2e_command_key(self):
+        """configure_helper verify exits 0 against a configure.yaml written
+
+        before this field existed — the pre-build shape lacks the
+        'e2e_command:' line entirely (never null-in-file, since the field
+        did not exist to be written). This is the upgrade-path regression
+        the plan calls out by name: 'an install that upgrades and then
+        fails its own config check has shipped a regression to every
+        consumer at once' (constraint 1 / test c).
+
+        Built from the real emit_yaml() producer with the e2e_command line
+        stripped out afterward, to simulate the pre-migration artifact
+        shape without inventing a hand-authored fixture from scratch.
+        """
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        state = configure_helper.default_state()
+        state.update({
+            "project_name": "legacy-install",
+            "project_description": "A pre-migration project",
+            "project_type": "Web App",
+            "primary_language": "TypeScript",
+            "languages": ["TypeScript"],
+            "frameworks": ["React"],
+            "architectures": ["MVC"],
+            "project_natures": ["web"],
+            "error_handlings": ["try-catch"],
+            "api_layers": ["REST"],
+            "testings": ["Jest"],
+            "build_tools": ["vite"],
+            "build_commands": ["npm run build"],
+            "type_check_commands": ["npx tsc"],
+            "lint_commands": ["npm run lint"],
+            "test_commands": ["npm test"],
+            "package_stacks": [
+                {
+                    "path": "src",
+                    "language": "TypeScript",
+                    "framework": None,
+                    "build_tool": None,
+                    "build_command": None,
+                    "type_check_command": None,
+                    "lint_command": None,
+                    "test_command": None,
+                }
+            ],
+            "project_structure": "src/",
+            "dev_commands": "npm start",
+            "architecture_details": "MVC pattern",
+            "workflow_enforcement": "Strict",
+            "ai_attribution": "No",
+            "claude_tier_think": "Opus",
+            "claude_tier_do": "Sonnet",
+            "claude_tier_verify": "Haiku",
+            "ac_verification_mode": "code-only",
+        })
+        text = configure_helper.emit_yaml(state)
+        legacy_text = "\n".join(
+            line for line in text.splitlines() if not line.startswith("e2e_command:")
+        ) + "\n"
+        self.assertNotIn("e2e_command", legacy_text)  # sanity: line really stripped
+
+        yaml_path = self.devforge_dir / configure_helper.OUTPUT_FILE_NAME
+        yaml_path.write_text(legacy_text, encoding="utf-8")
+
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn(b"verify: ok", proc.stderr)
+
+        config_path = self.devforge_dir / "project-config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["E2E_COMMAND"], "")
+
+
 # ---------------------------------------------------------------------------
 # 17. Round-trip integration tests (~5)
 # ---------------------------------------------------------------------------
@@ -3085,11 +3361,12 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_38_keys_present(self):
+    def test_all_39_keys_present(self):
+        # 38 + E2E_COMMAND (plan 90 Phase 1).
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 38)
+        self.assertEqual(len(result), 39)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3241,13 +3518,14 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_38_keys_with_defaults(self):
+    def test_renders_39_keys_with_defaults(self):
+        # 38 + E2E_COMMAND (plan 90 Phase 1).
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 38)
+        self.assertEqual(len(data), 39)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -3583,6 +3861,20 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
         for header in ("Identity", "Stack", "Per-package", "Verbatim docs",
                        "Preferences", "AC verification"):
             self.assertIn(header, out, "section header '{0}' missing".format(header))
+
+    def test_e2e_command_rendered_under_ac_verification_group(self):
+        """e2e_command (plan 90 D1) renders in the 'AC verification' group,
+
+        the same group regression_gate lands in — no new one-field group.
+        """
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-e2e-command", "npx playwright test")
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        ac_section = out.split("### AC verification", 1)[1]
+        self.assertIn("e2e_command", ac_section)
+        self.assertIn("npx playwright test", ac_section)
 
 
 # ---------------------------------------------------------------------------
