@@ -176,6 +176,8 @@ Verification runs at task boundaries (end of `/devforge:implement`, etc.), not a
 
 Full specification in `/devforge:implement`.
 
+**End-to-end suite** — feature-level, never per task: when `E2E_COMMAND` is configured, `/devforge:verify` runs it ONCE against the assembled feature and reports the result, and the run is ADVISORY — no status changes the verdict. An unconfigured `E2E_COMMAND` runs nothing and reports nothing. Full specification in `/devforge:verify`.
+
 ## CBM-first Protocol Enforcement
 
 Four hook scripts ship at `.claude/hooks/` and are wired in `.claude/settings.json` to enforce the codebase-memory-mcp (CBM) discovery protocol at runtime. They steer code exploration toward `search_graph`, `trace_path`, `get_code_snippet`, `search_code`, and `query_graph` instead of raw `Read`/`Grep`/`Glob` or shell `grep`/`find`/`cat` over source files.

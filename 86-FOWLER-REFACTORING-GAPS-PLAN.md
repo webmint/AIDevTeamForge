@@ -918,6 +918,15 @@ false-positive rate is observed**, and no phase above may claim it.
   so nothing it does engages plan 62's D14, the reversal plan 82 SHIPPED 2026-08-19 (D14
   amended in place: run-mandatory, verdict never binding), or the one plan 85 proposes — and a
   future session must not cite this plan as precedent in either direction.
+- **Plan 90** (`90-E2E-TEST-LANE-PLAN.md`) — **added 2026-08-27, when that plan shipped its
+  build (Phases 0–5).** It CITED and APPLIED F3's no-gate declaration precedent: its D2
+  declares e2e scenarios in a conditional `plan.md` subsection and its D4 declines a seventh
+  PHASE-3.5 gate, resting on F3's shape — an obligation to DECLARE with both honest bounds
+  stated in the emitted text, *"the claim is visibility, not enforcement"* — and on plan 75's
+  tripwire. Its declared scenarios ride free-form `## Change Details` with **no flag and no
+  header field**, the same carrier `Regression net:` uses. **This plan's text is not edited
+  by that citation**, F3's own trigger and bounds are unchanged, and plan 90 states its
+  strengthening trigger separately (an OBSERVED dropped scenario).
 - **`FINDINGS.md` finding 1** — the §3.6 Narrowing FALSE BINARY. **Untouched.** D2 adds a
   block to §3.6 alongside Narrowing; it does not amend, weaken or resolve that finding, and
   Phase 2 must not be read as doing so.

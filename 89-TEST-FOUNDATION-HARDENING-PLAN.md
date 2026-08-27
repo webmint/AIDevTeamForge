@@ -1424,6 +1424,32 @@ reads the Done-When skeleton live and counts the standing lines rather than assu
 pre-computed delta applied blind is how the counts in this repo rot**, and both plans' own status
 entries record earlier instances of it.
 
+✅ **CLOSED 2026-08-27 — plan 90 shipped SECOND (Phases 0–5 built) and the rule was honoured on
+the READ.** Recorded here so a later session does not re-derive what was found. **All three shared
+surfaces were opened live at plan 90's Phase 3 and Phase 5, and this plan's edits are intact:**
+
+- **`src/agents/qa-reviewer.md`** — **Approach step 4** (the three vacuous-by-construction shapes
+  at ≥ High plus the two further shapes) and **Rule 3** (the failability clause) are present and
+  byte-identical after plan 90's edit, which touched **step 6 only** (a web-flow parity sentence
+  appended beside the mobile-parity one, that sentence itself byte-unchanged). **The clobber
+  hazard this section names did NOT fire.** Both agent files' fenced `yaml` meta-blocks are
+  byte-unchanged, so both plans' recorded-skip reason for the claude-code-guide pass still holds.
+- **`src/CLAUDE.md`** — the `### Always` list was COUNTED live at **sixteen**, item 16 being this
+  plan's *"Test behavior changes"*, and plan 90 **added no item**: its single edit is a
+  three-sentence note appended at the end of the `### Verification` section, exactly as this
+  section predicted its live read would be for.
+- **`src/devforge/storage-rules.md`** — the task-file `## Done When` skeleton was counted live at
+  **five** standing lines, this plan's fifth intact; plan 90 edited the file **not at all** and
+  recorded that no-op as a finding (its lane adds no header field, and the two prose lanes plan 86
+  ships are equally absent from that file).
+
+**The CONDITIONAL fourth never joined.** This plan's **OQ-3 resolved to arm (i)** — accept §3.4's
+emptiness, add nothing — so `src/agents/qa-engineer.md` was untouched here and plan 90 was its only
+editor: it renamed `## Mobile Testing` → `## End-to-End Testing` and added a web block beside the
+mobile block, **every mobile bullet byte-identical.** ⚠ **`D7` remains an overloaded token across
+the pair** — this plan's D7 is test-meaningfulness, plan 90's D7 is a wall-clock cost line — and
+neither plan's D7 moved as a result of the other shipping.
+
 ---
 
 ## Non-goals
@@ -1496,6 +1522,11 @@ entries record earlier instances of it.
   by execution order**. As of 2026-08-26 it **exists at repo root and is likewise NOT STARTED**.
   See `## Cross-plan coordination — plan 90` for the live-read rule that binds whichever of the
   two ships second.
+  ✅ **AMENDED 2026-08-27 — the dated clause above was true when written and is now stale: plan
+  90 is DONE (build) 2026-08-27** (its Phases 0–5 built; its Phase 6 consumer e2e DEFERRED, NOT
+  waived). **It shipped second and honoured the live-read rule** — the findings are recorded in
+  this plan's `## Cross-plan coordination — plan 90` section, where the closing note states what
+  the read found on each shared surface.
 
 ---
 

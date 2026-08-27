@@ -90,6 +90,7 @@ Every `main.md` / agent / constitution edit routes through **instruction-author 
 - Plan 18 (scope fidelity) — prose-first-v1 precedent for WI-2's deferred detector.
 - Plan 34 (verify hygiene) — polyglot stance constrains the stack matrix.
 - Plan 59 (LLM-verdict reproducibility) — sibling determinism concern for OQ-3.
+- Plan 90 (`90-E2E-TEST-LANE-PLAN.md`, e2e test lane) — **added 2026-08-27, when that plan shipped its build (Phases 0–5).** It deliberately REUSES this plan's declaration SHAPE — an architect sub-question naming targets → a conditional `plan.md` subsection → a dedicated `qa-engineer` task at `/devforge:breakdown` — and deliberately does NOT reuse its GATE: no `verify-e2e-coverage` analogue of `verify-property-coverage` was built, so PHASE 3.5 still holds exactly the six `verify-*` gates this plan's Phase 3 left it with. Its stated reason is that a property target's coverage is mechanical (a named function either has a property test or it does not) while an e2e scenario's coverage is a judgment a name-match gate would approximate by matching strings; **the trigger that would change it is an OBSERVED decomposition that dropped a declared scenario, never a structural analogy to this lane.** **Nothing in this plan's mechanism or reasoning is edited by that note** — `verify-property-coverage` and its `**Property targets**:` header field are untouched, and plan 90 adds no task header field of its own.
 - External evidence: `cse-strata-ws-forge/research/2026-07-31-mig-2957-solution-comparison.md`.
 
 ## Context for next session

@@ -39,7 +39,7 @@ def _output_file_path(devforge_dir: Union[str, "os.PathLike[str]"]) -> Path:
 def default_state() -> dict:
     """Return a fresh defaults dict matching FIELD_SCHEMA shape.
 
-    Walks FIELD_SCHEMA and returns all 30 keys with type-appropriate
+    Walks FIELD_SCHEMA and returns one key per entry with type-appropriate
     defaults: scalars → None (or the FIELD_DEFAULTS value when one exists),
     string_array → [], package_stack_array → [].
     """

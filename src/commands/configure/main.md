@@ -6,12 +6,12 @@ disable-model-invocation: true
 
 # /devforge:configure — Project Configuration
 
-`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 29 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 30 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
 
 ## Outputs of this phase
 
-- `.devforge/configure.yaml` — canonical state (29 fields). Owned + shaped by the helper; mutated only via setter subcommands.
-- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.devforge/configure.yaml` — canonical state (31 fields). Owned + shaped by the helper; mutated only via setter subcommands.
+- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (39 keys: 31 from configure.yaml + 5 from init.yaml + 3 derived).
 - `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain.
 - `CLAUDE.md` — substituted in place; no `{{KEY}}` markers remain.
 
@@ -91,7 +91,7 @@ If any read subcommand exits non-zero, surface its stderr verbatim and ABORT —
 
 ## Phase 2 — Compose detection-derived values
 
-Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/devforge:generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 23 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
+Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/devforge:generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 24 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
 
 **Identity**
 
@@ -145,9 +145,13 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 - `AC_RUNTIME_API_BASE` — extract from `.env*` matches in `CONFIGS_JSON` (`VITE_API_URL` / `NEXT_PUBLIC_API_URL` / `REACT_APP_API_URL`). Empty string when none present.
 - `AC_RUNTIME_CLI_COMMAND` — manifest `scripts.dev` or `scripts.start` from `MANIFESTS_JSON` (root or workspace-root package). Empty string when neither script exists.
 
+**E2E (best-effort detection)**
+
+- `E2E_COMMAND` — the ONE command that runs the project's end-to-end suite. Top-level, not per-package: an e2e suite exercises the deployed product rather than a single package, and `/devforge:verify` runs this command once from the project root (the per-task and regression checks never read it — they read `PACKAGE_STACKS[].test_command` and `TEST_COMMANDS[0]`). Detect the runner from the root (or workspace-root) package in `MANIFESTS_JSON`: an entry naming `@playwright/test`, `playwright`, or `cypress` in that package's `dependencies` or `dev_dependencies` identifies it — read BOTH keys, because `read-manifests` folds a single-list manifest into `dependencies` and leaves `dev_dependencies` empty, which is the same union `build_tool_hint` and `framework_hint` are derived from. The value is that package's `scripts` entry which invokes the detected runner, written as it is invoked from the project root (for a `package.json` root, `npm run <script-name>`), or the ecosystem-equivalent script that runs it. Empty string when no e2e runner is detected, AND empty string when a runner is detected but no root-invocable script runs it — do NOT invent an ecosystem-default guess: a dependency with no script never composes `npx playwright test`, exactly as `test_command` never composes one for a package with no test script. When detection leaves the field empty, the user supplies the command as a Phase 3 override or leaves the project without an e2e run.
+
 ## Phase 3 — Bulk-confirmation prompt
 
-Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQuestion's single-line question text constraint). Display all 23 detection-derived values from Phase 2 in a fenced block, grouped by category, then ask the user to confirm or override.
+Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQuestion's single-line question text constraint). Display all 24 detection-derived values from Phase 2 in a fenced block, grouped by category, then ask the user to confirm or override.
 
 **Stop discipline (mandatory).** After emitting the echo block below, this phase MUST end the assistant turn and wait for the user's reply. Do NOT advance to Phase 4 setters in the same turn. Do NOT call any `set-*` subcommand in the same turn. Do NOT call any tool after the echo — the echo is the final output of the turn. The user replies organically; the next turn begins with their reply, which is parsed per the rules below. Plain-prose prompts have no harness-level "wait for user" affordance, so the LLM-level stop is the only mechanism preventing accidental auto-advance through the bulk confirmation.
 
@@ -189,6 +193,9 @@ AC runtime (detected):
 - ac_runtime_api_base: <AC_RUNTIME_API_BASE>
 - ac_runtime_cli_command: <AC_RUNTIME_CLI_COMMAND>
 
+E2E (detected):
+- e2e_command: <E2E_COMMAND>
+
 Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line as 'field: value' (e.g., 'project_type: CLI tool'). For string-array fields whose values contain literal commas (e.g., TypeScript generic syntax `Either<DataError, T>`), supply the value as a JSON array: `error_handlings: ["Either<DataError, T>", "BLoC notifications"]`.
 ````
 
@@ -196,7 +203,7 @@ For the three verbatim fields (`project_structure`, `dev_commands`, `architectur
 
 ### Parsing the user reply
 
-- Reply equals `yes` (case-insensitive, exact after strip) → apply all 23 Phase 2 values via setters.
+- Reply equals `yes` (case-insensitive, exact after strip) → apply all 24 Phase 2 values via setters.
 - Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:configure` again when you're ready to review the detected values." Leave `configure.yaml` in its post-`reset` defaults state. Do not advance to Phase 4.
 - Otherwise → parse line-by-line as `<field>: <value>`. Field names are case-insensitive; tolerate either dashed (`project-name`) or underscore-separated (`project_name`) keys. Apply the user's override for matched lines; apply the Phase 2 composed value for every other field.
 - Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values as confirmed and warn the user: "Proceeding with detected values; re-run `/devforge:configure` to revise."
@@ -229,6 +236,7 @@ Apply each accepted/overridden value via the matching setter. Setter argument sh
 | `ac_runtime_url` | `set-ac-runtime-url <value>` |
 | `ac_runtime_api_base` | `set-ac-runtime-api-base <value>` |
 | `ac_runtime_cli_command` | `set-ac-runtime-cli-command <value>` |
+| `e2e_command` | `set-e2e-command <value>` |
 
 For `package_stacks`: serialize Phase 2's composed package list (already in memory) into a SINGLE JSON object and pipe it once to the bulk verb `set-package-stacks`, which validates each record, then replaces the whole `package_stacks` list in one call. The JSON top-level shape is `{"package_stacks": [<record>, ...]}`; every record carries all 8 keys `{path, language, framework, build_tool, build_command, type_check_command, lint_command, test_command}`. Absent values are explicit JSON `null` — never omitted, never an empty string. `path` and `language` are required and must be non-null; the other 6 keys accept `null`.
 
@@ -300,7 +308,7 @@ Use AskUserQuestion to pick the mode, then conditionally ask the runtime triple.
 
 ## Phase 5 — Render + prune + substitute
 
-Once `configure.yaml` is fully populated (29 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
+Once `configure.yaml` is fully populated (30 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
 
 ### Phase 5.1 — Render config
 
@@ -313,7 +321,7 @@ Once `configure.yaml` is fully populated (29 fields set), render the consolidate
 - Exit 0 → success.
 - Exit 1 → `.devforge/init.yaml` missing or unreadable, OR `.devforge/configure.yaml` unreadable, OR write to `project-config.json` failed. Surface stderr verbatim and ABORT.
 
-**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 30 fields; the 29 this command populates are set in Phase 3 (23 detection-derived values) and Phase 4 (6 user-only prompts). The 30th, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
+**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 31 fields; the 30 this command populates are set in Phase 3 (24 detection-derived values) and Phase 4 (6 user-only prompts). One field, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
 
 ### Phase 5.2 — Prune agents
 
@@ -480,4 +488,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/devforge:configure` is complete. The 29 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 37 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."
+`/devforge:configure` is complete. The 30 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 39 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."

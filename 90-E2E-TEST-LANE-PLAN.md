@@ -1,10 +1,11 @@
 # 90 — The e2e test lane: a declared scenario, an owning task, and one feature-level run
 
-**Status:** **Phase 0 CLOSED 2026-08-27 — D1–D8 RATIFIED and OQ-1–OQ-7 RESOLVED. Phases 1–5 CLEARED TO BUILD, none started. Phase 6 stays a deferred user-driven HARD GATE.**
+**Status:** **✅ DONE (build) 2026-08-27 — Phases 0–5 complete. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run.**
 
 - **Phase 0 CLOSED 2026-08-27** — D1–D8 and OQ-1–OQ-7 ALL answered, with **the four explicit picks answered in-session by the maintainer**: **D3** = advisory **fork (i)**, no status gates the verdict in v1, and its reporting sub-question resolved **reasons-only** (`compute-verdict` gains an `--e2e` input that adds a `reasons` line and **NO blocker**; `render-report` unchanged; no new `verification.md` section); **D1** = the top-level `E2E_COMMAND` key, with its **seeding fork resolved to the THIRD arm** — `/devforge:configure` composes the field's default from the `MANIFESTS_JSON` manifests it already parses, so **`init_helper`'s detector is NOT wired in and `.devforge/init.yaml`'s `test_infra.e2e` is read by nothing**; **D5's placement fork** = the **dedicated-e2e-directory rule**, with the runner-config exclude arm reaching NO emitted text; **D5's section fork** = **arm (a)**, rename and widen `## Mobile Testing`, every mobile bullet byte-identical. **Everything off the pick-list ratified AS RECOMMENDED.** Full record: `## Phase 0 close record`.
-- **Phases 1–5 are CLEARED TO BUILD and NOT STARTED.** No Python, no instruction text and no docs sweep exists yet, and **nothing in this file may be read as shipped.** Every phase keeps the route named in its own block; **Phase 1 and Phase 4's Deliverables 1–2 are the only Python**, and Phases 2, 3 and 5 dispatch none.
-- **Phase 6 consumer e2e stays a deferred user-driven HARD GATE, NOT run.** Everything Phases 1–5 will produce is build-verified and **NOT consumer-validated**. The three known-answer anchors are unchanged — the declared happy path, the silent install, the broken flow — with **anchors 1 and 2 scored as a PAIR** and anchor 3 recording the verdict as a STRING. ⚠ **Ratification observes nothing:** a ratified decision is not a validated one, and no anchor has been run.
+- **Phases 1–5 DONE (build) 2026-08-27**, each through the route its own block names, with **Phase 1 and Phase 4's Deliverables 1–2 the only Python** and Phases 2, 3 and 5 dispatching none. Commits: `c1718ee` Phase 1 · `9cee99c` Phase 2 · `182f514` Phase 3 · `d4d7928` Phase 4 · the Phase-5 docs commit this status block rides in (Phase 0's close is `1a06463`) — **Phase 1 landed fourth, the phases being independent**, so the chain reads `1a06463` → `9cee99c` → `182f514` → `c1718ee` → `d4d7928`. **Each phase carries its own dated build record inside its block below** — read those before re-deriving anything: Phases 2, 3, 4 and 5 each record findings or divergences the plan as drafted did not predict.
+- **Phase 5 DONE (build) 2026-08-27, in this commit.** Both halves landed: **the `/devforge:configure` COMPOSER** (the three `configure/main.md` sites D1's ratified seeding arm needs — compose bullet, echo-template line, setter row) and the docs/reconciliation sweep (this status block, the per-phase build records, the six count sites recounted from the live tuples, `src/CLAUDE.md`, `CHANGELOG.md`, the repo-root index one-liner, the `PLAN-STATUS-ARCHIVE.md` entry, and the dated notes in plans 66, 86 and 89). **Without the composer the field would render, be settable, and stay `""` forever — D1's rejected alternative (c) reached by omission.**
+- **Phase 6 consumer e2e DEFERRED 2026-08-27 — user-driven HARD GATE, NOT run.** Everything Phases 1–5 produced is build-verified and **NOT consumer-validated**. The three known-answer anchors are unchanged — the declared happy path, the silent install, the broken flow — with **anchors 1 and 2 scored as a PAIR**, anchor 3 recording the verdict as a STRING, and **anchor 1 obligated to record the wall-clock delta as a NUMBER** (D7's discharge; see the Phase-5 build record). ⚠ **Ratification observes nothing and neither does a build:** no anchor has been run, and nothing in Phases 1–5 may be read as evidence any of them would pass.
 
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
@@ -34,6 +35,13 @@
   live read Phases 3 and 5 owe at build time.** The coordination rule binds the **READ**, not
   the edit; a build that quotes these bullets instead of opening the files has done the exact
   thing the rule forbids.
+  ✅ **DISCHARGED 2026-08-27 — Phases 3 and 5 performed that live read at build time**, and what
+  they found is recorded in their own build records (and mirrored into plan 89's
+  `## Cross-plan coordination — plan 90` section): `qa-reviewer.md`'s step 4 and Rule 3 intact
+  and byte-identical, both agent `yaml` meta-blocks byte-unchanged, the `### Always` list counted
+  at sixteen with no item added, and the Done-When skeleton counted at five and not edited.
+  **The obligation is discharged for THIS build only — a later edit to any of those surfaces owes
+  its own live read.**
 - **Where the per-site notes are:** facts **20**, **21a** and **28**; **Phase 1's build
   constraint 3**; **D3's second reasoning bullet**; **Phase 3's** `qa-reviewer.md` scope
   bullet **and** its matching Verify bullet; **Phase 5's** `configure/main.md`,
@@ -883,7 +891,9 @@ consistency grounds, not because the term is exact.
 file with its reasoning. **Nothing else may start.**
 
 **✅ CLOSED 2026-08-27 — see `## Phase 0 close record` below. Phases 1, 2, 3, 4 and 5 are
-cleared to build; Phase 6 stays a deferred user-driven HARD GATE.** The pick-list below is
+cleared to build; Phase 6 stays a deferred user-driven HARD GATE.** *(All five were BUILT the
+same day — each carries its own dated build record; the Status block at the top of this file
+owns the current state.)* The pick-list below is
 retained as the record of what needed an explicit answer, **and every item on it got one** —
 four as picks between named arms, and the fifth (**D4**) as the combination warning it always
 was, which did not arise because D3 ratified fork (i).
@@ -1093,6 +1103,31 @@ an install with an empty `e2e_command` still passes.
 - `git status` shows zero files modified under `src/commands/` or `src/agents/` — this
   phase is Python-only.
 
+✅ **BUILT 2026-08-27 (`c1718ee`) — build record, dated and append-only.**
+
+- **The field shipped across all six surfaces fact 19 enumerates.** `FIELD_SCHEMA` carries
+  `("e2e_command", "scalar")` **appended last** (30 → **31** pairs); `_cmds_set.py` carries
+  `cmd_set_e2e_command`; `_configure/_cli.py` registers `set-e2e-command` with a positional
+  `value`; `_render.py` appends `E2E_COMMAND` last to `_PROJECT_CONFIG_KEY_ORDER` (38 → **39**)
+  and its header comment now reads 31 + 5 + 3; `_summary.py` places `e2e_command` in the display
+  group; and `_cmds_verify.py` needed **no exemption at all**.
+- **Build constraint 1 resolved exactly as drafted, and the reason is now in the code.**
+  `FIELD_DEFAULTS["e2e_command"] = ""` — a non-`None` baseline, so `_cmds_verify.py`'s
+  `value is None` check never fires for it, on a fresh install or on a `configure.yaml` written
+  before the field existed. **No discriminator was invented** (the `_AC_RUNTIME_FIELDS` shape
+  needs one and this design has none), and **no third style was created.**
+- ⚠ **The display-group choice is a divergence worth naming.** `e2e_command` joined the existing
+  `AC verification` group beside `regression_gate` rather than taking a new single-field group —
+  the sibling precedent, recorded in `_summary.py`'s own comment as *"settings consumed at
+  `/devforge:verify` time"* rather than a claim of AC scope. **This is a SUMMARY-DISPLAY grouping
+  only and implies no coupling to `ac_runtime_*`, which D6 keeps uncoupled**; see Phase 5's build
+  record for the label question it leaves open.
+- **Build constraint 2 held and was re-verified at the Phase-5 sweep:** an `e2e` grep over
+  `src/devforge/lib/_implement/` and `src/devforge/lib/_verify/_regression.py` returns **nothing**.
+  The per-task path and the regression gate cannot see the key.
+- ⚠ **This phase shipped the FIELD, not the COMPOSER.** Nothing here populates `e2e_command`;
+  the manifest-reading rule is instruction and lives at Phase 5's three `configure/main.md` sites.
+
 ---
 
 ### Phase 2 — `/devforge:plan` — the declaration *(instruction-only)*
@@ -1154,6 +1189,35 @@ Scope, two files:
   byte-unchanged.** A phase that "harmonized" the three has broken two working lanes.
 - **No plan vocabulary in emitted text** — "D2", "OQ-3", "Phase 2" and this plan's number
   are maintainer vocabulary. Emitted text names only commands, files and behaviors.
+
+✅ **BUILT 2026-08-27 (`9cee99c`) — build record, dated and append-only.**
+
+- **The two drafted sites shipped as specified.** Architect **sub-question 12** was APPENDED after
+  11 with nothing renumbered, in sub-questions 8 and 9's voice, and its empty answer is the
+  EXPLICIT literal `no full-stack-only flows`. The conditional `### E2E Scenarios` subsection
+  carries **four columns** — `scenario | acceptance criteria | flow steps | preconditions` — in
+  its neighbours' bracketed-conditional shape.
+- ⚠ **TWO EXTRA SAME-FILE EDITS were made beyond this phase's drafted scope, and the orchestrator
+  ruled them IN as cross-check discipline rather than scope creep.** Both are places the same file
+  ENUMERATES what a plan carries, so a new subsection that skipped them would have left
+  `plan/main.md` internally contradictory: (a) the **Architect-authored sections** list in the
+  `plan.md` template gained `- E2E Scenarios: [rows N-M | none]` beside `Pure-Builder Targets`;
+  (b) PHASE 4's **approval summary** gained an `**E2E scenarios**:` line beside the
+  `**Pure-builder targets**:` one. **Recorded because this phase's scope bullet named §1.3 and
+  PHASE 2 only** — a future session diffing scope against diff would otherwise read two unexplained
+  edits.
+- **The approval-summary line's wording is deliberately NOT its sibling's.** The pure-builder line
+  ends *"(hard gate)"*; this one ends *"because nothing checks that the task set covers them"* —
+  **D2's honest bound, carried at the one place a human is about to approve.** Copying the sibling's
+  parenthetical would have promised a gate D4 declines to build.
+- **One instruction-reviewer nit was SKIPPED, deliberately:** a proposed rewording of
+  sub-question 12's echo of sub-question 8's *"Only NAMED … there is no inference"* idiom. **The
+  idiom is the point** — consistency with the sibling sub-questions beats a fresh formulation, and
+  this repo's standing preference is the existing pattern over an invention.
+- **`src/agents/architect.md` was NOT edited**, as the phase's third scope bullet predicted: the
+  `qa-engineer` consult row already names *"integration/e2e strategy decision"* and needed nothing
+  to become reachable. **The no-op is deliberate and is what makes fact 11's "first consumer"
+  claim true without touching the agent.**
 
 ---
 
@@ -1261,6 +1325,39 @@ match a test-authoring task — a routing ambiguity where none exists today.
 - **No `{{` placeholder leaks**: `grep -rl "{{" src/commands/breakdown/` returns nothing
   new against the pre-change list.
 
+✅ **BUILT 2026-08-27 (`182f514`) — build record, dated and append-only.**
+
+- **All three files shipped as scoped.** `breakdown/main.md` PHASE 0a.5 gained the
+  **Declared e2e scenarios (full-stack flows)** paragraph modelled line-for-line on the
+  change-induced-dead-code one; PHASE 3 gained `### E2E scenario tasks (declared full-stack
+  flows)`; `qa-engineer.md`'s section was renamed and widened; `qa-reviewer.md`'s step 6 gained
+  the web mirror. **The Agent Assignment table gained no row and PHASE 3.5's six gates are
+  byte-unchanged.**
+- ⚠ **FACT 3's claim needs one correction a future session must not re-inherit.** *"The heading
+  string `## Mobile Testing` occurs exactly once repo-wide"* was **`src/`-scoped truth**: a
+  repo-wide grep also hits the MAINTAINER LEDGERS (this file, the repo-root index, the status
+  archive), where every mention is HISTORICAL — a record of the decision, not a pointer at the
+  live tree. **The Verify criterion's zero-stale-references reading is therefore `src/`-scoped**,
+  and it passes: no file under `src/` names the old heading. The ledger mentions were left
+  standing deliberately and Phase 5 marks them as historical where they appear.
+- **The PHASE-0a.5 paragraph carries ONE clause the dead-code sibling has no analogue for, added
+  deliberately:** *"and that nothing at Phase 3.5 checks that coverage."* The sibling's rows ARE
+  gate-backed (`verify-dead-code-coverage`), so a paragraph copied without that clause would have
+  invited exactly the inference D4 forbids — that a surfaced obligation is a checked one.
+  **Instruction-reviewer judged the addition sound**; it is D2's honest bound placed at the first
+  point a reader meets the table.
+- **Two wording choices are consistency picks, recorded so they are not re-litigated.** The PHASE-3
+  heading takes the **parenthetical form** its Regression-net sibling uses
+  (`### Regression-net declaration (restructuring tasks over untested code)` →
+  `### E2E scenario tasks (declared full-stack flows)`), and the zero-flag sentence takes the
+  Regression-net wording **"NO flag and NO header field"** rather than the Two-hats subsection's
+  *"NO flag and NO header line"* — **one of the two existing forms, never a third.**
+- **The clobber check passed.** `qa-reviewer.md`'s Approach step 4 and Rule 3 (plan 89's Phase 2b)
+  are present and byte-identical after this phase's step-6 edit, step 6's own mobile-parity
+  sentence is byte-unchanged, and **both agent files' fenced `yaml` meta-blocks are
+  byte-unchanged** — which is what keeps the recorded-skip route valid for those two files and
+  what plan 89's Phase 2b relies on.
+
 ---
 
 ### Phase 4 — `/devforge:verify` PHASE 4.5 *(Python + instruction)*
@@ -1337,6 +1434,44 @@ across all four statuses** (constraint 2).
   heading line names it.** Capture the pre-change heading first.
 - **`$WORKDIR/e2e.json` appears in `### Intermediate scratch files`** — that list is
   documented as complete, and a scratch file missing from it is a contract break.
+
+✅ **BUILT 2026-08-27 (`d4d7928`) — build record, dated and append-only.** All three deliverables
+shipped: `_verify/_e2e.py` + the `e2e-gate` verb, the `--e2e` reasons-only fold, and
+`verify/main.md`'s `### 4.5 — e2e run` with its scratch-file entry, its `--e2e` flag on the 5.1
+invocation and the PHASE-4 heading line. **Six findings, each a decision the plan as drafted did
+not make:**
+
+1. **The failing-output key is named `output_tail`**, present ONLY on `e2e-failing`. The plan said
+   *"an output tail"* and named no key; `verify/main.md`'s scratch-file entry and its 4.5 branch
+   list both name `output_tail`, so the string is now fixed by the spec as well as the code.
+2. ⚠ **A SEMANTICS CHANGE from the drafted status table (FIX 1), and it is load-bearing.** D3's
+   drafted `off` was *"no `E2E_COMMAND` configured"*, which would have made an unreadable or
+   corrupt `project-config.json` indistinguishable from a project that simply has no suite.
+   **The built verb splits them: a config that could not be read or parsed is `inconclusive`; a
+   config that parsed cleanly with the key absent, blank or non-string is `off`.** So `off` means
+   *"nobody configured a suite"* and never *"the configuration could not be read"* — which is what
+   makes D8's silence safe, since silence on a broken config would hide a real fault.
+3. **Exit codes 126/127 are treated as `inconclusive`**, on the POSIX convention (126 = found but
+   not executable, 127 = command not found). ⚠ **The accepted bound is documented in the module
+   and PINNED by `test_126_127_heuristic_pins_accepted_false_negative`**: a suite whose own process
+   legitimately exits 126 or 127 is misread as not-executed. **Recorded as an accepted
+   false-negative, not as a defect** — and pinned so a later change cannot alter it silently.
+4. **A wrapper-mode test was added for `_e2e` only** (`test_wrapper_mode_runs_in_source_root`),
+   proving the run happens in the resolved `source_root` rather than the install root. ⚠ **Its
+   `_regression.py` sibling has no equivalent test — recorded as PRE-EXISTING and deliberately
+   NOT fixed here**, since repairing another module's coverage is a different change.
+5. **`capture_output=True` captures the whole suite's output in memory** before tailing it. A very
+   chatty suite therefore holds its full output briefly. **Accepted on the `_regression.py`
+   precedent, which does the same** — the alternative is a streaming reader this lane has no
+   evidence it needs.
+6. **Two `verify/main.md` scope calls, both kept:** the 5.1 prose paragraph was extended past the
+   drafted flag addition to say how the fold behaves (**enumeration completeness** — that
+   paragraph enumerates every `compute-verdict` input and its effect, so an added flag with no
+   sentence would have left the enumeration incomplete), and the new heading reads **`### 4.5 — e2e
+   run`** in lowercase, matching the plan's own string and the sibling headings' sentence case.
+   ⚠ **No twelfth entry was added to `## Important rules` — deliberate**: rules 10 and 11 exist
+   because those checks GATE the verdict, and a rule for a check that gates nothing would blur
+   exactly the distinction D3 fork (i) rests on.
 
 ---
 
@@ -1492,12 +1627,25 @@ match the trailer-free convention), lowercase terse subject with a scope prefix 
   `configure/main.md` — and each answer RECORDED** (the 2026-08-27 orchestrator ruling at
   this phase's route paragraph). **A phase that ran it for `src/CLAUDE.md` only has covered
   half its shipped surface.**
+  ✅ **SATISFIED 2026-08-27** — the agent was dispatched by the orchestrator for both files and
+  both answers are recorded in this phase's build record (`skills.md` for the command-spec body
+  append, `memory.md` for the consumer `CLAUDE.md` note). **Neither file is owed a re-run**, and
+  the same is true of Phases 2, 3 and 4's passes, which were orchestrator-level agent dispatches
+  as well.
 - **`configure/main.md` carries the `e2e_command` compose rule in `/devforge:configure`'s own
   Phase 2 AND its echo-template line in that command's own Phase 3 bulk confirmation**, not
   just the setter-mapping row. ⚠ **A build that added only the setter row FAILS this
   criterion** — the field would render, be settable, and stay `""` on every install, which is
   D1's rejected alternative (c) reached by omission. **Grep `configure/main.md` for
   `e2e_command` and confirm THREE distinct sites.**
+  ⚠ **CLARIFIED 2026-08-27 at build time — run that grep CASE-INSENSITIVELY (`grep -in`), and
+  the criterion passes with three sites.** A case-SENSITIVE grep returns two, because the
+  Phase-2 compose bullet names the EMITTED key `E2E_COMMAND` in uppercase, exactly as every
+  sibling bullet in that phase names `AC_RUNTIME_URL` / `TEST_COMMANDS` / `PACKAGE_STACKS`,
+  while the echo-template line and the setter-mapping row name the lowercase field
+  `e2e_command`, exactly as their siblings do. **The file's own case convention is per-phase and
+  was followed rather than broken to satisfy a literal grep** — a future session reading two
+  hits has found the convention, not a missing site.
 - **The configure counts match a fresh count of the live tuples**, not an increment of the
   printed number (fact 21). State the counted numbers in the commit message. ⚠ **Plan 89's D6
   note moves on both terms** — 23 → 24 detection-derived, 29 → 30 populated, schema 31 (fact
@@ -1514,6 +1662,122 @@ match the trailer-free convention), lowercase terse subject with a scope prefix 
   (`qa-engineer` was already reachable — fact 18 — so a failure here means something
   unintended moved).
 - **The plan-89 note reflects what plan 89 ACTUALLY says**, read at write time.
+
+✅ **BUILT 2026-08-27 — build record, dated and append-only** (this phase's own commit).
+
+**The composer, at the three sites D1's ratified arm needs.** (1) A Phase-2 compose bullet under a
+new `**E2E (best-effort detection)**` group placed after the AC-runtime group, mirroring
+`test_command`'s derivation rule and inheriting fact 22's don't-guess rule verbatim: a detected
+runner with no root-invocable script yields `""`, and **a dependency alone never composes
+`npx playwright test`.** (2) A Phase-3 echo-template line under an `E2E (detected):` group.
+(3) The setter-mapping row `| e2e_command | set-e2e-command <value> |`. ⚠ **The group is the file's
+FIRST single-field compose group**, and it was chosen over folding the key into the existing
+`AC runtime (best-effort detection)` group **because D6 keeps `ac_runtime_*` an uncoupled channel**
+— an e2e key inside a group named for that channel would assert the coupling the decision refuses.
+**This diverges deliberately from `_summary.py`'s Python-side choice** (Phase 1's record), and the
+two are different surfaces: a summary DISPLAY group versus a compose-rule grouping.
+
+**Two build findings from the composer, recorded and NOT repaired.**
+
+1. ⚠ **A rule reading only `dev_dependencies` would have found nothing on real installs.**
+   `read-manifests` folds a single-list manifest (`manifest_deps`) into `dependencies` and leaves
+   `dev_dependencies` empty — which is why `_derive_build_tool_hint` and `_derive_framework_hint`
+   walk BOTH. **The shipped bullet reads the same union**, and says so, so the rule can actually
+   fire. A drafting-time phrasing naming `devDependencies` alone would have shipped a composer
+   that never composes.
+2. ⚠ **There is no route from a set `e2e_command` back to `""` except `reset`.** The scalar setters
+   validate non-empty values, so a project that configures a suite and later drops it cannot clear
+   the key through `/devforge:configure`'s own path. **This is FAMILY-WIDE, not specific to this
+   field** (every scalar setter behaves this way), and it is recorded here as an OPEN QUESTION
+   about the composer's overwrite semantics rather than fixed: `reset` + a fresh run is the
+   existing answer, and changing it is a config-surface decision this plan did not ratify.
+
+**The counts, COUNTED from the live tuples — Trap 6's whole point.** `FIELD_SCHEMA` = **31** pairs
+and `_PROJECT_CONFIG_KEY_ORDER` = **39** keys, both counted by opening `_schema.py` and `_render.py`
+rather than by adding one to a printed number. The six count sites now read: *"fills 30
+configuration fields"*; *"canonical state (31 fields)"*; *"39 keys: 31 from configure.yaml + 5 from
+init.yaml + 3 derived"*; *"fully populated (30 fields set)"*; the closing message's *"The 30
+configuration fields … carries all 39 keys"*; and **plan 89's D6 note, UPDATED IN PLACE and never
+removed** — *"The schema carries 31 fields; the 30 this command populates are set in Phase 3 (24
+detection-derived values) and Phase 4 (6 user-only prompts). One field, `regression_gate`, carries
+the built-in default `"full"` …"* with every other clause of that note, including its
+no-Phase-4-prompt instruction, byte-unchanged. ⚠ **That third sentence dropped its ORDINAL
+deliberately:** plan 89 wrote *"The 30th, `regression_gate`"* when the schema ended at
+`regression_gate`, and `e2e_command` now sits after it — so *"the 31st"* would have been
+ordinally FALSE (`regression_gate` is schema entry 30; `e2e_command` is the 31st and last). **The
+ordinal was removed rather than renumbered**, because the note's subject is *which* field no phase
+sets, never its position in the tuple, and a positional claim would rot again on the next append.
+⚠ **THREE FURTHER SITES carried the detection-derived figure and are NOT in fact 21a's list of
+six** — Phase 2's *"synthesizes 23 detection-derived values"*, Phase 3's *"Display all 23"* and its
+reply-parsing *"apply all 23 Phase 2 values"* — **all three moved to 24**, and their absence from
+the plan's own enumeration is exactly what fact 21a warned a list can be: convenient, not certified
+exhaustive.
+
+**`src/CLAUDE.md`:** ONE three-sentence note appended at the end of the `### Verification` section
+(feature-level, ADVISORY with no status changing the verdict, silent when unconfigured), under plan
+08's trim discipline. **The `### Always` list was COUNTED live at SIXTEEN before and after, item 16
+byte-unchanged, and this plan added no item** — as `## Dependencies + related` promised plan 89 it
+would not. The `## Enforced Quality Gates` heading above that section is why the note leads with
+its advisory clause rather than burying it.
+
+**`src/devforge/storage-rules.md`: read, and deliberately NOT edited — the no-op IS the finding.**
+That file's `## Task File Format` section documents the task-file HEADER FIELDS (the two optional
+`**Property targets**:` / `**Dead code removal**:` lines, each with its emitting flag and its
+consuming gate) plus the `## Done When` skeleton, which was counted live at **five** standing lines
+with plan 89's fifth intact. **It documents no free-form `## Change Details` lane at all** — plan
+86's `Regression net:` and Two-hats partitions are equally absent — so an e2e sentence would have
+been the first of its kind and would have implied the other two are missing. This lane adds no
+header field and no flag, so there is nothing of that file's kind to document.
+
+**Plans 34, 44 and 87: CHECKED, none touched, and the no-op is deliberate.** They are the
+ADVISORY/WARN family D3's stance joins (hygiene flags demoted to advisory; the WARN-only drift
+check; the language guard's warn-never-block with a named strengthening trigger). Nothing this
+build shipped falsifies a sentence in any of them, and their `e2e` grep hits are the CONSUMER-e2e
+sense — a testForge20 run — not this lane.
+
+**Plans 66, 86 and 89 each gained ONE dated note, none of their reasoning edited.** Plan 66: a
+`## Dependencies + related` bullet recording that this lane reuses its declaration SHAPE and
+declines its GATE, with the OBSERVED-dropped-scenario trigger. Plan 86: the same, recording that
+F3's no-gate declaration precedent is what D2 and D4 rest on. Plan 89: its
+`## Cross-plan coordination — plan 90` section gained a CLOSED note recording that this plan shipped
+second, that the live-read rule was honoured, and what the read found — step 4 + Rule 3 intact, both
+`yaml` meta-blocks byte-unchanged, the `### Always` list at sixteen, the Done-When skeleton at five,
+and `qa-engineer.md` this plan's alone under its resolved OQ-3.
+
+✅ **Claude Code authoring pass — DISCHARGED 2026-08-27, and this phase's Verify criterion is
+SATISFIED.** The `claude-code-guide` AGENT was dispatched by the orchestrator for **BOTH shipped
+files this phase edits** — `src/CLAUDE.md` AND `src/commands/configure/main.md` — as a real agent
+dispatch running in parallel with the authoring pass, completed 2026-08-27. **Its recorded
+answers:** `https://code.claude.com/docs/en/skills.md` — appending to a command file's BODY is
+safe, and *"a skill's body loads only when it's used"*, so body growth costs nothing until the
+command is invoked; `https://code.claude.com/docs/en/memory.md` — a project `CLAUDE.md` is
+*"context, not enforced configuration"*, the guidance is *"target under 200 lines"* (which is plan
+08's trim discipline in the vendor's own words), and the **`@path` import syntax is LIVE, so no
+line may START with `@` — none of the added lines does.** **The earlier phases' passes were
+likewise orchestrator-level AGENT dispatches** — `https://code.claude.com/docs/en/skills.md` for
+the `plan/main.md`, `breakdown/main.md` and `verify/main.md` body edits (Phases 2, 3 and 4),
+`https://code.claude.com/docs/en/subagents.md` for the two agent files, plus the `$WORKDIR`
+substitution-safety check — **so none of the four is owed a re-run and a reader must not re-open
+them.**
+
+**Supplementary, dated 2026-08-27 — the authoring pass's own WebFetch reads**, recorded beside the
+agent answers rather than in place of them (they corroborate, they do not discharge). From
+`skills.md`: the ONLY substituted tokens in a command body are `$ARGUMENTS` / `$ARGUMENTS[N]` /
+`$N` / `$name` (named arguments declared in frontmatter), `` !`cmd` `` at line start or after
+whitespace, `@file` references and `${CLAUDE_PROJECT_DIR}` / `${CLAUDE_SESSION_ID}`.
+**Angle-bracket `<VALUE>` placeholders are NOT a Claude Code construct** — they are inert prose,
+which is what makes the echo template's `<E2E_COMMAND>` line safe and identical in kind to its
+neighbours; **no `$`-prefixed token, no line-leading `!`, and no `@`-reference was introduced by
+this phase.** From `memory.md`: `@path` OUTSIDE backticks imports a file (**the added note contains
+none**) and headings carry no required structure — which is why the note is three sentences and
+sits where the section already ends.
+
+**D7's discharge, so no session hunts for a number that does not exist.** The wall-clock cost line
+stays **STRUCTURAL**: one full e2e-suite execution per `/devforge:verify` run, not per task, not
+doubled, `off` costing a config read, the advisory arm never triggering a re-run cycle, and a
+timeout capped by `_E2E_TIMEOUT` (1800s, Phase 4's chosen value under OQ-5). **No measured number
+exists and none is invented here** — plan 70's Phase-2 numbers are the prerequisite and they do not
+exist. **Phase 6's anchor 1 owes the NUMBER**, and it is owed even if it turns out uninteresting.
 
 ---
 
