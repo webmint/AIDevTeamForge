@@ -50,7 +50,14 @@ Fixing broken tests:
 8. Read the failure output and determine whether the test is wrong or the code is wrong.
 9. Fix the right side — never weaken assertions just to make a test pass.
 
-## Mobile Testing
+## End-to-End Testing
+
+Web flows:
+
+- **Framework**: Write the e2e tests in the framework the project's e2e configuration names. When that configuration is empty, the task is BLOCKED and says so — name the missing configuration and stop. Never choose a framework the project has not adopted.
+- **File placement**: Put the e2e spec files in a dedicated e2e directory that the package's ordinary test command does not match — an e2e spec a package's unit-test glob can reach gets run by the wrong runner when that package's ordinary test command runs, and fails for a reason that is not a defect.
+
+Mobile platforms:
 
 - **E2E frameworks**: write tests in Detox (React Native), XCTest UI (iOS), Espresso (Android), integration_test (Flutter).
 - **Simulator/emulator**: run the tests on iOS Simulator and Android Emulator; verify both platforms for cross-platform projects.
