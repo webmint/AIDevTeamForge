@@ -220,6 +220,7 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 13. **Session state** — after each `/devforge:implement`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/devforge:implement` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 15. **English in files** — all file content and commit messages stay in English (specs, plans, code, comments, docs), regardless of any operator response-language setting; a non-English response language applies to conversation only. Verbatim quotes of user-reported words may keep their original language.
+16. **Test behavior changes** — every change to observable behavior ships with a test that asserts it; the configured test command must pass on changed files before task completion
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
