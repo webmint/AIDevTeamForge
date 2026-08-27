@@ -1,6 +1,6 @@
 # 88 — The cold-fix lane: `bugs/NNN-*.md` becomes the third `/devforge:fix` findings source
 
-**Status:** **Phase 0 RATIFIED 2026-08-26 by the maintainer — D1–D7 and OQ-1–OQ-7 all decided, every item AS RECOMMENDED, nothing left open.** The three named forks were picked explicitly: **D3 = fork 1 (a)** (extend `implement_helper wip-commit` with a final-commit mode) **+ fork 2 (i)** (wrapper keeps `[TICKET-ID] - <title>`, the `[develop] - <title>` fallback string seen and accepted); **D4 = (b)** the `close-bug` helper verb over a new `_shared/bug_file.py` function, so **Phase 1 carries TWO deliverables**; **D6 = reading (i)** — the rubric lives in `src/CLAUDE.md`, `/devforge:report-bug` Rule 8 stays byte-unchanged and gains no forward pointer. **Phases 1–4 are ✅ DONE (build) 2026-08-26** — Phase 1 `92592c5`, Phase 2 `bf0c4b9`, Phase 3 `7ec8f69`, Phase 4 the docs commit this line rides in. **Phase 5 remains the user-driven consumer e2e HARD GATE and has NOT run** — everything built is build-verified, NOT consumer-validated. Every counter-argument recorded before ratification survives verbatim; see `## Phase 0 ratification record`.
+**Status:** **Phase 0 RATIFIED 2026-08-26 by the maintainer — D1–D7 and OQ-1–OQ-7 all decided, every item AS RECOMMENDED, nothing left open.** The three named forks were picked explicitly: **D3 = fork 1 (a)** (extend `implement_helper wip-commit` with a final-commit mode) **+ fork 2 (i)** (wrapper keeps `[TICKET-ID] - <title>`, the `[develop] - <title>` fallback string seen and accepted); **D4 = (b)** the `close-bug` helper verb over a new `_shared/bug_file.py` function, so **Phase 1 carries TWO deliverables**; **D6 = reading (i)** — the rubric lives in `src/CLAUDE.md`, `/devforge:report-bug` Rule 8 stays byte-unchanged and gains no forward pointer. **Phases 1–4 are ✅ DONE (build) 2026-08-26** — Phase 1 `92592c5`, Phase 2 `bf0c4b9`, Phase 3 `7ec8f69`, Phase 4 `d09b7e2`. **✅ PLAN CLOSED 2026-08-27 by maintainer statement — *"the test is a separate story — mark it as done."*** ⚠ **Phase 5 consumer e2e is DEFERRED AS A SEPARATE EFFORT — NOT WAIVED and NOT RUN.** The close covers the BUILD; it is not a pass, and no sentence in this file may be read as one — everything built is **build-verified, NOT consumer-validated**, and the cold lane has never been observed end to end. The three known-answer anchors in `### Phase 5` remain the recipe whenever that effort runs, **with anchors 1 and 2 scored as a PAIR**. Every counter-argument recorded before ratification survives verbatim; see `## Phase 0 ratification record`.
 
 ⚠ **This plan SUPERSEDES `55-STANDALONE-BUG-FIX-LANE-PLAN.md`** (DEFERRED 2026-07-10), which designed this same lane and which this plan's own sweep list did NOT name — it was found by Phase 4's `bugs/` sweep and marked superseded 2026-08-26. Two things plan 55 designed are **NOT built** (its CBM blast-radius tripwire; decoupled standalone firing of stage-coupled floor gates), and **its instrumentation trigger — 3–4 measured bugs — was never satisfied**. Read its note before citing this plan as evidence about the middle band.
 **Branch:** `develop-2.0-init`
@@ -1059,7 +1059,7 @@ Scope:
 
 ---
 
-### Phase 4 — Docs sweep + dated reconciliation notes — ✅ DONE 2026-08-26 (the docs commit this phase rides in)
+### Phase 4 — Docs sweep + dated reconciliation notes — ✅ DONE 2026-08-26 (`d09b7e2`)
 
 **Route: instruction-author → instruction-reviewer** for every `src/` and plan-document edit.
 
@@ -1098,6 +1098,7 @@ Scope:
 
 #### Phase-4 check results *(recorded 2026-08-26)*
 
+- **The three executable checks were RUN by the orchestrator on 2026-08-26, before the Phase-4 commit `d09b7e2`, and all three PASSED:** `scripts/verify-agent-reachability.py` exit 0 · `scripts/verify-memory-lane.py` exit 0 · the full `tests/` suite **11153 passed, 16 skipped, 175 subtests passed**. (Recorded from the orchestrator's report — the instruction-author who wrote this section had no shell and had flagged them as unrun; that flag is now CLOSED, not still open.)
 - **`27-REPORT-BUG-COMMAND-PLAN.md` — CHECKED, NO EDIT.** The trigger condition was not met: it
   asserts neither *"`bugs/` has no consumer"* nor *"the lifecycle is manual-only"*. Its one
   now-narrowed sentence reports what plan 26 D4 says (*"`/fix` writes NO `bugs/` file"*) as the
@@ -1148,7 +1149,15 @@ the trailer-free convention), lowercase terse subject with a scope prefix matchi
 
 ---
 
-### Phase 5 — Consumer e2e *(user-driven HARD GATE)*
+### Phase 5 — Consumer e2e *(user-driven HARD GATE)* — DEFERRED AS A SEPARATE EFFORT 2026-08-27, NOT WAIVED, NOT RUN
+
+⚠ **Dated note, 2026-08-27.** The plan was CLOSED on this date by maintainer statement — *"the
+test is a separate story — mark it as done."* **That close covers the BUILD only. This phase was
+NOT run and was NOT waived**: the maintainer moved it to a separate effort rather than
+cancelling it, so the anchors below stay live as that effort's recipe. **A reader landing here
+must not read the plan's CLOSED status as this phase having passed** — nothing below has ever
+been observed, and a closed plan with an unrun hard gate is exactly the state this note exists
+to keep visible.
 
 **Everything above is build-verified, NOT consumer-validated.** No phase above may claim the
 cold lane has been observed.
