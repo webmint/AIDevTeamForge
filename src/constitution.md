@@ -93,6 +93,14 @@ function process(input) {
 
 **Consistent style within a file.** If a file uses one pattern (arrow functions, single quotes, specific import style), follow that pattern. Do not introduce a different style.
 
+**Tests are part of the change.** A change to observable behavior is complete only when a test asserts that behavior and the project's configured test command passes on the changed files. New behavior gets a test that asserts it; a repaired defect gets a test that fails without the repair. Tests assert observable behavior, not implementation shape — a test that restates the code it calls proves nothing. When a test and the code disagree, fix the test or fix the code; never weaken an assertion to make a test pass.
+
+For a test asserting the changed behavior this rule requires, its expected values come from the specification, the acceptance criterion, the contract, or the task's stated postconditions. Running the implementation and recording its output as the expectation is not a derivation — it asserts only that the code still does what it did. A test written to pin the existing behavior of code this change does not alter is not such a test, and this paragraph does not reach it.
+
+For every test there is a change to the code under test that makes it fail. A test that asserts a value the test itself configured a mock to return, a test that asserts a literal against itself or a value the test just assigned, and a test that calls the code under test and asserts nothing about its result, its raised error, or its observable effect are each defects in the test.
+
+A test whose only assertion is that a value has the type its signature already declares restates the type checker and covers nothing.
+
 *Backed by* `constitute_helper verify-magic-enum` when `forcing_functions.magic_enum_duplication.enabled = true` in `.devforge/constitute.json` — inline literals where a same-module enum-like declaration (TS `enum` / `as const` map / Python `Enum`) covers the same value surface as exit-2 findings when `constitute_helper verify-magic-enum` is run directly or via the optional `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` hook.
 
 *Backed by* `constitute_helper verify-any-leak` when `forcing_functions.any_with_generated_available.enabled = true` — `any` annotations (TypeScript) / `Any` (Python) in files importing from declared generated-types dirs surface as exit-2 findings when `constitute_helper verify-any-leak` is run directly or via the pre-commit hook.
