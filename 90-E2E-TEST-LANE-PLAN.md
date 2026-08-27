@@ -1,6 +1,11 @@
 # 90 — The e2e test lane: a declared scenario, an owning task, and one feature-level run
 
-**Status:** NOT STARTED — awaiting Phase-0 ratification (D1–D8 + OQ-1–OQ-7 unanswered). Nothing below is decided; every decision carries a recommendation and at least one recorded alternative.
+**Status:** **Phase 0 CLOSED 2026-08-27 — D1–D8 RATIFIED and OQ-1–OQ-7 RESOLVED. Phases 1–5 CLEARED TO BUILD, none started. Phase 6 stays a deferred user-driven HARD GATE.**
+
+- **Phase 0 CLOSED 2026-08-27** — D1–D8 and OQ-1–OQ-7 ALL answered, with **the four explicit picks answered in-session by the maintainer**: **D3** = advisory **fork (i)**, no status gates the verdict in v1, and its reporting sub-question resolved **reasons-only** (`compute-verdict` gains an `--e2e` input that adds a `reasons` line and **NO blocker**; `render-report` unchanged; no new `verification.md` section); **D1** = the top-level `E2E_COMMAND` key, with its **seeding fork resolved to the THIRD arm** — `/devforge:configure` composes the field's default from the `MANIFESTS_JSON` manifests it already parses, so **`init_helper`'s detector is NOT wired in and `.devforge/init.yaml`'s `test_infra.e2e` is read by nothing**; **D5's placement fork** = the **dedicated-e2e-directory rule**, with the runner-config exclude arm reaching NO emitted text; **D5's section fork** = **arm (a)**, rename and widen `## Mobile Testing`, every mobile bullet byte-identical. **Everything off the pick-list ratified AS RECOMMENDED.** Full record: `## Phase 0 close record`.
+- **Phases 1–5 are CLEARED TO BUILD and NOT STARTED.** No Python, no instruction text and no docs sweep exists yet, and **nothing in this file may be read as shipped.** Every phase keeps the route named in its own block; **Phase 1 and Phase 4's Deliverables 1–2 are the only Python**, and Phases 2, 3 and 5 dispatch none.
+- **Phase 6 consumer e2e stays a deferred user-driven HARD GATE, NOT run.** Everything Phases 1–5 will produce is build-verified and **NOT consumer-validated**. The three known-answer anchors are unchanged — the declared happy path, the silent install, the broken flow — with **anchors 1 and 2 scored as a PAIR** and anchor 3 recording the verdict as a STRING. ⚠ **Ratification observes nothing:** a ratified decision is not a validated one, and no anchor has been run.
+
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
 
@@ -37,6 +42,12 @@
   plans **89** and **85**; and **`## When resuming work` step 1**. ⚠ **This index is a
   convenience, NOT a certified-exhaustive map** — a dated note found elsewhere in this file
   is an omission in this list, not an unauthorized edit.
+- ⚠ **CORRECTED 2026-08-27, later the same day — this block's own header clause *"no
+  ratification content; every D and OQ stays OPEN"* was TRUE when written and is now
+  FALSE.** Phase 0 CLOSED 2026-08-27: D1–D8 are RATIFIED and OQ-1–OQ-7 RESOLVED — see the
+  Status block above and `## Phase 0 close record`. **Every other sentence in this block is
+  unaffected**: it records observed shared-surface state as of 2026-08-27, and the live read
+  Phases 3 and 5 owe at build time is unchanged by ratification.
 
 This plan document contains no private-client identifiers and is intended to be
 **committed normally**, unlike the deliberately-untracked plans 73/74/75.
@@ -135,6 +146,12 @@ as depending on the others.**
 
 1. **One config key** (Phase 1) — where the e2e command lives, seeded from the detection
    that already exists and is currently discarded (D1). **Python.**
+   ⚠ **CORRECTED 2026-08-27 by Phase 0's ratified seeding arm — the clause *"seeded from the
+   detection that already exists and is currently discarded"* is FALSE as ratified.**
+   `/devforge:configure` composes the default from the `MANIFESTS_JSON` manifests it already
+   parses; **`init_helper`'s detector is NOT wired in and stays exactly as unused as it is
+   today**, and `.devforge/init.yaml`'s `test_infra.e2e` is read by nothing this build
+   produces (D1's ratification paragraph; Phase 1's Deliverable 2).
 2. **A declaration point** (Phase 2) — a new architect sub-question at `/devforge:plan`
    §1.3 and a conditional `### E2E Scenarios` plan subsection (D2). **Instruction-only.**
 3. **An owner** (Phase 3) — `/devforge:breakdown` renders a dedicated `qa-engineer` task
@@ -187,7 +204,7 @@ the string, never the `:NNN`.
 | 19 | **The config surface a new key must pass through — SIX files.** `FIELD_SCHEMA` (30 `(name, kind)` pairs), `ENUM_FIELDS`, `FIELD_DEFAULTS`; the setter in `_cmds_set.py`; the verb registration in `_cli.py`; `_PROJECT_CONFIG_KEY_ORDER` in `_render.py` (38 keys); the display group tuple in `_summary.py`; and `_cmds_verify.py`, which requires **every** field non-null with a THREE-name exemption set `_AC_RUNTIME_FIELDS` gated on `ac_verification_mode == "runtime-assisted"` | `_configure/_schema.py:18`–`:93`; `_cmds_set.py:526`; `_configure/_cli.py:306`–`:310`; `_render.py:19`–`:69`; `_summary.py:52`–`:61`; `_cmds_verify.py:19`–`:59` |
 | 20 | **The defaulted-and-unasked-key precedent.** `regression_gate` is in `FIELD_SCHEMA`, has an enum `{off, full}`, a `FIELD_DEFAULTS` entry `"full"`, and a registered `set-regression-gate` verb — and **`/devforge:configure` never calls it**: it appears in neither the Phase-3 setter mapping (22 rows) nor the Phase-4 questions (Q9–Q12). ⚠ **AMENDED 2026-08-27 — the "undocumented" reading no longer holds; the "unasked" half does.** Plan 89's **D6** shipped a note in `configure/main.md` (anchor *"One emitted key is set by no phase of this command"*) naming the key, its `"full"` default, its `set-regression-gate` setter and its `/devforge:verify` PHASE-4.3 reader, so **the key IS documented in the command's own text as of 2026-08-27**. **The precedent this row supplies to D1's counter-argument stands byte-true**: still no Phase-3 setter-mapping row, still no Phase-4 question, and D6's note explicitly forbids adding one — what is corrected is only the reading that a defaulted-and-unasked key is also an unmentioned one | `_configure/_schema.py:69`, `:84`, `:92`; `_configure/_cli.py:306`; `src/commands/configure/main.md:208`–`:231`, `:274`–`:299`; `:316` (plan 89 D6, verified 2026-08-27) |
 | 21 | ⚠ **A live count drift that a new field will make worse.** `_cmds_verify.py`'s docstring says *"All 30 configure.yaml fields populated"* and `FIELD_SCHEMA` holds 30 pairs; `configure/main.md` says *"fills 29 configuration fields"*, *"canonical state (29 fields)"*, *"37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived"*, and *"Once `configure.yaml` is fully populated (29 fields set)"* — while `_PROJECT_CONFIG_KEY_ORDER` holds **38**. **The markdown is one behind the code, presumably since `regression_gate` landed.** This plan does not own the drift, but Phase 1 touches exactly those counts | `_cmds_verify.py:28`; `_configure/_schema.py:18`–`:70`; `src/commands/configure/main.md:9`, `:13`, `:14`, `:303`; `_render.py:19`–`:69` |
-| 21a | ⚠ **AMENDED 2026-08-27 — three corrections; the row above is no longer either complete or uniformly true.** **(i) A SIXTH count-bearing site now exists.** Plan 89's D6 note (anchor *"One emitted key is set by no phase of this command"*) states *"The schema carries 30 fields; the 29 this command populates are set in Phase 3 (23 detection-derived values) and Phase 4 (6 user-only prompts)"* — **the first in-file statement of the LIVE schema count.** So the file is **no longer uniformly one behind**: the *"fills 29 configuration fields"* / *"fully populated (29 fields set)"* statements are now **explained-correct arithmetic** under that note (23 + 6 = 29, the 30th set by no phase), while the TOTALS — *"canonical state (29 fields)"* and *"37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived"* — **remain behind the code (30 / 38).** **(ii) The four-site list above was INCOMPLETE at drafting**, independently of plan 89: the completion message is a FIFTH pre-existing count site (*"The 29 configuration fields are persisted"*, *"carries all 37 keys"*). **(iii) Consequence for THIS plan.** Phase 1's `e2e_command` falsifies the D6 note's numbers too — schema → **31**, and if `/devforge:configure` seeds the field (D1's seeding step) the populated and detection-derived counts move as well. ⚠ **Phase 5's opening `grep -rn "e2e\|E2E"` sweep does NOT reach that note** — it carries no `e2e` token — so it must be reconciled **EXPLICITLY**, **updated in place and never deleted**: it is plan 89's ratified D6 deliverable, not incidental prose | `src/commands/configure/main.md:9`, `:13`, `:14`, `:303`, `:316`, `:483`; live grep 2026-08-27 |
+| 21a | ⚠ **AMENDED 2026-08-27 — three corrections; the row above is no longer either complete or uniformly true.** **(i) A SIXTH count-bearing site now exists.** Plan 89's D6 note (anchor *"One emitted key is set by no phase of this command"*) states *"The schema carries 30 fields; the 29 this command populates are set in Phase 3 (23 detection-derived values) and Phase 4 (6 user-only prompts)"* — **the first in-file statement of the LIVE schema count.** So the file is **no longer uniformly one behind**: the *"fills 29 configuration fields"* / *"fully populated (29 fields set)"* statements are now **explained-correct arithmetic** under that note (23 + 6 = 29, the 30th set by no phase), while the TOTALS — *"canonical state (29 fields)"* and *"37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived"* — **remain behind the code (30 / 38).** **(ii) The four-site list above was INCOMPLETE at drafting**, independently of plan 89: the completion message is a FIFTH pre-existing count site (*"The 29 configuration fields are persisted"*, *"carries all 37 keys"*). **(iii) Consequence for THIS plan.** Phase 1's `e2e_command` falsifies the D6 note's numbers too — schema → **31**, and if `/devforge:configure` seeds the field (D1's seeding step) the populated and detection-derived counts move as well. ⚠ **Phase 5's opening `grep -rn "e2e\|E2E"` sweep does NOT reach that note** — it carries no `e2e` token — so it must be reconciled **EXPLICITLY**, **updated in place and never deleted**: it is plan 89's ratified D6 deliverable, not incidental prose. **⚠ RECONCILED 2026-08-27 (Phase-0 close) — the conditional in (iii) is now DETERMINATE.** D1's ratified seeding arm HAS `/devforge:configure` compose the default, so the D6 note's arithmetic moves on BOTH terms: its Phase-3 figure goes **23 → 24 detection-derived values** and its populated total **29 → 30**, against a schema of **31**. **The instruction is unchanged and binds harder — COUNT the live file at every one of the six sites and write what you counted; never increment a printed number**, these three figures included | `src/commands/configure/main.md:9`, `:13`, `:14`, `:303`, `:316`, `:483`; live grep 2026-08-27 |
 | 22 | **The don't-guess rule this plan must mirror**, verbatim: `test_command` is *"`MANIFESTS_JSON.packages[<path>].scripts.test` (or the ecosystem-equivalent test script). `null` when the package has no test script — do NOT invent an ecosystem-default guess."* | `src/commands/configure/main.md:134` |
 | 23 | **PHASE 3.5 holds exactly six `verify-*` gates today**, and its opening line says so — *"Six forcing-functions walk the task set mechanically."* They are `verify-contract-chain`, `verify-ac-coverage`, `verify-agent-roster`, `verify-manifest-present`, `verify-property-coverage`, `verify-dead-code-coverage`. The first two carry a documented `## Risk Assessment` deferral; the last four are HARD with **NO bypass**. **Plan 75's tripwire counts THIS sequence**, not prose checklists | `src/commands/breakdown/main.md:477`–`:479`, `:484`, `:494`, `:504`, `:517`, `:529`, `:544` |
 | 24 | **`/devforge:summarize` reads only `verification.md`** for AC status and the referenced verdict (`read-verification`), takes *"AC status … VERBATIM from `verification.md`'s table"*, and is *"Read-only on inputs"* | `src/commands/summarize/main.md:127`, `:133`, `:213`, `:214` |
@@ -227,13 +244,42 @@ the skills page — custom commands were merged into skills, and the page states
 
 ---
 
-## Decisions — ALL OPEN, awaiting Phase-0 ratification
+## Decisions — ALL RATIFIED 2026-08-27
 
 Each carries the rule, the alternatives, the reasoning, and the strongest counter-argument.
 **The counter-arguments are load-bearing: a decision ratified with its counter-argument
-deleted cannot be re-opened honestly later.**
+deleted cannot be re-opened honestly later.** **Each entry now opens with its dated
+ratification paragraph; every recommendation, alternative and counter-argument below it
+survives unedited.**
 
-### D1 — Where the e2e command lives: one top-level `E2E_COMMAND` key *(OPEN — one fork)*
+### D1 — Where the e2e command lives: one top-level `E2E_COMMAND` key *(RATIFIED 2026-08-27 — top-level key; seeding composed by `/devforge:configure`)*
+
+**RATIFIED 2026-08-27 — the single top-level `E2E_COMMAND` key, as recommended.** Alternative
+(b), a per-package field, stays the recorded widening path and is NOT built; alternative (c),
+no key at all, stays rejected. **The load-bearing constraint ratifies with it:** the key stays
+INVISIBLE to `verify-touched` and to `regression-gate`, which is a mechanical consequence of
+facts 5 and 6 rather than a promise.
+
+**⚠ The seeding fork was ALSO picked, and it does NOT match this decision's drafted seeding
+sentence.** Phase 1's Deliverable 2 offered three arms; **the THIRD was ratified**:
+`/devforge:configure` composes the field's default from the `MANIFESTS_JSON` manifests it
+already parses — the same `devDependencies` it reads for `test_command` — inheriting fact 22's
+*"do NOT invent an ecosystem-default guess"* rule verbatim. **Consequences, stated so no phase
+re-derives them:** nothing reads `.devforge/init.yaml`'s `test_infra.e2e`; **Phase 1 does NOT
+touch `init_helper`**, whose detector stays exactly as unused as it is today (fact 8) —
+**honest rather than tidy**; and fact 9's unreachable `e2e` bucket value stays recorded and
+unrepaired.
+
+⚠ **Where the composition text is actually written — 2026-08-27, so this paragraph is not
+read as covering it.** This decision names the ARM; it writes none of the instruction. The
+seeding arm is **three instruction-only sites inside `configure/main.md`** — a compose rule,
+a bulk-confirmation echo-template line, and the setter-mapping row — enumerated at **Phase
+5's `configure/main.md` scope bullet**, which is where a builder must look. **A build that
+adds only the setter row ships a field that stays `""` forever, which is alternative (c) by
+another route.**
+
+*The counter-argument below is ACCEPTED, not answered:* the six-file Python surface (fact 19)
+is the real cost of this arm, and it is why Phase 1 is a Python phase with its own review loop.
 
 **RECOMMENDED RULE.** A single top-level config key, `E2E_COMMAND` (`e2e_command` in
 `configure.yaml`), holding the one command that runs the project's e2e suite. Empty string
@@ -258,6 +304,17 @@ detection yields nothing, the field is empty and no ecosystem default is invente
 project that runs Playwright through a non-obvious script gets it from the user, not from a
 guess.
 
+⚠ **SUPERSEDED 2026-08-27 by Phase 0's ratified seeding arm — read the preceding paragraph as
+the drafting-time proposal, never as the live rule.** Its bolded lead and its first sentence
+do NOT survive: `/devforge:configure` composes the default from the **`MANIFESTS_JSON`
+manifests it already parses**, not from `.devforge/init.yaml`'s `test_infra.e2e`, and
+**Phase 1 therefore does NOT make that value real and does NOT touch
+`init_helper`** — the detector stays unused and
+`test_infra.e2e` stays empty on every install. **The paragraph's last two sentences survive
+unchanged and are the whole point of the arm**: fact 22's don't-guess rule is inherited
+verbatim, so an empty detection yields an empty field and the user supplies the command. **The
+dead detector does NOT get a consumer** — that clause is retired with the arm it belonged to.
+
 **Alternatives considered:**
 
 - *(b) A per-package `e2e_command` inside `PACKAGE_STACKS`.* Recorded as the real
@@ -281,7 +338,17 @@ mitigation is fact 20's precedent: `regression_gate` shows the repo already ship
 config key that has a default, has a setter, and is never asked about — so the *question*
 surface can stay at zero even when the *field* surface does not.
 
-### D2 — The declaration point: a plan-side architect sub-question *(OPEN)*
+### D2 — The declaration point: a plan-side architect sub-question *(RATIFIED 2026-08-27 — as recommended)*
+
+**RATIFIED 2026-08-27 — as recommended**: architect **sub-question 12** at `/devforge:plan`
+§1.3, feeding a conditional `### E2E Scenarios` subsection in `plan.md`, carried to
+`/devforge:breakdown` with **ZERO Python** by reading the table from `plan.md` directly.
+Alternative (a), spec-side only, and alternative (b), breakdown-side only, stay rejected as
+recorded. **The honest bound ratifies with the rule and must reach the emitted bracket text:
+nothing checks the declaration — the claim is visibility, not enforcement.** *The
+counter-argument is ACCEPTED, not answered:* a twelfth sub-question is added to a list of
+eleven with no evidence about its marginal cost, because plan 84 closed having found
+architect-consult accumulation unmeasurable.
 
 **RECOMMENDED RULE.** `/devforge:plan` §1.3 gains architect **sub-question 12**: which
 acceptance criteria describe a user-visible flow that only a full-stack run can verify, and
@@ -331,7 +398,26 @@ eleven and can offer no evidence about the marginal cost, because none exists. T
 mitigation is that the empty answer is one word and the subsection is omitted, so a non-web
 feature pays one question and nothing else.
 
-### D3 — The execution seat: a fail-soft `/devforge:verify` sub-phase *(OPEN — one fork)*
+### D3 — The execution seat: a fail-soft `/devforge:verify` sub-phase *(RATIFIED 2026-08-27 — advisory fork (i), reasons-only)*
+
+**RATIFIED 2026-08-27 — fork (i): NO status gates the verdict in v1.** The new fail-soft
+PHASE 4.5 ships as recommended, always exiting 0, with the four statuses unchanged. Fork (ii),
+an `e2e-failing` NEEDS-WORK blocker, stays the recorded alternative and **the strengthening
+trigger stays exactly as named** — the first e2e-catchable defect that reaches a consumer
+DESPITE an `e2e-failing` status having been surfaced. That trigger is an OBSERVATION; a build
+that flips the arm on reasoning has left this plan.
+
+**The reporting sub-question was resolved in the same breath, as recommended: REASONS-ONLY.**
+`compute-verdict` gains an `--e2e` input that adds a `reasons` line and **NO blocker**;
+`render-report` takes no e2e input and is unchanged; **`verification.md` gains no dedicated
+e2e section** — the same shape the regression gate already has (fact 14). This is the minimum
+change that leaves a durable trace, and it is what makes OQ-6's answer determinate rather than
+conditional.
+
+⚠ *The counter-argument below is the strongest one against this plan, and ratification
+ACCEPTS it rather than answering it:* **a lane that runs a suite, watches it go red and
+approves the feature anyway produces a green verdict beside a red suite in the same run.**
+Phase 6's anchor 3 is where a ratifier meets that in a real run, and the repair is fork (ii).
 
 **RECOMMENDED RULE.** A new sub-phase **`/devforge:verify` PHASE 4.5 — e2e run**, invoking a
 new `verify_helper e2e-gate` verb that runs `E2E_COMMAND` **once, at HEAD, in the real
@@ -388,7 +474,16 @@ reasons and the transcript records the failure, so nothing is hidden — but a P
 observer who sees APPROVED printed under a failing e2e run has found the real cost of (i),
 and the repair is (ii).
 
-### D4 — No new PHASE-3.5 gate in v1 *(OPEN)*
+### D4 — No new PHASE-3.5 gate in v1 *(RATIFIED 2026-08-27 — as recommended, no seventh gate)*
+
+**RATIFIED 2026-08-27 — as recommended: NO seventh PHASE-3.5 gate.** The sequence stays at its
+six `verify-*` gates (fact 23), and **plan 75's tripwire holds in both halves** — no new check
+number, no new hard-fail validator. `verify-e2e-coverage`'s shape and its OBSERVED-dropped-
+scenario trigger stay RECORDED, not built. ⚠ **The combination the pick-list warned about did
+not arise:** D3 ratified fork (i), so no lane blocks a verdict on a suite whose existence
+nothing checks. *The counter-argument is ACCEPTED, not answered:* a declared-but-uncovered
+scenario is at least as easy to drop as a declared-but-uncovered pure builder, and this build
+ships nothing that would notice.
 
 **RECOMMENDED RULE.** The scenario-list-to-task reconciliation gate — a
 `verify-property-coverage` clone that would fail decomposition when a declared `### E2E
@@ -417,7 +512,27 @@ property test or it does not), while an e2e scenario's coverage is a judgment ab
 a test exercises a flow — which a name-match gate would approximate by matching strings and
 would then be satisfied by a task file that names the scenario and tests nothing.
 
-### D5 — Who writes the tests: a dedicated `qa-engineer` task, and a web arm in two agents *(OPEN — two forks)*
+### D5 — Who writes the tests: a dedicated `qa-engineer` task, and a web arm in two agents *(RATIFIED 2026-08-27 — dedicated-directory placement; section arm (a))*
+
+**RATIFIED 2026-08-27 — the dedicated `qa-engineer` task as recommended, and BOTH forks picked
+explicitly:**
+
+- **PLACEMENT fork — the dedicated-e2e-directory rule.** E2e spec files go in a dedicated e2e
+  directory that the package's ordinary test command does not match. **The runner-config
+  exclude arm appears in NO emitted text** — not as an alternative, not as a parenthetical.
+  A rule offering both would reintroduce the judgment call the fork exists to remove, at
+  exactly the point where a wrong guess costs three self-repair rounds.
+- **SECTION fork — arm (a): rename and widen.** `qa-engineer.md`'s `## Mobile Testing` heading
+  becomes a wider testing-surface section carrying a mobile block and a web block, and
+  **every existing mobile bullet survives byte-identical** (OQ-2). Arm (b), appending a second
+  extra section, is declined — (a) keeps the unchartered-section divergence at one.
+
+**The framework-selection rule ships VERBATIM as drafted** — escape-hatch-free, one mandatory
+action plus a stop, blocked-not-guessed. *Two counter-arguments are ACCEPTED, not answered:*
+**consumer-merge friction** — a rename touches a shipped agent file and consumers who
+customized it meet a conflict at `update.sh` time, which is the recorded cost of (a) — and
+**nothing checks the placement rule**: D4 builds no gate, so a misplaced e2e spec produces a
+confusing red run at the next `/devforge:implement` task rather than an error.
 
 **RECOMMENDED RULE.** When `plan.md` carries a non-empty `### E2E Scenarios` table,
 `/devforge:breakdown` PHASE 3 creates at least one **dedicated `qa-engineer` task** covering
@@ -463,6 +578,10 @@ own, in a syntax that differs per runner, and a rule offering both would be a ju
 at exactly the point where a wrong guess costs three self-repair rounds. **Phase 0 picks
 one; the emitted text states only the picked one.**
 
+✅ **RESOLVED 2026-08-27 — Phase 0 ratified the dedicated-e2e-directory arm; this paragraph's
+*"Phase 0 may ratify instead"* / *"Phase 0 picks one"* phrasing is drafting-time, superseded
+by the RATIFIED lead paragraph above.** The runner-config exclude reaches no emitted text.
+
 ⚠ **This rule is authoring guidance, and nothing checks it.** D4 builds no gate, so a task
 that writes `tests/e2e-flow.spec.ts` beside the unit specs produces no error — it produces a
 confusing red run at the next `/devforge:implement` task. **Say the bound in the emitted
@@ -471,6 +590,9 @@ text; do not imply the placement is enforced.**
 **Fork 1 — where the web arm goes in `qa-engineer.md`.** RECOMMENDED: **(a) rename and widen
 the existing `## Mobile Testing` section** into a testing-surface section carrying both a
 mobile block and a web block, over **(b) add a second extra section beside it.**
+
+✅ **RESOLVED 2026-08-27 — arm (a) ratified**; the wording below stays recommendation-shaped
+and is superseded by the RATIFIED lead paragraph above.
 
 The reasoning is fact 3: `qa-engineer.md` already carries ONE section beyond the canonical
 D-Skeleton, and `agents-AUTHORING.md` charters extra sections for `architect` and
@@ -487,7 +609,15 @@ appends and touches nothing existing, at the price of compounding an undocumente
 divergence. A ratifier who weights consumer-merge friction above skeleton hygiene should
 pick (b) deliberately.
 
-### D6 — App lifecycle: the suite owns it, and `ac_runtime_*` stays uncoupled *(OPEN)*
+### D6 — App lifecycle: the suite owns it, and `ac_runtime_*` stays uncoupled *(RATIFIED 2026-08-27 — as recommended)*
+
+**RATIFIED 2026-08-27 — as recommended.** The suite owns the application lifecycle and the
+framework starts nothing; `ac_runtime_url` / `ac_runtime_api_base` / `ac_runtime_cli_command`
+stay a **separate, uncoupled channel** that PHASE 4.5 neither reads nor writes. The
+future-unification note stays RECORDED, not built — and it stays pointed at
+`ac_runtime_cli_command`, never at `E2E_COMMAND`. *The counter-argument is recorded in the
+decision's own opening and stands:* one shared launch mechanism would be more coherent, and it
+is declined on failure modes, not on cost.
 
 **RECOMMENDED RULE.** **The framework never starts the application.** `E2E_COMMAND` is
 invoked as a single command in `source_root` and the suite is responsible for whatever
@@ -512,7 +642,21 @@ failure modes beat one channel with four.**
 belongs in `ac_runtime_cli_command`'s definition, not in `E2E_COMMAND` — that key already
 means "how to launch the runtime" and would be the natural home.
 
-### D7 — The wall-clock cost line *(OPEN)*
+### D7 — The wall-clock cost line *(RATIFIED 2026-08-27 — as recommended, structural cost line)*
+
+**RATIFIED 2026-08-27 — as recommended: the cost line is STRUCTURAL.** One full e2e-suite
+execution per `/devforge:verify` run — not per task, not per commit, not doubled — and the
+three mechanical bounds ratify with it. *The counter-argument is ACCEPTED and not argued
+away:* **a structural cost line with no number is exactly what plan 85's D7 was written to
+prevent, and this plan reproduces the gap it was meant to close.** Plan 70's Phase-2 numbers
+are the prerequisite and they do not exist, so **Phase 6's wall-clock anchor is the first
+datum this plan family will ever have** — and it is owed even if it turns out uninteresting.
+
+⚠ **One drafting-time clause inside this decision is corrected by the ratification.** The third
+bound below reads *"Phase 0 sets the value (OQ-5)"*; **that is FALSE as ratified.** OQ-5
+resolved as recommended, and its recommendation always placed the choice at **Phase 4** — a
+separate constant in the new module, defaulted higher than 600, with its adequacy recorded at
+Phase 6. **Phase 0 set no timeout value and none is owed from it.**
 
 **RECOMMENDED RULE — stated because plan 85's D7 established that a plan adding a slow
 stage owes one.** The cost this plan adds is **one full e2e-suite execution per
@@ -544,7 +688,17 @@ prerequisite and they do not exist; Phase 6's consumer run is instructed to RECO
 wall-clock delta as a number (its Verify block), which makes this the first plan in the
 family that can close the gap with data instead of a promise.
 
-### D8 — Greenfield and no-e2e-infra installs: silent at every seat *(OPEN)*
+### D8 — Greenfield and no-e2e-infra installs: silent at every seat *(RATIFIED 2026-08-27 — as recommended, silent at every seat)*
+
+**RATIFIED 2026-08-27 — as recommended.** All four seat-level no-ops ship as specified:
+`/devforge:configure` seeds the field empty and asks nothing, `/devforge:plan` omits the
+subsection heading-and-table, `/devforge:breakdown` writes no table and no task and **no
+"no e2e scenarios" line anywhere**, and `/devforge:verify` reports status `off` with no
+user-facing note and no report line. **No nagging line is added at any seat.** *The
+counter-argument is ACCEPTED, not answered:* a web project that genuinely should have e2e
+coverage is never told, and **the reply is sub-question 12** — it fires on the ACs rather than
+on the config, and D5's blocked-not-guessed rule surfaces the missing configuration at the
+moment someone is about to write a test.
 
 **RECOMMENDED RULE.** When a project has no e2e infrastructure and no configured
 `E2E_COMMAND`, **the entire lane is a clean no-op at every seat**, and each seat's no-op is
@@ -575,9 +729,13 @@ someone is actually about to write a test.
 
 ---
 
-## Open questions (OQ-N) — ALL OPEN
+## Open questions (OQ-N) — ALL RESOLVED 2026-08-27
 
-### OQ-1 — CI wiring, and the spec's §5.4
+### OQ-1 — CI wiring, and the spec's §5.4 *(RESOLVED 2026-08-27 — no CI claim)*
+
+**RESOLVED 2026-08-27 — NO, as recommended.** The lane says nothing about CI and makes no CI
+claim: this framework configures a local pipeline, writes no CI files and reads none.
+**Phase 5's `CHANGELOG.md` entry must not imply CI coverage.**
 
 Does the lane say anything about running the suite in CI? The question is not idle: the AC
 schema `/devforge:specify` renders already has a CI subsection — `ci_pipeline` maps to
@@ -593,7 +751,13 @@ A §5.4 AC asking for e2e-in-CI is verified exactly as any other §5.4 AC is tod
 `ac-verifier`, per the ratified mode), and this lane neither helps nor hinders it. Phase 5's
 `CHANGELOG.md` entry must not imply CI coverage.
 
-### OQ-2 — Mobile parity: beside, not instead
+### OQ-2 — Mobile parity: beside, not instead *(RESOLVED 2026-08-27 — byte-identical)*
+
+**RESOLVED 2026-08-27 — NO, as recommended: the mobile text survives BYTE-IDENTICAL** in both
+`qa-engineer.md` and `qa-reviewer.md`. ⚠ **The two-arm phrasing below is now determinate**:
+D5's SECTION fork ratified **arm (a)**, so the section is renamed and a web block is added
+beside the mobile block — the fork-(b) clause describes an arm that was declined. Phase 3's
+byte-comparison criterion is unchanged and is what pins this.
 
 Does the new web arm change the existing Detox / XCTest UI / Espresso / `integration_test`
 text?
@@ -604,7 +768,14 @@ added beside the mobile block; under fork (b) a new section is appended. **In ne
 does a mobile sentence move.** Phase 3's verify criteria pin this with a byte-comparison,
 because a rename is exactly the kind of edit that quietly reflows its neighbours.
 
-### OQ-3 — Does `/devforge:implement` ever run the e2e suite?
+### OQ-3 — Does `/devforge:implement` ever run the e2e suite? *(RESOLVED 2026-08-27 — the AGENT runs it, the HELPER does not)*
+
+**RESOLVED 2026-08-27 — the AGENT runs the suite and the HELPER does not, as recommended.** No
+new flag, no `verify-touched` branch, no per-task e2e execution. ⚠ **The bound below is now
+determinate rather than conditional:** the answer holds **only under D5's ratified
+dedicated-e2e-directory placement rule**, which Phase 0 picked — so *"the per-task path is
+unchanged"* stays true of the CONFIG KEY by construction and true of the FILES only by
+authoring discipline. **Two different kinds of true, and this build does not merge them.**
 
 The `qa-engineer` task that WRITES the suite must run it at least once — an unrun test does
 not count (`qa-engineer` Rule 4: *"Run tests after writing — unrun tests don't count"*). But
@@ -631,7 +802,14 @@ them is how this lane would ship a per-task failure mode it never budgeted.
 `/devforge:verify` PHASE 4.5, one or more tasks later. A suite that passes when the agent
 runs it and fails later is a real sequence, and D3's advisory arm is where it surfaces.
 
-### OQ-4 — Flakiness: retries, quarantine, accounting
+### OQ-4 — Flakiness: retries, quarantine, accounting *(RESOLVED 2026-08-27 — out of scope, and load-bearing for D3)*
+
+**RESOLVED 2026-08-27 — explicitly OUT OF SCOPE for v1, as recommended.** No retry count, no
+quarantine list, no flake-rate accounting: the lane runs the configured command once and
+reports what it returned. **This answer is load-bearing for D3's ratified fork (i)** — an
+unaccounted flake source is one of the three reasons the v1 arm is advisory. ⚠ **The closing
+clause below did NOT fire:** fork (ii) was not taken, so nobody took a gate without a flake
+policy. **A future plan that proposes gating on `e2e-failing` owes one in the same document.**
 
 **RECOMMENDATION: explicitly OUT OF SCOPE for v1, and recorded as such rather than left
 unmentioned.** No retry count, no quarantine list, no flake-rate accounting, no
@@ -642,7 +820,13 @@ three reasons the v1 arm is advisory. **A future plan that proposes gating on
 `e2e-failing` owes a flake policy in the same plan** — and a ratifier who takes D3 fork
 (ii) now is taking it without one.
 
-### OQ-5 — The timeout value
+### OQ-5 — The timeout value *(RESOLVED 2026-08-27 — separate constant, value chosen at Phase 4)*
+
+**RESOLVED 2026-08-27 — as recommended: a separate constant in the new module, defaulted
+higher than 600, with its VALUE chosen at Phase 4 and its adequacy recorded at Phase 6.**
+`_regression._TEST_TIMEOUT` is never imported — two tiers, two tuning dials. **A timeout
+produces `inconclusive`, never `e2e-failing`.** ⚠ **Phase 0 did NOT set the value**, and D7's
+bullet claiming it does is corrected in D7's own ratification paragraph.
 
 `regression-gate` caps each run at `_TEST_TIMEOUT = 600` seconds (fact 6). An e2e suite is
 typically slower than a unit suite.
@@ -654,7 +838,14 @@ would couple two unrelated tuning dials. **A timeout produces `inconclusive`, ne
 `e2e-failing`**: a suite that ran out of clock has not reported a defect, and conflating
 the two would put a false failure in front of the user under D3 fork (ii).
 
-### OQ-6 — Does the e2e result reach `/devforge:summarize` or `/devforge:finalize`?
+### OQ-6 — Does the e2e result reach `/devforge:summarize` or `/devforge:finalize`? *(RESOLVED 2026-08-27 — through `verification.md`'s reasons only)*
+
+**RESOLVED 2026-08-27 — only through `verification.md`, as recommended, and the condition is
+DISCHARGED: D3 ratified the reasons-only arm**, so the e2e status DOES land in the verdict's
+`reasons` and is visible to `/devforge:summarize` for free. **No `summarize_helper` verb
+changes, no `/devforge:finalize` change, and no widening of `/devforge:verify`'s frontmatter
+`description`** — so the 1,536-character skill-listing budget is untouched and **plan 63's
+13/7 counts take no delta from this plan.**
 
 **RECOMMENDATION: only through `verification.md`, and only if D3's reasons-only arm
 ratifies.** `/devforge:summarize` reads `verification.md` and nothing else, takes AC status
@@ -665,7 +856,12 @@ verb changes, no `finalize` change, and no widening of `/devforge:verify`'s fron
 `description`** — which also protects the 1,536-character skill-listing budget the docs
 name (verified above).
 
-### OQ-7 — Naming: `E2E_COMMAND` vs a tier-neutral name
+### OQ-7 — Naming: `E2E_COMMAND` vs a tier-neutral name *(RESOLVED 2026-08-27 — `E2E_COMMAND`)*
+
+**RESOLVED 2026-08-27 — `E2E_COMMAND`, as recommended**, on consistency with the only
+test-tier vocabulary the codebase already uses. **The naming is settled and is not
+re-litigated at Phase 1**: the tier-neutral alternatives were considered and declined on
+consistency grounds, not because "e2e" is the more exact word.
 
 The key could be named for the tier (`E2E_COMMAND`) or for the property
 (`FULL_STACK_TEST_COMMAND`, `INTEGRATION_TEST_COMMAND`).
@@ -681,10 +877,16 @@ consistency grounds, not because the term is exact.
 
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)*
+### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-08-27**
 
 **Objective:** ratify or amend D1–D8 and answer OQ-1–OQ-7, recording each answer in this
 file with its reasoning. **Nothing else may start.**
+
+**✅ CLOSED 2026-08-27 — see `## Phase 0 close record` below. Phases 1, 2, 3, 4 and 5 are
+cleared to build; Phase 6 stays a deferred user-driven HARD GATE.** The pick-list below is
+retained as the record of what needed an explicit answer, **and every item on it got one** —
+four as picks between named arms, and the fifth (**D4**) as the combination warning it always
+was, which did not arise because D3 ratified fork (i).
 
 Five items need an explicit pick rather than a nod, because each has a named fork whose
 arms lead to different builds:
@@ -717,6 +919,84 @@ arms lead to different builds:
 - **The no-incident framing survives ratification.** A Phase 0 that upgrades this plan's
   origin from a question to a finding has changed the evidence base and must say where the
   finding came from.
+
+---
+
+## Phase 0 close record
+
+**Ratified 2026-08-27 by the maintainer, in-session, answering the four explicit picks
+directly; everything off the pick-list ratified as recommended.** No item was amended,
+deferred or declined except where a decision's own recommendation was to decline (D4's
+seventh gate, D5's runner-config exclude arm and its section arm (b), D1's alternatives (b)
+and (c), D3's fork (ii)) — **those declines ARE the recommendation, not a departure from it.**
+
+**The four picks, as answered:**
+
+| Pick | Answer |
+|---|---|
+| D3's fork, and its reporting sub-question | **fork (i) — advisory, no status gates the verdict in v1** — with reporting **reasons-only**: `compute-verdict` gains an `--e2e` input adding a `reasons` line and NO blocker, `render-report` unchanged, no new `verification.md` section |
+| D1's arm, and its seeding fork | **one top-level `E2E_COMMAND` key**, seeded by the **THIRD arm** — `/devforge:configure` composes the default from the `MANIFESTS_JSON` manifests it already parses; **`init_helper` untouched**, `test_infra.e2e` read by nothing |
+| D5's placement fork | **the dedicated-e2e-directory rule** — the runner-config exclude arm reaches NO emitted text |
+| D5's section fork | **arm (a)** — rename and widen `## Mobile Testing`, every mobile bullet byte-identical (OQ-2) |
+
+**The fifth pick-list item was never a fork, and its warning did not fire.** **D4** asked that
+a Phase 0 ratifying "no gate" alongside D3 fork (ii) choose that combination deliberately.
+**D3 ratified fork (i)**, so the combination did not arise: nothing here blocks a verdict on a
+suite whose existence nothing checks. **Recorded as not-fired rather than left ambiguous.**
+
+**One consequence of the D1 seeding pick reaches beyond D1 and is written where it lands:**
+the drafted seeding sentence inside D1 and the `## What is actually being added` clause
+*"seeded from the detection that already exists and is currently discarded"* both describe the
+arm that was NOT taken. **Both carry a dated note at their own site** — D1's marked
+`SUPERSEDED`, the summary clause marked `CORRECTED` — and **Phase 1's Deliverable 2 carries
+the resolution.** A future session must not re-derive the `init_helper` route from any of them.
+
+⚠ **One sentence this record does NOT discharge, named so it is not read as discharged.**
+Phase 2's route paragraph says *"Phase 0 confirms that reading rather than this sentence being
+taken as license"* — the reading being that a `plan/main.md` edit touching no frontmatter owes
+no claude-code-guide pass. **That reading was NOT among the ratified items and this closure
+does not confirm it.** It stands as a **build-time obligation on Phase 2's route**, to be
+settled when Phase 2 runs, exactly as Phase 3's parallel meta-block reading is.
+
+✅ **RESOLVED 2026-08-27 (orchestrator ruling; site list WIDENED the same day to all four
+command specs) — the entry above is DISCHARGED, and this record carries no undischarged
+item.** The ruling was decided from **plan 89's two precedents**, not from the drafted
+sentence, and **the CONSERVATIVE reading binds**: **EVERY command-spec `main.md` edit in this
+plan owes a claude-code-guide pass — Phase 2's `plan/main.md`, Phase 3's `breakdown/main.md`,
+Phase 4's `verify/main.md` (Deliverable 3) and Phase 5's `configure/main.md`** — because all
+four ship into `.claude/commands/devforge/`, plan 89's Phase 3 ran the pass for this same
+body-only class, and **the repo rule carries no frontmatter carve-out.** `src/CLAUDE.md`
+already owed it and still does. **Phase 3's `qa-engineer.md` / `qa-reviewer.md` edits keep the
+recorded-skip route only while their fenced `yaml` meta-blocks stay byte-unchanged** (plan
+89's Phase 2b precedent), **with the skip reason recorded rather than silent** — that half is
+unchanged by the widening. ⚠ **This is an orchestrator ruling at Phase-0 close, not a ratified
+D-item** — it changes no decision, no OQ and no marker, and **it widens the route, never the
+scope.** The notes live at the route paragraphs of **Phases 2, 3, 4 and 5**, each phase's
+**Verify block**, and **`## When resuming work` step 7**.
+
+**What ratification did NOT change — recorded so a future session does not read closure as
+scope growth:**
+
+- **Every counter-argument survives verbatim.** D3's green-verdict-beside-a-red-suite
+  objection, D5's consumer-merge-friction objection, D7's no-number objection, D2's
+  architect-brief-accumulation objection, D4's easy-to-drop-scenario objection and D8's
+  never-told objection are **accepted costs, not answered ones**. A ratified decision whose
+  counter-argument was deleted could not be re-opened honestly, and none was.
+- **Plan 75's tripwire still holds, both halves**: zero gates, zero new `verify-*` numbers,
+  zero hard-fail validators, zero new agents, zero new verdict values. **The lane adds a MODE
+  and a REPORT.**
+- **Python is still Phase 1 and Phase 4's Deliverables 1–2 only.** The seeding pick keeps it
+  there — composing a default inside `/devforge:configure` needs no `init_helper` change.
+- **The no-incident framing survives.** There is still no incident behind this plan and none
+  is claimed; it is still a **predicted-gap** plan in plan 87's class. **Ratifying a gap does
+  not upgrade it from a question to a finding**, and no summary of this plan may imply a
+  consumer failure.
+- **The honest bounds are unchanged.** v1 gates nothing; nothing checks the declaration;
+  nothing checks the placement rule; the lane is silent by default. **Ratifying a claim does
+  not strengthen it.**
+- **Phase 6 is NOT cleared.** It is a deferred user-driven HARD GATE with three known-answer
+  anchors, two of them pair-scored. **Everything Phases 1–5 produce will be build-verified and
+  NOT consumer-validated.**
 
 ---
 
@@ -767,6 +1047,25 @@ default itself. **The third is the smallest** — `/devforge:configure` already 
 it leaves `init_helper`'s detector exactly as unused as it is today, which is honest rather
 than tidy.
 
+✅ **RESOLVED 2026-08-27 — Phase 0 picked the THIRD arm.** `/devforge:configure` composes the
+`e2e_command` default from the `MANIFESTS_JSON` manifests it already parses, inheriting fact
+22's don't-guess rule verbatim: no playwright/cypress evidence in the manifests means an empty
+field and no invented default. **Three consequences bind this deliverable:** **(a)
+`init_helper` is NOT touched by this phase** — no `detect-test-infra` call is wired in, no verb
+is added, and its detector stays unreachable from every command (fact 8); **(b)
+`.devforge/init.yaml`'s `test_infra.e2e` is read by nothing this build produces**, so it stays
+empty on every install and the `/devforge:init-forge` route is not built; **(c) this
+deliverable's own title is a drafting-time label** — what starts running is
+`/devforge:configure`'s manifest read, **not "the detection"**, and a build that reads the
+title as a mandate to make `init_helper` run has taken the arm Phase 0 declined.
+
+⚠ **This phase writes NONE of the composition text — 2026-08-27, so this note is not read as
+covering it.** The manifest-reading rule is instruction, not Python: it lives at **three sites
+inside `configure/main.md`** enumerated at **Phase 5's `configure/main.md` scope bullet**.
+**Phase 1 ships the FIELD** — schema entry, default, setter, render key, display group,
+`verify` exemption — **and Phase 5 ships the COMPOSER.** A build that stops after this phase
+leaves `e2e_command` permanently `""`.
+
 **⚠ Recorded, not fixed:** the `e2e` bucket's value is unreachable in `_probe_tier.py`
 (fact 9). **This plan does not repair that** — repairing it changes `/devforge:research`'s
 probe-tier classification, which is a different command's behavior and needs its own
@@ -803,6 +1102,23 @@ an install with an empty `e2e_command` still passes.
 claude-code-guide pass is not owed by this phase's edits — **Phase 0 confirms that reading
 rather than this sentence being taken as license.**
 
+⚠ **RESOLVED 2026-08-27 (orchestrator ruling) — the paragraph above is OVERRULED: this phase
+DOES owe a claude-code-guide pass.** The ruling was decided at Phase-0 close from plan 89's
+two precedents rather than from the drafted sentence, and **the CONSERVATIVE reading binds**:
+
+1. **Command-spec BODY edits owe the pass.** `plan/main.md` here and `breakdown/main.md` at
+   Phase 3 both ship into `.claude/commands/devforge/`, and **plan 89's Phase 3 ran the pass
+   for exactly this class of body-only command-spec edit.** The repo-level rule — invoke the
+   `claude-code-guide` agent per edit to a file shipping into a target project's `.claude/` —
+   **has no frontmatter carve-out**, so *"touches no frontmatter"* exempts nothing.
+2. **Agent-file edits keep the recorded-skip route, CONDITIONALLY.** Phase 3's
+   `qa-engineer.md` / `qa-reviewer.md` edits may skip the pass **only while the fenced `yaml`
+   meta-blocks stay byte-unchanged** — plan 89's Phase 2b precedent — **and the skip reason is
+   RECORDED, never silent.** A meta-block edit voids the skip and the pass becomes owed.
+
+**So this phase's route is instruction-author → instruction-reviewer → claude-code-guide**,
+and the paragraph above survives only as the drafting-time reading it always was.
+
 Scope, two files:
 
 - **`src/commands/plan/main.md` §1.3** — architect **sub-question 12**, in the voice and
@@ -824,6 +1140,10 @@ Scope, two files:
 **Verify:**
 
 - Instruction-reviewer clean.
+- **claude-code-guide invoked for the `plan/main.md` edit, and its answer RECORDED** — the
+  2026-08-27 orchestrator ruling at this phase's route paragraph. **A phase that reports
+  "no frontmatter touched, so the pass was skipped" has applied the OVERRULED reading**, and
+  an unrecorded pass is indistinguishable from one that never ran.
 - **`grep -n "^12\." src/commands/plan/main.md` returns the new sub-question**, and
   `grep -c "^11\." ` confirms sub-question 11 is untouched. Capture the pre-change
   sub-question list first — this phase appends, it renumbers nothing.
@@ -847,6 +1167,13 @@ integration pass is likewise not owed here — **verify that reading against
 meta-blocks byte-unchanged is a CROSS-PLAN commitment, not this plan's private choice**:
 plan 89's Phase 2b edits `qa-reviewer.md` too and rests on the same fact for the same
 excuse. **A meta-block edit here would silently invalidate that plan's stated reasoning.**
+
+⚠ **RESOLVED 2026-08-27 (orchestrator ruling) — full ruling at Phase 2's route paragraph.**
+`breakdown/main.md` **DOES owe a claude-code-guide pass** (it ships into
+`.claude/commands/devforge/` and the repo rule has no frontmatter carve-out), while
+`qa-engineer.md` / `qa-reviewer.md` keep the recorded-skip route **only while their fenced
+`yaml` meta-blocks stay byte-unchanged** — and **this note IS that recording**, so the skip is
+never silent.
 
 Scope, three files:
 
@@ -897,6 +1224,13 @@ match a test-authoring task — a routing ambiguity where none exists today.
 **Verify:**
 
 - Instruction-reviewer clean.
+- **claude-code-guide invoked for the `breakdown/main.md` edit, and its answer RECORDED** —
+  the 2026-08-27 orchestrator ruling at this phase's route paragraph. **For
+  `qa-engineer.md` / `qa-reviewer.md` the recorded skip is valid ONLY if `git diff` shows
+  both fenced `yaml` meta-blocks byte-identical** — diff them and **record the result**,
+  because a meta-block edit voids the skip and makes the pass owed for those files too.
+  ⚠ **The existing meta-block bullet below now justifies the skip for the TWO AGENT FILES
+  ONLY**, never for `breakdown/main.md`, which owes the pass regardless.
 - **`grep -n "Agent Assignment" -A 20 src/commands/breakdown/main.md` shows the same row
   count as before.** Capture the pre-change table first.
 - **The framework rule contains no `OR`, no `unless`, no `if none`, and no "use judgment"**
@@ -935,6 +1269,14 @@ match a test-authoring task — a routing ambiguity where none exists today.
 instruction-reviewer** for the `main.md` block. This phase touches no frontmatter (fact 25),
 so no `allowed-tools` line is added — **the field is a grant, not a restriction (verified
 against current docs 2026-08-26), so its absence cannot break the verb.**
+
+⚠ **RESOLVED 2026-08-27 (orchestrator ruling) — Deliverable 3's `verify/main.md` edit DOES owe
+a claude-code-guide pass.** `verify/main.md` ships into `.claude/commands/devforge/`, so it is
+the same body-only command-spec class as Phases 2 and 3; full ruling at Phase 2's route
+paragraph. ⚠ **The `allowed-tools` discussion above answers a NARROWER question — whether a
+frontmatter line is owed — and does NOT discharge this one.** **Deliverable 3's route is
+therefore instruction-author → instruction-reviewer → claude-code-guide**; Deliverables 1–2
+stay python-engineer → python-reviewer and owe no pass, touching no shipped `.claude/` file.
 
 **Deliverable 1 — the verb.** A new `verify_helper e2e-gate` over a new
 `src/devforge/lib/_verify/_e2e.py`, built in `_regression.py`'s shape:
@@ -979,6 +1321,9 @@ across all four statuses** (constraint 2).
 **Verify:**
 
 - python-reviewer clean; instruction-reviewer clean; the `tests/lib/_verify/` suite green.
+- **claude-code-guide invoked for Deliverable 3's `verify/main.md` edit, and its answer
+  RECORDED** — the 2026-08-27 orchestrator ruling at this phase's route paragraph. **The
+  `allowed-tools` reasoning does not substitute for it**, and Deliverables 1–2 owe no pass.
 - **Every pre-existing `_verify` test passes unchanged.** A failure in a `compute-verdict`
   test means the fold changed a verdict it was not supposed to change.
 - **A test proves the verb exits 0 on every path**, including a deliberately broken command
@@ -995,11 +1340,17 @@ across all four statuses** (constraint 2).
 
 ---
 
-### Phase 5 — Docs sweep + dated reconciliation notes
+### Phase 5 — Docs sweep + the `configure` composer + dated reconciliation notes
 
 **Route: instruction-author → instruction-reviewer** for every `src/` and plan-document
 edit. `src/CLAUDE.md` ships as the consumer's root `CLAUDE.md`, so **claude-code-guide is
 owed for that file's edits.**
+
+⚠ **RESOLVED 2026-08-27 (orchestrator ruling) — the claude-code-guide pass is owed for this
+phase's `configure/main.md` edit TOO, not only for `src/CLAUDE.md`.** `configure/main.md`
+ships into `.claude/commands/devforge/`, the same body-only command-spec class as Phases 2, 3 and 4;
+full ruling at Phase 2's route paragraph. **Both files in this phase take the pass**; the
+plan-document and `CHANGELOG.md` / repo-root-ledger edits do not, shipping nowhere.
 
 Open the phase with `grep -rn "e2e\|E2E" src/ *.md` and reconcile every hit against what
 this build made true. **This sweep list is NOT certified exhaustive** — treat a hit not
@@ -1020,6 +1371,23 @@ Scope:
   **The D6 note is UPDATED IN PLACE with the post-build numbers — never removed and never
   contradicted**: it is plan 89's ratified D6 deliverable, and its no-prompt instruction for
   `regression_gate` is untouched by this plan.
+  ⚠ **AMENDED 2026-08-27 (Phase-0 close) — this bullet named ONE composition site and the
+  ratified D1 seeding arm needs THREE.** `test_command`, the sibling this arm mirrors, is
+  composed by a three-site instruction-only mechanism in this same file, and **a build that
+  adds only the setter-mapping row ships a field that stays `""` forever — functionally D1's
+  REJECTED alternative (c), reached by omission.** ⚠ **The phase numbers below are
+  `/devforge:configure`'s OWN phases, not this plan's** — a confusion that would send the
+  edit to the wrong section. All three are owed:
+  1. **A compose bullet in `/devforge:configure`'s own Phase 2**, mirroring the
+     `test_command` derivation rule's shape (fact 22): derive `e2e_command` from
+     `MANIFESTS_JSON.packages[<path>].devDependencies` naming `playwright` or `cypress`,
+     plus the associated script, and **inherit fact 22's don't-guess rule VERBATIM** — empty
+     when detection yields nothing, and **never an invented ecosystem default.**
+  2. **An echo-template line in `/devforge:configure`'s own Phase 3 bulk confirmation**,
+     which moves that phase's detection-derived figure **23 → 24** and the populated total
+     **29 → 30** (fact 21a's reconciliation note). **Count the live file and write what you
+     counted; never increment a printed number.**
+  3. **The setter-mapping table row** — the one site this bullet already named.
 - **`src/CLAUDE.md`** — a `### Verification` note that the e2e run is feature-level and
   advisory, kept TIGHT (plan 08's always-on-trim discipline binds this file; every line
   costs tokens in every session). ⚠ **Read the `### Always` list and the `### Verification`
@@ -1120,8 +1488,20 @@ match the trailer-free convention), lowercase terse subject with a scope prefix 
 **Verify:**
 
 - The sweep returns zero dangling references; the `tests/` suite is green.
+- **claude-code-guide invoked for BOTH shipped files this phase edits — `src/CLAUDE.md` AND
+  `configure/main.md` — and each answer RECORDED** (the 2026-08-27 orchestrator ruling at
+  this phase's route paragraph). **A phase that ran it for `src/CLAUDE.md` only has covered
+  half its shipped surface.**
+- **`configure/main.md` carries the `e2e_command` compose rule in `/devforge:configure`'s own
+  Phase 2 AND its echo-template line in that command's own Phase 3 bulk confirmation**, not
+  just the setter-mapping row. ⚠ **A build that added only the setter row FAILS this
+  criterion** — the field would render, be settable, and stay `""` on every install, which is
+  D1's rejected alternative (c) reached by omission. **Grep `configure/main.md` for
+  `e2e_command` and confirm THREE distinct sites.**
 - **The configure counts match a fresh count of the live tuples**, not an increment of the
-  printed number (fact 21). State the counted numbers in the commit message.
+  printed number (fact 21). State the counted numbers in the commit message. ⚠ **Plan 89's D6
+  note moves on both terms** — 23 → 24 detection-derived, 29 → 30 populated, schema 31 (fact
+  21a's reconciliation note) — and it is **updated in place, never removed.**
 - **`src/CLAUDE.md`'s `### Always` list has the SAME item count before and after this
   phase** — capture the pre-change count by counting, and confirm the last item is
   byte-unchanged. **Do not compare against any number printed in this plan** (fact 28).
@@ -1330,6 +1710,13 @@ and this is the single reason D1's key is separate.
 runs the detector (fact 8), and its only reader filters the value out (fact 9). **Any
 sentence in this build that says "the framework detects your e2e framework" is false until
 Phase 1's Deliverable 2 lands**, and Phase 0 must pick which arm makes it true.
+⚠ **AMENDED 2026-08-27 — Phase 0 picked, and the pick HARDENS this trap rather than closing
+it.** The ratified arm is `/devforge:configure` composing the default from the
+`MANIFESTS_JSON` manifests, so **`test_infra.e2e` is still read by nothing after this build
+and `init_helper`'s detector is still reachable from no command.** Both halves of the trap
+therefore survive the build: **the only true post-build sentence is that `/devforge:configure`
+reads the project's package manifests** — any sentence crediting `init_helper` or
+`.devforge/init.yaml` stays false, before and after.
 
 **Trap 3 — reading D4's no-gate as a gap to fill.** It is a decision with a named trigger,
 argued from plan 86's F3 and plan 75's tripwire. **A session that adds
@@ -1435,7 +1822,27 @@ than released. Re-check each from the code rather than from a Status line.
    **claude-code-guide** added for Phase 5's `src/CLAUDE.md` edit. **Phases 2 and 3
    dispatch no python-engineer** — a phase that finds itself needing one has crossed its own
    boundary and must stop.
+   ⚠ **CORRECTED 2026-08-27 (orchestrator ruling; site list WIDENED the same day to all four
+   command specs) — this step UNDER-STATES the claude-code-guide route; it is corrected here,
+   not rewritten.** The pass is owed for **EVERY command-spec `main.md` edit in this plan —
+   Phase 2's `plan/main.md`, Phase 3's `breakdown/main.md`, Phase 4's `verify/main.md`
+   (Deliverable 3 only) and Phase 5's `configure/main.md`** — as well as Phase 5's
+   `src/CLAUDE.md` edit. All five ship into a target project's `.claude/`, and the repo rule
+   has **no frontmatter carve-out**. **Phase 3's `qa-engineer.md` / `qa-reviewer.md` edits
+   keep the recorded-skip route only while their fenced `yaml` meta-blocks stay
+   byte-unchanged.** Full ruling at Phase 2's route paragraph. **The python-engineer boundary
+   sentence above is unchanged and still binds**, and Phases 1 and 4's Deliverables 1–2 owe
+   no pass, touching no shipped `.claude/` file.
 8. **Do not let Phase 4's momentum turn the advisory arm into a gate.** D3 fork (i) is a
    ratified position with a named trigger, not a first draft. The lane's value in v1 is
    that a feature's user flows get declared, owned, written and run at all — **the gate is
    a later, separate decision that owes a flake policy (OQ-4) it does not yet have.**
+   ⚠ **CORRECTED 2026-08-27 — drafting-time overstatement:** while Phase 0 is open, fork
+   (i) is the RECOMMENDED arm, not a ratified position. This step's guidance binds once
+   Phase 0 ratifies D3, and only in the arm it picks — under (i) the step stands as
+   written; under (ii) it is RETIRED, not softened. Until then nothing here is decided
+   (the Status line owns that claim).
+   ✅ **RESOLVED 2026-08-27 — Phase 0 CLOSED and D3 ratified fork (i), so this step STANDS AS
+   WRITTEN and binds from now on.** The retirement branch never fires, and the correction
+   above has discharged its own forward reference: fork (i) IS a ratified position with a
+   named trigger, exactly as the step's original wording says.
