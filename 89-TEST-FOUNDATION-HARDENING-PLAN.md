@@ -1,9 +1,15 @@
 # 89 — Test-foundation hardening: the test OBLIGATION made as standing as the test RUN
 
-**Status:** **Phase 0 CLOSED 2026-08-27 — D1–D7 and OQ-1–OQ-6 ALL RATIFIED AS RECOMMENDED.** The five explicit picks were answered in-session by the maintainer: **D1** = §3.5 host (§3.4 declined for its zero drift detection); **D2 + D4 arm (b)** = BOTH taken, so the dependency is discharged rather than stranded; **D6** = arm (b), documentation-only; **D7** = taken IN FULL with **clause 1 KEPT** in its inline-scoped rendering; **OQ-6** = clause-2 findings floored at ≥ High, High forces `GAPS FOUND`. Everything off the pick-list ratified as recommended too. **Phases 1, 2, 2b, 3, 4 and 5 are CLEARED to build. Phase 6 remains a DEFERRED user-driven HARD GATE — build-verified is not consumer-validated.**
+**Status:** **✅ Phase 0 RATIFIED + Phases 1–5 DONE (build) 2026-08-27. Phase 6 DEFERRED.**
+
+- **Phase 0 CLOSED 2026-08-27** — D1–D7 and OQ-1–OQ-6 ALL RATIFIED AS RECOMMENDED, the five explicit picks answered in-session by the maintainer: **D1** = §3.5 host (§3.4 declined for its zero drift detection); **D2 + D4 arm (b)** = BOTH taken, so the dependency is discharged rather than stranded; **D6** = arm (b), documentation-only; **D7** = taken IN FULL with **clause 1 KEPT** in its inline-scoped rendering; **OQ-6** = clause-2 findings floored at ≥ High, High forces `GAPS FOUND`. Commit `3521e34`.
+- **Phases 1, 2, 2b, 3 and 4 DONE (build) 2026-08-27**, python-reviewer + instruction-reviewer both SHIP-READY, full `tests/lib` suite green (11124+ passed; `test_breakdown_helper` 426). Commits: `1ead52d` Phase 1 · `8f4ffec` Phases 2 + 2b · `27cb30e` Phase 3 · `77beba1` Phase 4.
+- **Phase 5 DONE (build) 2026-08-27**, in this commit. Both halves landed: **D6's note in `src/commands/configure/main.md`** (arm (b), documentation-only — no new prompt, no count edits) and the documentation/reconciliation sweep (this status block, the dated build amendments recorded against Phases 1/2b/3 and facts 4a-i / 4a-ii, `CHANGELOG.md`, the repo-root index entry, and the `PLAN-STATUS-ARCHIVE.md` mirror). **Its Verify criterion now passes: `grep -rn "REGRESSION_GATE" src/commands/` returns hits in BOTH `verify/main.md` and `configure/main.md`.**
+- **Phase 6 remains a DEFERRED user-driven HARD GATE — build-verified is NOT consumer-validated.** No anchor has been run.
+
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
-**Amended 2026-08-26 (same session, maintainer-directed): the obligation D2 creates must not be satisfiable by tests written merely to exist, nor by invented tests.** The amendment is APPEND-ONLY on every existing identifier — **D1–D6 and OQ-1–OQ-5 keep their numbers** (plan 90 cites this plan's OQ-3 by number) and **no existing phase was renumbered**. Its full footprint, so a reader diffing against an earlier copy knows what to look for: **D7** and **OQ-6** added; **Phase 2b** inserted letter-suffixed after Phase 2, and Phase 2's own scope extended to write one block from D7's rendering; **fact rows 7a, 8a and 8b** added (table 30 → **33** rows); **Phase 6 anchor 5** added (4 → **5** anchors, and anchor 5 is pair-scored); **Traps 8, 9 and 10** added (7 → **10**); **`## When resuming work` item 10** added (9 → **10** items); **`## Cross-plan coordination — plan 90` rewritten** — `src/agents/qa-reviewer.md` became a THIRD unconditional shared surface because D7 edits it and plan 90 edits a different part of the same file; and **`## What is actually being added`** grew to six items and four honest bounds.
+**Amended 2026-08-26 (same session, maintainer-directed): the obligation D2 creates must not be satisfiable by tests written merely to exist, nor by invented tests.** The amendment is APPEND-ONLY on every existing identifier — **D1–D6 and OQ-1–OQ-5 keep their numbers** (plan 90 cites this plan's OQ-3 by number) and **no existing phase was renumbered**. Its full footprint, so a reader diffing against an earlier copy knows what to look for: **D7** and **OQ-6** added; **Phase 2b** inserted letter-suffixed after Phase 2, and Phase 2's own scope extended to write one block from D7's rendering; **fact rows 7a, 8a and 8b** added (table 30 → 33 rows; **now 35** — the 2026-08-27 build added 4a-i and 4a-ii); **Phase 6 anchor 5** added (4 → **5** anchors, and anchor 5 is pair-scored); **Traps 8, 9 and 10** added (7 → **10**); **`## When resuming work` item 10** added (9 → **10** items); **`## Cross-plan coordination — plan 90` rewritten** — `src/agents/qa-reviewer.md` became a THIRD unconditional shared surface because D7 edits it and plan 90 edits a different part of the same file; and **`## What is actually being added`** grew to six items and four honest bounds.
 
 This plan document contains no private-client identifiers and is intended to be
 **committed normally**, unlike the deliberately-untracked plans 73/74/75.
@@ -153,6 +159,8 @@ string, never the `:NNN`.
 | 3d | Two further test files embed the literal `- [ ] No debug artifacts left in changed files\n` inside hand-authored task-file fixtures (inputs, not `render-task-file` outputs) | `tests/lib/_implement/test_cmds_resolve.py:177`; `tests/lib/_implement/test_handoff_reader.py:186` |
 | 4 | **`mark-complete` ticks every Done-When box by default**; `--unverified-box <substring>` (repeatable) forces the matching box UNticked and appends `_UNVERIFIED_ANNOTATION` *"so they are visibly honest instead of falsely green"*. The annotation literal is `" _(unverified — see Completion Notes)_"`, and the transform is idempotent across repair re-runs | `src/devforge/lib/_implement/_cmds_complete.py:68`–`:74`, `:129`, `:217`–`:224` |
 | 4a | **`/devforge:implement`'s approve path ALREADY scans for a test condition it cannot currently find.** Its `--unverified-box` instruction says any Done-When line *"mentioning type-check / type errors / tsc / lint / linting / test / tests / spec / unit test / pytest / jest / vitest (case-insensitive) is a verification condition"*, and under `scope-and-approve` *"the type-check, lint, AND test Done-When conditions are all conservatively left unverified"*. **The consumer plumbing for D2's line exists before D2 ships it** | `src/commands/implement/main.md:254` |
+| 4a-i | ⚠ **AMENDED 2026-08-27 at Phase-3 build time (finding A): the fact-4a paragraph contradicted D4 in TWO sentences, not one.** Beyond the closing *"On a clean `pass`, pass NO `--unverified-box` arguments:"* that this plan named, the paragraph's **opening enumeration** also asserted categorically that *when `verify-touched` returned a clean `pass`, **all** conditions are confirmed* — a second, UNLISTED contradiction site. **Both were rewritten at Phase 3**; a build that had fixed only the closing sentence would have left the opening one asserting the opposite two lines above it | `src/commands/implement/main.md:254`; Phase-3 build record 2026-08-27 |
+| 4a-ii | ⚠ **AMENDED 2026-08-27 at Phase-3 build time (finding D): a THIRD site, falsified by OMISSION rather than by assertion.** The command's outputs bullet described the annotated-box outcome as arising from the scope-and-approve path only; it now carries the **second-trigger clause** (an empty `test_commands_run` on a clean `pass`). **`:321` is a VERIFIED NO-OP** and so are the `:165`-area status bullets — checked and recorded, not skipped | `src/commands/implement/main.md:36`; `:321` and `:165`-area verified no-ops, 2026-08-27 |
 | 5 | **The emitted `### Always` list is exactly FIFTEEN items**; item 8 is *"**Lint everything** — linting must pass on all changed files before task completion"*; item 15 is plan 87's *"**English in files**"*. **No test analog exists** | `src/CLAUDE.md:203`–`:217` |
 | 6 | **`qa-engineer` is pointed at an empty page.** Its Rule 6 reads *"Read `constitution.md` before deciding (incl. its testing requirements)"* — and the constitution's testing requirements are fact 1's placeholder | `src/agents/qa-engineer.md:78`; `src/constitution.md:55`–`:60` |
 | 7 | **No coverage threshold exists anywhere.** `qa-engineer` says *"Run the coverage tool and identify uncovered code paths"* and *"Prioritize what to cover: business logic > error handling > edge cases > rendering"* — a priority order with **no number** | `src/agents/qa-engineer.md:44`–`:46` |
@@ -326,6 +334,22 @@ next session re-checking.
    expectation (fact 3d). **Verified no-op**; record it.
 8. `tests/lib/_implement/test_handoff_reader.py:186` — same (fact 3d). **Verified no-op**;
    record it.
+
+**⚠ AMENDED 2026-08-27 — FOUR further no-ops the builders verified and recorded.** They are
+listed here rather than left out of the plan because an unrecorded no-op is re-checked by every
+future session:
+
+- **`src/commands/implement/main.md:36`** — a no-op for **D2** (it names no Done-When set), but
+  **NOT for D4**: Phase 3 amended it as that phase's third site (fact 4a-ii). **The same line can
+  be a no-op for one decision and a site for another**, and conflating the two is how a sweep
+  misses it.
+- **`src/commands/implement/main.md:321`** — verified no-op for both.
+- **`/devforge:fix` needs NO D4 mirror.** Verified at build time: the command has **no
+  `scope-and-approve` path**, so there is no second approve route where an empty
+  `test_commands_run` could tick a box unchallenged. **Recorded as a checked negative**, not an
+  omission.
+- **Phase 4 has ZERO test blast radius** — **no test pins the `### Always` item count**, so
+  appending item 16 breaks nothing and needs no test update. Verified by search, not assumed.
 
 *Counter-argument, recorded:* a ticked checkbox is not a passing test. `mark-complete` ticks
 every box by default (fact 4), so on a package with no test command the new box would read
@@ -952,6 +976,17 @@ and extended to five lines.
    type-check/lint/test grouping argues for insertion, byte-stability of existing output argues
    for append. Whichever is chosen, `storage-rules.md` matches it exactly.
 
+   **✅ RESOLVED 2026-08-27 at build time — APPEND-LAST, by orchestrator ruling**, on three
+   reasons: **(a) byte-stability** — appending leaves the four existing lines at their existing
+   positions, so no shipped task-file skeleton changes shape above the new line; **(b) no
+   invented grouping** — inserting after the linter line would assert a type-check/lint/test
+   cluster the file has never had, which is a new convention smuggled in as a formatting choice;
+   **(c) house precedent** — the repo's standing move for a fixed list is append (plan 87's
+   `### Always` item 15, plan 89's own item 16). ⚠ **Recorded because the build initially
+   inserted mid-list and reversed before the ruling arrived** — a future session reading only
+   the final diff would not know the alternative was tried, and this note stops it being
+   re-litigated as an oversight.
+
 **Tests — written and RUN in the same turn as the code**, per repo discipline, and round-tripped
 through the real producer: a test invokes `render-task-file` and asserts all FIVE lines verbatim,
 plus a sibling asserting the rendered skeleton still parses under
@@ -968,8 +1003,19 @@ and left annotated when passed as `--unverified-box`.
   idempotence).
 - **`storage-rules.md`'s skeleton and `_DONE_WHEN_FIXED_LINES` are byte-consistent** — diff them
   line by line; the code comment asserts they are.
+  **✅ AMENDED 2026-08-27 — this manual diff is now a STANDING REGRESSION, not a one-time check.**
+  python-reviewer's finding 2 was closed in-build by a new durable test,
+  **`test_done_when_fixed_lines_match_storage_rules_skeleton`**, which pins the two surfaces to
+  each other. **A future edit to either that forgets the other now fails the suite** instead of
+  waiting for a reader to re-run this criterion by hand.
 - **OQ-5's two fixture files are confirmed untouched** and the no-op is recorded in the commit
   message.
+- ⚠ **Drive-by recorded 2026-08-27, python-reviewer finding 1 — a pre-existing staleness, NOT a
+  defect this plan introduced.** `src/devforge/lib/_implement/_cli.py:83`'s `verify-touched` help
+  string described the verb as type-check + lint only, **contradicting its own module docstring**
+  and stale since plan 17's Phase 2 added the test leg. It gained **`+ test`** in the same
+  commit. **D2 did not list this site** — it is help text, not a Done-When surface — and it is
+  logged here so a future reader does not mistake it for scope creep.
 - `git status` shows zero files modified under `src/commands/`, `src/agents/` or
   `src/constitution.md` — this phase is Python + `storage-rules.md` only.
 
@@ -1056,8 +1102,14 @@ instruction text inside an existing agent's existing structure.**
 
 - Instruction-reviewer clean. **The `yaml` meta-block is byte-identical** — diff it; this is
   also what justifies not running claude-code-guide.
-- **`grep -n "ADEQUATE\|GAPS FOUND" src/agents/qa-reviewer.md` returns the same two tokens in the
-  same places** — no third verdict value, no renamed token. Capture the pre-change output first.
+- **`grep -n "ADEQUATE\|GAPS FOUND" src/agents/qa-reviewer.md` returns the same two-token
+  vocabulary — no third verdict value, no renamed token.** Capture the pre-change output first.
+  ⚠ **AMENDED 2026-08-27 (instruction-reviewer nit): the original wording said *"the same two
+  tokens in the same places"*, which is COUNT-FALSE after the build** — OQ-6's ratified severity
+  floor legitimately adds a third *usage* of the existing `GAPS FOUND` token, inline at Approach
+  step 4. **The criterion is about the VOCABULARY, not the occurrence count**; a build that added
+  a third distinct verdict value fails it, one that cites an existing token in a new rule does
+  not.
 - **The pre-existing `weak` and `implementation-coupled` arms survive** — BOTH greps are run and
   BOTH still return step 4: `grep -n "weak" src/agents/qa-reviewer.md` and
   `grep -n "implementation-coupled" src/agents/qa-reviewer.md`. An edit that replaced the
@@ -1098,6 +1150,20 @@ Scope, two files:
   *"tsc/lint/no-secrets/no-debug"* enumeration and `:645`'s *"tsc + lint conditions"*. Both name
   the standing set and both go stale on Phase 1.
 
+**⚠ AMENDED 2026-08-27 at build time — the phase's actual `implement/main.md` footprint was
+THREE sites and one drive-by, not the single site this scope named:**
+
+- **Site 1 + site 2 — the fact-4a paragraph, BOTH contradicting sentences** (facts 4a-i and the
+  build constraint below): the closing *"On a clean `pass`…"* sentence AND the opening
+  enumeration asserting a clean `pass` confirms all conditions.
+- **Site 3 — the outputs bullet at `:36`** (fact 4a-ii), falsified by omission and now carrying
+  the second-trigger clause.
+- **Drive-by, recorded as pre-existing staleness rather than as this plan's defect:**
+  `references/agent-brief.md:13` listed the post-return scope-aware checks as type-check + lint
+  and gained **`+ tests`**. **D2 did not list this site** — it is a sentence that was already
+  incomplete before this plan, found while reading the neighbourhood, and fixed in the same
+  commit rather than left to rot.
+
 **⚠ Build constraint — one existing sentence CONTRADICTS D4 and must itself be rewritten, not
 just appended to.** The same fact-4a paragraph closes with the categorical sentence
 *"On a clean `pass`, pass NO `--unverified-box` arguments:"* (verified verbatim at
@@ -1121,6 +1187,16 @@ whole rule. Its neighbouring `scope-and-approve` sentence stays byte-unchanged.
   either nothing or only an occurrence that carries the Tests carve-out in the same sentence.
   **Capture the pre-change output first** (today it returns exactly one unqualified hit). A run
   that adds D4's clause and leaves this grep unchanged has shipped the contradiction.
+- ⚠ **AMENDED 2026-08-27 (build finding A) — the criterion above is NOT sufficient on its own,
+  because the contradiction had TWO sentences.** The same paragraph's **opening enumeration**
+  also stated categorically that a clean `pass` confirms **all** conditions (fact 4a-i). **BOTH
+  sentences must carry the carve-out**, and a build that greps only for the closing one passes
+  this phase while shipping the opening one intact. Both were rewritten 2026-08-27.
+- ⚠ **AMENDED 2026-08-27 (build finding D) — Phase 3 has THREE `implement/main.md` sites, not
+  two.** The outputs bullet at `:36` was falsified **by omission** (it described the annotated
+  box as a scope-and-approve outcome only) and now carries the second-trigger clause (fact
+  4a-ii). **`:321` and the `:165`-area status bullets are VERIFIED NO-OPS** — recorded so the
+  next session does not re-open them.
 - **The clause is scoped to the `pass` path only** — `self_repair` / `failed` /
   `tooling_unavailable` arms are byte-unchanged, and the `scope-and-approve` arm's existing
   three-condition sentence (fact 4a) is untouched.
@@ -1156,6 +1232,31 @@ Scope, one file: `src/CLAUDE.md`'s `### Always` list — **one appended item, no
 
 ### Phase 5 — `REGRESSION_GATE` documentation + docs sweep + dated reconciliation notes
 
+**✅ STATUS 2026-08-27 — DONE (build), in this commit. Both halves landed.**
+
+**D6's note** went into `src/commands/configure/main.md` at the END of **Phase 5.1 — Render
+config**, after that sub-step's exit codes: the site where `render-config` writes
+`project-config.json`, which is the moment a reader meets a key no phase set. It states that
+`regression_gate` carries the built-in default `"full"` and has no prompt, that `render-config`
+emits it as `REGRESSION_GATE`, that `/devforge:verify`'s PHASE 4.3 gate reads it and treats an
+absent value as `"full"`, that its values are `off` and `full`, and how to change it via
+`configure_helper set-regression-gate` plus a re-render. It closes by forbidding a Phase-4 prompt
+for it. **No new prompt, no count edits — arm (b) exactly.**
+
+**The docs half** landed alongside: the status header flip; the dated build amendments (facts
+4a-i and 4a-ii, Phase 1's ordering resolution + its `_cli.py` drive-by + the new byte-consistency
+test, Phase 2b's Verify wording correction, Phase 3's third site + its `agent-brief.md` drive-by,
+and the four further verified no-ops under D2); `CHANGELOG.md`; the repo-root index entry; the
+`PLAN-STATUS-ARCHIVE.md` mirror; and the two plan-document checks below, both recorded as
+findings.
+
+**⚠ One live number was verified against fact 11 while writing the note, and it CONFIRMS rather
+than contradicts it.** `configure/main.md`'s Phase-5 preamble says `configure.yaml` is *"fully
+populated (29 fields set)"*, and `_configure/_schema.py`'s `FIELD_SCHEMA` holds **30** fields.
+The difference is exactly `regression_gate` — 23 set in Phase 3 plus 6 in Phase 4 is 29, and the
+30th is never set by any phase. **The gap D6 documents is visible in the file's own arithmetic**,
+and the note cites that 29/30 split rather than introducing a competing count.
+
 **Route: instruction-author → instruction-reviewer** for every `src/` and plan-document edit;
 **+ claude-code-guide** for `src/commands/configure/main.md`, which ships.
 
@@ -1178,8 +1279,21 @@ Scope:
 - **`86-FOWLER-REFACTORING-GAPS-PLAN.md`** — a dated note **only if** its F3 text or its
   `## Non-goals` would be read as covering this plan's ground. **Read it and record the result
   either way** — "checked, no claim to amend" is a finding.
+  **✅ CHECKED 2026-08-27 — NO AMENDMENT OWED, and the reasoning is recorded so it is not
+  re-derived.** Its F3 governs the **regression-net declaration** at `/devforge:breakdown` — a
+  decomposition-time authoring duty over behavior-PRESERVING surfaces with no covering test.
+  **Plan 89 touches none of that**: D2's Done-When line is a per-task completion condition, D7's
+  clauses bind tests asserting CHANGED behavior, and D7's clause 1 explicitly excludes a test
+  pinning unaltered existing behavior — **which is exactly F3's subject, so the two are disjoint
+  by construction rather than by luck.** Its `## Non-goals` bans Python and new gate numbers in
+  ITS build and makes no claim about later plans. **Nothing in plan 86 is edited.**
 - **`87-ARTIFACT-LANGUAGE-GUARD-PLAN.md`** — **check only, and record the no-op as deliberate.**
   Its D1 advisory-WARN precedent is CITED by D4's arm (a) and nothing in it changes.
+  **✅ CHECKED 2026-08-27 — NO-OP CONFIRMED, deliberate.** D4's arm (a) was NOT taken (arm (b),
+  instruction-only, was ratified), so plan 87's advisory-WARN precedent is cited by a path this
+  build did not walk. Its own coverage bound — the detector rides `artifact_helper
+  commit-artifacts` and NOT `implement_helper wip-commit` — is unchanged by anything here.
+  **Nothing in plan 87 is edited.**
 
 **Commits: one per phase, no AI-attribution trailer** (this repo's commits carry none — match
 the trailer-free convention), lowercase terse subject with a scope prefix matching
@@ -1477,12 +1591,13 @@ released. Re-check each from the code rather than from a Status line.
 
 ## When resuming work
 
-1. **Read this file in full, then `## Verified mechanics` again** — **thirty-three rows**
-   (seventeen numbered, 1–17, plus sixteen lettered: 2a, 2b, 2c, 2d, 3a, 3b, 3c, 3d, 4a, 7a, 8a,
-   8b, 9a, 9b, 11a, 11b), each checkable in under a minute. **Count the live table rather than
-   trusting this number if you add or remove one.** **If rows 2, 2a, 2b, 3, 4, 4a, 8a, 8b, 9b or
-   11 no longer hold, stop and re-derive**: they are D1's whole basis, D2's blast radius, D4's
-   mechanism, D7's two sites and its no-op, and D6's gap.
+1. **Read this file in full, then `## Verified mechanics` again** — **thirty-five rows**
+   (seventeen numbered, 1–17, plus eighteen lettered: 2a, 2b, 2c, 2d, 3a, 3b, 3c, 3d, 4a,
+   **4a-i, 4a-ii**, 7a, 8a, 8b, 9a, 9b, 11a, 11b), each checkable in under a minute. **Count the
+   live table rather than trusting this number if you add or remove one.** **If rows 2, 2a, 2b,
+   3, 4, 4a, 4a-i, 8a, 8b, 9b or 11 no longer hold, stop and re-derive**: they are D1's whole
+   basis, D2's blast radius, D4's mechanism and its TWO-sentence contradiction, D7's two sites
+   and its no-op, and D6's gap.
 2. **Read `src/devforge/lib/breakdown_helper.py`'s `cmd_render_task_file` in full before touching
    it** — the optional `--property-targets` / `--dead-code-removal` lines, their byte-identity
    guarantees and the fixed-lines comment all constrain Phase 1.
