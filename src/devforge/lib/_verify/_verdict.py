@@ -3,7 +3,8 @@
 Public surface
 --------------
   compute_verdict(ac_results, mechanical_status, review_findings,
-                  hygiene, ac_verification_mode, regression, dead_code) -> dict
+                  hygiene, ac_verification_mode, regression, dead_code,
+                  e2e) -> dict
 
       Deterministic APPROVED / NEEDS WORK / REJECTED decision.
 
@@ -31,6 +32,11 @@ Public surface
       dead_code : dict or None
           Output of check_dead_code_removal (plan 71 D4/OQ-2(a)).  See the
           ``dead_code`` parameter docs on ``compute_verdict`` below.
+      e2e : dict or None
+          Output of run_e2e_gate (plan 90 D3).  See the ``e2e`` parameter
+          docs on ``compute_verdict`` below.  UNLIKE regression and
+          dead_code, e2e NEVER adds a blocker under any status — it is
+          reasons-only (plan 90 D3's ratified fork (i)).
 
       Returns
       -------
@@ -76,6 +82,11 @@ Advisory (never blocks verdict):
     Surfaced as a reason line for visibility but NEVER added to blockers and
     NEVER causes NEEDS WORK on its own.  Hygiene is a heuristic over a heuristic;
     a clean feature should not be demoted to NEEDS WORK by it.
+  - e2e_status: the run_e2e_gate status (plan 90 D3's ratified fork (i)).
+    Any status other than "off" adds exactly one reasons line naming the
+    status and its note.  NEVER added to blockers, under any status
+    (including "e2e-failing") — v1 gates nothing on the e2e result. status
+    "off" is silent: no reasons line at all (plan 90 D8).
 
 Step 2 — mode-aware AC blocking:
   Under ac_verification_mode == "off", AC failures are ADVISORY only — they
@@ -202,6 +213,7 @@ def compute_verdict(
     ac_verification_mode,  # type: str
     regression=None,   # type: Optional[Dict]
     dead_code=None,    # type: Optional[Dict]
+    e2e=None,          # type: Optional[Dict]
 ):
     # type: (...) -> Dict
     """Compute the APPROVED / NEEDS WORK / REJECTED verdict.
@@ -242,6 +254,18 @@ def compute_verdict(
         of change-induced dead code — it confirms only that the rows the
         architect DECLARED at ``/plan`` were removed; undeclared deadness
         is out of scope for this gate (see ``_dead_code.py``).
+    e2e : dict or None
+        Output of run_e2e_gate (plan 90 D3's ratified fork (i)).  When the
+        dict's "status" is anything other than "off", ONE reasons line is
+        added naming the status and the dict's "note".  status "off"
+        (no E2E_COMMAND configured, or e2e param omitted/None) adds
+        NOTHING — no reasons line at all (plan 90 D8: silent by default).
+        IMPORTANT: e2e NEVER adds a blocker and NEVER affects the verdict,
+        under ANY status including "e2e-failing" — v1 is advisory-only.
+        The verdict is IDENTICAL across all four e2e statuses given the
+        same other inputs; this is the mechanical distinction between the
+        ratified fork (i) and the un-built fork (ii), where "e2e-failing"
+        would add a NEEDS WORK blocker.
 
     Returns
     -------
@@ -484,6 +508,21 @@ def compute_verdict(
             "This is a NEEDS WORK blocker (not REJECTED; confirms only the "
             "DECLARED kill-list — undeclared deadness is not checked, "
             "honest bound per plan 71 D4).".format(len(violation_rows))
+        )
+
+    # E2E gate (plan 90 D3, ratified fork (i)) — REASONS-ONLY, NEVER a
+    # blocker, under ANY status.  Unlike regression and dead_code above,
+    # this fold never touches `blockers` and never affects `is_rejected`
+    # or the final verdict — the verdict is IDENTICAL across all four
+    # e2e statuses given the same other inputs (the mechanical proof that
+    # fork (i) shipped rather than fork (ii)).  status "off" is silent —
+    # no reasons line at all (plan 90 D8).
+    e2e_status = (e2e or {}).get("status")
+    if e2e_status and e2e_status != "off":
+        reasons.append(
+            "E2E run ({0}, advisory — does not block the verdict): {1}".format(
+                e2e_status, (e2e or {}).get("note", "")
+            )
         )
 
     # Hygiene flags — ADVISORY only, never added to blockers

@@ -766,6 +766,19 @@ def cmd_compute_verdict(args):
         # would reach compute_verdict and crash on dead_code.get(...).
         return 2
 
+    # E2E gate result (plan 90 D3; optional — allow_missing=True so
+    # existing callers that omit --e2e are byte-identical, mirroring
+    # --regression and --dead-code above).
+    e2e_path = getattr(args, "e2e", None) or ""
+    e2e = _load_json(e2e_path, "--e2e", allow_missing=True)
+    if e2e == "ERROR":
+        # allow_missing=True never returns the sentinel for a missing/unreadable
+        # path (both degrade to None); "ERROR" here can only come from the
+        # malformed-JSON branch, which _load_json always treats as fatal
+        # regardless of allow_missing. Without this check, the string "ERROR"
+        # would reach compute_verdict and crash on e2e.get(...).
+        return 2
+
     result = compute_verdict(
         ac_results=ac_results,
         mechanical_status=mech_status,
@@ -774,6 +787,7 @@ def cmd_compute_verdict(args):
         ac_verification_mode=ac_mode,
         regression=regression,
         dead_code=dead_code,
+        e2e=e2e,
     )
 
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
@@ -1018,6 +1032,29 @@ def cmd_regression_gate(args):
     return 0
 
 
+def cmd_e2e_gate(args):
+    # type: (argparse.Namespace) -> int
+    """Run the e2e-suite gate and emit JSON to stdout (plan 90 D3).
+
+    Runs the configured E2E_COMMAND once, at HEAD, in the real
+    source_root — never in a worktree, never at the merge-base, never
+    twice.  Fail-soft: every internal failure is a status, never a crash.
+
+    Returns:
+      0 — ALWAYS (fail-soft; every internal error produces
+          status="inconclusive")
+    """
+    from ._e2e import run_e2e_gate
+
+    workspace_root = getattr(args, "workspace_root", None) or os.getcwd()
+    workspace_root = os.path.realpath(workspace_root)
+
+    result = run_e2e_gate(workspace_root)
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
 def cmd_file_bugs(args):
     # type: (argparse.Namespace) -> int
     """Write bug files in bugs/NNN-<slug>.md format (storage-rules.md format).
@@ -1197,6 +1234,16 @@ _SUBCOMMAND_REGISTRY = [
             "and is now failing (green→red only). Pre-existing failures are not gated."
         ),
         cmd_regression_gate,
+    ),
+    (
+        "e2e-gate",
+        (
+            "Fail-soft e2e-suite run (plan 90 D3): run the configured "
+            "E2E_COMMAND once, at HEAD, in the real source_root; emit JSON "
+            "with status off/inconclusive/e2e-clean/e2e-failing. ALWAYS "
+            "exits 0 — no status gates the verdict in v1."
+        ),
+        cmd_e2e_gate,
     ),
 ]
 
@@ -1499,6 +1546,18 @@ def _register_subcommands(subparsers) -> None:
                     "rows exist for this feature."
                 ),
             )
+            sp.add_argument(
+                "--e2e",
+                default=None,
+                dest="e2e",
+                metavar="PATH",
+                help=(
+                    "Path to JSON file from e2e-gate (plan 90 D3). Adds a "
+                    "reasons line naming the status and note; NEVER adds a "
+                    "blocker, under any status (advisory-only in v1). "
+                    "Omit when the e2e gate was not run or returned off."
+                ),
+            )
 
         elif verb == "render-report":
             sp.add_argument(
@@ -1692,6 +1751,18 @@ def _register_subcommands(subparsers) -> None:
                     "or 'off' (skip entirely). "
                     "Omit to read REGRESSION_GATE from project-config.json "
                     "(default 'full' when the key is absent)."
+                ),
+            )
+
+        elif verb == "e2e-gate":
+            sp.add_argument(
+                "--workspace-root",
+                default=None,
+                dest="workspace_root",
+                metavar="DIR",
+                help=(
+                    "Install root directory (where .devforge/ lives). "
+                    "In wrapper mode this is the wrapper root. Default: CWD."
                 ),
             )
 

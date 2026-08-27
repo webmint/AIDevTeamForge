@@ -723,12 +723,12 @@ class TestLauncherSmoke(unittest.TestCase):
 
     def test_registry_has_expected_verbs(self):
         """Phase 1: 2; Phase 2: +4 = 6; Phase 4: +2 = 8; Phase 5: +5 = 13; regression: +1 = 14;
-        plan 71 Phase 4 dead-code removal: +1 = 15."""
+        plan 71 Phase 4 dead-code removal: +1 = 15; plan 90 Phase 4 e2e gate: +1 = 16."""
         from _verify._cli import _SUBCOMMAND_REGISTRY
-        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 15)
+        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 16)
 
     def test_registry_verb_names(self):
-        """F5: all 15 verb names must be present — a count-only assertion misses swaps."""
+        """F5: all 16 verb names must be present — a count-only assertion misses swaps."""
         from _verify._cli import _SUBCOMMAND_REGISTRY
         verbs = {v for v, _, _ in _SUBCOMMAND_REGISTRY}
         expected = {
@@ -750,6 +750,8 @@ class TestLauncherSmoke(unittest.TestCase):
             "regression-gate",
             # Dead-code removal confirmation (plan 71 Phase 4):
             "check-dead-code-removal",
+            # E2E gate (plan 90 Phase 4, D3):
+            "e2e-gate",
         }
         self.assertEqual(verbs, expected,
                          msg="Registry verb set mismatch — a verb was added, removed, or renamed")
