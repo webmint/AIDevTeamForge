@@ -4,6 +4,40 @@
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
 
+**Amended 2026-08-27 — staleness reconciliation after plan 89 shipped (no ratification content; every D and OQ stays OPEN):**
+
+- **Plan 89 is DONE (build) 2026-08-27** — its Phases 0–5 are complete and its Phase 6
+  consumer e2e is DEFERRED, **not waived**. **So this plan definitively ships SECOND**, and
+  Phase 5's coordination rule — *"whichever ships second reads the LIVE text of each shared
+  surface and re-derives its edit from what it finds"* — now names **THIS** plan
+  unconditionally, where it was drafted as a conditional binding on whichever went first.
+- **All THREE unconditional shared surfaces MOVED.** `src/CLAUDE.md`'s `### Always` list is
+  now **SIXTEEN** items, item 16 being *"**Test behavior changes** — every change to
+  observable behavior ships with a test that asserts it; the configured test command must
+  pass on changed files before task completion"*; `src/devforge/storage-rules.md`'s task-file
+  Done-When skeleton now carries **FIVE** standing lines, the fifth being *"Tests pass on
+  changed files (see Development Commands section)"*; and `src/agents/qa-reviewer.md`'s
+  **Approach step 4** and **Rule 3** now carry plan 89's vacuous-test shapes with its OQ-6
+  severity floor inline. ⚠ **Step 6's mobile-parity sentence was verified INTACT and
+  byte-identical on 2026-08-27** — the clobber hazard Phase 3 and Trap 7 name has not fired,
+  and confirming that again at build time is still this plan's job.
+- **Plan 89's OQ-3 RESOLVED to arm (i)** — accept §3.4's emptiness, add nothing — so
+  **`src/agents/qa-engineer.md` was NOT touched by plan 89 and is NOT a shared surface.** The
+  conditional-fourth branch never fired: this plan is that file's only prospective editor,
+  and **D5's SECTION fork applies to virgin text**.
+- ⚠ **This block records OBSERVED STATE as of 2026-08-27 and does NOT substitute for the
+  live read Phases 3 and 5 owe at build time.** The coordination rule binds the **READ**, not
+  the edit; a build that quotes these bullets instead of opening the files has done the exact
+  thing the rule forbids.
+- **Where the per-site notes are:** facts **20**, **21a** and **28**; **Phase 1's build
+  constraint 3**; **D3's second reasoning bullet**; **Phase 3's** `qa-reviewer.md` scope
+  bullet **and** its matching Verify bullet; **Phase 5's** `configure/main.md`,
+  `src/CLAUDE.md`, `storage-rules.md` and plan-89 bullets; the **`## Non-goals`**
+  constitution-edit bullet; **Trap 7**; the **`## Dependencies + related`** entries for
+  plans **89** and **85**; and **`## When resuming work` step 1**. ⚠ **This index is a
+  convenience, NOT a certified-exhaustive map** — a dated note found elsewhere in this file
+  is an omission in this list, not an unauthorized edit.
+
 This plan document contains no private-client identifiers and is intended to be
 **committed normally**, unlike the deliberately-untracked plans 73/74/75.
 
@@ -151,15 +185,16 @@ the string, never the `:NNN`.
 | 17 | **The no-gate declaration precedent (plan 86 F3).** `Regression net:` is a fixed-prefix line in free-form `## Change Details`, and its own text states both bounds: *"NOTHING CHECKS the declaration: there is no Phase 3.5 gate for it, no `verify-*` verb, and no helper flag"*, and *"the TRIGGER RESTS ON A BELIEF, not on a measurement"*. It also states *"this lane adds NO flag and NO header field"* | `src/commands/breakdown/main.md:410`–`:419` |
 | 18 | **`qa-engineer` is a real executor.** The Agent Assignment table's *"Dedicated test-authoring / coverage-gap task"* row routes to it; the separate-task rule fires *"ONLY when decomposition or the Phase-2 architect consult flags a coverage gap or a test-heavy acceptance criterion"*; and *"`qa-engineer` is `model_tier: do` — a valid implementer"*. ⚠ Its meta-block carries **no `tools:` key**, so it inherits the full tool surface (unlike `qa-reviewer`, which is locked to `Read, Grep, Glob, Bash`) | `src/commands/breakdown/main.md:274`, `:283`; `src/agents/qa-engineer.md:1`–`:6`; `src/agents/qa-reviewer.md:4` |
 | 19 | **The config surface a new key must pass through — SIX files.** `FIELD_SCHEMA` (30 `(name, kind)` pairs), `ENUM_FIELDS`, `FIELD_DEFAULTS`; the setter in `_cmds_set.py`; the verb registration in `_cli.py`; `_PROJECT_CONFIG_KEY_ORDER` in `_render.py` (38 keys); the display group tuple in `_summary.py`; and `_cmds_verify.py`, which requires **every** field non-null with a THREE-name exemption set `_AC_RUNTIME_FIELDS` gated on `ac_verification_mode == "runtime-assisted"` | `_configure/_schema.py:18`–`:93`; `_cmds_set.py:526`; `_configure/_cli.py:306`–`:310`; `_render.py:19`–`:69`; `_summary.py:52`–`:61`; `_cmds_verify.py:19`–`:59` |
-| 20 | **The defaulted-and-unasked-key precedent.** `regression_gate` is in `FIELD_SCHEMA`, has an enum `{off, full}`, a `FIELD_DEFAULTS` entry `"full"`, and a registered `set-regression-gate` verb — and **`/devforge:configure` never calls it**: it appears in neither the Phase-3 setter mapping (22 rows) nor the Phase-4 questions (Q9–Q12) | `_configure/_schema.py:69`, `:84`, `:92`; `_configure/_cli.py:306`; `src/commands/configure/main.md:208`–`:231`, `:274`–`:299` |
+| 20 | **The defaulted-and-unasked-key precedent.** `regression_gate` is in `FIELD_SCHEMA`, has an enum `{off, full}`, a `FIELD_DEFAULTS` entry `"full"`, and a registered `set-regression-gate` verb — and **`/devforge:configure` never calls it**: it appears in neither the Phase-3 setter mapping (22 rows) nor the Phase-4 questions (Q9–Q12). ⚠ **AMENDED 2026-08-27 — the "undocumented" reading no longer holds; the "unasked" half does.** Plan 89's **D6** shipped a note in `configure/main.md` (anchor *"One emitted key is set by no phase of this command"*) naming the key, its `"full"` default, its `set-regression-gate` setter and its `/devforge:verify` PHASE-4.3 reader, so **the key IS documented in the command's own text as of 2026-08-27**. **The precedent this row supplies to D1's counter-argument stands byte-true**: still no Phase-3 setter-mapping row, still no Phase-4 question, and D6's note explicitly forbids adding one — what is corrected is only the reading that a defaulted-and-unasked key is also an unmentioned one | `_configure/_schema.py:69`, `:84`, `:92`; `_configure/_cli.py:306`; `src/commands/configure/main.md:208`–`:231`, `:274`–`:299`; `:316` (plan 89 D6, verified 2026-08-27) |
 | 21 | ⚠ **A live count drift that a new field will make worse.** `_cmds_verify.py`'s docstring says *"All 30 configure.yaml fields populated"* and `FIELD_SCHEMA` holds 30 pairs; `configure/main.md` says *"fills 29 configuration fields"*, *"canonical state (29 fields)"*, *"37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived"*, and *"Once `configure.yaml` is fully populated (29 fields set)"* — while `_PROJECT_CONFIG_KEY_ORDER` holds **38**. **The markdown is one behind the code, presumably since `regression_gate` landed.** This plan does not own the drift, but Phase 1 touches exactly those counts | `_cmds_verify.py:28`; `_configure/_schema.py:18`–`:70`; `src/commands/configure/main.md:9`, `:13`, `:14`, `:303`; `_render.py:19`–`:69` |
+| 21a | ⚠ **AMENDED 2026-08-27 — three corrections; the row above is no longer either complete or uniformly true.** **(i) A SIXTH count-bearing site now exists.** Plan 89's D6 note (anchor *"One emitted key is set by no phase of this command"*) states *"The schema carries 30 fields; the 29 this command populates are set in Phase 3 (23 detection-derived values) and Phase 4 (6 user-only prompts)"* — **the first in-file statement of the LIVE schema count.** So the file is **no longer uniformly one behind**: the *"fills 29 configuration fields"* / *"fully populated (29 fields set)"* statements are now **explained-correct arithmetic** under that note (23 + 6 = 29, the 30th set by no phase), while the TOTALS — *"canonical state (29 fields)"* and *"37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived"* — **remain behind the code (30 / 38).** **(ii) The four-site list above was INCOMPLETE at drafting**, independently of plan 89: the completion message is a FIFTH pre-existing count site (*"The 29 configuration fields are persisted"*, *"carries all 37 keys"*). **(iii) Consequence for THIS plan.** Phase 1's `e2e_command` falsifies the D6 note's numbers too — schema → **31**, and if `/devforge:configure` seeds the field (D1's seeding step) the populated and detection-derived counts move as well. ⚠ **Phase 5's opening `grep -rn "e2e\|E2E"` sweep does NOT reach that note** — it carries no `e2e` token — so it must be reconciled **EXPLICITLY**, **updated in place and never deleted**: it is plan 89's ratified D6 deliverable, not incidental prose | `src/commands/configure/main.md:9`, `:13`, `:14`, `:303`, `:316`, `:483`; live grep 2026-08-27 |
 | 22 | **The don't-guess rule this plan must mirror**, verbatim: `test_command` is *"`MANIFESTS_JSON.packages[<path>].scripts.test` (or the ecosystem-equivalent test script). `null` when the package has no test script — do NOT invent an ecosystem-default guess."* | `src/commands/configure/main.md:134` |
 | 23 | **PHASE 3.5 holds exactly six `verify-*` gates today**, and its opening line says so — *"Six forcing-functions walk the task set mechanically."* They are `verify-contract-chain`, `verify-ac-coverage`, `verify-agent-roster`, `verify-manifest-present`, `verify-property-coverage`, `verify-dead-code-coverage`. The first two carry a documented `## Risk Assessment` deferral; the last four are HARD with **NO bypass**. **Plan 75's tripwire counts THIS sequence**, not prose checklists | `src/commands/breakdown/main.md:477`–`:479`, `:484`, `:494`, `:504`, `:517`, `:529`, `:544` |
 | 24 | **`/devforge:summarize` reads only `verification.md`** for AC status and the referenced verdict (`read-verification`), takes *"AC status … VERBATIM from `verification.md`'s table"*, and is *"Read-only on inputs"* | `src/commands/summarize/main.md:127`, `:133`, `:213`, `:214` |
 | 25 | **`/devforge:verify`'s frontmatter is three keys** — `name`, `description`, `argument-hint` — with **no `allowed-tools`**. So the command already invokes every `verify_helper` verb without a pre-approval grant | `src/commands/verify/main.md:1`–`:5` |
 | 26 | **Constitution §3.4 Testing Requirements is `[project-specific]`**, holding only `- **Framework**: {{TESTING}}` plus a multi-stack note, and it is **NOT** in `_UNIVERSAL_SECTIONS` (`"§3.5", "§3.6", "§3.7", "§3.8", "§4.1", "§4.2", "§4.3", "§6.1", "§6.2", "§6.3", "§6.4"`). A §3.4 edit would therefore NOT trip the universal-defaults drift check — and a §3.6 edit would, as plan 86 recorded | `src/constitution.md:55`–`:60`; `_constitute/_schema.py:296`–`:300` |
 | 27 | `CHANGELOG.md` carries a `## [Unreleased]` section whose first subsection is `### Added` | `CHANGELOG.md:8`, `:10` |
-| 28 | **`src/CLAUDE.md`'s `### Always` list held 15 items on 2026-08-26**, item 15 being *"English in files"*; its `### Verification (explicit, scope-aware — no per-edit hooks)` section describes the scope-aware flow in six numbered steps and closes *"Full specification in `/devforge:implement`."* ⚠ **This count is a dated observation with a KNOWN mover: plan 89 appends to that list.** Every use of it in this plan is a count-live instruction, never the literal 15 | `src/CLAUDE.md`, `### Always` + `### Verification` |
+| 28 | **`src/CLAUDE.md`'s `### Always` list held 15 items on 2026-08-26**, item 15 being *"English in files"*; its `### Verification (explicit, scope-aware — no per-edit hooks)` section describes the scope-aware flow in six numbered steps and closes *"Full specification in `/devforge:implement`."* ⚠ **This count is a dated observation with a KNOWN mover: plan 89 appends to that list.** Every use of it in this plan is a count-live instruction, never the literal 15. ✅ **AMENDED 2026-08-27 — the known mover MOVED.** Plan 89's Phase 4 appended item **16**, *"**Test behavior changes** — every change to observable behavior ships with a test that asserts it; the configured test command must pass on changed files before task completion"*, as a pure append leaving items 1–15 byte-identical (item 15 is still plan 87's *"English in files"*). **The list holds SIXTEEN items as of 2026-08-27** — and every use of the count in this plan **remains a count-live instruction**, never the literal 16 either | `src/CLAUDE.md`, `### Always` + `### Verification`; `src/CLAUDE.md:222`–`:223` verified 2026-08-27 |
 
 ### Claude Code authoring surface, verified against current docs
 
@@ -324,6 +359,10 @@ The argument for (i) is threefold and none of the three is aesthetic:
   adversarial stages already sit in sequence there; adding a third blocking stage here,
   from a plan with **no incident behind it**, decides a cost question by accretion instead
   of once.
+  ⚠ **CORRECTED 2026-08-27 — plan 85 has since ratified and shipped (DONE build
+  2026-08-26); see `## Dependencies + related`'s plan-85 bullet. The correction STRENGTHENS
+  this reason — the D8 concern is now ratified law, not a sibling proposal — it does not
+  weaken it.**
 - **e2e suites are the flakiest test tier there is** (OQ-4), and this plan builds no
   retry, no quarantine and no flake accounting. A blocking gate over an unaccounted flake
   source teaches its users to work around it, which is worse than not having it.
@@ -712,6 +751,11 @@ setter in `_cmds_set.py`, the verb registration in `_configure/_cli.py`,
    keys; the code says 30 / 38. Phase 1 makes them 31 / 39. **Phase 5 fixes the markdown to
    the LIVE number by counting, never by adding one to the printed number** — adding to a
    wrong number produces a differently wrong number.
+   ⚠ **AMENDED 2026-08-27 — the count surface is now SIX sites, not four (fact 21a).** Plan
+   89's D6 note is a sixth, and unlike the other five it states the LIVE schema count and its
+   23 + 6 split, so **this build moves its numbers too.** **The instruction is unchanged**:
+   count the live `FIELD_SCHEMA` and `_PROJECT_CONFIG_KEY_ORDER` tuples and write what you
+   counted — never increment a printed number, at any of the six.
 
 **Deliverable 2 — the detection actually runs.** `/devforge:configure` composes the seeded
 default from `.devforge/init.yaml`'s `test_infra.e2e`, which is empty on every real install
@@ -838,6 +882,13 @@ Scope, three files:
   same file. **Different sentences, so there is no contradiction to resolve — the hazard is
   writing over them from a stale copy.** If plan 89 shipped first, its step-4 and Rule-3 text
   must be present and byte-identical after this phase's edit.
+  ⚠ **AMENDED 2026-08-27 — the conditional is now determinate: plan 89 SHIPPED FIRST.** Its
+  step-4 and Rule-3 text is on disk (step 4 carries the three vacuous-by-construction shapes
+  at ≥ High plus the two further shapes; Rule 3 carries the failability clause), so this
+  phase **MUST** find both present and byte-identical after its own step-6 edit — the "if"
+  is discharged and only the obligation remains. **The live read is still owed at build
+  time**; this note records observed state on 2026-08-27, it does not stand in for opening
+  the file.
 
 **⚠ The Agent Assignment table gains NO row.** The dedicated test-authoring row already
 routes this work (fact 18), and adding a parallel e2e row would create two rows that both
@@ -861,6 +912,11 @@ match a test-authoring task — a routing ambiguity where none exists today.
   pre-change, and confirm `git diff` touches step 6 ONLY. **A diff that also rewrites step 4
   has overwritten a shipped plan from a stale read**, which is the one failure this shared
   surface can produce.
+  ⚠ **AMENDED 2026-08-27 — the "if" is discharged: plan 89 shipped first**, so this
+  criterion is now unconditional. Step 4's vacuous-test shapes and Rule 3's failability
+  clause are on disk and MUST survive byte-identical; step 6's mobile-parity sentence was
+  verified intact on 2026-08-27 and this phase is what puts it at risk. **Still capture both
+  pre-change from the live file** — the criterion tests the diff, not this note.
 - **Both agent files' fenced `yaml` meta-blocks are byte-identical** — diff them. This is
   what justifies not running claude-code-guide here AND what plan 89's Phase 2b relies on.
 - **`grep -rn "## Mobile Testing" .` returns either the renamed heading (fork a) or the
@@ -956,6 +1012,14 @@ Scope:
   **Count the live `FIELD_SCHEMA` and `_PROJECT_CONFIG_KEY_ORDER` tuples and write what you
   counted** — the printed numbers are already wrong, so incrementing them propagates the
   error. Four sites carry a count in that file; the setter-mapping table gains a row.
+  ⚠ **CORRECTED 2026-08-27 — SIX sites carry a count, not four** (fact 21a): the four quoted
+  in fact 21, the **pre-existing completion-message site** (*"The 29 configuration fields are
+  persisted"*, *"carries all 37 keys"*) that fact 21 did not list, and **plan 89's D6 note**
+  (anchor *"One emitted key is set by no phase of this command"*), whose *"30 fields"* /
+  *"23 detection-derived"* / *"6 user-only prompts"* arithmetic this build also moves.
+  **The D6 note is UPDATED IN PLACE with the post-build numbers — never removed and never
+  contradicted**: it is plan 89's ratified D6 deliverable, and its no-prompt instruction for
+  `regression_gate` is untouched by this plan.
 - **`src/CLAUDE.md`** — a `### Verification` note that the e2e run is feature-level and
   advisory, kept TIGHT (plan 08's always-on-trim discipline binds this file; every line
   costs tokens in every session). ⚠ **Read the `### Always` list and the `### Verification`
@@ -963,6 +1027,9 @@ Scope:
   to it**, so count it rather than trusting any number written here. **This plan proposes
   NO new `### Always` item**; if Phase 5 finds itself writing one, it has exceeded the
   plan.
+  ✅ **AMENDED 2026-08-27 — plan 89 HAS appended item 16** (*"Test behavior changes"*), so
+  the list holds SIXTEEN. **The count-live instruction stands unchanged**: count the list
+  rather than trusting 15 or 16, and this plan still proposes no new item.
 - **`src/devforge/storage-rules.md`** — the task-file schema section lists the two optional
   header lines (fact 15's `**Property targets**:` and `**Dead code removal**:`). **This
   lane adds neither** (D4/D5), so the correct edit is a sentence in the `## Change Details`
@@ -970,6 +1037,11 @@ Scope:
   reads the file and records which, because "checked, nothing to amend" is a finding.
   ⚠ **Plan 89 edits this file's `## Done When` skeleton**, so read the skeleton live and
   count its standing lines rather than trusting any count.
+  ✅ **AMENDED 2026-08-27 — plan 89 HAS made the skeleton FIVE standing lines**, the fifth
+  being *"Tests pass on changed files (see Development Commands section)"*, appended last and
+  pinned to `_DONE_WHEN_FIXED_LINES` by a standing test. **The count-live instruction stands
+  unchanged**: read the skeleton and count it, and note that the two optional header lines
+  this bullet names are a separate list that plan 89 did not touch.
 - **Repo-root `CLAUDE.md`** — the plan-90 one-liner appended to the active-plans index,
   matching the neighbouring entries' density. **Read the file live for the append point**;
   the index grows and a pre-computed position rots.
@@ -990,7 +1062,15 @@ Scope:
 - **`89-TEST-FOUNDATION-HARDENING-PLAN.md`** — a dated cross-reference recording that the
   shared surfaces were re-derived live per the coordination rule below, and what was found.
   ⚠ **Read plan 89 live**, and read its `## Cross-plan coordination — plan 90` section and
-  its **OQ-3** together: OQ-3 is what decides whether the third surface is shared at all.
+  its **OQ-3** together: OQ-3 is what decides whether the **FOURTH** surface
+  (`qa-engineer.md`) is shared at all (**corrected 2026-08-27 from *"the third surface"* — a
+  drafting-time inconsistency, not a change of position: that wording predates
+  `qa-reviewer.md` joining the shared set as the THIRD, after which every other passage in
+  this file calls `qa-engineer.md` the conditional FOURTH**).
+  ✅ **AMENDED 2026-08-27 — OQ-3 is RESOLVED to arm (i)** (accept §3.4's emptiness, add
+  nothing), so **the fourth surface is NOT shared**: plan 89 did not touch
+  `src/agents/qa-engineer.md`, and this plan is its only prospective editor. Read that
+  resolved answer live all the same; this note records it, it does not replace it.
 
 **⚠ The cross-plan coordination rule, and it binds whichever of 89/90 ships SECOND.**
 Plans 89 and 90 were drafted in the same 2026-08-26 session. Plan 89 ships FIRST by intent.
@@ -1127,6 +1207,13 @@ e2e lane has been observed.
   universal (fact 26); this plan edits neither, so no consumer install sees
   `verify-universal-defaults` drift — deliberately unlike plan 86, which accepted that
   cost for a §3.6 rule.
+  ⚠ **AMENDED 2026-08-27 — plan 89 accepted the same drift cost on 2026-08-27**, appending a
+  universal block to **§3.5** (chosen over §3.4 precisely because §3.4 is outside
+  `_UNIVERSAL_SECTIONS` and produces no drift finding at all). **So a consumer upgrading past
+  both plans 86 and 89 sees TWO drift findings, §3.5 AND §3.6.** **This plan still adds none
+  and contributes no third** — the non-goal is unchanged, and the reason to state this is
+  that a Phase-6 observer meeting two drift findings must not attribute either to the e2e
+  lane.
 - **Coupling to `ac_runtime_*`.** D6 — the runtime-assisted AC channel and the e2e suite
   stay separate, and the unification, if ever wanted, belongs in `ac_runtime_cli_command`.
 - **Repairing the unreachable `e2e` bucket value in `_probe_tier.py`** (fact 9). Recorded
@@ -1151,8 +1238,11 @@ e2e lane has been observed.
   the same 2026-08-26 session and shipping FIRST. **This plan builds the second floor and
   assumes nothing about the first beyond its existence.** ⚠ **The coordination rule in
   Phase 5 binds whichever ships second** — read the shared surfaces live. Plan 89 carries
-  the reciprocal rule in its own `## Cross-plan coordination — plan 90` section: **TWO
-  surfaces are shared unconditionally** — it appends one `### Always` item to `src/CLAUDE.md`
+  the reciprocal rule in its own `## Cross-plan coordination — plan 90` section:
+  **THREE surfaces are shared unconditionally** (**corrected 2026-08-27 from *"TWO"* — a
+  drafting-time inconsistency, not a change of position: the enumeration that immediately
+  follows already lists three, and plan 89's own quoted lead-in says THREE**) — it appends
+  one `### Always` item to `src/CLAUDE.md`
   at its Phase 4, edits `storage-rules.md`'s `## Done When` skeleton at its Phase 1, and
   (added 2026-08-26 by its **D7**) edits `src/agents/qa-reviewer.md` at **Approach step 4
   and Rule 3** under its **Phase 2b**. ⚠ **`qa-reviewer.md` is the one to miss**: this plan
@@ -1166,6 +1256,12 @@ e2e lane has been observed.
   plan edits unconditionally, and a FOURTH that is conditional and probably never joins
   them**"*. ⚠ **Its standing rule binds the READ, not the edit**, and it explicitly makes no
   claim about what this plan writes.
+  ✅ **AMENDED 2026-08-27 — plan 89 is DONE (build) 2026-08-27** (Phases 0–5 complete; its
+  Phase 6 consumer e2e DEFERRED, **not waived**). **It shipped first, so the coordination
+  rule now binds THIS plan**, all three unconditional surfaces have moved, and its **OQ-3
+  resolved to arm (i)** — the conditional fourth, `qa-engineer.md`, **did NOT join the shared
+  set**. See the amendment block at the top of this file for the observed state of each
+  surface; the live read is still owed at build time.
 - **`66-PROPERTY-BASED-TESTING-AND-NARROWING-RULE-PLAN.md`** — the declaration-lane shape
   D2 copies (fact 15) and the gate D4 declines to copy. **Read, and annotated in Phase 5;
   its mechanism is unchanged.**
@@ -1183,6 +1279,20 @@ e2e lane has been observed.
   cost the SUM, decide the policy once) is one of the three reasons D3 recommends advisory.
   **Untouched — and note it is still NOT STARTED**, so D8's closing rule about which plan
   ratifies second may bind against this one too if both are open at the same time.
+  ***(The preceding sentence is the DRAFTING-TIME clause, preserved verbatim and RETIRED
+  2026-08-27 — read it as the corrected wording below, never as a live claim about plan
+  85.)***
+  ⚠ **CORRECTED 2026-08-27 — the quoted clause *"it is still NOT STARTED"* is FALSE as of
+  2026-08-26.** Plan 85 is **DONE (build) 2026-08-26** — Phases 0–4 complete, Phase 5
+  consumer e2e deferred as a batched run (**not waived**) — so **the both-open contingency
+  is moot and never fired.** Its **D7 and D8 are now RATIFIED law rather than a sibling
+  plan's proposal**, which **strengthens** the obligation this plan's own D7 discharges
+  rather than weakening it: the cost line is owed because a ratified decision says a plan
+  adding a slow stage owes one. ⚠ **`D7` stays an overloaded token — plan 85's D7 and plan
+  89's D7 and this plan's D7 are three different decisions**; the rest of this bullet is
+  unchanged, and plan 85 is still untouched by this plan. **D3's third reason is likewise
+  restated, not withdrawn**: the drafted wording *"plan 85's D8 concern applies before plan
+  85 has even ratified"* is now the stronger case, D8 having ratified.
 - **`70-PIPELINE-WALLCLOCK-PROFILING-PLAN.md`** — the profiler whose Phase-2 numbers do not
   exist, which is why D7's cost line is structural. **Phase 6's wall-clock anchor is the
   first datum this plan family produces.**
@@ -1254,6 +1364,12 @@ survived, and **neither plan may touch the fenced `yaml` meta-block.**
 named here live rather than applying any diff computed in this plan. ⚠ **Treating
 `qa-engineer.md` as shared when it is not is the mirror error**, and it costs D5's SECTION
 fork a re-derivation it does not owe.
+⚠ **AMENDED 2026-08-27 — every conditional in this trap is now determinate.** Plan 89
+shipped first: all three unconditional surfaces have moved (`### Always` → 16 items,
+Done-When skeleton → 5 standing lines, `qa-reviewer.md` step 4 + Rule 3 rewritten), and its
+**OQ-3 RESOLVED to arm (i)**, so **`qa-engineer.md` did NOT join the shared set.** The trap
+itself is unchanged and still binds: **the live read is owed at build time**, and this note
+is observed state on 2026-08-27, not a substitute for opening the files.
 
 **Trap 8 — treating a clean Phase-6 run as evidence the gap was real.** There is no
 incident behind this plan and none is claimed. A working lane demonstrates a working lane.
@@ -1287,7 +1403,8 @@ than released. Re-check each from the code rather than from a Status line.
 ## When resuming work
 
 1. **Read this file in full, then `## Verified mechanics` again** — twenty-eight rows, each
-   checkable in under a minute. **If rows 3, 4, 5, 6, 8, 9, 15, 16, 17, 19 or 25 no longer
+   checkable in under a minute *(plus the lettered sub-row **21a**, added 2026-08-27 by the
+   staleness reconciliation; the NUMBERED facts are still twenty-eight)*. **If rows 3, 4, 5, 6, 8, 9, 15, 16, 17, 19 or 25 no longer
    hold, stop and re-derive**: they are D1's whole basis, D2's zero-Python carry, D3's
    fail-soft mould and its correctness argument, D4's precedent, D5's two forks, and Phase 4's
    frontmatter reasoning.
