@@ -1,11 +1,11 @@
 # 90 — The e2e test lane: a declared scenario, an owning task, and one feature-level run
 
-**Status:** **✅ DONE (build) 2026-08-27 — Phases 0–5 complete. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run.**
+**Status:** **✅ DONE (build) 2026-08-27 — Phases 0–5 complete. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run. CLOSED as DONE (build) by explicit maintainer decision 2026-08-27 — the maintainer intends to run Phase 6 (NOT waived).**
 
 - **Phase 0 CLOSED 2026-08-27** — D1–D8 and OQ-1–OQ-7 ALL answered, with **the four explicit picks answered in-session by the maintainer**: **D3** = advisory **fork (i)**, no status gates the verdict in v1, and its reporting sub-question resolved **reasons-only** (`compute-verdict` gains an `--e2e` input that adds a `reasons` line and **NO blocker**; `render-report` unchanged; no new `verification.md` section); **D1** = the top-level `E2E_COMMAND` key, with its **seeding fork resolved to the THIRD arm** — `/devforge:configure` composes the field's default from the `MANIFESTS_JSON` manifests it already parses, so **`init_helper`'s detector is NOT wired in and `.devforge/init.yaml`'s `test_infra.e2e` is read by nothing**; **D5's placement fork** = the **dedicated-e2e-directory rule**, with the runner-config exclude arm reaching NO emitted text; **D5's section fork** = **arm (a)**, rename and widen `## Mobile Testing`, every mobile bullet byte-identical. **Everything off the pick-list ratified AS RECOMMENDED.** Full record: `## Phase 0 close record`.
 - **Phases 1–5 DONE (build) 2026-08-27**, each through the route its own block names, with **Phase 1 and Phase 4's Deliverables 1–2 the only Python** and Phases 2, 3 and 5 dispatching none. Commits: `c1718ee` Phase 1 · `9cee99c` Phase 2 · `182f514` Phase 3 · `d4d7928` Phase 4 · the Phase-5 docs commit this status block rides in (Phase 0's close is `1a06463`) — **Phase 1 landed fourth, the phases being independent**, so the chain reads `1a06463` → `9cee99c` → `182f514` → `c1718ee` → `d4d7928`. **Each phase carries its own dated build record inside its block below** — read those before re-deriving anything: Phases 2, 3, 4 and 5 each record findings or divergences the plan as drafted did not predict.
 - **Phase 5 DONE (build) 2026-08-27, in this commit.** Both halves landed: **the `/devforge:configure` COMPOSER** (the three `configure/main.md` sites D1's ratified seeding arm needs — compose bullet, echo-template line, setter row) and the docs/reconciliation sweep (this status block, the per-phase build records, the six count sites recounted from the live tuples, `src/CLAUDE.md`, `CHANGELOG.md`, the repo-root index one-liner, the `PLAN-STATUS-ARCHIVE.md` entry, and the dated notes in plans 66, 86 and 89). **Without the composer the field would render, be settable, and stay `""` forever — D1's rejected alternative (c) reached by omission.**
-- **Phase 6 consumer e2e DEFERRED 2026-08-27 — user-driven HARD GATE, NOT run.** Everything Phases 1–5 produced is build-verified and **NOT consumer-validated**. The three known-answer anchors are unchanged — the declared happy path, the silent install, the broken flow — with **anchors 1 and 2 scored as a PAIR**, anchor 3 recording the verdict as a STRING, and **anchor 1 obligated to record the wall-clock delta as a NUMBER** (D7's discharge; see the Phase-5 build record). ⚠ **Ratification observes nothing and neither does a build:** no anchor has been run, and nothing in Phases 1–5 may be read as evidence any of them would pass.
+- **Phase 6 consumer e2e DEFERRED 2026-08-27 by explicit maintainer decision — the maintainer intends to run it (NOT waived) — user-driven HARD GATE, NOT run.** Everything Phases 1–5 produced is build-verified and **NOT consumer-validated**. The three known-answer anchors are unchanged — the declared happy path, the silent install, the broken flow — with **anchors 1 and 2 scored as a PAIR**, anchor 3 recording the verdict as a STRING, and **anchor 1 obligated to record the wall-clock delta as a NUMBER** (D7's discharge; see the Phase-5 build record). ⚠ **Ratification observes nothing and neither does a build:** no anchor has been run, and nothing in Phases 1–5 may be read as evidence any of them would pass.
 
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
@@ -1785,6 +1785,9 @@ exist. **Phase 6's anchor 1 owes the NUMBER**, and it is owed even if it turns o
 
 **Everything above is build-verified, NOT consumer-validated.** No phase above may claim the
 e2e lane has been observed.
+
+**DEFERRED 2026-08-27 by explicit maintainer decision — the maintainer intends to run it
+(NOT waived).**
 
 **Known-answer anchors**, so this is a regression anchor rather than an exploratory run:
 
