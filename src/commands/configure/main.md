@@ -313,6 +313,8 @@ Once `configure.yaml` is fully populated (29 fields set), render the consolidate
 - Exit 0 → success.
 - Exit 1 → `.devforge/init.yaml` missing or unreadable, OR `.devforge/configure.yaml` unreadable, OR write to `project-config.json` failed. Surface stderr verbatim and ABORT.
 
+**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 30 fields; the 29 this command populates are set in Phase 3 (23 detection-derived values) and Phase 4 (6 user-only prompts). The 30th, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
+
 ### Phase 5.2 — Prune agents
 
 Run `prune-agents` in dry-run first to surface keep/drop decisions, then ask the user to confirm + bulk-override before applying.
