@@ -1,7 +1,9 @@
 # Feature review report format
 
 This is the skeleton the `review_helper render-report` verb produces and writes
-to `specs/[feature]/review.md`. The helper owns the actual render
+to `<feature_dir>/review.md`. `<feature_dir>` — here and everywhere else in this
+document — is the feature directory `/devforge:review` resolved at its PHASE 0.2
+and passed to `render-report --feature`. The helper owns the actual render
 (`src/devforge/lib/_review/_report.py`); this file is orientation only — it
 documents the shape so the orchestrator knows what the report will contain. Do
 not hand-author the report; call `render-report`.
@@ -9,7 +11,7 @@ not hand-author the report; call `render-report`.
 ## Findings only — NO verdict
 
 This report is FINDINGS ONLY. `/devforge:review` does not render a verdict. The verdict
-is `/devforge:verify`'s job: `/devforge:review` produces `specs/[feature]/review.md`, and `/devforge:verify`
+is `/devforge:verify`'s job: `/devforge:review` produces `<feature_dir>/review.md`, and `/devforge:verify`
 consumes it (folding its findings into the verdict, and warning if it is
 missing). Do not add a pass/fail line, an approval line, or a "ready to ship"
 judgment — the report ends at the findings.
@@ -57,9 +59,9 @@ surfaced in the headline, never buried).
 ## Skeleton
 
 ```markdown
-# Feature Review — [feature] — YYYY-MM-DD
+# Feature Review — <feature_dir> — YYYY-MM-DD
 
-**Feature**: specs/[feature]
+**Feature**: <feature_dir>
 **Scope**: assembled feature diff (all tasks together) — [N files]
 **Finders invoked**: [list, with "skipped (not installed)" for missing]
 **Refuters invoked**: [list]
@@ -150,7 +152,7 @@ the verdict is `/devforge:verify`'s.
 The report carries an OPTIONAL `## Design Fidelity` section — present ONLY when
 `design-auditor` was dispatched for the runtime design-fidelity check (`/devforge:review`
 PHASE 2.5, which fires only when the feature has a `design/reference.html` and a
-valid `specs/[feature]/design-manifest.json` binding). `render-report
+valid `<feature_dir>/design-manifest.json` binding). `render-report
 --design-section` appends it AFTER `## Methodology` — as the last section when
 no `## Accessibility` section is also present, or immediately before
 `## Accessibility` when PHASE 2.5b also ran (see the `## Optional Accessibility
