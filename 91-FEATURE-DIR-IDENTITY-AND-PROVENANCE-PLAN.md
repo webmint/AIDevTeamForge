@@ -1,6 +1,6 @@
 # 91 — Feature-directory identity + artifact provenance
 
-**Status**: PHASE 0 CLOSED 2026-08-28 — every item (D1–D9 + OQ-1–OQ-8) ratified AS RECOMMENDED, D1 = (a); D4 and D6 ratified BY DIRECTIVE with the deliberation they demanded NOT performed (see `## Phase 0 close record`). **NOTHING IS BUILT** — Phase 1 is the next unbuilt phase and no build phase has started.
+**Status**: **PHASE 1 BUILT 2026-08-28** (18 commits on `develop-2.0-init`; see Phase 1's build record) — the resolution accessor landed in `_shared/feature_alloc.py`, all six depth-1 resolvers migrated onto it, and the prose sweep took `specs/` in command specs from **388 occurrences across 26 files to 69 across 17**, every survivor classified. **Build-verified only — NOT consumer-validated**; nothing has been run against a real install. PHASE 0 CLOSED 2026-08-28 — every item (D1–D9 + OQ-1–OQ-8) ratified AS RECOMMENDED, D1 = (a); D4 and D6 ratified BY DIRECTIVE with the deliberation they demanded NOT performed (see `## Phase 0 close record`). **Phase 1b is OUTSTANDING and NOT STARTED** — the sweep found a discovery-glob class Phase 1 could not close without Python it was not scoped to write, and Phase 3 breaks that class silently, so 1b sequences before Phase 2. Phases 2–6 have not started.
 **Created**: 2026-08-26
 **Branch**: `develop-2.0-init`
 **Origin**: maintainer design conversation 2026-08-26 (no incident, none claimed). Two problems raised together and deliberately kept separate below: *identity* (a feature directory's name carries no external meaning) and *volume* (a flat `specs/` accumulates unboundedly over a multi-year, multi-dev project).
@@ -41,6 +41,8 @@ Three changes. The ordering is itself a ratification item (D1) because it is the
 
 F1 is the enabling refactor: it exists so that F2 — and the *next* layout change after F2, which there will be — is paid inside the helper plus its resolvers instead of across 388 prose occurrences. It does **not** make the resolver work cheap; see D1 and Phase 3.
 
+⚠ **F1 shipped 2026-08-28 and its row above states a GOAL, not an achieved state.** The row's *"Python + 388 prose occurrences"* is F1's cost as scoped and as paid — the count is history, not a live figure. Two clauses of F1's own description came out qualified by the build and are recorded where they bite rather than here: **prose does not compose a path, except for the discovery globs the orchestrator runs itself** (deferred to Phase 1b, inventoried there), and **the helper is not the only author of the layout** — `/devforge:specify`'s genuine-fallback arm still creates the directory with a bare `mkdir -p` and no helper verb exists for it (Phase 3's structural facts). Neither qualification reopens D1; both are stated so Phase 3 does not assume the row is literally true.
+
 ---
 
 ## Verified ground truth
@@ -80,6 +82,8 @@ The breakdown above was **re-taken on 2026-08-27** with the same method as the t
 **388 raw occurrences across 298 matching lines in 26 command-spec files, in at least nine different spellings.** This — not directory depth — is what makes any layout change expensive. Phase 0 re-derives the figure with the command above; counting *lines* instead of occurrences yields 298 and is not the number this plan is scoped against.
 
 ⚠ The counts move as the tree moves, and did between the two readings above: **386 / 296 / 25 on 2026-08-26 → 388 / 298 / 26 on 2026-08-27.** The 26th file is `src/commands/fix/references/triage.md`, added by plan 88's cold-fix lane. Treat the figure as an order of magnitude with a re-derivable method attached, never as a constant.
+
+⚠ **Every figure in this subsection is now a PRE-SWEEP reading.** It is preserved unedited as the baseline Phase 1 was scoped and argued against — not rewritten — under the same discipline `## Phase 0 close record` applies to the pre-close text. Phase 1 shipped 2026-08-28 and the post-sweep figure is **69 occurrences across 17 files**. The nine-spelling breakdown above is therefore a list of what the sweep **retired**, not of what survives; do not read a row of it as current, and do not use the 388 figure to argue the cost of anything after 2026-08-28. What survives is classified in four named classes in Phase 1's amended **Verify**, and the largest of those classes is inventoried file-and-line in Phase 1b.
 
 ### Resolution is uniformly depth-1 — `Path.iterdir()` at four sites, `os.listdir()` at two
 
@@ -241,6 +245,13 @@ One provenance line per artifact. Two adjacent lines, one of which is a constant
 
 **Nothing is built.** Phase 0 is the only closed phase; Phases 1–6 have not started. The close produced changes to this file only — this section, the ratification markers in the `### D…` headings, and Phase 0's own CLOSED marker. The `CLAUDE.md` active-plan index line and the `PLAN-STATUS-ARCHIVE.md` entry are still owed by Phase 5 and do not exist yet. The **Status** field at the top of this file remains the authority.
 
+⚠ **Superseded the same day, and preserved unedited rather than rewritten.** The paragraph immediately above records the state **at close** on 2026-08-28. **Phase 1 was built later that same day** — see Phase 1's build record — so *"Nothing is built"* and *"Phases 1–6 have not started"* were true when written and are false now. No decision, disposition or caveat in this section is withdrawn, and nothing above this marker is edited; only the build state moved. Two consequences follow mechanically from this section's own text and are stated so they are not missed:
+
+- **D1's reversal window is CLOSED.** The first caveat above says Phases 2 and 3 *"can still be re-cut if the maintainer reverses D1 before Phase 1 lands."* Phase 1 has landed, so that condition is spent — reversing D1 now would mean unwinding shipped work, not re-cutting unstarted phases.
+- **D4 and D6 remain reversible on their stated terms.** D4 is reversible until Phase 2 begins and D6 until Phase 3 begins; neither phase has started, and Phase 1 depended on neither. Their deliberation is still NOT performed and this marker does not supply it.
+
+The `CLAUDE.md` index line and the `PLAN-STATUS-ARCHIVE.md` entry are **still owed by Phase 5 and still do not exist** — Phase 1 shipping did not change that, and neither was written for it.
+
 ---
 
 ## Phases
@@ -251,11 +262,11 @@ Each phase must leave the tree buildable and the suite green.
 
 Settle D1–D9 and OQ-1–OQ-8. Re-verify the two facts this plan leans on hardest before any code moves: the 388 prose-occurrence count (re-derive it with `grep -rho 'specs/' src/commands --include="*.md" | wc -l`, the same method that produced the figure — and expect a different number again, since it moved 386 → 388 between 2026-08-26 and 2026-08-27), and the absence of a `feature_dir`/`path` key in the handoff schemas.
 
-**Closed 2026-08-28**, dispositions in `## Phase 0 close record` above and in the `### D…` headings themselves. Both demanded re-verifications are **done**: the occurrence count was re-derived on **2026-08-27** with the command named above and is **388** — the figure this file now carries throughout — and the research / specify / discover handoff schemas were confirmed to carry **no** `feature_dir` key and **no** `path` key, so Phase 3 may rely on that.
+**Closed 2026-08-28**, dispositions in `## Phase 0 close record` above and in the `### D…` headings themselves. Both demanded re-verifications are **done**: the occurrence count was re-derived on **2026-08-27** with the command named above and is **388** — the figure this file carried throughout at the moment of close, and **superseded by Phase 1's sweep the next day (69 across 17 files); the 388 here is the pre-build baseline, not a current reading** — and the research / specify / discover handoff schemas were confirmed to carry **no** `feature_dir` key and **no** `path` key, so Phase 3 may rely on that.
 
 **Verify**: every D and OQ has a recorded answer in this file; no phase below has started.
 
-### Phase 1 — Opaque `feature_dir` (gated on D1 = (a))
+### Phase 1 — Opaque `feature_dir` (gated on D1 = (a)) — **BUILT 2026-08-28**
 
 The helper becomes the sole author of the layout. Command prose stops containing the literal `specs/`.
 
@@ -267,7 +278,61 @@ The helper becomes the sole author of the layout. Command prose stops containing
 
 ⚠ **Build the accessor for a variable-depth tree from the start.** The legacy shape `specs/NNN-slug/` is **one** level below `specs/`; the shape D2 introduces, `specs/YYYY/MM/TICKET/`, is **three**. All six of today's consumers do a single flat scan of `specs/`, and under the new layout a flat scan enumerates *year* directories — it cannot see a new-shape feature directory at all. Reading both shapes is therefore a genuine algorithmic branch dispatched on shape, not a regex swap. An accessor written here as a straightforward flat `iterdir()` will satisfy Phase 1's own Verify (only the legacy shape exists yet) and then need rewriting at Phase 3; put the depth branch in now, with the legacy arm as the only one that currently returns anything.
 
-**Verify**: `grep -rn 'specs/' src/commands --include="*.md"` returns only (a) `storage-rules`-style *descriptions* of the layout, and (b) nothing that instructs the model to compose a path. Full suite green. No behaviour change is visible to a consumer — the same directories are created at the same locations.
+**BUILT 2026-08-28 on `develop-2.0-init`**, in four groups, in this order:
+
+- `e8848be` — **the accessor (item 1)**. `specs_root_for(devforge_dir)` (`_shared/feature_alloc.py:346`), `iter_feature_dirs(specs_root)` (`:374`) and `find_feature_dirs_with(specs_root, filename)` (`:514`), carrying the two-arm variable-depth walk the ⚠ above demanded — the legacy arm is the only one that returns anything today. All six depth-1 resolvers migrated onto it in the same commit, so the depth assumption now lives in one function instead of six.
+- `535b01f` — **the diagnostic that migration cost**, recorded at the call site rather than repaired. See the **Verify** amendment below; this is the one place Phase 1 changed observable behaviour.
+- `0fc1d62` — **`allocate_feature_dir` gained a `relative_path` key** (`:332`). ⚠ **Item 2 above shipped in a REFINED shape and must not be read as written.** Item 2 says `path` stays *"the value callers use"*; the build instead made **`relative_path` CANONICAL for path ARGUMENTS and for anything written into an artifact**, and demoted `path` to user-facing messages only — because `path` is absolute and leaks the local filesystem layout into committed text (`:244-254` / `:255-273`). `number`, `formatted_number` and `dirname` did become legacy-only exactly as item 2 said, each marked `LEGACY-SHAPE-ONLY` in the docstring with the bound stated (`:274-292`).
+- `af92a1f`, `3f7d5a4`, `75704c6`, `718f2fd`, `cf1df21`, `5d6e41e`, `f99b114`, `b904db1`, `bd9e69d`, `4cddea2`, `92c0a7c`, `452d587`, `dcf2b42`, `6963bbf`, `22162eb` — **the prose sweep (item 3)**, 26 files.
+
+**Result: 388 `specs/` occurrences → 69, across 17 files (was 26).** Every survivor falls in one of the four classes the amended **Verify** names.
+
+**The defect harvest — nine pre-existing defects the sweep surfaced, recorded with their fate.** They are recorded because three of them share one cause and that cause is an argument about spelling, not a tally of bugs found:
+
+- **Three double-prefix bugs, one cause.** `/devforge:review`, `/devforge:spec-check` and `/devforge:summarize` each emitted `specs/specs/<dir>/file`, because a file-local token named `<feature>` was *defined* as the full path **including** the `specs/` root and authors kept prepending the root anyway. All three repaired by the sweep. **This is the strongest argument for the `<feature_dir>` spelling item 3 adopted**: a token whose name says *directory* does not invite a prefix, whereas one named `<feature>` reads like a bare slug and invites one. The lesson is about the name, not about the three sites.
+- `src/commands/grill/references/report-format.md` asserted a `specs/` prefix on the report's `**Feature**:` line that `_grill/_report.py:561` never emits — repaired.
+- `src/commands/fix/main.md`'s Stage-B question named a value that does not exist on any cold run (a gap left by plan 88's cold-fix lane) — repaired.
+- `/devforge:constitute` described a glob that plan 53 Phase 7a deleted, at three prose sites plus a Python comment, and used it as **load-bearing justification** rather than as background; the same rule's behaviours still listed the retired Check 5. All repaired in `22162eb`.
+- ⚠ **Two reported and deliberately NOT repaired — each needs a decision this sweep had no standing to make, and neither is closed:**
+  - `src/commands/grill/references/report-format.md:73` writes the skeleton with an em-dash where the renderer emits ASCII `--` (`_grill/_report.py:563`). It is unknown which side is right, so neither was changed.
+  - `src/commands/implement/references/crash-recovery.md:7` says the WIP-marker fields are *"written by the `_implement/_wip.py` helper module"*, but `write_wip_marker` (`_implement/_wip.py:88`) has **no production caller** — only `tests/lib/_implement/test_wip.py` — and the live writer is the orchestrator. Either the prose is wrong or the helper is unreachable; that is not a spelling question.
+
+**Verify** — **AMENDED 2026-08-28; the original could not pass and is quoted here rather than deleted**: the original read *"returns only (a) `storage-rules`-style descriptions of the layout, and (b) nothing that instructs the model to compose a path."* **Clause (b) is unmet by design.** The sweep found a class the plan did not anticipate — globs the **orchestrator runs itself** (`specs/*/grill-seed.json`, `specs/*/*-seed.json`, `specs/*/review.md`, and `specs/NNN-*` directory enumerations). Closing them requires helper verbs over `find_feature_dirs_with`, i.e. Python this phase was not scoped to write; they are deferred to Phase 1b. The amended bar is **not** that survivors are few — it is that **every** survivor falls in a named class. `grep -rn 'specs/' src/commands --include="*.md"` returns 69 occurrences across 17 files, and each is exactly one of:
+
+- **(a)** a bare `specs/` naming no child — the artifact root as a location, with nothing composed under it.
+- **(b)** the **discovery-glob class**, deferred to Phase 1b and inventoried there.
+- **(c)** a transcription of a literal the helper composes — quoted so the reader sees what the helper produces, never an instruction to build it.
+- **(d)** `specs/` meaning the **artifact root** rather than a feature directory (e.g. the linter-ignore folder list, the wrapper-mode artifact-location rule).
+
+Full suite green. ⚠ **The original's closing sentence — *"No behaviour change is visible to a consumer"* — is FALSE in exactly one narrow, recorded way and is amended, not retained**: `/devforge:grill`'s `resolve_target_feature` can no longer distinguish an **unreadable** `specs/` from an **empty** one, because `iter_feature_dirs` treats any `OSError` while probing `specs_root` as `[]` and the caller's own `os.listdir` branch — which returned a distinct `"cannot list {0!r}: {1}"` error — was deleted at the migration. A **missing** `specs_root` is unaffected and still reports distinctly, via the `os.path.isdir` check that runs before the accessor. This was accepted rather than repaired (duplicating a diagnostic on top of the accessor's OSError-means-absent contract fights that contract) and is recorded in `_grill/_scope.py`'s own docstring by `535b01f`. Every other consumer-visible behaviour is unchanged — the same directories are created at the same locations.
+
+### Phase 1b — The discovery-glob class — **NOT STARTED**
+
+**Why it exists.** A `specs/*/x.json` or `specs/NNN-*` glob hardcodes depth 1. At Phase 3 it stops matching **entirely** — the same latent break `_grill/_scope.py` carried until `e8848be` fixed it, except here it lives in prose, where no test catches it. That is the whole case for the phase: Phase 1 removed the depth assumption from the six Python resolvers and left an identical assumption standing in the orchestrator instructions beside them.
+
+**The inventory**, taken from the sweep's own reports on 2026-08-28 so this phase starts from a list rather than a re-scan. ⚠ These are line numbers, and line numbers move — re-grep before editing, and use the list to know *what to look for*, not to navigate blind:
+
+- `src/commands/research/main.md:141`, `:155` — `specs/*/grill-seed.json`
+- `src/commands/discover/main.md:153`, `:167` — `specs/*/grill-seed.json`
+- `src/commands/plan/main.md:104`, `:117` — `specs/*/*-seed.json` (project-wide by decision — plan 83 recorded the divergence from `/devforge:specify`'s dir-scoped glob; Phase 1b changes the depth, not that scoping)
+- `src/commands/specify/main.md:139` ×2, `:156`, `:242` ×2 — `specs/<resolved-feature-dir>/*-seed.json` plus the `specs/*/` shape it forbids, and §1.7's `ls specs/` prior-spec enumeration
+- `src/commands/review/main.md:83`, `:85` — `specs/NNN-*` directory enumeration
+- `src/commands/fix/main.md:121`, `:123` — `specs/NNN-*` directory enumeration
+- `src/commands/verify/main.md:76`, `:78` — `specs/NNN-*` directory enumeration
+- `src/commands/finalize/main.md:61`, `:63` — `specs/NNN-*` directory enumeration
+- `src/commands/summarize/main.md:56`, `:58` — `specs/NNN-*` directory enumeration
+- `src/commands/audit/main.md:35`, `:440` — `specs/*/review.md`
+- `src/commands/spec-check/main.md:75` — `specs/NNN-*` directory enumeration; `:78` — `ls -t specs/[0-9]*/spec.md`, ⚠ **the only site in the class that is a literal shell command rather than an instruction**, so it breaks at Phase 3 without any model in the loop to notice. **Found 2026-08-28 while writing this phase, NOT in the sweep's own report list** — treat the rest of the inventory as verified-but-not-proven-complete for the same reason.
+
+⚠ **One borderline this phase must classify rather than assume.** `src/commands/specify/main.md:493` spells `specs/*/discovery-report.md` inside a context-source list — it names a pattern but instructs no glob, so it may belong to Phase 1's class (c) instead. Decide it explicitly; do not let it fall between the two phases.
+
+**The shape of the fix.** A discovery verb in **each consuming command's own helper**, delegating to `_shared/feature_alloc.py`'s `find_feature_dirs_with`. ⚠ **The constraint that makes "the consumer's own helper" the safe home, and not merely a stylistic pick:** every seed-reading block deliberately forbids calling the **producing** command's helper — `/devforge:research` Phase 0.6, `/devforge:plan` PHASE 0a.7 and `/devforge:specify` Phase 0.5 each say to parse the matched JSON inline so the block *"stays valid even if"* the producing command is ever removed. A verb in the consumer's own helper preserves that property; a shared verb on the producer's helper would destroy the exact resilience those blocks were written for. `specify_helper find-handoffs` (`_specify/_cmds_handoff.py:1014`) is the existing precedent for a discovery verb living on the consumer side.
+
+**Sequencing: before Phase 2.** Not because Phase 2 depends on it, but because Phase 3 breaks this class **silently** — a glob that stops matching produces an empty result, not an error — and Phase 2 sits between the two. Leaving 1b until after Phase 2 narrows the window in which the break can be caught by reading rather than by a consumer hitting it.
+
+Plan 75's tripwire holds, both halves: these are discovery **verbs**, not gates — no new `verify-*` gate number, no new check number, no new unnumbered hard-fail validator.
+
+**Verify**: every site in the inventory above is replaced by a helper call, and every remaining depth-1 spelling in `src/commands` is a **quotation or a prohibition** — named as such at its site — never an instruction the model acts on. ⚠ **Do not write this as "the grep returns nothing"; that is the mistake Phase 1's original Verify made, and this class is worse for it.** No single pattern detects the class: it is spelled at least three ways (`specs/*`, `specs/NNN-*`, and `specs/<token>/` — `/devforge:specify` Phase 0.5's `specs/<resolved-feature-dir>/*-seed.json` matches none of the first two), and one legitimate survivor is guaranteed, since that same block **forbids** globbing `specs/*/` project-wide and must keep quoting the shape it forbids. A test per new verb (test-immediately rule). Each verb resolves a legacy `specs/NNN-slug/` feature today, and the depth branch it inherits from `find_feature_dirs_with` is the same one Phase 3 switches on — so no verb needs re-editing at Phase 3.
 
 ### Phase 2 — Ticket identity + `REQUIRE_TICKET` (Python) (D1 = (a) ratified; see Phase 0)
 
@@ -293,8 +358,21 @@ Phase 1 makes this possible; it does not make it small. The composition changes 
 2. `decide_branch_action` emits `spec/<TICKET>` (D5).
 3. `next_spec_number` retired; `SPEC_NUMBER_DIR_RE` demoted to legacy-read; `_feature_sort_key` re-based (D6's ordering note).
 4. The six resolvers read **both** shapes (OQ-6).
+5. The **renderer composition sites** below stop composing the layout (layer 1).
+6. The **shell layer** below stops hardcoding depth (layer 3).
 
-**Verify**: an install containing *both* a legacy `specs/007-old-thing/` and a new `specs/2026/08/PROJ-123/` resolves both from every one of the six consumers. `allocate_feature_dir`'s never-overwrite contract still fails loudly on a collision. The `test_non_nnn_dirs_ignored` pin either still passes or its replacement is written in the same commit.
+⚠ **The layout is spelled in THREE layers below the prose, and Phase 1's sweep found all three. This plan named one.** Added 2026-08-28; Phase 3's scope is larger than tasks 1–4 alone describe.
+
+- **Layer 1 — Python that COMPOSES the layout**, not merely describes it. `_specify/_render.py:298` and `:362` both build `specs/{n}-{f}/spec.md`, and `:353` builds `specs/{n}-{f}/handoff.json` in the same block. **Prose cannot fix these; the code must** — which is why they are task 5 here and not Phase 5's docs sweep. They are `.format()` templates with the layout inlined, so they survive any amount of prose editing untouched.
+- **Layer 2 — Python docstrings and argparse `--help` text.** Across `_fix/`, `_grill/`, `_verify/`, `_spec_check/`, `_summarize/`, `_implement/`, `_pr_review/`, `_design/`, `breakdown_helper.py` and `plan_helper.py`. ⚠ **The `--help` ones are user-visible**, so they are not documentation in the harmless sense. Phase 5 already claims source-code docstrings, but its paragraph names only `_shared/feature_alloc.py` — **this list widens Phase 5's target set and is the inventory it should work from**. The raw surface is larger than the list: `grep -rl 'specs/' src/devforge/lib` returns **72 files** (method attached, 2026-08-28), most of them legitimate resolver code; the ten modules above are the docstring/`--help` subset the sweep classified out of it.
+- **Layer 3 — a shell layer nobody had inventoried.** `src/git-hooks/pre-commit-forcing-functions.sh:54` runs `find "$ROOT/specs" -maxdepth 2 -name "design-manifest.json"` and **skips the check** when nothing matches (`:55-57`). Under the Phase-3 layout a manifest sits at depth 4, so that `find` stops matching and **the hook silently stops gating** — a gate that disarms itself, which plan 90's own record calls worse than no gate. The `-maxdepth 2` is the entire defect; the skip-when-absent behaviour is deliberate and stays.
+
+⚠ **Two structural facts Phase 3 must not rediscover.** Both were established by building Phase 1 and are recorded so Phase 3 does not assume otherwise:
+
+- **`/devforge:specify`'s genuine-fallback arm allocates with NO helper verb.** `specify_helper` has `assign-spec-number` (`_specify/_cli.py:322`) and `assign-feature-name` (`:335`) but **no `allocate-feature-dir`** — that verb exists only on `research_helper` and `discover_helper`. On the genuine-fallback path the creator is a bare `mkdir -p "<feature_dir>"` in the command prose (`src/commands/specify/main.md:837`; `:834` states it creates the directory only on that path). So **"the helper is the sole author of the layout" is NOT true after Phase 1 for that one arm**, and Phase 3's composition change at `allocate_feature_dir` does not reach it. Stated here rather than left for Phase 3 to trip over; this plan proposes no verb for it and takes no decision on whether one should exist.
+- **`/devforge:specify` Step 4.1's warm/cold/fallback discriminator is a test on the path INTERIOR.** It asks whether the resolved feature dir's basename *"has the form `<NNN>-<slug>`"* (`src/commands/specify/main.md:542`; the same test seeds `spec_number`/`feature_slug` at `:131`). **No token substitution removes it** — it is not a spelling of the path, it is a question about the path's shape, and the shape is exactly what D6 changes. This is Phase 3's depth-branch problem in prose form, and it is the one place where reading both shapes has to be decided by the orchestrator rather than absorbed by the accessor.
+
+**Verify**: an install containing *both* a legacy `specs/007-old-thing/` and a new `specs/2026/08/PROJ-123/` resolves both from every one of the six consumers, and the pre-commit hook finds a `design-manifest.json` under both. `allocate_feature_dir`'s never-overwrite contract still fails loudly on a collision. The `test_non_nnn_dirs_ignored` pin either still passes or its replacement is written in the same commit.
 
 ### Phase 4 — `Run by:` provenance
 
@@ -312,6 +390,8 @@ Phase 1 makes this possible; it does not make it small. The composition changes 
 `src/devforge/storage-rules.md` (the layout is described in ~20 places there), `src/CLAUDE.md`, the per-command "Produces" blocks, `CHANGELOG.md` under `## [Unreleased]`, this repository's `CLAUDE.md` active-plan index line, and a `PLAN-STATUS-ARCHIVE.md` entry.
 
 **Source-code docstrings are part of this sweep, not exempt from it** — `src/devforge/lib/_shared/feature_alloc.py`'s 86-line module docstring plus the `next_spec_number` (`:133`) and `allocate_feature_dir` (`:160`) function docstrings. The module docstring asserts the NNN layout as canonical in at least six sentences, among them *"allocate_feature_dir -- creates specs/NNN-slug/ on disk"* (`:34-35`), *"NNN dir-naming constants"* (`:23`) and *"OQ-4 ratified this: NNN is the identity, the slug is a label"* (`:81` — that is **plan 68's** OQ-4, not this plan's) — the last one contradicted outright by F2. This matters more than the prose files do: this plan sends future sessions to that module as the ground truth for how allocation works (see "Verified ground truth" above), so a stale docstring there mis-teaches exactly the reader who followed the instruction.
+
+⚠ **That paragraph names one module; the real docstring surface is ten more.** Phase 1's sweep inventoried them as Phase 3's **layer 2** — read that bullet before scoping this phase, and note that its argparse `--help` half is user-visible text, not documentation in the harmless sense.
 
 Two sentences that become false on this build and must be hunted specifically: anything asserting that a feature directory is an immediate child of `specs/`, and anything asserting `NNN` is the feature identity.
 
@@ -345,15 +425,16 @@ Anchors 1 and 2 are scored as a **pair** — a rule that satisfies 1 by allocati
 
 ## Context for next session
 
-- The expensive part of this work is **not** the layout. It is that `specs/…` is a literal hand-composed in **388 places across 298 lines in 26 command specs** in nine spellings, while `allocate_feature_dir` has been returning the full `path` all along. If you read only one thing before starting, read D1. ⚠ Those three figures are a 2026-08-27 reading, not a constant — they were 386 / 296 / 25 the day before. Re-derive, do not quote.
+- The expensive part of this work was **not** the layout. It was that `specs/…` was a literal hand-composed in **388 places across 298 lines in 26 command specs** in nine spellings, while `allocate_feature_dir` had been returning the full `path` all along. **That cost is PAID — Phase 1 shipped 2026-08-28 and the figure is now 69 across 17 files**, every survivor in one of four named classes. The 388 figure is history; quoting it to argue the cost of a later phase is wrong. Re-derive, do not quote. Read D1 anyway — it is why the sweep came first.
 - `**Author**: Claude + User` at `_specify/_render.py:135` is the only `**Author**` in **production renderer code** (`src/`; `tests/` fixtures and one `done-plans/` file carry the string too) and it names nobody. F3 replaces a lie; it does not add a field.
 - The maintainer's drift objection (quoted in "Why") is the load-bearing reason this plan has no archive step. Do not re-propose one without answering it.
 - D4 knowingly breaks half of plan 75's tripwire. That is declared, not overlooked — and as of 2026-08-28 it is ratified by directive with the deliberation it demanded **not** performed, so read `## Phase 0 close record` before building Phase 2.
-- Nothing in this plan has been built. **No build phase has started** — Phase 0 closed 2026-08-28 and Phases 1–6 have not started. The **Status** field at the top of this file is the authority.
+- **Phase 1 is built (2026-08-28) and Phase 1b is where you resume.** Phase 0 closed and Phase 1 shipped on the same day; Phase 1b, Phase 2 and everything after have not started. Phase 1 is **build-verified only — NOT consumer-validated**: no install has been run against it, so read no shipped behaviour here as confirmed by use. The **Status** field at the top of this file is the authority.
+- **Two Phase-1 reports are open and neither is a spelling question** — the `/devforge:grill` report skeleton's em-dash vs. the renderer's ASCII `--`, and `crash-recovery.md:7` crediting `_implement/_wip.py` with a write whose function has no production caller. Both are recorded in Phase 1's defect harvest with the reason they were left alone: each needs a decision the sweep had no standing to make. Neither is owned by any phase below.
 
 ## When resuming work
 
 1. Read this file end to end, then `CLAUDE.md`'s active-plan index for plans 68, 75, 87 and 88 — each constrains a decision here — plus 85 (it made `/devforge:grill` mandatory to run, which raises OQ-5's likelihood), and 89 and 90 (the two worked config-key examples Phase 2 models on).
 2. **D1 is answered — (a)**, ratified 2026-08-28. Every phase shape below it depends on that answer and Phases 1–3 are written for it, so read `## Phase 0 close record` — including its three caveats — before re-opening it or before starting Phase 2 or Phase 3.
-3. Re-grep the two counts in "Verified ground truth" before trusting them; they were taken 2026-08-26, re-taken 2026-08-27, and moved between those two readings. Four plans landed in that one-day gap.
+3. **Do not trust the counts in "Verified ground truth" — they are PRE-SWEEP and Phase 1 invalidated them.** They were taken 2026-08-26, re-taken 2026-08-27 (they moved in that one-day gap, in which four plans landed), and then superseded on 2026-08-28 when Phase 1 took them 388 → 69. They are preserved as the baseline the plan was argued against, marked as such in place. Re-grep for a current figure.
 4. Follow the repository's working process: draft the step, argue it, get alignment, then build. Route markdown edits through `instruction-author` → `instruction-reviewer`; Python through `python-engineer` → `python-reviewer`, with a test written and run in the same turn as every function.
