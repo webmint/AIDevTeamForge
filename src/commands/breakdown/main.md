@@ -6,16 +6,18 @@ argument-hint: "[plan-file]"
 
 # /devforge:breakdown — Task Breakdown from Plan
 
-`/devforge:breakdown` is repeatable per feature. It takes an approved plan authored by `/devforge:plan` and produces ordered, atomic, agent-assigned tasks with verifiable cross-task contracts: a `tasks/*.md` file per task, a `tasks/README.md` index, and a structured `breakdown-handoff.json`. The orchestrator (the LLM following this spec) writes all task artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at one mandatory hook**: the `architect` agent is invoked at Phase 2 (Decomposition) for every run to validate task atomicity, dependency ordering, contract-chain integrity, and per-task implementability. Outside that hook, the orchestrator authors directly and assigns agents via the inlined Agent Assignment table — no per-phase auto-dispatch. Phase 0b's hard gate ensures `/devforge:constitute` has populated the constitution before any breakdown work fires. Produces `specs/NNN-<feature>/tasks/` plus `specs/NNN-<feature>/breakdown-handoff.json`, and ends with a manual handoff to `/devforge:implement` — no automated dispatch.
+`/devforge:breakdown` is repeatable per feature. It takes an approved plan authored by `/devforge:plan` and produces ordered, atomic, agent-assigned tasks with verifiable cross-task contracts: a `tasks/*.md` file per task, a `tasks/README.md` index, and a structured `breakdown-handoff.json`. The orchestrator (the LLM following this spec) writes all task artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at one mandatory hook**: the `architect` agent is invoked at Phase 2 (Decomposition) for every run to validate task atomicity, dependency ordering, contract-chain integrity, and per-task implementability. Outside that hook, the orchestrator authors directly and assigns agents via the inlined Agent Assignment table — no per-phase auto-dispatch. Phase 0b's hard gate ensures `/devforge:constitute` has populated the constitution before any breakdown work fires. Produces `<feature_dir>/tasks/` plus `<feature_dir>/breakdown-handoff.json`, and ends with a manual handoff to `/devforge:implement` — no automated dispatch.
 
-Usage: `/devforge:breakdown [plan-file]` (e.g. `/devforge:breakdown specs/008-prevent-duplicate-config-options/plan.md`, or `/devforge:breakdown` with no argument to use the most-recently-modified plan under `specs/`).
+Usage: `/devforge:breakdown [plan-file]` (e.g. `/devforge:breakdown <feature_dir>/plan.md`, or `/devforge:breakdown` with no argument to use the most-recently-modified plan under `specs/`).
 
 ## Outputs of this phase
 
-- `specs/NNN-<feature>/tasks/NNN-<title>.md` — one rendered task file per task (required).
-- `specs/NNN-<feature>/tasks/README.md` — task index with dependency graph, risk assessment, and review checkpoints (required).
-- `specs/NNN-<feature>/breakdown-handoff.json` — structured producer-side handoff (best-effort; see Phase 5).
-- `specs/NNN-<feature>/design-manifest.json` — the design-fidelity binding: the built-side wiring (`route` + anchor-selector/built-testid pairs) mapping the captured design intent to the elements the feature builds (conditional; written only when the feature has a `design/reference.html` — see Phase 2.5).
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run reads from and writes into: one path the orchestrator holds in working memory for the rest of the run. PHASE 0a resolves it: `pick-plan` prints the absolute path of one `plan.md`, and that file's parent directory is `<feature_dir>`. Hold it exactly as PHASE 0a resolved it — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it. Every artifact path below is `<feature_dir>` plus a filename, and so is every sibling this command reads beside the plan — with one exception, this command's own `tasks/` subdirectory, which holds the task files and their index.
+
+- `<feature_dir>/tasks/NNN-<title>.md` — one rendered task file per task (required).
+- `<feature_dir>/tasks/README.md` — task index with dependency graph, risk assessment, and review checkpoints (required).
+- `<feature_dir>/breakdown-handoff.json` — structured producer-side handoff (best-effort; see Phase 5).
+- `<feature_dir>/design-manifest.json` — the design-fidelity binding: the built-side wiring (`route` + anchor-selector/built-testid pairs) mapping the captured design intent to the elements the feature builds (conditional; written only when the feature has a `design/reference.html` — see Phase 2.5).
 
 After approval (Phase 5), `/devforge:breakdown` WIP-commits these artifacts — the whole `tasks/` directory, `breakdown-handoff.json`, `plan.md` (whose `**Status**:` PHASE 0b flipped), and (when Phase 2.5 produced it) `design-manifest.json` — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/devforge:breakdown` continues — the artifacts are already written). The `[WIP]` commit folds into `/devforge:finalize`'s squash, so the final PR is unchanged. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/devforge:implement`'s wrapper path stages ONLY source code in the source repo and leaves the task files uncommitted, so this commit is NOT redundant there. (In standalone mode `/devforge:implement` already tracks the task files, so re-staging unchanged ones is a harmless no-op; `breakdown-handoff.json` is newly tracked either way.)
 
@@ -35,9 +37,9 @@ After approval (Phase 5), `/devforge:breakdown` WIP-commits these artifacts — 
 .devforge/lib/breakdown_helper pick-plan $ARGUMENTS
 ```
 
-If `$ARGUMENTS` is non-empty, the helper validates the explicit file path (must be an existing `plan.md` file, not a directory) and prints its absolute path on stdout. If empty, the helper picks the most-recently-modified `specs/*/plan.md`. Exit 2 means no valid plan was found — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
+If `$ARGUMENTS` is non-empty, the helper validates the explicit file path (must be an existing `plan.md` file, not a directory) and prints its absolute path on stdout. If empty, the helper picks the most-recently-modified `plan.md` under `specs/`. Exit 2 means no valid plan was found — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
-Capture the resolved absolute path. Then render the preview block:
+Capture the resolved absolute path. Its parent directory is this run's `<feature_dir>` — hold that too, exactly as resolved, because every artifact this command writes and every sibling it reads is `<feature_dir>` plus a filename (or, for the task files and their index, `<feature_dir>/tasks/` plus a filename). Then render the preview block:
 
 ```bash
 .devforge/lib/breakdown_helper render-pick-summary <resolved-path>
@@ -122,7 +124,7 @@ Exit 2 means the plan is malformed (neither Date nor Status frontmatter line). C
 
 Read these in order:
 
-1. The plan's sibling `spec.md` (same `specs/NNN-<feature>/` directory) — the acceptance criteria the tasks must collectively cover. Capture its absolute path — `<plan-dir>/spec.md`, the sibling of the resolved plan path — as `<spec-path>`; the Phase 0 drift check, Phase 1.5 findings, Phase 3 task writing, and Phase 3.5 AC-coverage gate all pass this `<spec-path>` to their helpers.
+1. The plan's sibling `spec.md` (same `<feature_dir>`) — the acceptance criteria the tasks must collectively cover. Capture its absolute path — `<feature_dir>/spec.md`, the sibling of the resolved plan path — as `<spec-path>`; the Phase 0 drift check, Phase 1.5 findings, Phase 3 task writing, and Phase 3.5 AC-coverage gate all pass this `<spec-path>` to their helpers.
 2. `plan.md` (the resolved path) — the layer map, file impact, key design decisions, and risk assessment. If Phase 0a.5 surfaced a `## Upstream plan seeds` block, that block is the authoritative seed; `plan.md` is the full source.
 3. The feature's supporting docs if present: `research.md`, `data-model.md`, `contracts.md` (same directory).
 4. `constitution.md` — architecture rules and constraints.
@@ -234,9 +236,9 @@ Any decomposition-relevant specialist may be named: `architect`, `frontend-engin
 
 **Brief shape (pass file paths, NOT inlined content):**
 
-- `specs/<feature>/spec.md`
-- `specs/<feature>/plan.md`
-- `specs/<feature>/research.md` / `data-model.md` / `contracts.md` (whichever exist)
+- `<feature_dir>/spec.md`
+- `<feature_dir>/plan.md`
+- `<feature_dir>/research.md` / `data-model.md` / `contracts.md` (whichever exist)
 - `CLAUDE.md` (architect reads `## Architecture` + `## Packages` directly)
 - `constitution.md`
 
@@ -317,20 +319,20 @@ When a `design/reference.html` DOES exist, this gate authors the feature's desig
 
 **Detect the design reference.** Run a mechanical existence test from the workspace root (cwd) — `test -f design/reference.html` — and branch on its boolean result, not on eyeballing the filesystem. If it is present (`test` is zero), continue to Step 1.
 
-If the file is absent (`test` is non-zero), there is no enforceable reference to gate against, so this feature skips the intake gate either way — but first surface any declared non-file design source. Run the source check (substitute `NNN-<feature>` with the resolved feature dir name, the same substitution the Steps below use for the manifest path; the spec lives at `specs/NNN-<feature>/spec.md`, sibling to where `design-manifest.json` would go):
+If the file is absent (`test` is non-zero), there is no enforceable reference to gate against, so this feature skips the intake gate either way — but first surface any declared non-file design source. Run the source check (the spec is `<feature_dir>/spec.md`, sibling to where `design-manifest.json` would go):
 
 ```bash
 .devforge/lib/design_helper check-design-source \
-  --spec specs/NNN-<feature>/spec.md --workspace-root .
+  --spec <feature_dir>/spec.md --workspace-root .
 ```
 
 The verb's exit code is ALWAYS 0 (this is a non-blocking warning, never a halt) — branch on whether the verb produced output (a WARN), not on its exit code. The verb is SILENT in the common cases and prints a WARN (to stderr, exit 0) only when a non-file design source is declared without an enforceable reference. If the verb produced a WARN, the spec declared a non-file design source (`figma`/`screenshot`, or an `html` target that is not an existing file) with no enforceable `design/reference.html`: copy that output VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then proceed to Phase 3 — the WARN's own text explains the skip and the convert-to-`design/reference.html` remedy, so it replaces the plain "skipping" line in this case. If the verb produced no output, tell the user `"No design/reference.html for this feature; skipping the design-fidelity intake gate."` and proceed to Phase 3 (the common cases: the spec declared `none` or declared nothing; note an `html:` source pointing to an existing non-`design/reference.html` path also produces no output but is a misdeclaration this gate does not catch — the design-fidelity gates enforce only `design/reference.html`).
 
 The PHASE 3.5 `verify-manifest-present` gate is the authoritative backstop for the reference-PRESENT case — it re-derives the `design/reference.html` existence check mechanically — so a wrongly-skipped PHASE 2.5 is caught downstream, never silently lost.
 
-**Step 1 — Read the captured design intent (the anchor).** `/devforge:specify` persisted the feature's design intent to `specs/NNN-<feature>/design-anchor.json` (substitute `NNN-<feature>` with the resolved feature dir name) — an immutable record of shape `{kind, file, selectors, source_hash}` where `kind` + `file` name the design source and `selectors` names which reference selectors carry the intent. Read this file. Its `selectors` are the candidate anchor-side selectors for the binding's pairs (Step 2). If `design-anchor.json` is absent, or its `selectors` list is empty, that does NOT block this gate — Read `design/reference.html` to identify its primary top-level container selector, then author the container-floor pair directly from that container in Step 2. Only an empty or invalid binding halts intake (Step 3).
+**Step 1 — Read the captured design intent (the anchor).** `/devforge:specify` persisted the feature's design intent to `<feature_dir>/design-anchor.json` — an immutable record of shape `{kind, file, selectors, source_hash}` where `kind` + `file` name the design source and `selectors` names which reference selectors carry the intent. Read this file. Its `selectors` are the candidate anchor-side selectors for the binding's pairs (Step 2). If `design-anchor.json` is absent, or its `selectors` list is empty, that does NOT block this gate — Read `design/reference.html` to identify its primary top-level container selector, then author the container-floor pair directly from that container in Step 2. Only an empty or invalid binding halts intake (Step 3).
 
-**Step 2 — Author the binding.** Compose the built-side binding and write it to `specs/NNN-<feature>/design-manifest.json` via Write (substitute `NNN-<feature>` with the resolved feature dir name). The binding maps the captured intent to what the feature will build; it has this shape:
+**Step 2 — Author the binding.** Compose the built-side binding and write it to `<feature_dir>/design-manifest.json` via Write. The binding maps the captured intent to what the feature will build; it has this shape:
 
 ```json
 {
@@ -354,16 +356,16 @@ The Phase-2 architect validation of task boundaries and the design decisions it 
 
 ```bash
 .devforge/lib/design_helper validate-binding \
-  --binding-path specs/NNN-<feature>/design-manifest.json
+  --binding-path <feature_dir>/design-manifest.json
 ```
 
-Substitute `NNN-<feature>` with the resolved feature dir name. The verb emits a `{valid, errors}` JSON object to stdout and, on failure, one error line per problem to stderr. It validates BOTH the structural shape (a well-formed `route` plus a `pairs` array whose entries carry `anchor_selector` / `built_testid`) AND completeness — `route` non-empty and at least one fully-specified pair (both `anchor_selector` and `built_testid` non-empty) present; an empty binding is never valid by omission. Because Step 2 authors the JSON directly with no helper skeleton, a structurally-malformed file is caught at THIS gate, not shipped downstream.
+The verb emits a `{valid, errors}` JSON object to stdout and, on failure, one error line per problem to stderr. It validates BOTH the structural shape (a well-formed `route` plus a `pairs` array whose entries carry `anchor_selector` / `built_testid`) AND completeness — `route` non-empty and at least one fully-specified pair (both `anchor_selector` and `built_testid` non-empty) present; an empty binding is never valid by omission. Because Step 2 authors the JSON directly with no helper skeleton, a structurally-malformed file is caught at THIS gate, not shipped downstream.
 
 - **Exit 0** — the binding is valid (non-empty `route` + at least one fully-specified pair). The intake gate passes; proceed to Phase 3.
 - **Exit 1** — validation errors. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT write any task file. The binding is empty or incomplete — a missing `route`, zero pairs, or a pair missing its `anchor_selector` / `built_testid`. Re-enter Step 2, supply the missing value(s), and re-run Step 3. If a required value genuinely cannot be determined from the spec, plan, anchor, and reference — for example the feature's render `route` is unknown — HALT and escalate to the user: end the turn with the copied errors and a request for the missing value; the user's reply opens the next turn, after which re-author (Step 2) and re-validate (Step 3). Intake does not proceed to Phase 3 until the binding validates.
 - **Exit 2** — the binding file could not be read or parsed (a Step 2 write problem, or the path is missing / not a file). Copy the helper's stderr VERBATIM into a fenced code block, then end the turn.
 
-The validated `specs/NNN-<feature>/design-manifest.json` PERSISTS as the design-fidelity CONTRACT for the feature — the built-side binding the two downstream design-fidelity gates read. It declares the feature's render `route` and, per pair, which reference selector the built element (identified by its stable testid) must match. The binding is consumed by two enforcement concerns: `/devforge:implement`'s per-task forcing-functions gate runs the static design-token provenance check `verify-design-tokens` on the feature's styling (no hardcoded color literals, no `var(--x, <literal>)` fallbacks, undefined-token-fails-loud), and `/devforge:review`'s PHASE 2.5 dispatches `design-auditor` for the review-time runtime-conformance check (the built UI's rendered values and geometry against the design intent). This phase only PRODUCES that binding; it does not itself run either enforcement.
+The validated `<feature_dir>/design-manifest.json` PERSISTS as the design-fidelity CONTRACT for the feature — the built-side binding the two downstream design-fidelity gates read. It declares the feature's render `route` and, per pair, which reference selector the built element (identified by its stable testid) must match. The binding is consumed by two enforcement concerns: `/devforge:implement`'s per-task forcing-functions gate runs the static design-token provenance check `verify-design-tokens` on the feature's styling (no hardcoded color literals, no `var(--x, <literal>)` fallbacks, undefined-token-fails-loud), and `/devforge:review`'s PHASE 2.5 dispatches `design-auditor` for the review-time runtime-conformance check (the built UI's rendered values and geometry against the design intent). This phase only PRODUCES that binding; it does not itself run either enforcement.
 
 ## PHASE 3: Write tasks
 
@@ -373,7 +375,9 @@ For each task in the validated decomposition, render its skeleton via the helper
 .devforge/lib/breakdown_helper render-task-file --number NNN --title "<imperative title>" --feature <feature-dir-name>
 ```
 
-Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then fill its placeholders and write the result to `specs/NNN-<feature>/tasks/NNN-<title>.md` via Write. Fill these per task:
+`<feature-dir-name>` is the last segment of `<feature_dir>` — the directory's own name, not its path. `render-task-file` stamps that value into the task file's `**Feature**:` field and joins no path onto it, so passing `<feature_dir>` there would put the whole path into that field.
+
+Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then fill its placeholders and write the result to `<feature_dir>/tasks/NNN-<title>.md` via Write. Fill these per task:
 
 - **Header fields**: Agent (from the Agent Assignment table), Depends on, Blocks, Spec criteria (`AC-N`), Review checkpoint (Yes/No — see below), Context docs (see below), plus Property targets on dedicated property-test tasks only (see the Property-test tasks subsection below), and Dead code removal on the owning task of any `/devforge:plan`-declared change-induced dead code (see the Change-induced dead-code removal subsection below).
 - **Files table**, **Description**, **Change Details** — from the Phase 1 file analysis, plus the behavior-changing / behavior-preserving surface partition on a mixed task (see the Two-hats partition subsection below), and the `Regression net:` line on any task carrying a behavior-preserving surface with no covering test (see the Regression-net declaration subsection below).
@@ -502,7 +506,7 @@ After all task files are written, render the index skeleton via the helper:
 .devforge/lib/breakdown_helper render-tasks-index --feature <feature-dir-name> --spec <spec-path> --plan <resolved-path>
 ```
 
-Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then fill its sections and write the result to `specs/NNN-<feature>/tasks/README.md` via Write. Fill: the dependency-graph fence, the index table (one row per task), the `## Additions to Spec` section (files discovered in Phase 1 not in the plan, or "None"), the risk assessment, and the review checkpoints table.
+Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then fill its sections and write the result to `<feature_dir>/tasks/README.md` via Write. Fill: the dependency-graph fence, the index table (one row per task), the `## Additions to Spec` section (files discovered in Phase 1 not in the plan, or "None"), the risk assessment, and the review checkpoints table.
 
 ### Specialist Consultation provenance
 
@@ -557,7 +561,7 @@ Pass only the tasks directory — do NOT pass `--agents-dir`. The verb defaults 
 .devforge/lib/breakdown_helper verify-manifest-present <tasks-dir>
 ```
 
-Pass only the tasks directory — do NOT pass `--scope-only`, `--reference-path`, or `--manifest-path` (those flags exist for testing and an alternate scope-check mode; `--scope-only` in particular changes the exit-code semantics). The verb defaults the workspace root to the working directory (cwd), the reference to `design/reference.html`, and the manifest to `specs/NNN-<feature>/design-manifest.json` (deriving the feature dir as the parent of the tasks dir), which are correct for Phase 3.5 in both standalone and wrapper mode: the helper is invoked via the relative path `.devforge/lib/breakdown_helper`, so the working directory is always the install root, where `.claude/` and `design/` live.
+Pass only the tasks directory — do NOT pass `--scope-only`, `--reference-path`, or `--manifest-path` (those flags exist for testing and an alternate scope-check mode; `--scope-only` in particular changes the exit-code semantics). The verb defaults the workspace root to the working directory (cwd), the reference to `design/reference.html`, and the manifest to `<feature_dir>/design-manifest.json` (deriving the feature dir as the parent of the tasks dir), which are correct for Phase 3.5 in both standalone and wrapper mode: the helper is invoked via the relative path `.devforge/lib/breakdown_helper`, so the working directory is always the install root, where `.claude/` and `design/` live.
 
 - Exit 0 (`design-manifest: skip (...)` or `design-manifest: ok (...)`) → pass; no action. `skip` = this is not a design-reference feature (no `design/reference.html`); `ok` = the manifest is present and valid.
 - Exit 2 with a `## Design manifest findings` block on stdout → a HARD failure: the feature has a `design/reference.html` but its `design-manifest.json` is absent or invalid (an empty or incomplete binding — a missing `route`, or a pair missing its `anchor_selector` / `built_testid`). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Re-enter PHASE 2.5 to author/complete and re-validate the binding, then re-run THIS gate. This is a HARD gate with NO `## Risk Assessment` deferral/bypass: do not proceed to Phase 4 with an unresolved manifest violation.
@@ -605,7 +609,7 @@ Pass only the tasks directory — do NOT pass `--plan-handoff` (that flag exists
 
 Present a summary. This block is LLM-authored (breakdown state lives on disk in the task files and index, not in a state JSON):
 
-"I've broken down the plan into **[N] tasks** at `specs/NNN-<feature>/tasks/`.
+"I've broken down the plan into **[N] tasks** at `<feature_dir>/tasks/`.
 
 **Dependency chain**: [simplified graph]
 **Riskiest tasks**: [list High-risk tasks and why]
@@ -632,7 +636,7 @@ End the turn. The user's reply opens the next turn.
 
 - **`approve`** → proceed to Phase 5 (finalize).
 - **`request-changes`** → in the next turn, ask the user which task or aspect to revise. Re-enter the relevant phase (Phase 1 file analysis / Phase 2 decomposition / Phase 2.5 design-fidelity intake / Phase 3 task writing / Phase 3.5 gates) as needed; re-render the affected task files and index via Write or Edit; re-run the Phase 3.5 gates; re-present the summary above and re-issue this approval prompt. The state lives in the rendered files on disk; this loop mutates them in place.
-- **`cancel`** → tell the user `"/devforge:breakdown cancelled. Task drafts preserved at specs/NNN-<feature>/tasks/."` and end the turn.
+- **`cancel`** → tell the user `"/devforge:breakdown cancelled. Task drafts preserved at <feature_dir>/tasks/."` and end the turn.
 
 ## PHASE 5: Finalize
 
@@ -642,9 +646,9 @@ On `approve`, first write the structured breakdown→implement handoff via the h
 .devforge/lib/breakdown_helper finalize-handoff <plan-path>
 ```
 
-The helper parses `<plan-dir>/tasks/*.md` + the tasks `README.md` and atomic-writes `<plan-dir>/breakdown-handoff.json` (a structured handoff carrying the per-task machine contract — agent, depends_on, touched_files, expects, produces, ac_addressed, review_checkpoint — plus provenance to the sibling `plan-handoff.json`). Handle the exit code:
+The helper parses `<feature_dir>/tasks/*.md` + the tasks `README.md` and atomic-writes `<feature_dir>/breakdown-handoff.json` (a structured handoff carrying the per-task machine contract — agent, depends_on, touched_files, expects, produces, ac_addressed, review_checkpoint — plus provenance to the sibling `plan-handoff.json`). Handle the exit code:
 
-- Exit 0 → the helper wrote `specs/NNN-<feature>/breakdown-handoff.json` and printed its path on stdout. Surface the written path to the user in one line, e.g. `"Structured breakdown handoff written: <path>."` If STDERR also carries a `finalize-handoff: WARN:` line, the dead-code passthrough hit a problem in the sibling `plan-handoff.json` (unreadable sibling or malformed rows) — a NON-FATAL condition. Relay that WARN line to the user VERBATIM so exactly what was affected is visible, then continue.
+- Exit 0 → the helper wrote `<feature_dir>/breakdown-handoff.json` and printed its path on stdout. Surface the written path to the user in one line, e.g. `"Structured breakdown handoff written: <path>."` If STDERR also carries a `finalize-handoff: WARN:` line, the dead-code passthrough hit a problem in the sibling `plan-handoff.json` (unreadable sibling or malformed rows) — a NON-FATAL condition. Relay that WARN line to the user VERBATIM so exactly what was affected is visible, then continue.
 - Non-zero exit → the helper could not write or validate the handoff. `finalize-handoff` runs the roster check AND the design-manifest assertion AND the property-coverage check (when a sibling `plan-handoff.json` declares pure-builder targets) AND two change-induced-dead-code chokepoints — a declared-but-unsubstantiated check (when `plan.md` declares dead-code rows the sibling handoff fails to carry) and a dead-code-coverage check (when the sibling declares dead-code rows but a declared row is folded into no task or into 2+ tasks) — internally as backstops, so capture BOTH stdout and stderr and branch on their content (the design-manifest, property-coverage, and dead-code-coverage backstops surface as `## Design manifest findings` / `## Property coverage findings` / `## Dead-code coverage findings` blocks on stdout; the declared-but-unsubstantiated dead-code chokepoint is the exception — it surfaces on STDERR, like the `no agent roster found` case):
   - If STDOUT contains a `## Agent roster findings` block → this is a HARD failure, NOT best-effort: one or more tasks assign an uninstalled agent. Copy that stdout block VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then HALT and return to Phase 3.5 to re-route the offending task per its gate; do NOT continue to the `render-implement-handoff` block. (In normal flow the Phase 3.5 roster gate already caught this, so this stdout-block path should rarely fire.)
   - Else if STDOUT contains a `## Design manifest findings` block → this is a HARD failure, NOT best-effort: the feature has a `design/reference.html` but its `design-manifest.json` is absent or invalid. Copy that stdout block VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then HALT and return to PHASE 2.5 to produce/complete the manifest before re-running; do NOT continue to the `render-implement-handoff` block. (In normal flow the Phase 3.5 design-manifest gate already caught this, so this stdout-block path should rarely fire.)
@@ -659,10 +663,10 @@ The `breakdown-handoff.json` is the **producer side** of the breakdown→impleme
 Now WIP-commit `/devforge:breakdown`'s own artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY (the task files + index were written in Phase 3 and approved in Phase 4; `breakdown-handoff.json` was just written above, best-effort):
 
 ```bash
-.devforge/lib/artifact_helper commit-artifacts --paths '["specs/NNN-<feature>/tasks", "specs/NNN-<feature>/breakdown-handoff.json", "specs/NNN-<feature>/design-manifest.json", "specs/NNN-<feature>/plan.md"]' --label 'breakdown: NNN-<slug>'
+.devforge/lib/artifact_helper commit-artifacts --paths '["<feature_dir>/tasks", "<feature_dir>/breakdown-handoff.json", "<feature_dir>/design-manifest.json", "<feature_dir>/plan.md"]' --label 'breakdown: <feature-dir-name>'
 ```
 
-Substitute `NNN-<feature>` with the resolved feature dir name and `NNN-<slug>` with the feature id. Passing the `tasks` DIRECTORY path stages every task file plus `tasks/README.md` under it (the verb passes a directory path to `git add` unchanged, identical to `git add specs/NNN-<feature>/tasks`). `commit-artifacts` stages ONLY the named paths and makes a `[WIP] breakdown: NNN-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so note the warning and CONTINUE; do NOT abort); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/devforge:implement`'s wrapper path stages ONLY source code in the source repo and leaves these uncommitted — so the commit is NOT redundant there. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged. If `finalize-handoff` above failed to write `breakdown-handoff.json`, that path is simply not present and the verb stages only the present paths — a benign skip, not a failure. The `design-manifest.json` path is likewise present only when Phase 2.5 produced it (a feature with a `design/reference.html`); for a non-UI feature it is simply absent and skipped. `plan.md` is committed here because PHASE 0b may have mutated its `**Status**:` line on disk (flipped Draft → Approved, or inserted a missing Status line as Approved) and that mutation must be git-safe alongside the breakdown artifacts; when PHASE 0b changed nothing (already Approved, Complete, or a non-standard status) the file is unchanged and staging it is a benign no-op.
+Passing the `tasks` DIRECTORY path stages every task file plus `tasks/README.md` under it (the verb passes a directory path to `git add` unchanged, identical to `git add <feature_dir>/tasks`). `commit-artifacts` stages ONLY the named paths and makes a `[WIP] breakdown: <feature-dir-name>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so note the warning and CONTINUE; do NOT abort); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/devforge:implement`'s wrapper path stages ONLY source code in the source repo and leaves these uncommitted — so the commit is NOT redundant there. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged. If `finalize-handoff` above failed to write `breakdown-handoff.json`, that path is simply not present and the verb stages only the present paths — a benign skip, not a failure. The `design-manifest.json` path is likewise present only when Phase 2.5 produced it (a feature with a `design/reference.html`); for a non-UI feature it is simply absent and skipped. `plan.md` is committed here because PHASE 0b may have mutated its `**Status**:` line on disk (flipped Draft → Approved, or inserted a missing Status line as Approved) and that mutation must be git-safe alongside the breakdown artifacts; when PHASE 0b changed nothing (already Approved, Complete, or a non-standard status) the file is unchanged and staging it is a benign no-op.
 
 Then emit the deterministic manual next-step block via the helper:
 
@@ -672,7 +676,7 @@ Then emit the deterministic manual next-step block via the helper:
 
 Handle the exit code:
 
-- Exit 2 → the plan or task files could not be read. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user to verify `specs/NNN-<feature>/tasks/` exists and re-run `/devforge:breakdown`, and end the turn. Unlike `finalize-handoff`'s non-blocking non-zero exit above (which continues to this block), a failure here DOES end the turn — this block is the guaranteed human bridge, and if it cannot render there is no fallback next-step to fall through to.
+- Exit 2 → the plan or task files could not be read. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user to verify `<feature_dir>/tasks/` exists and re-run `/devforge:breakdown`, and end the turn. Unlike `finalize-handoff`'s non-blocking non-zero exit above (which continues to this block), a failure here DOES end the turn — this block is the guaranteed human bridge, and if it cannot render there is no fallback next-step to fall through to.
 - Exit 0 → stdout is the deterministic manual-next-step block — copy it VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The block heading reads `## Manual next step — run /devforge:implement`; it carries the task count, informationally names the numerically-lowest first task, and the literal `/devforge:implement` invocation line (no argument — the command auto-resolves the lowest incomplete feature and its next task). Both of those strings are composed by `render-implement-handoff` — they are the helper's, not this spec's, so do not rewrite them here. The block also instructs the user to **restart Claude Code** before running `/devforge:implement` so any newly-installed command is picked up.
 
 After the block lands in the user-facing message, end the turn with one short confirmation: `"/devforge:breakdown is done. Restart Claude Code, then copy the invocation line from the block above to continue."` Do NOT restate that invocation in your closing sentence — the block already contains the literal `/devforge:implement` line, which `render-implement-handoff` composes (it is the helper's string, not this spec's — do not rewrite it here).
