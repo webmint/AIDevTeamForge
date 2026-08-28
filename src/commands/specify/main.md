@@ -1,22 +1,24 @@
 ---
 name: specify
-description: Author a 9-section feature spec under specs/NNN-name/spec.md with EARS-validated AC, coverage-rule enforcement, and a manual-next-step /devforge:plan block.
+description: Author a 9-section feature spec as spec.md inside the feature directory intake allocated, with EARS-validated AC, coverage-rule enforcement, and a manual-next-step /devforge:plan block.
 argument-hint: "<feature description>"
 ---
 
 # /devforge:specify — Feature Specification
 
-`/devforge:specify` is repeatable per feature. It reads the eight mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec to `specs/NNN-<feature-name>/spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any spec work fires. Phase 0.4's gate then RESOLVES the feature directory `/devforge:research` or `/devforge:discover` already allocated at intake — `/devforge:specify` writes `spec.md` into that existing directory instead of allocating a new one.
+`/devforge:specify` is repeatable per feature. It reads the eight mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec into the feature directory as `spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any spec work fires. Phase 0.4's gate then RESOLVES the feature directory `/devforge:research` or `/devforge:discover` already allocated at intake — `/devforge:specify` writes `spec.md` into that existing directory instead of allocating a new one.
 
 Usage: `/devforge:specify "<feature description>"` (e.g. `/devforge:specify "migrate the monorepo from lerna to pnpm workspaces"` or `/devforge:specify "add scheduled export jobs for tenant data"`). If `$ARGUMENTS` is empty, ask the user to describe the feature before calling any helper subcommand.
 
 ## Outputs of this phase
 
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run writes into: one path the orchestrator holds in working memory for the rest of the run. Phase 0.4 binds it, at its resolution site, to the parent directory of the intake handoff on the chosen `find-handoffs` line; that directory already exists, because `/devforge:research` or `/devforge:discover` created it at intake. Step 4.1's genuine-fallback path is the single exception: it rebinds `<feature_dir>` to a fresh directory under `specs/`, whose name is the `<NNN>-<feature-name>` pair that step assigns, and Step 4.11's `mkdir -p` creates it. Outside that one path the orchestrator never composes it from parts, never re-shapes it, and never substitutes another value for it; every artifact path below is `<feature_dir>` plus a filename. In wrapper mode it resolves under the install root, never the nested source root.
+
 - `.devforge/specify-state.json` — canonical SpecDoc state (Phase 0–5 buckets). Owned + shaped by the helper; mutated only via setter subcommands.
-- `specs/NNN-<feature-name>/spec.md` — rendered 9-section spec markdown, written into the feature directory resolved in Phase 0.4 (the one `/devforge:research` or `/devforge:discover` allocated at intake). Helper's `render` writes to stdout; orchestrator saves the bytes verbatim under `<install_root>/specs/`.
+- `<feature_dir>/spec.md` — rendered 9-section spec markdown, written into the feature directory resolved in Phase 0.4 (the one `/devforge:research` or `/devforge:discover` allocated at intake). Helper's `render` writes to stdout; orchestrator saves those bytes verbatim to that path.
 - Branch `spec/NNN-<feature-name>` — FALLBACK only. `/devforge:research` and `/devforge:discover` create this branch at intake, so `/devforge:specify` normally creates nothing; Step 4.1 calls `create-branch` only when Phase 0.2 deferred creation, and only its default-branch arm emits a checkout.
-- `specs/NNN-<feature-name>/handoff.json` — specify→plan structured handoff, written by `finalize-handoff` on the approve branch of Phase 5 (sibling to `spec.md`). Carries `spec_seeds` (structured spec sections) + upstream research/discover provenance; spec status stays `Draft` (`/devforge:plan` owns the flip). `/devforge:plan` auto-discovers this sibling handoff on its first run and reads the upstream plan-seeds; the user still invokes `/devforge:plan` manually (no auto-dispatch from `/devforge:specify`).
-- `specs/NNN-<feature-name>/design-anchor.json` — structured, immutable design-intent record (`kind` / `file` / `selectors` plus a `source_hash` baseline), written by `write-design-anchor` on the approve branch of Phase 5 (Step 5.4). Composed from the design anchor carried across the `/devforge:research` / `/devforge:discover` intake handoff, or — when intake captured none — from the `**Design source**:` declaration as a backstop. `/devforge:specify` is the gate that guarantees this record exists before `/devforge:plan`.
+- `<feature_dir>/handoff.json` — specify→plan structured handoff, written by `finalize-handoff` on the approve branch of Phase 5 (sibling to `spec.md`). Carries `spec_seeds` (structured spec sections) + upstream research/discover provenance; spec status stays `Draft` (`/devforge:plan` owns the flip). `/devforge:plan` auto-discovers this sibling handoff on its first run and reads the upstream plan-seeds; the user still invokes `/devforge:plan` manually (no auto-dispatch from `/devforge:specify`).
+- `<feature_dir>/design-anchor.json` — structured, immutable design-intent record (`kind` / `file` / `selectors` plus a `source_hash` baseline), written by `write-design-anchor` on the approve branch of Phase 5 (Step 5.4). Composed from the design anchor carried across the `/devforge:research` / `/devforge:discover` intake handoff, or — when intake captured none — from the `**Design source**:` declaration as a backstop. `/devforge:specify` is the gate that guarantees this record exists before `/devforge:plan`.
 
 On approve, Step 5.4 `[WIP]`-commits the spec into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash. `spec.md` and `design-anchor.json` are always committed on approve (both exist by the time Step 5.4 reaches either commit-artifacts call); `handoff.json` is committed additionally when `finalize-handoff` succeeds. `.devforge/specify-state.json` is NOT committed (it is `.devforge/`-scoped runtime state).
 
@@ -99,9 +101,9 @@ Then reset helper state for this run:
 .devforge/lib/specify_helper find-handoffs --require
 ```
 
-`/devforge:research` and `/devforge:discover` allocate the feature directory `specs/NNN-<slug>/` themselves at intake finalize and write their report + handoff inside it, so by the time `/devforge:specify` runs, the directory — its `NNN` and its slug — already exists. This step RESOLVES that directory; it never allocates one.
+`/devforge:research` and `/devforge:discover` allocate the feature directory themselves at intake finalize and write their report + handoff inside it, so by the time `/devforge:specify` runs, that directory — and the name intake gave it — already exists. This step RESOLVES that directory; it never allocates one.
 
-Helper makes one glob pass over `specs/*/research-handoff.json` AND `specs/*/discover-handoff.json` and lists only feature dirs that are **pending**. A feature dir is pending when its intake handoff is present AND either arm holds:
+Helper walks the feature directories once, looking in each for `research-handoff.json` AND `discover-handoff.json`, and lists only feature dirs that are **pending**. A feature dir is pending when its intake handoff is present AND either arm holds:
 
 - **(a) `spec.md` is absent** — the feature has not been specified yet. This is the normal arm.
 - **(b) `spec.md` exists AND a sibling `*-seed.json` in the same dir has `target_stage == "spec"`** — the re-entry arm: a downstream re-entry directive is asking for this spec to be REVISED, and the seed's `source` field names the command that emitted it. Without this arm the gate would block every re-entry before Phase 0.5 could consume the seed. A corrupt seed file, or one targeting another stage, does not admit the dir.
@@ -116,11 +118,11 @@ mtime orders the hits and does nothing else: there is no age filter, so a featur
 
 **Scope of this gate (it applies ONLY to the spec pipeline).** The standalone `/devforge:audit` flow is separate from the spec pipeline and is NOT gated by this precondition; it exists precisely to bypass the heavy pipeline for small, one-off work.
 
-On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr names the two locations it globbed, both pending arms, and the two recovery commands — `/devforge:research "<topic>"` for a bug or enhancement against existing code, `/devforge:discover "<idea>"` for a greenfield feature. The user runs one, then re-invokes `/devforge:specify`. Do NOT proceed to Phase 1 and do NOT offer a cold-start alternative — there is no override.
+On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr names both handoff filenames it looked for, both pending arms, and the two recovery commands — `/devforge:research "<topic>"` for a bug or enhancement against existing code, `/devforge:discover "<idea>"` for a greenfield feature. The user runs one, then re-invokes `/devforge:specify`. Do NOT proceed to Phase 1 and do NOT offer a cold-start alternative — there is no override.
 
 On one or more hits: count R research and D discover handoffs from the output lines (one feature dir contributes two lines when both lanes ran for it). AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
 
-Every arm resolves a feature directory: it is the PARENT directory of the handoff path on the chosen stdout line. Hold it in working memory as the **resolved feature dir** — Phase 1's §1.5/§1.6/§1.8 corpus reads, Step 4.1's header assignment, and Step 4.11's spec write all use it, and `spec.md` is written into it in every arm (created on a first pass, overwritten on a `re-entry` revision) — except Step 4.1's genuine-fallback path, which allocates a fresh directory instead; see Step 4.1. Also carry whether the chosen line ended in ` | re-entry`, so Phase 0.5 knows to expect a seed in that dir. Intake always names the directory `<NNN>-<slug>`; the helper also lists any other `specs/` subdirectory that happens to carry an intake handoff, and Step 4.1's genuine-fallback path covers that shape.
+Every arm resolves a feature directory: it is the PARENT directory of the handoff path on the chosen stdout line. Hold it in working memory as the **resolved feature dir** — this run's `<feature_dir>`, the one path the rest of this document names. Phase 1's §1.5/§1.6/§1.8 corpus reads, Step 4.1's header assignment, and Step 4.11's spec write all use it, and `spec.md` is written into it in every arm (created on a first pass, overwritten on a `re-entry` revision) — except Step 4.1's genuine-fallback path, which rebinds `<feature_dir>` to a fresh directory instead; see Step 4.1. Also carry whether the chosen line ended in ` | re-entry`, so Phase 0.5 knows to expect a seed in that dir. Intake always names the directory `<NNN>-<slug>`; the helper also lists any other feature directory that happens to carry an intake handoff, and Step 4.1's genuine-fallback path covers that shape.
 
 - **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (most-recent-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is that path's parent.
 - **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line); print each line's trailing ` | re-entry` marker unchanged where present, and state in one line of prose above the block that a `re-entry` line revises an already-specified feature. Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is the picked path's parent.
@@ -213,22 +215,22 @@ Use the codebase-memory-mcp graph for the package + concern lookups; do NOT use 
 
 Record one `record-input-read` call per md file actually consumed, with the relative path.
 
-### 1.5 `specs/<NNN>-<slug>/research-report.md` (if the file exists) — this feature's `/devforge:research` investigation report
+### 1.5 `<feature_dir>/research-report.md` (if the file exists) — this feature's `/devforge:research` investigation report
 
 The `/devforge:research` run that produced this feature's intake handoff wrote its report beside that handoff, inside the feature dir resolved in Phase 0.4 — so there is exactly one candidate, at a fixed path, and no topic-token scan applies. Read the file in full when it exists, then record it:
 
 ```bash
-.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/research-report.md"
+.devforge/lib/specify_helper record-input-read --path "<feature_dir>/research-report.md"
 ```
 
 Auto-tagged `source_origin = "research"` (the helper dispatches on the `research-report.md` filename, not on the `specs/` prefix). No content parsing of `/devforge:research` output — the file is consumed as plain markdown into Phase 1.5 findings.
 
-### 1.6 `specs/<NNN>-<slug>/discovery-report.md` (if the file exists) — this feature's `/devforge:discover` discovery report
+### 1.6 `<feature_dir>/discovery-report.md` (if the file exists) — this feature's `/devforge:discover` discovery report
 
 Same shape as §1.5, at the sibling path in the same resolved feature dir. Read the file in full when it exists, then record it:
 
 ```bash
-.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/discovery-report.md"
+.devforge/lib/specify_helper record-input-read --path "<feature_dir>/discovery-report.md"
 ```
 
 Auto-tagged `source_origin = "discover"`. A feature dir normally carries one lane's report; both files exist when both lanes ran for it. Read whichever of the two are present.
@@ -241,12 +243,12 @@ Enumerate via `ls specs/` and read the `spec.md` of any prior spec directory who
 
 On a re-entry run (Phase 0.5 fired), the resolved feature dir's own `spec.md` — the version this run supersedes — is read here too, under the same call and the same `prior_spec` tag. Read it so the material worth keeping survives into the Phase 1.5 findings; the seed's directive still governs what must change.
 
-### 1.8 `specs/<NNN>-<slug>/emission-matrix.md` (if the file exists) — this feature's `/devforge:research` post-change emission matrix
+### 1.8 `<feature_dir>/emission-matrix.md` (if the file exists) — this feature's `/devforge:research` post-change emission matrix
 
 Same shape as §1.5, at a third fixed path in the same resolved feature dir. `/devforge:research` writes this file only when the approach it recommended REMOVES or SUPPRESSES a value the changed code emits, so most feature dirs do not carry one — its absence is the normal state, not a gap to fill, and `/devforge:specify` never authors it. Read the file in full when it exists, then record it:
 
 ```bash
-.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/emission-matrix.md"
+.devforge/lib/specify_helper record-input-read --path "<feature_dir>/emission-matrix.md"
 ```
 
 Auto-tagged `source_origin = "prior_spec"`: the filename dispatch recognizes `research-report.md` and `discovery-report.md` only, so every other `specs/` path falls through to that tag. The tag is a corpus label and carries no consequence here — `prior_spec` origins do not pre-seed `spec_type` (Phase 3 Step 1), and this path is not among Phase 1 finalize's four mandatory base reads.
@@ -438,7 +440,7 @@ Goal: classify the spec type, read the mandatory per-type files, supplement with
 
 ### Step 1 — Classify the spec type
 
-**Handoff-seeded spec_type check (precondition).** If Phase 0.4 ran `import-handoff` on a research handoff (state has `spec_type_seeded_by_upstream == true` AND `spec_type` is set AND `source.handoff_kind == "research"`, with `source.handoff_path` the install-root-relative `specs/<NNN>-<slug>/research-handoff.json`), surface the pre-seeded value to the user before classifying:
+**Handoff-seeded spec_type check (precondition).** If Phase 0.4 ran `import-handoff` on a research handoff (state has `spec_type_seeded_by_upstream == true` AND `spec_type` is set AND `source.handoff_kind == "research"`, with `source.handoff_path` the install-root-relative `<feature_dir>/research-handoff.json`), surface the pre-seeded value to the user before classifying:
 
 - AskUserQuestion `"Research handoff pre-seeded spec_type=<value>; accept or override?"` with options `["accept", "override"]`.
 - On `accept`: call `.devforge/lib/specify_helper classify-spec-type --spec-type <pre-seeded-value> --rationale "pre-seeded from research handoff at <handoff_path>" --seeded-by-upstream`. Lock in the value.
@@ -545,7 +547,7 @@ Goal: deterministic 9-section render via setters + verifiers; the helper owns se
 
 Persists the value verbatim after validating it is 3+ digits (zero-padding preserved). Performs no scan — the caller already knows the number.
 
-**Genuine fallback — state carries no `spec_number` and the resolved dir's basename is not `<NNN>-<slug>`.** Reachable two ways: a handoff sitting in a non-`NNN` directory under `specs/` (`find-handoffs` lists any `specs/` subdirectory carrying an intake handoff, not only `NNN-`-prefixed ones), or a pre-migration handoff imported by explicit path from outside `specs/`. In both cases `import-handoff` leaves the fields unseeded and there is no number to split out, so allocate fresh — and note the consequence to the user: `spec.md` will land in a NEW directory, not beside the intake handoff.
+**Genuine fallback — state carries no `spec_number` and the resolved dir's basename is not `<NNN>-<slug>`.** Reachable two ways: a handoff sitting in a feature directory that intake did not name (`find-handoffs` lists every feature directory carrying an intake handoff, not only the ones whose basename has that shape), or a pre-migration handoff imported by explicit path from outside the feature tree. In both cases `import-handoff` leaves the fields unseeded and there is no number to split out, so allocate fresh. This is the one path that rebinds `<feature_dir>` away from the directory Phase 0.4 resolved — see the token's definition under "Outputs of this phase". Note the consequence to the user: `spec.md` will land in a NEW directory, not beside the intake handoff.
 
 One documented limitation of this path: on the importing arms `import-handoff` has already written `downstream_links.spec_path` into the intake handoff, pointing at the handoff's OWN directory — which the fresh allocation then does not use, so that field is left stale. Nothing corrects it and no defensive check is added; say so when you note the new directory, so the user knows the two do not agree. The other two paths are unaffected, because there the allocated directory IS the handoff's directory.
 
@@ -553,7 +555,7 @@ One documented limitation of this path: on the importing arms `import-handoff` h
 .devforge/lib/specify_helper assign-spec-number
 ```
 
-Scans `specs/` for the highest `NNN-*` prefix and emits the next zero-padded number to stdout (`001`, `002`, …). Persists `spec_number`. Do not pass `--specs-root`: the flag is accepted-but-ignored, and the scan always targets `specs/` under the install root.
+Allocates the next spec number and emits it to stdout, zero-padded; the helper derives it from the feature directories that already exist. Persists `spec_number`. Do not pass `--specs-root`: the flag is accepted-but-ignored, and the helper always scans under the install root.
 
 **Feature name (all three paths).**
 
@@ -616,7 +618,7 @@ For greenfield, list scaffolding needs explicitly (Impact = "Create new") so `/d
 
 Each AC must be testable and unambiguous. **Cover each category that applies. Mark non-applicable categories with "N/A — [reason]".**
 
-**When `specs/<NNN>-<slug>/emission-matrix.md` exists (§1.8), re-read it before writing any AC in this step.** An acceptance criterion asserting that a value this change removes is still present — or still emitted — on some path may NOT be written from inferred intent; it requires product intent, quoted. "We did not intend to touch that file" is inferred intent and is not sufficient. Where the matrix shows a call site whose `Intersection with the removed set` is non-empty, that is a product question about what should happen on that path: surface it to the user as plain prose and record it under §8 Open Questions (Step 4.7), landing its Phase 1.5 finding in §9 Risks (Step 4.8), since §8 is not one of the four buckets `verify-coverage` accepts. Pinning it as an AC instead converts an assumption into a contract that `/devforge:verify` will enforce.
+**When `<feature_dir>/emission-matrix.md` exists (§1.8), re-read it before writing any AC in this step.** An acceptance criterion asserting that a value this change removes is still present — or still emitted — on some path may NOT be written from inferred intent; it requires product intent, quoted. "We did not intend to touch that file" is inferred intent and is not sufficient. Where the matrix shows a call site whose `Intersection with the removed set` is non-empty, that is a product question about what should happen on that path: surface it to the user as plain prose and record it under §8 Open Questions (Step 4.7), landing its Phase 1.5 finding in §9 Risks (Step 4.8), since §8 is not one of the four buckets `verify-coverage` accepts. Pinning it as an AC instead converts an assumption into a contract that `/devforge:verify` will enforce.
 
 **The same standard binds every AC entering §5.2 Behavior preservation (`behavior_preservation`), whether or not that matrix exists.** The trigger is the subsection an AC is added under, not how its statement is worded — framing a claim as preserved lane behavior rather than as a still-present value is no exit from it. Such an AC asserts that a state must be PRESERVED, so before adding it, show that state REACHABLE: cite the construction site that produces it — the code that builds or emits it — traced through the codebase-memory-mcp chain (Phase 3 Step 3), never asserted. One line carries the citation, inside either the AC's `--statement` or the Phase 1.5 finding it cites with `--finding-ref`. Where no construction site can be cited, the criterion is not a preservation criterion but a product question, and it takes the same route as above: §8 Open Questions (Step 4.7), with its Phase 1.5 finding in §9 Risks (Step 4.8); when that leaves §5.2 with nothing, mark the subsection N/A below rather than inventing a criterion to fill it. An AC whose subject state nothing constructs cannot be violated, so it guards nothing while still shaping the implementation — `/devforge:spec-check` will correctly find it consistent with everything, which is exactly why it must not enter §5.2. Two bounds keep the citation from being over-trusted: a preservation case counts only when its subject state is asserted reachable — the same standard under which downstream consistency checking can catch a clash at all — and reachability by static trace is bounded by dynamic dispatch, so a cited construction site shows the state IS reachable but never shows the citation exhausted every path. A citation is necessary; it is never proof of exhaustiveness.
 
@@ -832,9 +834,9 @@ Stdout is the full 9-section spec markdown matching the helper's locked template
 Write the rendered bytes into the feature directory. On the warm and cold paths that directory is the one resolved in Phase 0.4 and already exists — the `mkdir -p` is a no-op there and creates the directory only on the genuine-fallback path:
 
 ```bash
-mkdir -p "specs/<NNN>-<feature-name>"
+mkdir -p "<feature_dir>"
 # write the captured render bytes to:
-#   specs/<NNN>-<feature-name>/spec.md
+#   <feature_dir>/spec.md
 ```
 
 Use Write with the captured bytes as the file content. Do NOT edit the rendered markdown — any change goes back through the relevant setter + a fresh `render`. On a re-entry revision (Phase 0.5 fired) `spec.md` already exists at that path and this Write REPLACES it wholesale — that is correct, not a collision to route around; the superseded version stays in git history via the per-step `[WIP]` commits.
@@ -842,7 +844,7 @@ Use Write with the captured bytes as the file content. Do NOT edit the rendered 
 After Write, verify the on-disk bytes match the helper render in canonical form:
 
 ```bash
-.devforge/lib/specify_helper verify-rendered --path "specs/<NNN>-<feature-name>/spec.md"
+.devforge/lib/specify_helper verify-rendered --path "<feature_dir>/spec.md"
 ```
 
 Exit 0 = on-disk file matches helper render in canonical form (LF line endings, no trailing whitespace, single trailing newline). Exit 2 = real content drift between rendered + written bytes; re-render + re-write before proceeding to Phase 5. Cosmetic editor mutations (CRLF, trailing whitespace, extra trailing newlines) are tolerated; content changes are not.
@@ -850,7 +852,7 @@ Exit 0 = on-disk file matches helper render in canonical form (LF line endings, 
 Stamp the spec at the current repo HEAD so downstream commands can detect drift:
 
 ```bash
-.devforge/lib/cbm_sync_helper stamp-spec "specs/<NNN>-<feature-name>/spec.md"
+.devforge/lib/cbm_sync_helper stamp-spec "<feature_dir>/spec.md"
 ```
 
 Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (append-only). Downstream `/devforge:plan` and `/devforge:implement` invoke `check-spec` to surface drift: `current` = no §4-cited file changed since the stamp; `drift <a>..<b> <files>` = at least one cited file changed; `missing` = no stamp.
@@ -865,7 +867,7 @@ Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (app
 .devforge/lib/specify_helper render-summary
 ```
 
-Stdout is the deterministic 4-bullet approval summary. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is:
+Stdout is the deterministic 4-bullet approval summary. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path spelling below is the helper's own string, composed by `render-summary` — do not rewrite it here):
 
 ```
 I've created the specification at `specs/NNN-[feature-name]/spec.md`. Key points:
@@ -903,7 +905,7 @@ This step runs ONLY on the `approve` branch of Step 5.3 — never on `request-ch
 .devforge/lib/specify_helper write-design-anchor
 ```
 
-The helper writes `specs/<NNN>-<feature-name>/design-anchor.json` atomically from the design anchor already in `/devforge:specify` state — the one carried from a `/devforge:research` / `/devforge:discover` handoff by `import-handoff` (Phase 0.4) when intake captured one, or, when intake captured none, one the helper composes from the `**Design source**:` declaration recorded by `set-design-source` (Step 4.10) as a backstop. The backstop is internal to the helper; no separate orchestration is required. Its only preconditions are `spec_number` and `feature_slug`, both set in Step 4.1 (by whichever of its three number paths applied, plus `assign-feature-name`) and therefore already present on this branch; the helper creates the feature directory itself if needed. The `**Design source**:` frontmatter line stays as the human-readable summary of the same intent; `design-anchor.json` is persisted as the structured, immutable design-intent record, so later pipeline stages can read it directly in place instead of having it re-carried through handoffs. `/devforge:specify` is the gate that guarantees this record is persisted before `/devforge:plan`; the write is idempotent — a re-run of `/devforge:specify` overwrites it. On a non-zero exit, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), address the cited cause, and re-run.
+The helper writes `<feature_dir>/design-anchor.json` atomically from the design anchor already in `/devforge:specify` state — the one carried from a `/devforge:research` / `/devforge:discover` handoff by `import-handoff` (Phase 0.4) when intake captured one, or, when intake captured none, one the helper composes from the `**Design source**:` declaration recorded by `set-design-source` (Step 4.10) as a backstop. The backstop is internal to the helper; no separate orchestration is required. Its only preconditions are `spec_number` and `feature_slug`, both set in Step 4.1 (by whichever of its three number paths applied, plus `assign-feature-name`) and therefore already present on this branch; the helper creates the feature directory itself if needed. The `**Design source**:` frontmatter line stays as the human-readable summary of the same intent; `design-anchor.json` is persisted as the structured, immutable design-intent record, so later pipeline stages can read it directly in place instead of having it re-carried through handoffs. `/devforge:specify` is the gate that guarantees this record is persisted before `/devforge:plan`; the write is idempotent — a re-run of `/devforge:specify` overwrites it. On a non-zero exit, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), address the cited cause, and re-run.
 
 **Write the handoff artefact first.** Before emitting the manual block, write the structured specify→plan handoff:
 
@@ -911,11 +913,11 @@ The helper writes `specs/<NNN>-<feature-name>/design-anchor.json` atomically fro
 .devforge/lib/specify_helper finalize-handoff
 ```
 
-Helper reads `.devforge/specify-state.json` (read-only, no mutation), builds the handoff from the rendered spec sections + any upstream research/discover provenance, validates, and atomic-writes `specs/<NNN>-<feature-name>/handoff.json` (sibling to the `spec.md` already written in Phase 4). The handoff carries spec status `Draft` — `finalize-handoff` does NOT flip status. On exit 0: surface the written `specs/<NNN>-<feature-name>/handoff.json` path to the user in your next user-facing message as a fenced code block, then proceed to the WIP-commit block below. On non-zero exit (render-completeness failure — missing spec_number/feature_slug, or empty/partial spec content): `handoff.json` was NOT written, but `spec.md` (from Phase 4) and `design-anchor.json` (from the persist step above) exist — so before ending the turn, git-safe them by running `commit-artifacts` with those two paths (`handoff.json` is absent → not included):
+Helper reads `.devforge/specify-state.json` (read-only, no mutation), builds the handoff from the rendered spec sections + any upstream research/discover provenance, validates, and atomic-writes `<feature_dir>/handoff.json` (sibling to the `spec.md` already written in Phase 4). The handoff carries spec status `Draft` — `finalize-handoff` does NOT flip status. On exit 0: surface the written `<feature_dir>/handoff.json` path to the user in your next user-facing message as a fenced code block, then proceed to the WIP-commit block below. On non-zero exit (render-completeness failure — missing spec_number/feature_slug, or empty/partial spec content): `handoff.json` was NOT written, but `spec.md` (from Phase 4) and `design-anchor.json` (from the persist step above) exist — so before ending the turn, git-safe them by running `commit-artifacts` with those two paths (`handoff.json` is absent → not included):
 
 ```bash
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["specs/<NNN>-<feature-name>/spec.md", "specs/<NNN>-<feature-name>/design-anchor.json"]' \
+    --paths '["<feature_dir>/spec.md", "<feature_dir>/design-anchor.json"]' \
     --label "spec: <NNN>-<feature-name>"
 ```
 
@@ -927,13 +929,13 @@ This handoff.json is auto-discovered by `/devforge:plan` on its first run; the m
 
 ```bash
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["specs/<NNN>-<feature-name>/spec.md", "specs/<NNN>-<feature-name>/handoff.json", "specs/<NNN>-<feature-name>/design-anchor.json"]' \
+    --paths '["<feature_dir>/spec.md", "<feature_dir>/handoff.json", "<feature_dir>/design-anchor.json"]' \
     --label "spec: <NNN>-<feature-name>"
 ```
 
 The helper stages those three paths in the install repo and makes a `[WIP] spec: <NNN>-<feature-name>` commit; it is install-repo-only (never the source repo in wrapper mode). Do NOT include `.devforge/specify-state.json` — it is `.devforge/`-scoped runtime state, excluded by design. This call is UNCONDITIONAL — always run it; `spec.md` exists from Phase 4, and the helper benign-skips `handoff.json` if `finalize-handoff` did not write it (the `finalize-handoff` non-zero branch above already commits `spec.md` + `design-anchor.json` without `handoff.json`, so this block runs with all three paths only on the success branch). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so warn the user with the helper's stderr and continue to the `render-plan-handoff` block below; do NOT abort the approve flow); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
 
-`/devforge:specify` does NOT mutate spec status — it stays `Draft` from Phase 4 render-time. The status flips to `Approved` only when (a) the user manually edits the `**Status**:` line in `specs/NNN-<feature-name>/spec.md`, OR (b) `/devforge:plan` flips it as part of its entry gate. Both paths are out-of-scope for `/devforge:specify`.
+`/devforge:specify` does NOT mutate spec status — it stays `Draft` from Phase 4 render-time. The status flips to `Approved` only when (a) the user manually edits the `**Status**:` line in `<feature_dir>/spec.md`, OR (b) `/devforge:plan` flips it as part of its entry gate. Both paths are out-of-scope for `/devforge:specify`.
 
 ```bash
 .devforge/lib/specify_helper render-plan-handoff
