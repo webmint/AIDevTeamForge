@@ -32,13 +32,13 @@ allowed-tools:
 
 **`/devforge:fix` reuses `/devforge:implement`'s back half — it does NOT re-implement it.** PHASES 3–6 below CALL the installed `implement_helper` verbs (`verify-touched`, `merge-review-panel`, `run-forcing-functions-gate`, `wip-commit`) exactly as `/devforge:implement` PHASES 5–7 wire them. Those verbs are single-source-of-truth binaries; this spec orchestrates them, it copies none of their machinery (no `PACKAGE_STACKS` logic, no self-repair-cap logic, no panel-merge logic lives here). State + render shape are owned by `.devforge/lib/fix_helper` and `.devforge/lib/implement_helper`; the orchestrator composes values via verb subcommands and dispatches the implementing agent + the four review-panel agents.
 
-**`/devforge:fix` never invents a defect.** It consumes findings that were WRITTEN somewhere before this run started: pipeline-produced findings (`specs/[feature]/review.md`, `specs/[feature]/verification.md` NEEDS-WORK issues), a single user-raised + code-confirmed in-window defect, or one `bugs/NNN-<slug>.md` file handed to it by path. It does NOT accept a free-text "describe a bug" input — there is no argument form and no prompt that turns a typed description into a working-list item, and a bug the user merely describes in conversation goes to `/devforge:report-bug` first so that a written record exists to consume.
+**`/devforge:fix` never invents a defect.** It consumes findings that were WRITTEN somewhere before this run started: pipeline-produced findings (`<feature_dir>/review.md`, `<feature_dir>/verification.md` NEEDS-WORK issues), a single user-raised + code-confirmed in-window defect, or one `bugs/NNN-<slug>.md` file handed to it by path. It does NOT accept a free-text "describe a bug" input — there is no argument form and no prompt that turns a typed description into a working-list item, and a bug the user merely describes in conversation goes to `/devforge:report-bug` first so that a written record exists to consume.
 
 **A bug FILE is a written finding; it is NOT a confirmed one.** `/devforge:report-bug` captures without reading any source, so a `bugs/` file records what someone believed, not what the code does. The cold lane therefore CONFIRMS the bug against live code before remediating anything, and stops when it cannot (PHASE 0.4).
 
 **One `bugs/` write exists, and only in the cold lane.** After a cold run's hard gate approves and the commit lands, the ONE bug file passed as the argument is flipped to `Fixed`. `/devforge:fix` creates no `bugs/` file, touches no other `bugs/` file, and writes no `bugs/` file at all in the feature lane — run `/devforge:report-bug` to file a bug, which is both the "defer" arm of the offer and the way a cold bug becomes remediable in the first place.
 
-Usage: `/devforge:fix` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/devforge:fix specs/001-auth` or `/devforge:fix specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it) · `/devforge:fix bugs/007-null-cart-total.md` (the cold lane — one already-filed bug, no feature).
+Usage: `/devforge:fix` (auto-resolve the most-recently-modified feature directory under `specs/`) · `/devforge:fix <feature_dir>` or `/devforge:fix <feature_dir>/spec.md` (an explicit feature dir or a spec file inside it) · `/devforge:fix bugs/007-null-cart-total.md` (the cold lane — one already-filed bug, no feature).
 
 ## Maintainer note
 
@@ -48,17 +48,21 @@ This file lives at `src/commands/fix/main.md` in the AIDevTeamForge template rep
 
 `/devforge:fix` writes NO report file of its own. Its durable outputs differ by lane, and **a run either bounces at PHASE 1 or runs through to PHASE 6 — never both.**
 
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run reads from and writes into: one path the orchestrator holds in working memory for the rest of the run. 0.2 resolves it, from `$ARGUMENTS` or by auto-resolution when the argument is empty. Hold it exactly as 0.2 resolved it — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it. Every feature-lane artifact path below is `<feature_dir>` plus a filename, and so is every sibling this command reads.
+
+**`<feature_dir>` exists on the FEATURE lane only. The COLD lane has none at all** — 0.2 does not run there (PHASE 0's lane selection says so, and states why), so on that lane the token names no value and appears in no step. A cold run's only path is the `bugs/NNN-<slug>.md` file it was handed, carried as `<bug-file>` from 0.4b.
+
 **Feature lane** — at most ONE of:
 
 - A `[WIP] fix: <title>` commit (standalone) or `[TICKET-ID] - <title>` commit (wrapper mode, ticket derived from the source branch), written by `implement_helper wip-commit` in task-less mode (PHASE 6) carrying the remediation diff. This is the same output `/devforge:implement` produces per approved task. WIP commits accumulate and are squashed by `/devforge:finalize`.
-- `specs/[feature]/fix-seed.json` — a backward re-entry seed (`source="fix"`, `target_stage="spec"`), written by `fix_helper write-seed` in PHASE 1 and WIP-committed alongside via `artifact_helper commit-artifacts`. It is written ONLY on the scope-change bounce's matching pick (PHASE 1's `re-enter specify` arm); every other pick, and every run that reaches PHASE 2, writes no seed. `/devforge:specify` detects and consumes it on its next run.
+- `<feature_dir>/fix-seed.json` — a backward re-entry seed (`source="fix"`, `target_stage="spec"`), written by `fix_helper write-seed` in PHASE 1 and WIP-committed alongside via `artifact_helper commit-artifacts`. It is written ONLY on the scope-change bounce's matching pick (PHASE 1's `re-enter specify` arm); every other pick, and every run that reaches PHASE 2, writes no seed. `/devforge:specify` detects and consumes it on its next run.
 
 **Cold lane** — on a completed run, BOTH of:
 
 - A clean `fix(<scope>): <title>` commit (standalone) or `[TICKET-ID] - <title>` commit (wrapper mode) carrying the remediation diff, written by `implement_helper wip-commit --final` (PHASE 6). **No `[WIP]` prefix in standalone**, because no `/devforge:finalize` run will ever squash a cold-lane commit — there is no feature to finalize.
 - The consumed `bugs/NNN-<slug>.md` flipped to `**Status**: Fixed` with its `**Fixed**:` date and `## Fix Notes` filled, written by `fix_helper close-bug` (PHASE 6). In standalone this rides the same commit; in wrapper mode it gets its own install-repo commit. **On a cold bounce at PHASE 1 the run writes NEITHER** — no commit, no seed, and the bug file stays `Open`.
 
-`/devforge:fix` does NOT write `specs/[feature]/*.md`, does NOT mutate the spec or the task files, and does NOT CREATE any `bugs/` file. Its only `bugs/` write is the cold lane's single flip above, on the one file it was handed. The feature's `review.md` / `verification.md` (its inputs) are read-only here. Re-verifying the remediated diff is `/devforge:verify`'s job (PHASE 7 points there — feature lane only; a cold run has no acceptance criteria to re-prove).
+`/devforge:fix` does NOT write `<feature_dir>/*.md`, does NOT mutate the spec or the task files, and does NOT CREATE any `bugs/` file. Its only `bugs/` write is the cold lane's single flip above, on the one file it was handed. The feature's `review.md` / `verification.md` (its inputs) are read-only here. Re-verifying the remediated diff is `/devforge:verify`'s job (PHASE 7 points there — feature lane only; a cold run has no acceptance criteria to re-prove).
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -89,7 +93,7 @@ Cheapest guards first; preflight before any feature I/O.
 **Lane selection — decide it here, once, and carry it through the run.** Inspect `$ARGUMENTS` after 0.1's preflight passes:
 
 - `$ARGUMENTS` names a path under `bugs/` (a `bugs/NNN-<slug>.md` file) → **the COLD lane**. Skip 0.2 and 0.3's window gate entirely (0.3's scratch-dir block still runs), then take 0.4's cold arm.
-- `$ARGUMENTS` does NOT name a path under `bugs/` — it is empty, names a `specs/NNN-*` directory or a file inside one, or is anything else at all → **the FEATURE lane**. Run 0.2, 0.3 and 0.4's feature arm as written. **0.2 is what resolves the argument**, and it is also where an argument that names nothing resolvable is caught and reported.
+- `$ARGUMENTS` does NOT name a path under `bugs/` — it is empty, names a feature directory under `specs/` or a file inside one, or is anything else at all → **the FEATURE lane**. Run 0.2, 0.3 and 0.4's feature arm as written. **0.2 is what resolves the argument**, and it is also where an argument that names nothing resolvable is caught and reported.
 
 **These two bullets are a true partition — every possible `$ARGUMENTS` value lands in exactly one of them.** The FEATURE lane is the complement of the cold test, not a second pattern match, so there is no third state and nothing for you to adjudicate: a malformed feature path, a typo'd `bug/007-x.md` (singular, not under `bugs/`), or a bare word is a FEATURE-lane run whose argument 0.2 then fails to resolve — it is NOT a cold run and NOT an error to diagnose here.
 
@@ -113,10 +117,12 @@ The test is the argument's PATH, not its content and not a judgment about how bi
 
 Resolve the feature dir from `$ARGUMENTS`:
 
-- When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a file inside one (e.g. `specs/001-auth/spec.md`), use that feature directory (strip a trailing filename to the `specs/NNN-<slug>` dir).
+- When `$ARGUMENTS` names a feature directory or a file inside one (e.g. `<feature_dir>/spec.md`), use that feature directory — when the argument names a file, take its parent directory.
 - When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:review` or `/devforge:verify`).
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to remediate (run `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — every subsequent `--feature` flag takes it, with ONE exception: PHASE 1's `write-seed` call takes the `NNN-<slug>` basename (`<feature-id>`, derived from `<feature>`) via `--feature`, and takes `<feature>` itself via its separate `--feature-dir` flag.
+If no `specs/NNN-*` directory exists, tell the user there is no feature to remediate (run `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as this run's `<feature_dir>`, exactly as resolved — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it.
+
+Every subsequent `--feature` flag takes `<feature_dir>` itself, with ONE exception: PHASE 1's `write-seed` call takes the feature directory's own name — the last segment of `<feature_dir>`, called `<feature-dir-name>` below — via `--feature`, and takes `<feature_dir>` via its separate `--feature-dir` flag. The two are not interchangeable, and the flag NAME does not tell you which one a verb wants: `in-fix-window --feature` and `read-findings --feature` each resolve sibling files under the path they are handed, while `write-seed --feature` becomes the seed's human-readable `feature` field and only `--feature-dir` decides where the seed file lands.
 
 ### 0.3 — Window gate *(FEATURE lane only)* + scratch dir *(BOTH lanes)*
 
@@ -125,7 +131,7 @@ If no `specs/NNN-*` directory exists, tell the user there is no feature to remed
 In the feature lane `/devforge:fix` only remediates a feature whose WIP commits are still open — post-`/devforge:implement`, pre-`/devforge:summarize`. Confirm the window before any further work:
 
 ```bash
-.devforge/lib/fix_helper in-fix-window --feature <feature>
+.devforge/lib/fix_helper in-fix-window --feature <feature_dir>
 ```
 
 `in-fix-window` emits JSON `{in_window, reason}` and uses its EXIT CODE as the gate: **exit 0** = in-window (proceed), **exit 1** = out-of-window. On exit 1 (`reason` is `summary_present` or `spec_complete` → the feature is SEALED; `no_tasks_dir` / `no_task_files` → not yet implemented; `not_all_tasks_complete` → `/devforge:implement` is still mid-flight), STOP: do NOT remediate this feature in place. Report the `reason` to the user so they know which out-of-window state applies, then name the route that fits it:
@@ -162,10 +168,10 @@ Two arms. **Take the one your lane selected at the top of PHASE 0** — the feat
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-fix"
-.devforge/lib/fix_helper read-findings --feature <feature> > "$WORKDIR/findings.json"
+.devforge/lib/fix_helper read-findings --feature <feature_dir> > "$WORKDIR/findings.json"
 ```
 
-`read-findings` parses `specs/[feature]/review.md` confirmed/contested findings AND the `specs/[feature]/verification.md` NEEDS-WORK issues into ONE working list. (Pass `--source review` or `--source verify` to restrict to one file; the default `both` unions them.) Stdout JSON carries `items` (the working list — each item a `{title, severity, files_cited, evidence, source}` dict) and `sources` (`review` / `verify` found-flags, the `verify_verdict` string, and `review_missing` / `verify_missing`). `read-findings` returns exit 0 even when both files are absent (`items` is `[]`); a non-zero exit is a `--feature` argument error — copy the helper's stderr VERBATIM and end the turn.
+`read-findings` parses `<feature_dir>/review.md` confirmed/contested findings AND the `<feature_dir>/verification.md` NEEDS-WORK issues into ONE working list. (Pass `--source review` or `--source verify` to restrict to one file; the default `both` unions them.) Stdout JSON carries `items` (the working list — each item a `{title, severity, files_cited, evidence, source}` dict) and `sources` (`review` / `verify` found-flags, the `verify_verdict` string, and `review_missing` / `verify_missing`). `read-findings` returns exit 0 even when both files are absent (`items` is `[]`); a non-zero exit is a `--feature` argument error — copy the helper's stderr VERBATIM and end the turn.
 
 **Case-3 conversational defect.** When the `/devforge:fix` invocation followed a user-raised defect that you ALREADY code-confirmed before proposing `/devforge:fix` (not a `/devforge:review`/`/devforge:verify` finding on disk), that confirmed defect IS the working-list item. Carry it as a single item of the same shape — `{title, severity, files_cited, evidence, source: "conversation"}` — with `files_cited` set to the file(s) you read to confirm it and `evidence` set to the verbatim code you quoted. You will append it to the working list in PHASE 1. Do NOT fabricate this item: it exists only when the user pointed out the defect AND you confirmed it from the actual code in this conversation.
 
@@ -243,32 +249,32 @@ An "Other" answer, and any reply that does not select `re-enter specify`, writes
 
 **Seed write + commit (the `re-enter specify` arm only).** Compose the seed inputs from material the bounce has already produced — the mapping is fixed, so two runs on the same bounce compose the same seed:
 
-- `--feature` — the feature id: the `NNN-<slug>` basename of the `<feature>` dir resolved in 0.2.
-- `--feature-dir` — the resolved `<feature>` dir itself.
+- `--feature` — `<feature-dir-name>`: the last segment of the `<feature_dir>` resolved in 0.2.
+- `--feature-dir` — `<feature_dir>` itself, in the form 0.2 resolved it.
 - `--prior-conclusion` — the bounced item's conclusion/claim as written in the working list.
-- `--invalidating-evidence` — when the item came from a written finding (`specs/[feature]/review.md` or `specs/[feature]/verification.md`), QUOTE that finding's own `evidence` string, plus the one-line triage classification reason. The bare classification judgment alone is permitted ONLY for a case-3 conversational defect, which has no written finding to quote.
+- `--invalidating-evidence` — when the item came from a written finding (`<feature_dir>/review.md` or `<feature_dir>/verification.md`), QUOTE that finding's own `evidence` string, plus the one-line triage classification reason. The bare classification judgment alone is permitted ONLY for a case-3 conversational defect, which has no written finding to quote.
 - `--must-satisfy` — what the fresh `/devforge:specify` cycle must resolve: the scope change, named.
-- `--provenance` — the report file the item came from (`specs/[feature]/review.md` or `specs/[feature]/verification.md`); for a case-3 conversational defect, the literal string `conversational (in-window user report; no report file)`.
-- `--cycle-count` — before composing, check whether `<feature>/fix-seed.json` ALREADY exists (a prior bounce on this same feature). If it does, read that file's `cycle_count` and pass it plus one; otherwise omit the flag (default `1`). There is no cap logic on this path.
+- `--provenance` — the report file the item came from (`<feature_dir>/review.md` or `<feature_dir>/verification.md`); for a case-3 conversational defect, the literal string `conversational (in-window user report; no report file)`.
+- `--cycle-count` — before composing, check whether `<feature_dir>/fix-seed.json` ALREADY exists (a prior bounce on this same feature). If it does, read that file's `cycle_count` and pass it plus one; otherwise omit the flag (default `1`). There is no cap logic on this path.
 - `--carried-findings` — a JSON array string; omit it for a single-item bounce.
 
 **Multi-item bounce.** When SEVERAL working-list items EACH independently triage as a scope change, write ONE seed, never one per item — `fix-seed.json` is a fixed filename, so a second write would overwrite the first. The three flat strings (`--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`) SYNTHESIZE across the items, and each item's own per-item reasoning goes into `--carried-findings` as one array element per item. The AskUserQuestion's single-line question names ALL triggering items in that case, not just one. (This is a different case from the mixed working list `references/triage.md` covers — that one is a single scope change sitting among defect repairs.)
 
 ```bash
-.devforge/lib/fix_helper write-seed --feature <feature-id> --feature-dir <feature> --prior-conclusion "<the bounced item's conclusion as written>" --invalidating-evidence "<the finding's quoted evidence + the one-line classification reason>" --must-satisfy "<the scope change the /devforge:specify cycle must resolve>" --provenance "<feature>/review.md"
+.devforge/lib/fix_helper write-seed --feature <feature-dir-name> --feature-dir <feature_dir> --prior-conclusion "<the bounced item's conclusion as written>" --invalidating-evidence "<the finding's quoted evidence + the one-line classification reason>" --must-satisfy "<the scope change the /devforge:specify cycle must resolve>" --provenance "<feature_dir>/review.md"
 ```
 
-`write-seed` builds a `ReEntrySeed` (`source="fix"`, `target_stage="spec"`, both fixed INTERNALLY — there is no `--target-stage` flag, because the bounce has exactly one backward direction) and writes `<feature>/fix-seed.json` via an atomic write, OVERWRITING any prior `fix-seed.json`. `--feature`, `--feature-dir`, `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (a missing or empty value exits **2**); `--cycle-count` (an int ≥ 1) and `--carried-findings` (a JSON array string) default to `1` and `[]` and may be omitted. Stdout is a JSON ack `{"seed_path"}`. On a non-zero exit, copy the helper's stderr VERBATIM as a fenced code block and end the turn — no seed was written.
+`write-seed` builds a `ReEntrySeed` (`source="fix"`, `target_stage="spec"`, both fixed INTERNALLY — there is no `--target-stage` flag, because the bounce has exactly one backward direction) and writes `<feature_dir>/fix-seed.json` via an atomic write, OVERWRITING any prior `fix-seed.json`. `--feature`, `--feature-dir`, `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (a missing or empty value exits **2**); `--cycle-count` (an int ≥ 1) and `--carried-findings` (a JSON array string) default to `1` and `[]` and may be omitted. Stdout is a JSON ack `{"seed_path"}`. On a non-zero exit, copy the helper's stderr VERBATIM as a fenced code block and end the turn — no seed was written.
 
 Then WIP-commit the seed so it is git-safe:
 
 ```bash
-.devforge/lib/artifact_helper commit-artifacts --paths '["<feature>/fix-seed.json"]' --label 'fix-seed: <feature-id>'
+.devforge/lib/artifact_helper commit-artifacts --paths '["<feature_dir>/fix-seed.json"]' --label 'fix-seed: <feature-dir-name>'
 ```
 
-Substitute `<feature>` with the resolved feature dir (e.g. `specs/001-auth`) and `<feature-id>` with its basename (e.g. `001-auth`). `commit-artifacts` stages ONLY the named path and makes a `[WIP] fix-seed: <feature-id>` commit in the INSTALL repo (never the wrapper-mode source/product repo). The label is `fix-seed:`, NOT `fix:` — `implement_helper wip-commit` already owns `[WIP] fix: <title>` for the remediation diff (PHASE 6), and the two must stay distinguishable in the log. `commit-artifacts` is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the seed is already written, so note the warning and CONTINUE to the closing message below; do NOT end the turn on it); "nothing to commit" exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged.
+`commit-artifacts` takes an absolute entry and a repo-relative one alike, so pass `<feature_dir>` in the form 0.2 resolved it and re-shape nothing; `<feature-dir-name>` is that directory's last segment. `commit-artifacts` stages ONLY the named path and makes a `[WIP] fix-seed: <feature-dir-name>` commit in the INSTALL repo (never the wrapper-mode source/product repo). The label is `fix-seed:`, NOT `fix:` — `implement_helper wip-commit` already owns `[WIP] fix: <title>` for the remediation diff (PHASE 6), and the two must stay distinguishable in the log. `commit-artifacts` is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the seed is already written, so note the warning and CONTINUE to the closing message below; do NOT end the turn on it); "nothing to commit" exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged.
 
-Then end the turn, telling the user: that `<feature>/fix-seed.json` was written (the ack's `seed_path`); that the recommended next cycle is `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown`; and that `/devforge:specify` will detect and consume the seed on its next run, so the re-run is directed at the named scope change instead of re-deriving the spec. `/devforge:fix` never runs `/devforge:specify` itself — name the command and let the user start the cycle.
+Then end the turn, telling the user: that `<feature_dir>/fix-seed.json` was written (the ack's `seed_path`); that the recommended next cycle is `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown`; and that `/devforge:specify` will detect and consume the seed on its next run, so the re-run is directed at the named scope change instead of re-deriving the spec. `/devforge:fix` never runs `/devforge:specify` itself — name the command and let the user start the cycle.
 
 **No bounce — every item is a defect repair.** When NO working-list item triaged as a feature/architecture change, the bounce above does not fire at all: no question is asked and no seed is written. Resolve the narrow touched-file set instead. **`resolve-scope` reads `$WORKDIR/items.json` on BOTH lanes** — only how that file got there differs:
 
@@ -377,7 +383,7 @@ Present the ready diff and the verification results. Show `git diff --stat` and 
 
 Then ask via `AskUserQuestion`:
 
-- Question: `"Approve fix for <feature> — <short finding summary>?"` — single-line text.
+- Question: single-line text naming what is being approved — `"Approve fix for <feature_dir> — <short finding summary>?"` on the FEATURE lane, `"Approve fix for <bug-file> — <short finding summary>?"` on the COLD lane (a cold run has no `<feature_dir>` to name).
 - Options: `["approve", "repair", "stop"]`. (No `skip` — `/devforge:fix` remediates a chosen finding set; there is no "advance to the next task" to skip to. To abandon the remediation, use `stop`.)
 
 End the turn. The user's reply opens the next turn.
@@ -470,7 +476,7 @@ rm -rf "$WORKDIR" "${TMPDIR:-/tmp}/forge-implement-review"
 4. **Defect repairs only — the scope bounce** — a working-list item that needs a feature/architecture change (not a correctness repair) bounces; `/devforge:fix` never grows scope. The bounce names the item and the reason on both lanes. On the FEATURE lane it recommends `/devforge:specify` and the USER picks the route (PHASE 1's three-option question); only the `re-enter specify` pick writes the `fix-seed.json` re-entry seed. On the COLD lane it recommends **`/devforge:research`** (because `/devforge:specify` blocks without a handoff), asks nothing, writes NO seed, and leaves the bug `Open`.
 5. **The back half is CALLED, not COPIED** — PHASES 3–6 call `implement_helper verify-touched` / `merge-review-panel` / `run-forcing-functions-gate` / `wip-commit`, and PHASE 6's cold arm calls `fix_helper close-bug`; this spec copies none of their machinery (no `PACKAGE_STACKS`, self-repair-cap, panel-merge or bug-file-format logic). They are single-source-of-truth binaries; a caller cannot drift from them. **Both lanes run the SAME back half** — the cold lane skips no code gate.
 6. **The architect never codes** — never dispatch `architect` to remediate; route layer-mixed work to the owning stack's implementers, or escalate to the human when an owning implementer is missing (per `.claude/agents/architect.md` Rule 1).
-7. **Writes a commit, or on a feature bounce a re-entry seed — and CREATES no `bugs/` file, ever** — `/devforge:fix` writes NO report and mutates NO spec/task/`review.md`/`verification.md`. It never creates a `bugs/` file and never touches a `bugs/` file it was not handed; `/devforge:report-bug` is the only creator and the separate "defer" arm. Durable outputs by lane: on the FEATURE lane, at most ONE of the remediation `[WIP]` commit (PHASE 6) or `specs/[feature]/fix-seed.json` on the PHASE-1 bounce's matching `re-enter specify` pick — itself WIP-committed via `artifact_helper commit-artifacts` (install-repo-only, fail-soft), both squashed by `/devforge:finalize`. On the COLD lane, a completed run produces BOTH a final `fix(<scope>):` commit (never squashed — nothing finalizes it) and the single `Fixed` flip of the ONE bug file it consumed; a cold bounce produces NEITHER and leaves that bug `Open`.
+7. **Writes a commit, or on a feature bounce a re-entry seed — and CREATES no `bugs/` file, ever** — `/devforge:fix` writes NO report and mutates NO spec/task/`review.md`/`verification.md`. It never creates a `bugs/` file and never touches a `bugs/` file it was not handed; `/devforge:report-bug` is the only creator and the separate "defer" arm. Durable outputs by lane: on the FEATURE lane, at most ONE of the remediation `[WIP]` commit (PHASE 6) or `<feature_dir>/fix-seed.json` on the PHASE-1 bounce's matching `re-enter specify` pick — itself WIP-committed via `artifact_helper commit-artifacts` (install-repo-only, fail-soft), both squashed by `/devforge:finalize`. On the COLD lane, a completed run produces BOTH a final `fix(<scope>):` commit (never squashed — nothing finalizes it) and the single `Fixed` flip of the ONE bug file it consumed; a cold bounce produces NEITHER and leaves that bug `Open`.
 8. **Nothing commits before `approve`** — the remediation + all self-repair / panel-repair edits sit in the working tree until the Stage B gate approves them, **and no `bugs/` file is flipped before then either**. A blocked verify cap, an unconverged panel, or a failed forcing-functions gate ends the turn with nothing committed and the bug file untouched.
 9. **Relay machine reports VERBATIM** — where a helper emits a user-facing finding report on stdout (blocked verify, forcing-functions exit 2), copy its stdout VERBATIM into a fenced code block; for helper failures, copy the stderr VERBATIM. Do not summarize or paraphrase.
 10. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-fix`) plus the reused `${TMPDIR:-/tmp}/forge-implement-review/` panel dir, both outside the repo, swept by the single PHASE-7 (or `stop`-path) `rm -rf`.

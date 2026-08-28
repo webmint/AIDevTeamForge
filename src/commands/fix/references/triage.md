@@ -47,9 +47,11 @@ After classifying every item as a defect repair, the touched-file set is whateve
 
 Same classification, two destinations — and the difference is mechanical, not stylistic.
 
+`<feature_dir>` below is the feature directory `/devforge:fix` PHASE 0.2 resolved, held exactly as resolved. It exists on the FEATURE lane only — the cold lane has none, which is the whole reason the two rows differ.
+
 | Lane | The bounce recommends | Seed | The item's record |
 |---|---|---|---|
-| **FEATURE** (a feature dir was resolved) | `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` | On the matching `re-enter specify` pick ONLY, `specs/[feature]/fix-seed.json` | The seed carries the diagnosis into the re-run |
+| **FEATURE** (a feature dir was resolved) | `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` | On the matching `re-enter specify` pick ONLY, `<feature_dir>/fix-seed.json` | The seed carries the diagnosis into the re-run |
 | **COLD** (a `bugs/NNN-<slug>.md` argument) | `/devforge:research "<the bug's description>"`, then the full chain | **NONE — ever** | **Nothing persists it. Your message to the user IS the record** |
 
 **Why the cold lane names `/devforge:research` and not `/devforge:specify`:** `/devforge:specify` blocks until a pending research or discover handoff exists in a feature directory. A cold bug has no feature directory and no handoff, so recommending `/devforge:specify` would name a command that refuses to run. `/devforge:research` is what allocates the feature directory `/devforge:specify` then resolves.
