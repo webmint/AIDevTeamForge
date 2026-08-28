@@ -6,7 +6,7 @@ argument-hint: "<topic>"
 
 # /devforge:research — Codebase Research
 
-`/devforge:research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-slug>/` and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
+`/devforge:research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
 
 `/devforge:research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the `spec/NNN-<feature-slug>` branch, and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
 
@@ -14,13 +14,15 @@ Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorte
 
 ## Outputs of this phase
 
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run writes into: one path the orchestrator holds in working memory for the rest of the run. Step 4.2 takes it from `allocate-feature-dir`'s `relative_path` on a fresh allocation, and Phase 0.6's attach arm takes it from the re-entry seed file's parent directory. The orchestrator never composes it from parts, never re-shapes it, and never substitutes another key for it; every artifact path below is `<feature_dir>` plus a filename. In wrapper mode it resolves under the install root, never the nested source root.
+
 - `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/research-report.json` — ResearchReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
-- `<install_root>/specs/NNN-<feature-slug>/` — the feature directory, allocated by Phase 4's `allocate-feature-dir` after the user confirms the save and the feature name (a `/devforge:grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). Nothing under `specs/` is created before that confirmation.
-- `<install_root>/specs/NNN-<feature-slug>/research-report.md` — rendered report. Helper's `render` writes to stdout; Phase 4 saves those bytes into the allocated directory.
-- `<install_root>/specs/NNN-<feature-slug>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
-- `<install_root>/specs/NNN-<feature-slug>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
-- `<install_root>/specs/NNN-<feature-slug>/emission-matrix.md` — CONDITIONAL: present only when the recommended approach removes or suppresses a value the changed code emits; composed by the orchestrator in Phase 3 and written by Phase 4 on save. Its absence means that trigger did not fire — see Phase 3's Emission matrix step.
+- `<feature_dir>` — the feature directory, allocated by Phase 4's `allocate-feature-dir` after the user confirms the save and the feature name (a `/devforge:grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). Nothing under `specs/` is created before that confirmation.
+- `<feature_dir>/research-report.md` — rendered report. Helper's `render` writes to stdout; Phase 4 saves those bytes into the allocated directory.
+- `<feature_dir>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
+- `<feature_dir>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
+- `<feature_dir>/emission-matrix.md` — CONDITIONAL: present only when the recommended approach removes or suppresses a value the changed code emits; composed by the orchestrator in Phase 3 and written by Phase 4 on save. Its absence means that trigger did not fire — see Phase 3's Emission matrix step.
 - Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
 
 On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
@@ -144,7 +146,7 @@ Before beginning the investigation, check for a `/devforge:grill` re-entry seed.
 - `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
 - `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
 
-**Attach mode (binds Phase 4).** The matched seed file's PARENT DIRECTORY is this feature's already-allocated feature directory — a `/devforge:grill` seed exists only for a feature that already has one. Record that directory path (e.g. `specs/NNN-slug`) in working memory now: on save, Phase 4 reuses it instead of allocating a new one, skips branch creation, and overwrites the artifacts in place. This is the one value you take from the seed's location rather than from its contents — the `feature` field above is still what you NAME in your messages; the parent directory is where you WRITE.
+**Attach mode (binds Phase 4).** The matched seed file's PARENT DIRECTORY is this feature's already-allocated feature directory — a `/devforge:grill` seed exists only for a feature that already has one. Record that directory path in working memory now as this run's `<feature_dir>`: on save, Phase 4 reuses it instead of allocating a new one, skips branch creation, and overwrites the artifacts in place. This is the one value you take from the seed's location rather than from its contents — the `feature` field above is still what you NAME in your messages; the parent directory is where you WRITE.
 
 State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation and Phase 4 saving in attach mode.
 
@@ -1190,11 +1192,11 @@ End the turn. The user's reply opens the next turn. Read the reply as follows:
 - Free text (the tool's own row) → treat it as SAVE, using the typed text as the feature name — UNLESS the text clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. Normalize the typed text by the same rule as the proposed slug: lowercase it, replace each non-alphanumeric run with `-`, keep the first 4 words, and require 2-4 words with a letter as the first character. Use the normalized slug for the rest of Phase 4.
 - Free text that yields no valid slug under that rule (fewer than two usable words, or nothing that can start with a letter) → do not guess a name. Ask Step 4.1's question again, naming what was wrong with the typed text; the user can also pick either literal option to move on.
 
-**Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<dirname>'?"` with exactly two options, `"Save to <dirname> (Recommended)"` and `"Don't save"`. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<dirname>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm.
+**Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<feature>'?"` with exactly two options, `"Save to <feature> (Recommended)"` and `"Don't save"` — `<feature>` is the seed's `feature` field, per Phase 0.6's rule that the seed's `feature` is what your messages NAME while its parent directory is where they WRITE. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<feature_dir>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm.
 
 ### Step 4.2 — Resolve the feature directory
 
-**Attach mode.** If Phase 0.6 recorded a grill-re-entry feature directory, that directory IS this run's feature directory: skip allocation, skip Step 4.3 entirely, and let Steps 4.4-4.6 overwrite the artifacts in place (the superseded versions stay recoverable from the per-step git commits). An attached directory keeps its existing `NNN-slug` name — Step 4.1's attach-mode variant neither proposes nor reads a slug — so that name is the `<dirname>` Steps 4.4-4.6 use. Go to Step 4.4.
+**Attach mode.** If Phase 0.6 recorded a grill-re-entry feature directory, that directory IS this run's `<feature_dir>`: skip allocation, skip Step 4.3 entirely, and let Steps 4.4-4.6 overwrite the artifacts in place (the superseded versions stay recoverable from the per-step git commits). An attached directory is never renamed — Step 4.1's attach-mode variant neither proposes nor reads a slug — so the path Phase 0.6 recorded is the `<feature_dir>` Steps 4.4-4.6 use. Go to Step 4.4.
 
 **Fresh allocation.** Otherwise allocate a new feature directory with the confirmed slug:
 
@@ -1202,11 +1204,11 @@ End the turn. The user's reply opens the next turn. Read the reply as follows:
 .devforge/lib/research_helper allocate-feature-dir --slug "<confirmed-slug>"
 ```
 
-Stdout is a JSON object. Take `dirname` (the `NNN-slug` directory name) and `formatted_number` (the zero-padded `NNN`) from it; the feature-directory path used by every step below is `specs/<dirname>`. The helper creates the directory and fails loudly rather than reusing an existing one.
+Stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form Step 4.4 would write verbatim into the rendered report's `Research reference:` line. No step in this command reads `path`. Take `formatted_number` as well; it is Step 4.3's `--number` input and this command reads it for nothing else, so no step composes a path from it. The helper creates the directory and fails loudly rather than reusing an existing one.
 
 On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then: on a rejected slug, return to Step 4.1 and ask again with a corrected proposal; on any other error, report it and end the turn — nothing has been written yet, so the run stops cleanly and the user can re-run `/devforge:research`.
 
-**A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/devforge:research` again on a topic that already has a feature directory produces another one under the next `NNN`, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
+**A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/devforge:research` again on a topic that already has a feature directory produces a second, separate one, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
 
 ### Step 4.3 — Create the feature branch (fresh allocation only)
 
@@ -1247,12 +1249,12 @@ The Phase-3 render was a preview whose `Research reference:` line carries a plac
 
 ```bash
 .devforge/lib/research_helper set-next-step-text \
-    --research-path "specs/<dirname>/research-report.md"
+    --research-path "<feature_dir>/research-report.md"
 
 .devforge/lib/research_helper render
 ```
 
-Write THAT `render` stdout, byte-verbatim, to `specs/<dirname>/research-report.md`. Do not re-format, re-shape, or hand-edit it — the only difference between the preview the user already saw and the saved file is the helper-rendered reference line. In attach mode this overwrites the previous `research-report.md`, which is the intent.
+Write THAT `render` stdout, byte-verbatim, to `<feature_dir>/research-report.md`. Do not re-format, re-shape, or hand-edit it — the only difference between the preview the user already saw and the saved file is the helper-rendered reference line. In attach mode this overwrites the previous `research-report.md`, which is the intent.
 
 On a verdict outside the proceeding-set, `set-next-step-text` is a no-op that ignores `--research-path`, and the rendered report carries no Next-Step section (see Phase 3 setter 7). Run both calls anyway — the re-render is what gets written either way.
 
@@ -1261,14 +1263,14 @@ On a verdict outside the proceeding-set, `set-next-step-text` is a no-op that ig
 Run this step ONLY when Phase 2.6 recorded a tier-1.5 probe script. Copy it out of scratch into the feature directory, keeping the same extension:
 
 ```bash
-cp "${TMPDIR:-/tmp}/forge-research/probe-script.<ext>" "specs/<dirname>/probe-script.<ext>"
+cp "${TMPDIR:-/tmp}/forge-research/probe-script.<ext>" "<feature_dir>/probe-script.<ext>"
 ```
 
 When no probe script was recorded, skip this step and leave the probe-script path out of Step 4.6's commit.
 
 ### Step 4.5b — Write the emission matrix (conditional)
 
-Run this step ONLY when Phase 3's Emission matrix step composed a matrix. Write those bytes — the ones the user already saw below the rendered report — to `specs/<dirname>/emission-matrix.md`.
+Run this step ONLY when Phase 3's Emission matrix step composed a matrix. Write those bytes — the ones the user already saw below the rendered report — to `<feature_dir>/emission-matrix.md`.
 
 Do not re-compose the table here and do not reshape it: its content was settled in Phase 3, and nothing between there and here changes the recommended approach it was composed against. Unlike `research-report.md`, whose bytes come from the helper's `render`, these bytes are yours — no helper renders this file and none validates it. In attach mode this overwrites the previous `emission-matrix.md`, which is the intent.
 
@@ -1278,22 +1280,22 @@ When Phase 3 composed no matrix — its skip clause fired because the recommende
 
 ```bash
 .devforge/lib/research_helper finalize-handoff \
-    --feature-dir "specs/<dirname>"
+    --feature-dir "<feature_dir>"
 ```
 
-The helper writes `specs/<dirname>/research-handoff.json` and records the sibling `research-report.md` as the handoff's research path. In attach mode it overwrites the existing handoff.
+The helper writes `<feature_dir>/research-handoff.json` and records the sibling `research-report.md` as the handoff's research path. In attach mode it overwrites the existing handoff.
 
-If the helper exits non-zero, tell the user `"Research report saved at specs/<dirname>/research-report.md but research-handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn. If it exits 0, capture the stdout `wrote: <abs path>` for the closing message.
+If the helper exits non-zero, tell the user `"Research report saved at <feature_dir>/research-report.md but research-handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn. If it exits 0, capture the stdout `wrote: <abs path>` for the closing message.
 
-Then `[WIP]`-commit everything this run wrote, so the work is git-safe immediately. `--paths` carries the report and the handoff, plus `specs/<dirname>/probe-script.<ext>` when Step 4.5 copied one and `specs/<dirname>/emission-matrix.md` when Step 4.5b wrote one; the two extras are independent — either, both, or neither may be present. The label uses the topic slug:
+Then `[WIP]`-commit everything this run wrote, so the work is git-safe immediately. `--paths` carries the report and the handoff, plus `<feature_dir>/probe-script.<ext>` when Step 4.5 copied one and `<feature_dir>/emission-matrix.md` when Step 4.5b wrote one; the two extras are independent — either, both, or neither may be present. The label uses the topic slug:
 
 ```bash
 # Two paths normally; append each extra element ONLY when its own step produced it:
-#   "specs/<dirname>/probe-script.<ext>"  — ONLY when Step 4.5 copied a probe script
-#   "specs/<dirname>/emission-matrix.md"  — ONLY when Step 4.5b wrote the emission matrix
-# With both: '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json", "specs/<dirname>/probe-script.<ext>", "specs/<dirname>/emission-matrix.md"]'
+#   "<feature_dir>/probe-script.<ext>"  — ONLY when Step 4.5 copied a probe script
+#   "<feature_dir>/emission-matrix.md"  — ONLY when Step 4.5b wrote the emission matrix
+# With both: '["<feature_dir>/research-report.md", "<feature_dir>/research-handoff.json", "<feature_dir>/probe-script.<ext>", "<feature_dir>/emission-matrix.md"]'
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json"]' \
+    --paths '["<feature_dir>/research-report.md", "<feature_dir>/research-handoff.json"]' \
     --label "research: <topic-slug>"
 ```
 
@@ -1307,10 +1309,10 @@ The rendered report stays in the assistant message only. `.devforge/research-sta
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set, the saved report contains a `## Next Step` section with a copy-pasteable `/devforge:specify "..."` block (that block is composed by `research_helper render` — it is the helper's string, not this spec's, so do not rewrite it here). Tell the user: `"/devforge:research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new spec session — copy it manually when you're ready. The intake handoff /devforge:specify requires is its sibling, specs/<dirname>/research-handoff.json; delete the directory if you meant to add to an existing feature."`
+If a save happened AND the verdict is in the proceeding-set, the saved report contains a `## Next Step` section with a copy-pasteable `/devforge:specify "..."` block (that block is composed by `research_helper render` — it is the helper's string, not this spec's, so do not rewrite it here). Tell the user: `"/devforge:research is done. Created feature directory <feature_dir> — open <feature_dir>/research-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new spec session — copy it manually when you're ready. The intake handoff /devforge:specify requires is its sibling, <feature_dir>/research-handoff.json; delete the directory if you meant to add to an existing feature."`
 
-If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/devforge:research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. The handoff at specs/<dirname>/research-handoff.json records the research state for downstream tooling; delete the directory if you meant to add to an existing feature."`
+If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/devforge:research is done. Created feature directory <feature_dir> — open <feature_dir>/research-report.md to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. The handoff at <feature_dir>/research-handoff.json records the research state for downstream tooling; delete the directory if you meant to add to an existing feature."`
 
-In attach mode, make two substitutions in whichever template applies: replace `"Created feature directory specs/<dirname>/"` with `"Updated feature directory specs/<dirname>/ in place (grill re-entry)"`, and drop the trailing `"; delete the directory if you meant to add to an existing feature."` clause. Attach mode creates no directory and no branch, so there is nothing to delete.
+In attach mode, make two substitutions in whichever template applies: replace `"Created feature directory <feature_dir>"` with `"Updated feature directory <feature_dir> in place (grill re-entry)"`, and drop the trailing `"; delete the directory if you meant to add to an existing feature."` clause. Attach mode creates no directory and no branch, so there is nothing to delete.
 
 If the user declined to save, tell the user: `"/devforge:research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /devforge:research invocation. No feature directory, branch, report, or handoff was written — re-run /devforge:research and save to produce them."`
