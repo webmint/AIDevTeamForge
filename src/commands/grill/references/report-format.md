@@ -1,10 +1,13 @@
 # Plan-grill report layout
 
 This is the skeleton the `grill_helper render-report` verb produces and writes to
-`specs/[feature]/grill.md`. It is **orientation only** — the helper owns the
-actual render (`src/devforge/lib/_grill/_report.py`); this file documents the
-shape so the orchestrator knows what the report contains. Do not hand-author the
-report; call `render-report`.
+`<feature_dir>/grill.md`. `<feature_dir>` — here and everywhere else in this
+document — is the feature directory `/devforge:grill` resolved at its PHASE 1 and
+passed to `render-report --feature` (and, for the sibling seed below, to
+`write-seed --feature`). It is **orientation only** — the helper owns the actual
+render (`src/devforge/lib/_grill/_report.py`); this file documents the shape so
+the orchestrator knows what the report contains. Do not hand-author the report;
+call `render-report`.
 
 ## Findings PLUS a recommended disposition
 
@@ -64,9 +67,9 @@ both are surfaced in the headline, never buried).
 ## Skeleton
 
 ```markdown
-# Plan Grill — [feature] — YYYY-MM-DD
+# Plan Grill — <feature_dir> — YYYY-MM-DD
 
-**Feature**: specs/[feature]
+**Feature**: <feature_dir>
 **Scope**: plan.md + referenced specs — [N files]
 **Finders invoked**: [list, with "skipped — not installed" for missing]
 **Refuters invoked**: [list]
@@ -172,7 +175,7 @@ headline, flagged `[CONTESTED]`, never buried.
 The seed is written in PHASE 7's matching re-entry arm: when the PHASE-5
 disposition is RE-ENTER-UPSTREAM or REVISE-PLAN AND the user's PHASE-7 pick
 matches that recommendation, the orchestrator calls `grill_helper write-seed`,
-which writes `specs/[feature]/grill-seed.json` — the structured backward handoff
+which writes `<feature_dir>/grill-seed.json` — the structured backward handoff
 the named re-entry command (`/devforge:specify`, `/devforge:discover`, or `/devforge:research` when the user
 picks `Re-enter upstream`; `/devforge:plan` when the user picks `Revise plan`) consumes on
 re-entry so the re-run is DIRECTED, not a repeat. A cross-pick (the user picks a
