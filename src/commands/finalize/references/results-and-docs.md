@@ -2,6 +2,8 @@
 
 This file is **orientation only** for the `/devforge:finalize` orchestrator. It documents two things `main.md` composes inline (there is no helper verb for either): (1) the LIVE `docs/` locations the PHASE-2 tech-writer brief retargets to, and (2) the PHASE-4 "Feature Finalized" results block. Do not treat the blocks below as verbatim fill-in templates — they describe the shape the orchestrator produces.
 
+`<feature_dir>` — here and everywhere else in this document — is the feature directory `/devforge:finalize` resolved at its PHASE 0.1 (see `main.md`), held exactly as resolved. The `docs/` paths in this file are project-level targets and are not composed from it.
+
 ## Doc targets — the LIVE locations, NEVER `docs/features/`
 
 `/devforge:finalize` dispatches `tech-writer` in its Normal/surgical mode (D1). Under the Plan-F docs layout the per-feature `docs/features/<name>.md` tier is dropped — `tech-writer.md`'s own "**When to update which doc** (Plan F layout — the legacy `docs/features/`, `docs/api/`, `docs/guides/` tiers are dropped)" section names the live destinations, and the brief retargets the agent to exactly those:
@@ -36,7 +38,7 @@ Composition rules:
 - **Commit** — the install/wrapper repo's new `head_sha` (shortened) + the `message_used` from the `squash` verb's `install_repo` outcome. In wrapper mode add a second `**Source commit**:` line from the `source_repo` outcome (the `[TICKET-ID] - Description` commit, traceless per D5).
 - **Files** — the `file_count` from PHASE-1 change data.
 - **Docs** — `updated <docs targets>` when the PHASE-2 tech-writer wrote and `[WIP]`-committed docs; `skipped — <reason>` when the agent justifiably found no docs needed; `tech-writer failed — <error>` when the agent errored (the squash still ran).
-- **Summary** — `included in squash` when `specs/[feature]/summary.md` existed at PHASE 0 (its `[WIP]` commit folds into the squash); `not found — /devforge:summarize was not run` when the PHASE-0 soft-warn fired.
+- **Summary** — `included in squash` when `<feature_dir>/summary.md` existed at PHASE 0 (its `[WIP]` commit folds into the squash); `not found — /devforge:summarize was not run` when the PHASE-0 soft-warn fired.
 - When the squash was SKIPPED (already-pushed guard) or NO-OP'd (nothing to finalize), report that outcome in place of the **Commit** line instead of a clean-commit hash — never claim a squash that did not happen.
 
 ## What this block is NOT
