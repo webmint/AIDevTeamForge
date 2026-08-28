@@ -1,10 +1,10 @@
 # Feature verification report format
 
-This is the skeleton that the `verify_helper render-report` verb produces and writes to `specs/[feature]/verification.md` (PHASE 5). The helper's render module (`src/devforge/lib/_verify/_report.py`, `render_report`) owns the actual render — this file is **orientation only**, documenting the shape so the orchestrator knows what the report contains. Do not hand-author the report: call `render-report`.
+This is the skeleton that the `verify_helper render-report` verb produces and writes to `<feature_dir>/verification.md` (PHASE 5). `<feature_dir>` — here and everywhere else in this document — is the feature directory `/devforge:verify` resolved at its PHASE 0.2 and passed to `render-report --feature`. The helper's render module (`src/devforge/lib/_verify/_report.py`, `render_report`) owns the actual render — this file is **orientation only**, documenting the shape so the orchestrator knows what the report contains. Do not hand-author the report: call `render-report`.
 
 ## Verdict-bearing — UNLIKE /devforge:review
 
-This report ENDS in a verdict. `/devforge:verify` owns the verdict; `/devforge:review` does not. The report folds in `/devforge:review`'s findings (read from `specs/[feature]/review.md`) and adds AC conformance + assembled mechanical checks on top, then renders the single APPROVED / NEEDS WORK / REJECTED decision. The verdict line is the defining output — do not omit it, and do not treat the report as findings-only.
+This report ENDS in a verdict. `/devforge:verify` owns the verdict; `/devforge:review` does not. The report folds in `/devforge:review`'s findings (read from `<feature_dir>/review.md`) and adds AC conformance + assembled mechanical checks on top, then renders the single APPROVED / NEEDS WORK / REJECTED decision. The verdict line is the defining output — do not omit it, and do not treat the report as findings-only.
 
 ## Inputs that shape the report
 
@@ -19,10 +19,12 @@ Plus the `mechanical-status` string carried from `verify-touched` (PHASE 4.1) an
 
 ## Skeleton
 
-```markdown
-# Feature Verification — [feature] — YYYY-MM-DD
+The report's H1 carries `<feature-dir-name>` — the last segment of `<feature_dir>`, which `render_report` derives from `--feature` itself — while the `**Feature**:` line beneath it carries the whole `<feature_dir>`. The two slots hold different values; do not read one for the other.
 
-**Feature**: specs/[feature]
+```markdown
+# Feature Verification — <feature-dir-name> — YYYY-MM-DD
+
+**Feature**: <feature_dir>
 **Date**: YYYY-MM-DD
 **AC Verification Mode**: [code-only | tests | runtime-assisted | off]
 
@@ -40,7 +42,7 @@ Plus the `mechanical-status` string carried from `verify-touched` (PHASE 4.1) an
 ## Code Quality
 
 **Mechanical checks**: [PASS | not run | SELF-REPAIR (warnings) | FAILED | ISOLATION FAILURE | TOOLING UNAVAILABLE]
-**Cross-task consistency**: see /devforge:review report at specs/[feature]/review.md
+**Cross-task consistency**: see /devforge:review report at <feature_dir>/review.md
 **Scope creep**[ _(advisory — does not block the verdict)_ when populated]: [none detected | N changed file(s) outside the planned scope: <files> | not checked (no breakdown-handoff.json baseline)]
 **Leftover artifacts**[ _(advisory — does not block the verdict)_ when populated]: [N flagged (debug prints / bare TODOs / commented-out code) | none detected]
 
@@ -48,7 +50,7 @@ Plus the `mechanical-status` string carried from `verify-touched` (PHASE 4.1) an
 
 ## Review Findings
 
-(Folded from specs/[feature]/review.md.)
+(Folded from <feature_dir>/review.md.)
 N confirmed | N contested | N dismissed | N uncertain
 Severity breakdown: N Critical, N High, N Medium, N Info
 

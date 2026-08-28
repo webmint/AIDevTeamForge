@@ -10,7 +10,7 @@ argument-hint: "[spec-file]"
 
 **`/devforge:verify` OWNS the verdict — unlike `/devforge:review`, which produces findings only.** `/devforge:verify` does NOT run a finder ensemble or a refutation pass — that is `/devforge:review`'s job. `/devforge:verify` relies on `/devforge:review` for cross-task code-quality / consistency reasoning and adds three things on top: AC conformance, assembled mechanical checks, and the verdict. It does NOT fix code (it reports + decides) and it does NOT re-review.
 
-Usage: `/devforge:verify` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/devforge:verify specs/001-auth` or `/devforge:verify specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it).
+Usage: `/devforge:verify` (auto-resolve the most-recently-modified feature directory under `specs/`) · `/devforge:verify <feature_dir>` or `/devforge:verify <feature_dir>/spec.md` (an explicit feature dir or a spec file inside it).
 
 ## Maintainer note
 
@@ -18,12 +18,14 @@ This file lives at `src/commands/verify/main.md` in the AIDevTeamForge template 
 
 ## Outputs of this command
 
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run reads from and writes into: one path the orchestrator holds in working memory for the rest of the run. PHASE 0.2 resolves it, from `$ARGUMENTS` when one is given and by auto-resolution when it is empty. Hold it exactly as PHASE 0.2 resolved it — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it. Every path below that sits inside the feature directory is `<feature_dir>` plus a filename, or plus the `tasks/` subdirectory PHASE 6's task cross-check reads — the one child directory this command names — and every `--feature` / `--feature-dir` flag below takes `<feature_dir>` itself. The `bugs/` tree in the third bullet is NOT inside `<feature_dir>`: it is a separate top-level directory with its own numbering, so `<feature_dir>` never composes a `bugs/` path.
+
 The files this command writes under the repo are:
 
-- `specs/[feature]/verification.md` — the rendered verification report (AC table, code-quality block, folded review findings, issues, and the verdict). Produced by the helper's `render-report` verb in PHASE 5. Idempotent: re-running `/devforge:verify` on the same feature OVERWRITES `verification.md` (the helper does an atomic write).
-- `specs/[feature]/spec.md` — **mutated only on an APPROVED verdict** (PHASE 6): the spec `**Status**:` line flips to `Complete` and the passed AC checkboxes tick `- [ ]` → `- [x]`. This is the deliberate write-back that `/devforge:summarize` and `/devforge:finalize` gate on. On NEEDS WORK / REJECTED the spec is left unchanged.
+- `<feature_dir>/verification.md` — the rendered verification report (AC table, code-quality block, folded review findings, issues, and the verdict). Produced by the helper's `render-report` verb in PHASE 5. Idempotent: re-running `/devforge:verify` on the same feature OVERWRITES `verification.md` (the helper does an atomic write).
+- `<feature_dir>/spec.md` — **mutated only on an APPROVED verdict** (PHASE 6): the spec `**Status**:` line flips to `Complete` and the passed AC checkboxes tick `- [ ]` → `- [x]`. This is the deliberate write-back that `/devforge:summarize` and `/devforge:finalize` gate on. On NEEDS WORK / REJECTED the spec is left unchanged.
 - `bugs/NNN-<slug>.md` — **written only on a NEEDS WORK verdict** (PHASE 9), one file per issue the user elects to file, in the `.devforge/storage-rules.md` bug format (`Source: verify`). Sequential `NNN` numbering scanned from the existing `bugs/` directory.
-- `specs/[feature]/verify-state.json` — per-feature run state (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`). Committed alongside `verification.md` in the end-of-run `[WIP]` commit (the `commit-artifacts` `--paths` lists both).
+- `<feature_dir>/verify-state.json` — per-feature run state (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`). Committed alongside `verification.md` in the end-of-run `[WIP]` commit (the `commit-artifacts` `--paths` lists both).
 
 At the end of the run, `/devforge:verify` WIP-commits its OWN report artifacts — `verification.md` and the per-feature `verify-state.json` (always), plus `spec.md` when the PHASE-6 spec-status flip actually happened (an APPROVED verdict with no task-completion blocker) — via `.devforge/lib/artifact_helper commit-artifacts`. The two report paths are unconditional; `spec.md` is added to `--paths` ONLY when PHASE-6 `flip-spec-status` returned `flipped: true`, so the APPROVED-verdict flip lands in this same commit rather than sitting modified-uncommitted. Any `bugs/NNN-*.md` files (PHASE 9) are NOT part of this commit. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/devforge:verify` continues — the report is already written). The `[WIP]` commit folds into `/devforge:finalize`'s squash, so the final PR is unchanged.
 
@@ -70,10 +72,10 @@ Cheapest guards first; preflight before any feature I/O.
 
 Resolve the feature dir from `$ARGUMENTS`:
 
-- When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a file inside one (e.g. `specs/001-auth/spec.md`), use that feature directory (strip a trailing filename to the `specs/NNN-<slug>` dir).
+- When `$ARGUMENTS` names a feature directory, or a file inside one (e.g. `<feature_dir>/spec.md`), use that directory — strip a trailing filename to its parent directory, and re-shape nothing else.
 - When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:review`).
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to verify (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — every subsequent `--feature` / `--feature-dir` flag takes it; the spec file inside it is `<feature>/spec.md` (the `--spec` value PHASE 3 needs).
+If no `specs/NNN-*` directory exists, tell the user there is no feature to verify (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as `<feature_dir>`, exactly as resolved — every subsequent `--feature` / `--feature-dir` flag takes it, and the spec file inside it is `<feature_dir>/spec.md` (the `--spec` value PHASE 3 needs).
 
 ### 0.3 — Initialize run state + scratch dir
 
@@ -81,7 +83,7 @@ If no `specs/NNN-*` directory exists, tell the user there is no feature to verif
 .devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase0
 ```
 
-`check-status-and-flip` advances `specs/[feature]/verify-state.json` to the named phase so an interrupted run can report where it stopped. Call it once at the start of each major phase with `--feature-dir <feature> --to <phase>` (`phase0` … `phase9`), and once at the very end of the run with `--to phase9 --status complete`. Keep these lightweight (one call per boundary, no parsing of the output beyond the non-zero-exit check). `--to` accepts any label, so these phase names are a convention, not a helper-enforced enum. The optional `--verdict <APPROVED|NEEDS WORK|REJECTED>` flag records the final verdict into `verify-state.json` and is passed ONLY on the terminal complete-flip (the Cleanup block) — every other phase-boundary call omits it, leaving the recorded verdict unchanged. (Note: the verb keys on `--feature-dir`, NOT `--workspace-root` — its state file is per-feature.)
+`check-status-and-flip` advances `<feature_dir>/verify-state.json` to the named phase so an interrupted run can report where it stopped. Call it once at the start of each major phase with `--feature-dir <feature> --to <phase>` (`phase0` … `phase9`), and once at the very end of the run with `--to phase9 --status complete`. Keep these lightweight (one call per boundary, no parsing of the output beyond the non-zero-exit check). `--to` accepts any label, so these phase names are a convention, not a helper-enforced enum. The optional `--verdict <APPROVED|NEEDS WORK|REJECTED>` flag records the final verdict into `verify-state.json` and is passed ONLY on the terminal complete-flip (the Cleanup block) — every other phase-boundary call omits it, leaving the recorded verdict unchanged. (Note: the verb keys on `--feature-dir`, NOT `--workspace-root` — its state file is per-feature.)
 
 Then establish + clear the scratch working directory:
 
@@ -143,14 +145,14 @@ Carry `file_count` forward for the user-facing prose.
 .devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase2
 ```
 
-Fold in `/devforge:review`'s findings — `/devforge:review` is findings-only; `/devforge:verify` reads `specs/[feature]/review.md` and incorporates its confirmed + high-stakes `[CONTESTED]` findings into the verdict. `/devforge:verify` does NOT re-derive these findings (no finder ensemble, no refutation pass — that is `/devforge:review`'s job).
+Fold in `/devforge:review`'s findings — `/devforge:review` is findings-only; `/devforge:verify` reads `<feature_dir>/review.md` and incorporates its confirmed + high-stakes `[CONTESTED]` findings into the verdict. `/devforge:verify` does NOT re-derive these findings (no finder ensemble, no refutation pass — that is `/devforge:review`'s job).
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-verify"
 .devforge/lib/verify_helper read-review-findings --feature <feature> > "$WORKDIR/review.json"
 ```
 
-`read-review-findings` accepts the feature directory (it appends `/review.md`) and parses `specs/[feature]/review.md` into a folded-findings dict: `missing`, `confirmed` (the confirmed-findings list), `contested` (the `[CONTESTED]`-tagged list), and `summary` (severity + partition counts). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`read-review-findings` accepts the feature directory (it appends `/review.md`) and parses `<feature_dir>/review.md` into a folded-findings dict: `missing`, `confirmed` (the confirmed-findings list), `contested` (the `[CONTESTED]`-tagged list), and `summary` (severity + partition counts). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
 **Missing-review warning (proceed weakened).** If the stdout JSON has `"missing": true`, warn the user: *no review report was found — run `/devforge:review` first for a complete verdict; proceeding with AC + mechanical checks only.* Do NOT stop — `compute-verdict` handles a missing review report as a non-blocking note (the verdict is computed from AC + mechanical + hygiene, and the missing report is recorded in the verdict reasons). Keep `$WORKDIR/review.json` and pass it forward unchanged.
 
@@ -318,7 +320,7 @@ DATE="$(date +%Y-%m-%d)"
 .devforge/lib/verify_helper render-report --verdict "$WORKDIR/verdict.json" --ac-results "$WORKDIR/ac-results.json" --review-findings "$WORKDIR/review.json" --hygiene "$WORKDIR/hygiene.json" --mechanical-status <mechanical-status> --feature <feature> --date "$DATE" --ac-mode <ac-mode>
 ```
 
-`render-report` reads the verdict + the AC results + the folded review findings + the hygiene result, renders the full verification markdown (skeleton documented in `references/report-format.md`), and writes it to `specs/[feature]/verification.md` via an atomic write, OVERWRITING any prior `verification.md`. `--feature` and `--date` are REQUIRED (the helper never calls the clock — `--date` is `YYYY-MM-DD`). Stdout is the written path. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`render-report` reads the verdict + the AC results + the folded review findings + the hygiene result, renders the full verification markdown (skeleton documented in `references/report-format.md`), and writes it to `<feature_dir>/verification.md` via an atomic write, OVERWRITING any prior `verification.md`. `--feature` and `--date` are REQUIRED (the helper never calls the clock — `--date` is `YYYY-MM-DD`). Stdout is the written path. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
 ### 5.3 — Print the inline summary
 
@@ -342,7 +344,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-verify"
 .devforge/lib/verify_helper flip-spec-status --feature <feature> --ac-results "$WORKDIR/ac-results.json"
 ```
 
-`flip-spec-status` FIRST cross-checks that every task file under `specs/[feature]/tasks/*.md` (excluding `README.md`) has `**Status**: Complete` or `Skipped`; only when all tasks are satisfied does it flip the spec `**Status**:` line to `Complete` and tick each passed AC's `- [ ]` → `- [x]` (a passed AC is one whose merged `status` is `PASS` or `PASS (code)`). The atomic write mutates `spec.md`. Stdout JSON carries `flipped` (bool), `blocker` (a message string, or `null` on success), `ticked` (the AC ids ticked this call), and `spec_path`. **If `flipped` is `false`**, the spec was NOT changed — report the `blocker` message to the user verbatim (e.g. a task is still `In Progress`) and keep the spec status unchanged; the verdict stays APPROVED in `verification.md` but the lifecycle flip is held until the blocker clears. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`flip-spec-status` FIRST cross-checks that every task file under `<feature_dir>/tasks/*.md` (excluding `README.md`) has `**Status**: Complete` or `Skipped`; only when all tasks are satisfied does it flip the spec `**Status**:` line to `Complete` and tick each passed AC's `- [ ]` → `- [x]` (a passed AC is one whose merged `status` is `PASS` or `PASS (code)`). The atomic write mutates `spec.md`. Stdout JSON carries `flipped` (bool), `blocker` (a message string, or `null` on success), `ticked` (the AC ids ticked this call), and `spec_path`. **If `flipped` is `false`**, the spec was NOT changed — report the `blocker` message to the user verbatim (e.g. a task is still `In Progress`) and keep the spec status unchanged; the verdict stays APPROVED in `verification.md` but the lifecycle flip is held until the blocker clears. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
 ## PHASE 7 — Memory update
 
@@ -421,18 +423,18 @@ First mark the run complete so an interrupted re-run can distinguish a finished 
 .devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase9 --status complete --verdict "<verdict>"
 ```
 
-Then WIP-commit `/devforge:verify`'s own report artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY for every verdict (`verification.md` was written in PHASE 5.2 regardless of verdict):
+Then WIP-commit `/devforge:verify`'s own report artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY for every verdict (`verification.md` was written in PHASE 5.2 regardless of verdict). Use the feature directory's own name — the last segment of `<feature_dir>`, called `<feature-dir-name>` below — for the commit label, and pass `<feature_dir>` itself in the `--paths` entries: `commit-artifacts` takes an absolute entry and a repo-relative one alike, so pass it in the form PHASE 0.2 resolved it and re-shape nothing.
 
 ```bash
 # Base paths (ALWAYS): verification.md + verify-state.json.
 # When PHASE-6 flip-spec-status returned flipped:true, ALSO append
-#   "specs/<feature>/spec.md" to the --paths array; omit it otherwise.
-.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/verification.md", "specs/<feature>/verify-state.json"]' --label 'verify: <NNN>-<slug>'
+#   "<feature_dir>/spec.md" to the --paths array; omit it otherwise.
+.devforge/lib/artifact_helper commit-artifacts --paths '["<feature_dir>/verification.md", "<feature_dir>/verify-state.json"]' --label 'verify: <feature-dir-name>'
 ```
 
-Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. The base `--paths` array ALWAYS lists `verification.md` + `verify-state.json`; when PHASE-6 `flip-spec-status` returned `flipped: true`, ALSO append `specs/<feature>/spec.md` to the array so the APPROVED-verdict spec flip is committed here (otherwise it is left modified-uncommitted, dirtying the tree). Append `spec.md` ONLY when the flip happened — on NEEDS WORK / REJECTED, or when a task-completion blocker held the flip (`flipped: false`), `spec.md` is unchanged and MUST be omitted. Any `bugs/NNN-*.md` file from PHASE 9 is NOT part of this commit. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] verify: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged.
+Substitute `<feature_dir>` with the directory PHASE 0.2 resolved and `<feature-dir-name>` with its last segment. The base `--paths` array ALWAYS lists `verification.md` + `verify-state.json`; when PHASE-6 `flip-spec-status` returned `flipped: true`, ALSO append `<feature_dir>/spec.md` to the array so the APPROVED-verdict spec flip is committed here (otherwise it is left modified-uncommitted, dirtying the tree). Append `spec.md` ONLY when the flip happened — on NEEDS WORK / REJECTED, or when a task-completion blocker held the flip (`flipped: false`), `spec.md` is unchanged and MUST be omitted. Any `bugs/NNN-*.md` file from PHASE 9 is NOT part of this commit. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] verify: <feature-dir-name>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/devforge:finalize`'s squash, leaving the final PR unchanged.
 
-Finally, clean up the scratch directory in one step — nothing else needs the scratch after the report + summary + (optional) bug-filing + the commit above (the commit reads only `specs/[feature]/` paths, never `$WORKDIR`):
+Finally, clean up the scratch directory in one step — nothing else needs the scratch after the report + summary + (optional) bug-filing + the commit above (the commit reads only paths under `<feature_dir>`, never `$WORKDIR`):
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-verify"
@@ -446,9 +448,9 @@ rm -rf "$WORKDIR"
 3. **`/devforge:verify` does NOT re-review** — it has no finder ensemble and no refutation pass (those are `/devforge:review`'s job, and the `_shared` refutation engine is deliberately NOT reused here). `/devforge:verify` folds in `/devforge:review`'s already-refuted findings via `read-review-findings` and points to the `/devforge:review` report for cross-task code-quality reasoning.
 4. **Constitution violations always block APPROVED** (D7) — a confirmed `[CONSTITUTION-VIOLATION]` from the review findings forces REJECTED; a contested one forces at least NEEDS WORK. `compute-verdict` enforces this structurally; never override it.
 5. **`/devforge:verify` WRITES BACK to the spec** — on APPROVED (and only after the task cross-check passes), `flip-spec-status` flips `spec.md`'s `**Status**:` to Complete and ticks the passed AC boxes. This is the deliberate departure: `/devforge:verify` is the only review/verify command that mutates its input, because it owns the Complete lifecycle transition `/devforge:summarize` and `/devforge:finalize` gate on. On NEEDS WORK / REJECTED the spec is untouched.
-6. **Missing review report is non-fatal** — if `specs/[feature]/review.md` is absent, warn the user (run `/devforge:review` first) and proceed with AC + mechanical + hygiene only; `compute-verdict` records the missing report in the verdict reasons.
+6. **Missing review report is non-fatal** — if `<feature_dir>/review.md` is absent, warn the user (run `/devforge:review` first) and proceed with AC + mechanical + hygiene only; `compute-verdict` records the missing report in the verdict reasons.
 7. **Empty feature diff is non-fatal** — `file_count == 0` (HEAD == merge-base) means there is nothing to verify; stop gracefully after cleanup (PHASE 1).
-8. **Wrapper-mode aware** — in wrapper mode, `resolve-feature-scope` requires both `--source-root` (the inner code repo) AND `--install-root` (the wrapper root where `.devforge/` lives); `verify-touched --root` and `check-hygiene --source-root` each take `source_root`; `specs/[feature]/`, `bugs/`, and `verification.md` always live at the workspace root.
+8. **Wrapper-mode aware** — in wrapper mode, `resolve-feature-scope` requires both `--source-root` (the inner code repo) AND `--install-root` (the wrapper root where `.devforge/` lives); `verify-touched --root` and `check-hygiene --source-root` each take `source_root`; `<feature_dir>`, `bugs/`, and `verification.md` always live at the workspace root.
 9. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-verify`), outside the repo, and is swept by the single `rm -rf "$WORKDIR"` in the Cleanup block, never mid-run.
 10. **Regression gate is NEEDS WORK-only and fail-soft** — the PHASE-4.3 regression gate is the full-suite net for a feature that breaks a previously-green, untouched test (green→red at the merge-base). A `status:regression` result ALWAYS folds to NEEDS WORK via `compute-verdict --regression` and can NEVER force REJECTED (it is implementation-level, not spec-level). Every other status (`off` / `inconclusive` / `clean` / `baseline-failing`) ALWAYS does not gate — those are informational, never a silent pass. The gate is fail-soft: a git or test-runner error is reported as `inconclusive`, never a blocker and never a crash. It is config-gated by `regression_gate` (`REGRESSION_GATE`, default `full`), which the verb reads itself — `/devforge:verify` passes no `--mode`.
 11. **Dead-code removal check is NEEDS WORK-only, honest-bounded, and non-fatal** — the PHASE-4.4 `check-dead-code-removal` confirms REMOVAL of the plan-declared change-induced dead-code kill-list (the `dead_code_rows` carried on `breakdown-handoff.json`); it confirms the DECLARED kill-list only and does NOT discover deadness the architect never declared (that gap is the advisory backstops', not this gate's). A `violation:true` result ALWAYS folds to NEEDS WORK via `compute-verdict --dead-code` as a `dead_code_unremoved` blocker and can NEVER force REJECTED (a mechanical-check precedent, not spec-level); `vacuous` (nothing declared) and `clean` (all rows confirmed removed) never gate. The check is non-fatal (it ALWAYS exits 0); a `handoff_read_error:true` result means the declared kill-list could not be read (distinct from nothing declared) — relay the helper's stderr WARN verbatim and continue.
