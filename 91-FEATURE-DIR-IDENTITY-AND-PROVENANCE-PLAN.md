@@ -1,6 +1,6 @@
 # 91 — Feature-directory identity + artifact provenance
 
-**Status**: NOT STARTED — awaiting Phase-0 ratification (D1–D9 + OQ-1–OQ-8).
+**Status**: PHASE 0 CLOSED 2026-08-28 — every item (D1–D9 + OQ-1–OQ-8) ratified AS RECOMMENDED, D1 = (a); D4 and D6 ratified BY DIRECTIVE with the deliberation they demanded NOT performed (see `## Phase 0 close record`). **NOTHING IS BUILT** — Phase 1 is the next unbuilt phase and no build phase has started.
 **Created**: 2026-08-26
 **Branch**: `develop-2.0-init`
 **Origin**: maintainer design conversation 2026-08-26 (no incident, none claimed). Two problems raised together and deliberately kept separate below: *identity* (a feature directory's name carries no external meaning) and *volume* (a flat `specs/` accumulates unboundedly over a multi-year, multi-dev project).
@@ -11,7 +11,7 @@
 
 Today a feature directory is `specs/NNN-<slug>/`, where `NNN` is a repo-local sequential counter allocated by scanning `specs/` (`_shared/feature_alloc.py`). Three consequences the maintainer named:
 
-1. **`NNN` means nothing outside this repo.** The framework already knows about tickets — `_implement/_cmds_commit.py:127` scrapes `[A-Z]+-[0-9]+` out of a *source* branch in wrapper mode — but it never asks for one, so in standalone mode the ticket is unknown. `/devforge:finalize` cannot compose `[PROJ-123] - Description` there either, though for a separate reason: that format is gated on wrapper mode, not on knowing a ticket (see D5).
+1. **`NNN` means nothing outside this repo.** The framework already knows about tickets — `_implement/_cmds_commit.py:162` scrapes `[A-Z]+-[0-9]+` out of a *source* branch in wrapper mode — but it never asks for one, so in standalone mode the ticket is unknown. `/devforge:finalize` cannot compose `[PROJ-123] - Description` there either, though for a separate reason: that format is gated on wrapper mode, not on knowing a ticket (see D5).
 2. **A flat `specs/` becomes a junk pile.** At a realistic ~8 features/month over two years that is ~200 sibling directories.
 3. **Provenance is git-only.** Once an artifact leaves the repository (a `spec.md` pasted into a PR description, a ticket comment, or the maintainer's Obsidian vault), the git metadata is gone and nothing in the document says who ran the command that produced it.
 
@@ -35,17 +35,28 @@ Three changes. The ordering is itself a ratification item (D1) because it is the
 
 | | Change | Layer |
 |---|---|---|
-| **F1** | The feature-directory path becomes **opaque**: the helper is the only author of the layout; command prose receives a path and never composes one. | Python + 386 prose occurrences |
+| **F1** | The feature-directory path becomes **opaque**: the helper is the only author of the layout; command prose receives a path and never composes one. | Python + 388 prose occurrences |
 | **F2** | Identity becomes the **ticket**; layout becomes `specs/YYYY/MM/TICKET/`; `REQUIRE_TICKET` gates intake. | Python (composition + six variable-depth resolvers) + intake prose |
 | **F3** | A **`Run by:`** provenance line on the artifacts that travel outside the repository. | Python (2 renderers) + prose (2 artifacts) |
 
-F1 is the enabling refactor: it exists so that F2 — and the *next* layout change after F2, which there will be — is paid inside the helper plus its resolvers instead of across 386 prose occurrences. It does **not** make the resolver work cheap; see D1 and Phase 3.
+F1 is the enabling refactor: it exists so that F2 — and the *next* layout change after F2, which there will be — is paid inside the helper plus its resolvers instead of across 388 prose occurrences. It does **not** make the resolver work cheap; see D1 and Phase 3.
 
 ---
 
 ## Verified ground truth
 
-Everything below was read from the tree on 2026-08-26. Cited so a future session does not re-derive it, and does not trust it blindly either — re-grep before acting.
+Everything below was originally read from the tree on **2026-08-26** and **re-verified on 2026-08-27**, after plans 85, 88, 89 and 90 shipped. Cited so a future session does not re-derive it, and does not trust it blindly either — re-grep before acting.
+
+Re-verified 2026-08-27 and found **UNCHANGED**, so a future session need not re-check them:
+
+- `_shared/feature_alloc.py:99` / `:101` / `:122` / `:125` — all four still exact.
+- All six depth-1 resolvers still at their cited lines.
+- `_specify/_render.py:135` — `**Author**: Claude + User` still present.
+- `_research/_render.py:51-54` — unchanged.
+- The `is_wrapper` gate **logic** is unchanged (the standalone arm still assigns `ticket_id = ""`), so D5's known gap stands exactly as written — only its line citations moved, and they are corrected in place below.
+- Plan 90's e2e artifacts land in the project's own test tree — *"a dedicated e2e directory that the package's ordinary test command does not match"* (`src/commands/breakdown/main.md:457`) — **not** under `specs/`. This plan's `specs/` surface did not grow from plan 90.
+
+What *did* move: the prose-occurrence counts (386 → 388, 296 → 298 lines, 25 → 26 files) and several `_implement/_cmds_commit.py` / `_configure/_render.py` / `_shared/feature_alloc.py` / `plan_helper.py` line numbers. Every one of those is corrected in place. On 2026-08-27 every `file:line` citation in this document was opened and confirmed to say what the citing sentence claims, and the per-shape breakdown below was re-taken in full. ⚠ Two derived figures were **not** re-taken and remain 2026-08-26 readings: the "20 modules" header-line count and the 86-line docstring length.
 
 ### The layout is authored in two places at once
 
@@ -55,18 +66,20 @@ Everything below was read from the tree on 2026-08-26. Cited so a future session
 - `_shared/feature_alloc.py:125` — `_SPEC_BRANCH_PREFIX = "spec/"`.
 - `allocate_feature_dir` **already returns the full path** (`"path"`, alongside `number` / `formatted_number` / `slug` / `dirname` / `created`).
 
-And yet the command specs rebuild that same path by hand. Raw occurrence counts across `src/commands/**/*.md`, recounted 2026-08-26 with one consistent method — `grep -rho 'specs/' src/commands --include="*.md" | wc -l`:
+And yet the command specs rebuild that same path by hand. Raw occurrence counts across `src/commands/**/*.md`, first taken 2026-08-26 and recounted 2026-08-27 with one consistent method — `grep -rho 'specs/' src/commands --include="*.md" | wc -l`:
 
 ```
 117 × specs/<NNN-slug>        28 × specs/<feature>       12 × specs/<NNN>-<feature-name>
-100 × specs/[feature]         27 × specs/<dirname>        8 × specs/<NNN>-<slug>
+104 × specs/[feature]         27 × specs/<dirname>        8 × specs/<NNN>-<slug>
  32 × specs/                  24 × specs/*                6 × specs/<NNN>-<feature>
- 20 × specs/NNN-*             + smaller variants
+ 21 × specs/NNN-*             + smaller variants
 ```
 
-The named shapes above sum to 374 and the smaller variants carry the remaining 12, so the table totals 386 under that same method.
+The breakdown above was **re-taken on 2026-08-27** with the same method as the total, so every row is a measurement. Two named shapes moved between the readings — `specs/[feature]` 100 → 104 and `specs/NNN-*` 20 → 21; the other eight are unchanged. The named shapes sum to 379 and the smaller variants carry 9, totalling 388.
 
-**386 raw occurrences across 296 matching lines in 25 command-spec files, in at least nine different spellings.** This — not directory depth — is what makes any layout change expensive. Phase 0 re-derives the figure with the command above; counting *lines* instead of occurrences yields 296 and is not the number this plan is scoped against.
+**388 raw occurrences across 298 matching lines in 26 command-spec files, in at least nine different spellings.** This — not directory depth — is what makes any layout change expensive. Phase 0 re-derives the figure with the command above; counting *lines* instead of occurrences yields 298 and is not the number this plan is scoped against.
+
+⚠ The counts move as the tree moves, and did between the two readings above: **386 / 296 / 25 on 2026-08-26 → 388 / 298 / 26 on 2026-08-27.** The 26th file is `src/commands/fix/references/triage.md`, added by plan 88's cold-fix lane. Treat the figure as an order of magnitude with a re-derivable method attached, never as a constant.
 
 ### Resolution is uniformly depth-1 — `Path.iterdir()` at four sites, `os.listdir()` at two
 
@@ -84,9 +97,9 @@ Every consumer assumes a feature directory is an immediate child of `specs/`. Th
 - `_specify/_render.py:135` — `out.append("**Author**: Claude + User")`. **This is the only `**Author**` literal in production renderer code (`src/`)**, and it is a hardcoded constant that names nobody. (The string also appears in test fixtures and assertions under `tests/` and once in `done-plans/`; none of those render anything.) F3 is therefore *replacing a field that already lies*, not adding a new one — at least for `spec.md`.
 - `_specify/_render.py:132-134` — the surrounding header: `**Date**:`, `**Status**:`, `**Design source**:`.
 - `_research/_render.py:51-54` — `**Date**:`, `**Topic**:`, `**Mode**:`, `**Verdict**:`. No author field.
-- `plan.md` and `summary.md` are **LLM-authored prose** — no Python renders either one. The two differ downstream: `plan.md` is *parsed* by `plan_helper.py` (`:83` documents the `finalize-handoff` verb, `:2136` is `cmd_finalize_handoff`), while `summary.md` is neither rendered nor parsed by any Python in this repository. A stamp on either is an instruction change, not Python.
+- `plan.md` and `summary.md` are **LLM-authored prose** — no Python renders either one. The two differ downstream: `plan.md` is *parsed* by `plan_helper.py` (`:83` documents the `finalize-handoff` verb, `:2135` is `cmd_finalize_handoff`), while `summary.md` is neither rendered nor parsed by any Python in this repository. A stamp on either is an instruction change, not Python.
 - **Zero** reads of `git config user.name` anywhere in `src/devforge/lib/`. There is no identity source in the framework today.
-- `_configure/_render.py:54`, `:80` — `COMMIT_ATTRIBUTION` is a *derived* config key, emitted only when `ai_attribution == "Yes"`. The framework already asks the operator whether attribution may be written into files.
+- `_configure/_render.py:148-150` — `COMMIT_ATTRIBUTION` is a *derived* config key, emitted only when `ai_attribution == "Yes"`; those three lines are the gate itself (`ai_attribution = cfg_state.get("ai_attribution")` / `if ai_attribution == "Yes":`). Its supporting sites: `:54` lists the key in the emitted key order, `:82` is the explanatory comment, `:84` defines `_COMMIT_ATTRIBUTION_YES`. The framework already asks the operator whether attribution may be written into files.
 - **20 modules** write `**Status**:` / `**Created**:` / `**Date**:` header lines. There is **no shared header composer**. "Every artifact carries a label" would therefore be 20 touch points plus a test each.
 
 ### Adjacent facts that constrain this plan
@@ -95,7 +108,8 @@ Every consumer assumes a feature directory is an immediate child of `specs/`. Th
 - Plan 68 D3 set the precedent that legacy intake directories are **inert history — nothing migrates them**. This plan follows it (D6).
 - Plan 68 D6 attach mode: a `/devforge:grill` RE-ENTER-UPSTREAM seed reuses an existing feature directory and **skips allocation entirely**. Any allocation-time rule must therefore have an attach-mode arm that is a deliberate no-op.
 - Plan 87 (artifact language guard) and plan 78 (test identifier scrub) both exist because artifacts are committed and this repository is public. F3 adds a real human name to committed files and must be weighed against that, not around it.
-- Plan 88 (cold-fix bugs lane — **Phases 0–4 BUILT 2026-08-26; Phase 5 consumer e2e NOT run**) owns `bugs/NNN-*.md`. Whether `REQUIRE_TICKET` reaches bug files is OQ-4. ⚠ Status refreshed 2026-08-26; OQ-4's substance is unaffected — plan 88 did NOT change bug-file naming, so its recommendation still stands as written.
+- Plan 88 (cold-fix bugs lane) is **CLOSED 2026-08-27 (build)** — Phases 0–4 complete 2026-08-26, Phase 5 consumer e2e deferred and **NOT run**. It owns `bugs/NNN-*.md`. Whether `REQUIRE_TICKET` reaches bug files is OQ-4; plan 88 changed no bug-file naming, so that recommendation stands as written.
+- ⚠ **A legitimate feature-less command path now exists, and this plan's rules do not reach it.** Plan 88's cold lane — `/devforge:fix bugs/NNN-<slug>.md` — runs with **no feature directory at all**, by decision rather than omission: its D2 bypasses `/devforge:fix` PHASE 0.2 (feature resolution), PHASE 0.3 (`in-fix-window`) and PHASE 0.4 (`read-findings`), all three of which need a `--feature` a cold run does not have. Everything in this plan — F1's opaque path, F2's layout, D4's `REQUIRE_TICKET` gate — binds the **intake-allocated feature path only**. Phase 1's resolution accessor must therefore not be specified as though every caller holds a feature reference: a caller with none is a supported state, not an error path. This is a boundary statement; it invents no behaviour for the cold lane, and this plan changes none.
 
 ---
 
@@ -108,16 +122,16 @@ That leaves **D4 and D6**, which belong to neither bucket and must not be waved 
 - **D4 was PARTIALLY argued.** The maintainer agreed to the `REQUIRE_TICKET`-as-per-install-policy-key *shape*. The tripwire break that shape carries (D4's ⚠) was never put to them as a decision, so D4 requires full Phase-0 deliberation.
 - **D6 was NOT argued at all.** It retires `NNN` as the feature identity and never came up in the originating conversation. It requires full Phase-0 deliberation.
 
-### D1 — Sequence: opaque path first, or layout first? **UNANSWERED**
+### D1 — Sequence: opaque path first, or layout first? — RATIFIED AS (a) BY DIRECTIVE 2026-08-28
 
-- **(a) F1 first (RECOMMENDED).** Make the helper the sole author of the path, retire the 386 hand-composed occurrences, *then* change the layout inside the helper. Cost: the prose sweep is paid once, up front, before any user-visible behaviour changes.
-- **(b) Layout first.** Ship `specs/YYYY/MM/TICKET/` directly. Cost: 386 prose occurrences edited now, and 386 again the next time the layout changes — and this conversation produced three candidate layouts in one sitting, so a next time should be assumed, not hoped against.
+- **(a) F1 first (RECOMMENDED).** Make the helper the sole author of the path, retire the 388 hand-composed occurrences, *then* change the layout inside the helper. Cost: the prose sweep is paid once, up front, before any user-visible behaviour changes.
+- **(b) Layout first.** Ship `specs/YYYY/MM/TICKET/` directly. Cost: 388 prose occurrences edited now, and 388 again the next time the layout changes — and this conversation produced three candidate layouts in one sitting, so a next time should be assumed, not hoped against.
 
 The whole argument for (a) is that **the prose sweep is paid once instead of twice**. It is not that (a) makes the layout switch cheap: under either ordering, Phase 3 still has to teach six resolvers a variable-depth walk that returns both the legacy and the new shape (see Phase 1's ⚠ and Phase 3). No ordering makes that work disappear, and this plan does not claim it does.
 
-Recommendation (a). The counter-argument is honest and recorded: (a) delivers **nothing the maintainer asked for** in its first phase, and a refactor whose payoff is entirely in the next phase is the kind that gets abandoned half-done. If (a) is ratified, Phase 1 must therefore be independently valuable — it is: it removes a nine-spelling literal from 25 files, which is a real hallucination surface today regardless of any layout change.
+Recommendation (a). The counter-argument is honest and recorded: (a) delivers **nothing the maintainer asked for** in its first phase, and a refactor whose payoff is entirely in the next phase is the kind that gets abandoned half-done. If (a) is ratified, Phase 1 must therefore be independently valuable — it is: it removes a nine-spelling literal from 26 files, which is a real hallucination surface today regardless of any layout change.
 
-⚠ Phases 1, 2 and 3 below are written for (a). Ratifying **(b)** requires restructuring Phases 1–3 *before* any build starts — this document provides no alternate structure for it.
+⚠ Phases 1, 2 and 3 below are written for (a). Ratifying **(b)** requires restructuring Phases 1–3 *before* any build starts — this document provides no alternate structure for it. **DISCHARGED 2026-08-28** — (a) was ratified, so no restructure is owed and Phases 1, 2 and 3 stand exactly as written. Retained rather than deleted because it is the reason those three phases have the shape they do.
 
 ### D2 — Layout: `specs/YYYY/MM/TICKET/` — RATIFIED IN CONVERSATION 2026-08-26
 
@@ -137,7 +151,7 @@ Known cost, accepted: the bucket records the **allocation** date, while a featur
 
 Known cost, accepted and stated once here: **`ls specs/2026/08/` becomes opaque** (`PROJ-123 PROJ-140 PROJ-155`), and the query "where is the auth thing, I don't remember the number" loses its directory-name answer and falls back to `grep -rl` over contents. The counter-argument for the bare ticket is real and is why it won: the title lives in the tracker, and a duplicated title in a directory name goes stale when the ticket is renamed.
 
-### D4 — Ticket mandatory, via `REQUIRE_TICKET` in `.devforge/project-config.json` — **PARTIALLY ARGUED**
+### D4 — Ticket mandatory, via `REQUIRE_TICKET` in `.devforge/project-config.json` — **PARTIALLY ARGUED** — RATIFIED BY DIRECTIVE 2026-08-28, DELIBERATION NOT PERFORMED
 
 "No ticket, no spec" as a **mechanical** trigger — no severity threshold, no judgment call, matching the zero-escape-hatch policy. But it is a **per-install policy key**, not a framework invariant, for two reasons:
 
@@ -148,19 +162,27 @@ Known cost, accepted and stated once here: **`ls specs/2026/08/` becomes opaque*
 
 ⚠ **This is the one place the plan deliberately breaks plan 75's tripwire** ("no new check number AND no new unnumbered hard-fail validator"). `REQUIRE_TICKET=true` *is* a new unnumbered hard-fail validator at intake. Declared here rather than smuggled: it is the mechanism the maintainer asked for, it is opt-in per install, and it adds no `verify-*` gate number to any PHASE-3.5 sequence. Everything else in this plan holds the tripwire.
 
+⚠ **That break was ratified by directive on 2026-08-28 and the deliberation this ⚠ asks for was NOT performed.** The directive covered every item at once; a blanket directive does not supply an argument that was never put. D4 is binding and its content is unchanged, but it is **reversible until Phase 2 begins** — nothing in Phase 1 depends on it. See `## Phase 0 close record`.
+
 ### D5 — Branch name is `spec/TICKET` — RATIFIED IN CONVERSATION 2026-08-26
 
 `spec/PROJ-123`, not `spec/2026/08/PROJ-123` (slashes are legal in git refs but buy nothing here).
 
-⚠ **There is no free consequence here. Standalone `[PROJ-123] - Description` is NOT built by this plan and stays a known gap.** An earlier draft of this decision claimed the branch rename would hand `/devforge:finalize` the bracket format in standalone mode for the first time. It does not: that format is gated on **mode**, never on whether a ticket is extractable. `_implement/_cmds_commit.py:488-499` sets `ticket_id = ""` on the standalone arm — the ticket is never extracted there at all — and `_compose_message` (`:225-233`) emits `"[{ticket_id}] - {title}"` only `if is_wrapper`. `src/commands/finalize/main.md:201-202` says the same independently: the bracket format is labelled *"Source repo (wrapper mode only)"*, and standalone has no source repo. Closing that gap would mean making the gate ticket-driven rather than mode-driven in **both** `_cmds_commit.py` and `finalize/main.md`'s message-composition instructions — recorded here as out of scope, not as planned work.
+⚠ **There is no free consequence here. Standalone `[PROJ-123] - Description` is NOT built by this plan and stays a known gap.** An earlier draft of this decision claimed the branch rename would hand `/devforge:finalize` the bracket format in standalone mode for the first time. It does not: that format is gated on **mode**, never on whether a ticket is extractable. `_implement/_cmds_commit.py:612-614` sets `ticket_id = ""` on the standalone arm — the ticket is never extracted there at all — and `_compose_message` (defined at `:244`) emits `"[{ticket_id}] - {title}"` only `if is_wrapper`, at each of its three mode branches (`:274` final, `:279` fix, `:284` task). `src/commands/finalize/main.md:201-202` says the same independently: the bracket format is labelled *"Source repo (wrapper mode only)"*, and standalone has no source repo. Closing that gap would mean making the gate ticket-driven rather than mode-driven in **both** `_cmds_commit.py` and `finalize/main.md`'s message-composition instructions — recorded here as out of scope, not as planned work.
 
-### D6 — `NNN` is retired; both shapes coexist forever — **NOT ARGUED**
+⚠ **The mode-driven split is a decision, and it was re-ratified one day after this plan was drafted.** Plan 88 settled its fork 2 as arm **(i)** on 2026-08-26 — wrapper keeps `[TICKET-ID] - <title>` — while giving the cold-fix lane a **third** standalone shape, `fix(<scope>): <title>` (`_cmds_commit.py:277`). A split deliberately re-affirmed that recently is a reason to leave the gap alone here rather than close it opportunistically inside a layout plan; this strengthens the choice already made above, and changes nothing about it.
+
+⚠ **One adjacent fact, stated at its true width and no wider.** Plan 88 also accepted that `_extract_ticket_id` falls back to the **full branch name** when the branch carries no `[A-Z]+-[0-9]+` token (`_cmds_commit.py:240-241`), so a cold wrapper fix on `develop` composes `[develop] - <title>` — a string seen at plan 88's ratification and accepted there. D5's `spec/<TICKET>` naming would make that fallback yield a clean ticket **on branches this framework created, and only those**: today's `spec/NNN-slug` carries no uppercase token and falls back too, whereas `spec/PROJ-123` extracts cleanly. It does nothing for `develop`, or for any other hand-made branch — which is exactly where plan 88's accepted string comes from. A narrow improvement on one branch class, not a fix for that string.
+
+### D6 — `NNN` is retired; both shapes coexist forever — **NOT ARGUED** — RATIFIED BY DIRECTIVE 2026-08-28, DELIBERATION NOT PERFORMED
 
 `next_spec_number` becomes dead, `SPEC_NUMBER_DIR_RE` becomes a *legacy-read* pattern, and `_feature_sort_key`'s `^(\d+)` no longer matches anything newly written.
 
 **No migration** (plan 68 D3 precedent). Existing installs keep `specs/NNN-slug/` forever. Resolution must therefore **read both shapes and write only the new one**. This is the single largest correctness risk in the plan and Phase 3's **Verify** line is built around it.
 
 Note the ordering consequence: sorting by ticket number is only *approximately* chronological, and interleaves across tracker prefixes (`ENG-*` vs `PROJ-*`). Any code that today relies on `NNN` for ordering must be re-examined rather than mechanically ported.
+
+⚠ **Ratified by directive on 2026-08-28 with no deliberation performed.** D6 never came up in the originating conversation and was not argued in the ratifying session either; the blanket directive is the whole of what carries it, over what this decision itself calls the single largest correctness risk in the plan. Binding and unchanged in content, and **reversible until Phase 3 begins**. See `## Phase 0 close record`.
 
 ### D7 — Provenance stamp: `Run by:`, on travelling artifacts only
 
@@ -178,7 +200,7 @@ One provenance line per artifact. Two adjacent lines, one of which is a constant
 
 - Value source: `git config user.name`, captured at **creation** time.
 - Unset / unavailable → the line is **absent**. Never `unknown`, never a placeholder. A fake value is worse than no value.
-- **Config-gated.** An install that answered "no attribution in files" must not get a real human name stamped into them by another route (`_configure/_render.py:80`). *Which* gate carries that — the existing `ai_attribution` answer, or a new key of its own — is **OQ-8**; nothing in this plan presumes a new key exists.
+- **Config-gated.** An install that answered "no attribution in files" must not get a real human name stamped into them by another route (`_configure/_render.py:148-150`, the `ai_attribution == "Yes"` gate itself). *Which* gate carries that — the existing `ai_attribution` answer, or a new key of its own — is **OQ-8**; nothing in this plan presumes a new key exists.
 - The emitted text must state the bound: the field records the **creator**, and later edits (grill re-entry rewriting `spec.md`, `**Status**:` flips) do **not** update it. Without that sentence the field becomes exactly the "used to be true, now silently false" failure mode `CLAUDE.md` names as most dangerous. **A per-edit trail is explicitly NOT built** — that is `git log --follow` reimplemented in markdown inside a git-tracked file.
 
 ---
@@ -188,11 +210,36 @@ One provenance line per artifact. Two adjacent lines, one of which is a constant
 - **OQ-1 — `REQUIRE_TICKET` default.** `false` (opt-in) or `true` (opt-out)? Note this repository needs `false`. Recommendation: default `false`, and let `/devforge:configure` ask, defaulting to `true` when `WORKSPACE_MODE` is wrapper (wrapper mode implies an external tracker by construction).
 - **OQ-2 — Ticket format and letter case.** Constrain to `[A-Z]+-[0-9]+` (matching `_TICKET_PATTERN`, so the framework has one ticket notion rather than two), or accept free-form? And: an uppercase directory name is new — `FEATURE_NAME_RE`'s lowercase-only convention dies with the slug. ⚠ On a case-insensitive filesystem (macOS default) `PROJ-123` and `proj-123` collide while on Linux they do not; whichever is chosen must be **normalized at allocation**, not left to the typist.
 - **OQ-3 — Bucket source.** `YYYY/MM` from the allocation date — confirm, and confirm the timezone/clock source (local date, as `set-date` already enforces `YYYY-MM-DD` elsewhere).
-- **OQ-4 — Does `REQUIRE_TICKET` reach `bugs/NNN-*.md`?** Plan 88 (**Phases 0–4 BUILT 2026-08-26**; status refreshed the same day) makes bug files a `/devforge:fix` input — that input is now shipped, not prospective. Recommendation: **no** — bug files are not features, keep them `bugs/NNN-slug.md`, and record that as a stated boundary so plan 88 is not silently constrained by this one. ⚠ The recommendation is UNCHANGED by plan 88 shipping: it built no naming change, and its cold lane resolves a bug file by the path the user types, so a rename would break a user-facing argument form.
-- **OQ-5 — Attach mode.** A `/devforge:grill` re-entry reuses an existing directory and skips allocation (plan 68 D6). Confirm the ticket rule is a **no-op** there, and that the ticket is recovered from the path rather than re-asked.
+- **OQ-4 — Does `REQUIRE_TICKET` reach `bugs/NNN-*.md`?** Plan 88 is **CLOSED 2026-08-27 (build)** — Phases 0–4 complete 2026-08-26, Phase 5 consumer e2e deferred and not run. This is fact, not forecast: `bugs/NNN-*.md` is now the **third** `/devforge:fix` findings source, consumed by a feature-less cold mode, and a `fix_helper close-bug` verb writes three fields back into the one consumed bug file. Recommendation: **no** — bug files are not features, keep them `bugs/NNN-slug.md`, and record that as a stated boundary so plan 88 is not silently constrained by this one. ⚠ The recommendation is not merely undisturbed by plan 88 shipping; it is **corroborated** by it. Plan 88 built that lane feature-less **by decision** (D2 bypasses `/devforge:fix` PHASE 0.2 / 0.3 / 0.4 precisely because no `--feature` exists), so a ticket rule scoped to intake-allocated feature directories and a lane deliberately built without one agree by construction rather than by luck. The two original reasons stand unchanged: plan 88 introduced no naming change, and its cold lane resolves a bug file by the path the user types (`/devforge:fix bugs/NNN-<slug>.md`), so a rename would break a user-facing argument form.
+- **OQ-5 — Attach mode.** A `/devforge:grill` re-entry reuses an existing directory and skips allocation (plan 68 D6). Confirm the ticket rule is a **no-op** there, and that the ticket is recovered from the path rather than re-asked. ⚠ Plan 85 has since made `/devforge:grill` **mandatory to run** — `/devforge:breakdown` blocks until a grill report exists for the resolved plan — so a grill run is no longer opt-in and attach-mode re-entry becomes *more* likely, not less. That raises the value of getting this answer right; it does not change what the answer should be. The `_grill/_scope.py` citations in "Verified ground truth" were re-verified 2026-08-27 and did not move.
 - **OQ-6 — Legacy read surface.** Which of the six depth-1 resolvers must read the legacy `specs/NNN-slug/` shape, and which may drop it? Recommendation: **all six read both** — a resolver that silently stops seeing an old feature is a data-loss-shaped bug, not a cleanup.
 - **OQ-7 — Re-render behaviour.** When `/devforge:specify` rewrites `spec.md` on a grill re-entry, does `Run by:` keep the original value or take the current one? D9 says creator, so: **keep the original** — which means the re-render must *read back* the existing value rather than recompute it. Confirm this is worth the complexity, or accept "the last full render wins" with the bound stated. Whichever way this lands decides whether Phase 4's task 6 is in scope — `render_spec` (`_specify/_render.py:118`) is a pure function of `state` with no file read-back today, so "keep the original" is a real code change and not a free property.
-- **OQ-8 — Which config key gates the `Run by:` stamp?** D9 requires a gate and names none; no such key exists today. **(i) No new key — the stamp rides the existing `ai_attribution` answer directly (RECOMMENDED)**: one fewer key, and the two semantics are close enough that a second toggle mostly invites a pair of settings that contradict each other. **(ii) A new named key**, defaulting from the `ai_attribution` answer. Whichever is ratified must reach Phase 4 with the same specificity `REQUIRE_TICKET` gets in Phase 2 — a named read site, a `/devforge:configure` question (or an explicit statement that there is none), and a render path.
+- **OQ-8 — Which config key gates the `Run by:` stamp?** D9 requires a gate and names none; no such key exists today. **(i) No new key — the stamp rides the existing `ai_attribution` answer directly (RECOMMENDED)**: one fewer key, and the two semantics are close enough that a second toggle mostly invites a pair of settings that contradict each other. **(ii) A new named key**, defaulting from the `ai_attribution` answer — which additionally pays the full multi-file config-key cost Phase 2's ⚠ describes (`E2E_COMMAND` reached four Python modules plus `/devforge:configure` prose, with a fail-closed required-field loop among them), for a toggle whose value an existing answer already carries. That is a further argument for (i); the recommendation above is unchanged. Whichever is ratified must reach Phase 4 with the same specificity `REQUIRE_TICKET` gets in Phase 2 — a named read site, a `/devforge:configure` question (or an explicit statement that there is none), and a render path.
+
+---
+
+## Phase 0 close record
+
+**Closed 2026-08-28 by maintainer directive.** The ratifying act was a single one-word directive — *"implement"*, given in Ukrainian — at the end of a session in which this file's D-item and OQ-item recommendations were presented and argued. **Every item ratifies AS RECOMMENDED: D1–D9 and OQ-1–OQ-8.** No recommendation is amended by this record and no decision body above is rewritten; the `### D…` heading markers and this section are the current state.
+
+**D1 = (a).** F1 first: the helper becomes the sole author of the path and the 388 hand-composed occurrences are retired *before* the layout changes. The consequence is that **Phases 1, 2 and 3 stand exactly as written** — D1's ⚠ about arm (b) requiring a restructure of Phases 1–3 is discharged, and is marked `DISCHARGED 2026-08-28` where it sits rather than deleted.
+
+**This ratification is weaker than an item-by-item one in three specific ways.** They are recorded rather than smoothed, because a future session reading "every item as recommended" would otherwise assume a deliberation that did not happen:
+
+- **D1 was never answered in its own words.** It was put to the maintainer three times across the session and never picked; the blanket directive is what carries it. Read the consequence narrowly: **Phase 1 is the only phase this actually unblocks.** Phases 2 and 3 can still be re-cut if the maintainer reverses D1 before Phase 1 lands.
+- **D4's tripwire break was ratified by omission — which this file's own text says must not happen.** The "That leaves D4 and D6" paragraph states D4 *"requires full Phase-0 deliberation"* precisely because the break of plan 75's tripwire was never put to the maintainer as a decision, and a blanket directive does not supply that deliberation. D4 is therefore **ratified by directive with the deliberation NOT performed** — not "ratified", and it must not be restated that way. Nothing in Phase 1 depends on it, so it stays **reversible until Phase 2 begins**.
+- **D6 was likewise never argued.** Retiring `NNN` as the feature identity never came up in the originating conversation and was not argued in the ratifying session either. Same treatment: **ratified by directive, deliberation NOT performed**, and **reversible until Phase 3 begins**.
+
+**Four ratified items whose forks carry real downstream consequences.** Each is ratified as recommended, and each recommendation gets exercised in the phase named. A future session should re-read the item itself before building that phase rather than working from this summary:
+
+- **OQ-1 — `REQUIRE_TICKET` default.** Ratified as recommended: default `false`, `/devforge:configure` asks, and the question defaults to `true` when `WORKSPACE_MODE` is wrapper. Exercised at **Phase 2**, task 3.
+- **OQ-2 — ticket format and letter case.** Ratified as recommended. The item labels no arm `Recommendation:` but argues one — `[A-Z]+-[0-9]+`, matching `_TICKET_PATTERN` so the framework carries one ticket notion rather than two — and its ⚠ is not optional: the macOS case-insensitivity trap is closed by **normalizing at allocation**, never by leaving case to the typist. Exercised at **Phase 2**, task 2, which is where the exact pattern and the normalization rule get written.
+- **OQ-7 — re-render read-back.** Ratified as recommended: **keep the original**. That **puts Phase 4's task 6 in scope** — `render_spec` (`_specify/_render.py:118`) is a pure function of `state` today and gains a read-back it does not have. Exercised at **Phase 4**.
+- **OQ-8 — which config key gates the `Run by:` stamp.** Ratified as recommended, option **(i)**: the stamp rides the existing `ai_attribution` answer and **no new config key is added**. Exercised at **Phase 4**, task 4.
+
+**Reading the pre-close text.** Nothing above `## Decisions to ratify (D1–D9)` was rewritten to past tense, and neither was that section's own preamble. It still says *"**D1 is genuinely unanswered** and must be settled first"*, still says D4 and D6 *"must not be waved through by omission"*, and still says each *"requires full Phase-0 deliberation"*. Those sentences record the plan's state BEFORE 2026-08-28 and are preserved deliberately — the last two are the very text the D4 and D6 caveats above lean on, so removing them would erase the record of what was skipped.
+
+**Nothing is built.** Phase 0 is the only closed phase; Phases 1–6 have not started. The close produced changes to this file only — this section, the ratification markers in the `### D…` headings, and Phase 0's own CLOSED marker. The `CLAUDE.md` active-plan index line and the `PLAN-STATUS-ARCHIVE.md` entry are still owed by Phase 5 and do not exist yet. The **Status** field at the top of this file remains the authority.
 
 ---
 
@@ -200,9 +247,11 @@ One provenance line per artifact. Two adjacent lines, one of which is a constant
 
 Each phase must leave the tree buildable and the suite green.
 
-### Phase 0 — Ratification
+### Phase 0 — Ratification — **CLOSED 2026-08-28**
 
-Settle D1–D9 and OQ-1–OQ-8. Re-verify the two facts this plan leans on hardest before any code moves: the 386 prose-occurrence count (re-derive it with `grep -rho 'specs/' src/commands --include="*.md" | wc -l`, the same method that produced the figure), and the absence of a `feature_dir`/`path` key in the handoff schemas.
+Settle D1–D9 and OQ-1–OQ-8. Re-verify the two facts this plan leans on hardest before any code moves: the 388 prose-occurrence count (re-derive it with `grep -rho 'specs/' src/commands --include="*.md" | wc -l`, the same method that produced the figure — and expect a different number again, since it moved 386 → 388 between 2026-08-26 and 2026-08-27), and the absence of a `feature_dir`/`path` key in the handoff schemas.
+
+**Closed 2026-08-28**, dispositions in `## Phase 0 close record` above and in the `### D…` headings themselves. Both demanded re-verifications are **done**: the occurrence count was re-derived on **2026-08-27** with the command named above and is **388** — the figure this file now carries throughout — and the research / specify / discover handoff schemas were confirmed to carry **no** `feature_dir` key and **no** `path` key, so Phase 3 may rely on that.
 
 **Verify**: every D and OQ has a recorded answer in this file; no phase below has started.
 
@@ -210,24 +259,33 @@ Settle D1–D9 and OQ-1–OQ-8. Re-verify the two facts this plan leans on harde
 
 The helper becomes the sole author of the layout. Command prose stops containing the literal `specs/`.
 
+**Scope.** This phase covers the **intake-allocated feature path only**. Plan 88's cold `/devforge:fix` lane holds no feature directory by design, so the accessor below must not be specified as though every caller has one — see the feature-less-path bullet under "Adjacent facts that constrain this plan".
+
 1. A single resolution accessor, in `_shared/feature_alloc.py` alongside `allocate_feature_dir`, that returns a feature directory path given a feature reference — covering both the allocate path and the resolve path (the six depth-1 consumers).
 2. `allocate-feature-dir`'s stdout keeps `path` as the value callers use; `dirname` / `number` / `formatted_number` become **legacy-only** keys (still emitted for the un-migrated shape, not consumed by new prose).
-3. Sweep the 386 prose occurrences in the 25 command-spec files onto `<feature_dir>` — the value the helper handed the orchestrator — so that no command spec knows what is inside the path.
+3. Sweep the 388 prose occurrences in the 26 command-spec files onto `<feature_dir>` — the value the helper handed the orchestrator — so that no command spec knows what is inside the path.
 
 ⚠ **Build the accessor for a variable-depth tree from the start.** The legacy shape `specs/NNN-slug/` is **one** level below `specs/`; the shape D2 introduces, `specs/YYYY/MM/TICKET/`, is **three**. All six of today's consumers do a single flat scan of `specs/`, and under the new layout a flat scan enumerates *year* directories — it cannot see a new-shape feature directory at all. Reading both shapes is therefore a genuine algorithmic branch dispatched on shape, not a regex swap. An accessor written here as a straightforward flat `iterdir()` will satisfy Phase 1's own Verify (only the legacy shape exists yet) and then need rewriting at Phase 3; put the depth branch in now, with the legacy arm as the only one that currently returns anything.
 
 **Verify**: `grep -rn 'specs/' src/commands --include="*.md"` returns only (a) `storage-rules`-style *descriptions* of the layout, and (b) nothing that instructs the model to compose a path. Full suite green. No behaviour change is visible to a consumer — the same directories are created at the same locations.
 
-### Phase 2 — Ticket identity + `REQUIRE_TICKET` (Python) (assumes D1 = (a); see Phase 0)
+### Phase 2 — Ticket identity + `REQUIRE_TICKET` (Python) (D1 = (a) ratified; see Phase 0)
 
-1. `REQUIRE_TICKET` read from `.devforge/project-config.json` (join the existing readers; `_implement/_cmds_commit.py:85` is the shape precedent for a documented key).
+1. `REQUIRE_TICKET` added to `.devforge/project-config.json` and read at every site the rule fires. `_implement/_cmds_commit.py`'s `COMMIT_ATTRIBUTION` handling is the shape precedent for a *documented* key — `:45` and `:113` document it, `:168` names it as a constant, `:197-198` reads it — and is itself a four-site surface inside a single module. Read the ⚠ below before scoping this task.
 2. Ticket validator + normalization per OQ-2.
 3. `/devforge:configure` asks the question and renders the key.
 4. Intake (`/devforge:research`, `/devforge:discover` Phase 4 / Step 4.1) asks for the ticket in the **existing** `AskUserQuestion`, and refuses to allocate when `REQUIRE_TICKET` is true and no valid ticket was given. Attach mode is a no-op arm (OQ-5).
 
+⚠ **Adding a config key is a multi-file, fail-closed surface — never a one-line addition.** Two config keys shipped in the 24 hours before this plan was last re-verified (2026-08-27), and both are worked examples to model this task on rather than re-derive:
+
+- **`E2E_COMMAND` (plan 90)** reaches four Python modules under `src/devforge/lib/` — `_configure/_render.py`, `_verify/_cli.py`, `_verify/_e2e.py`, `_verify/_verdict.py` — plus `/devforge:configure`'s own prose. Plan 90's record in `CLAUDE.md` calls it *"a SIX-file config surface whose fails-closed-if-missed member is `_cmds_verify.py`'s required-field loop, which violates on any `None` scalar."*
+- **`REGRESSION_GATE` (plan 89)** is the second; read its `CLAUDE.md` entry for the surface it actually paid.
+
+The **required-field loop is the named trap**: a key emitted into the config but absent from that loop fails **closed**, at a consumer that never mentions the key by name, so the failure surfaces far from the edit that caused it. Enumerate the full surface — every emitter, every reader, every required-field list, every prose site — and write it down *before* writing any of it. Phase 2's cost estimate is wrong if it assumes otherwise.
+
 **Verify**: a test per new function (test-immediately rule). Round-trip the config through the real producer — `configure_helper render-config` → file → the reader — not a hand-authored fixture. Both `REQUIRE_TICKET` states covered, plus the attach-mode no-op.
 
-### Phase 3 — The layout switch (assumes D1 = (a); see Phase 0)
+### Phase 3 — The layout switch (D1 = (a) ratified; see Phase 0)
 
 Phase 1 makes this possible; it does not make it small. The composition changes in one place, but every resolver has to return **both** shapes from one call across a variable-depth tree — that is the bulk of the work and the whole of the risk (D6, OQ-6).
 
@@ -253,7 +311,7 @@ Phase 1 makes this possible; it does not make it small. The composition changes 
 
 `src/devforge/storage-rules.md` (the layout is described in ~20 places there), `src/CLAUDE.md`, the per-command "Produces" blocks, `CHANGELOG.md` under `## [Unreleased]`, this repository's `CLAUDE.md` active-plan index line, and a `PLAN-STATUS-ARCHIVE.md` entry.
 
-**Source-code docstrings are part of this sweep, not exempt from it** — `src/devforge/lib/_shared/feature_alloc.py`'s 86-line module docstring plus the `next_spec_number` (`:135`) and `allocate_feature_dir` (`:162`) function docstrings. The module docstring asserts the NNN layout as canonical in at least six sentences, among them *"allocate_feature_dir -- creates specs/NNN-slug/ on disk"* (`:34-35`), *"NNN dir-naming constants"* (`:23`) and *"OQ-4 ratified this: NNN is the identity, the slug is a label"* (`:81` — that is **plan 68's** OQ-4, not this plan's) — the last one contradicted outright by F2. This matters more than the prose files do: this plan sends future sessions to that module as the ground truth for how allocation works (see "Verified ground truth" above), so a stale docstring there mis-teaches exactly the reader who followed the instruction.
+**Source-code docstrings are part of this sweep, not exempt from it** — `src/devforge/lib/_shared/feature_alloc.py`'s 86-line module docstring plus the `next_spec_number` (`:133`) and `allocate_feature_dir` (`:160`) function docstrings. The module docstring asserts the NNN layout as canonical in at least six sentences, among them *"allocate_feature_dir -- creates specs/NNN-slug/ on disk"* (`:34-35`), *"NNN dir-naming constants"* (`:23`) and *"OQ-4 ratified this: NNN is the identity, the slug is a label"* (`:81` — that is **plan 68's** OQ-4, not this plan's) — the last one contradicted outright by F2. This matters more than the prose files do: this plan sends future sessions to that module as the ground truth for how allocation works (see "Verified ground truth" above), so a stale docstring there mis-teaches exactly the reader who followed the instruction.
 
 Two sentences that become false on this build and must be hunted specifically: anything asserting that a feature directory is an immediate child of `specs/`, and anything asserting `NNN` is the feature identity.
 
@@ -287,15 +345,15 @@ Anchors 1 and 2 are scored as a **pair** — a rule that satisfies 1 by allocati
 
 ## Context for next session
 
-- The expensive part of this work is **not** the layout. It is that `specs/…` is a literal hand-composed in **386 places across 296 lines in 25 command specs** in nine spellings, while `allocate_feature_dir` has been returning the full `path` all along. If you read only one thing before starting, read D1.
+- The expensive part of this work is **not** the layout. It is that `specs/…` is a literal hand-composed in **388 places across 298 lines in 26 command specs** in nine spellings, while `allocate_feature_dir` has been returning the full `path` all along. If you read only one thing before starting, read D1. ⚠ Those three figures are a 2026-08-27 reading, not a constant — they were 386 / 296 / 25 the day before. Re-derive, do not quote.
 - `**Author**: Claude + User` at `_specify/_render.py:135` is the only `**Author**` in **production renderer code** (`src/`; `tests/` fixtures and one `done-plans/` file carry the string too) and it names nobody. F3 replaces a lie; it does not add a field.
 - The maintainer's drift objection (quoted in "Why") is the load-bearing reason this plan has no archive step. Do not re-propose one without answering it.
-- D4 knowingly breaks half of plan 75's tripwire. That is declared, not overlooked.
-- Nothing in this plan has been built. No phase has started. The **Status** field at the top of this file is the authority.
+- D4 knowingly breaks half of plan 75's tripwire. That is declared, not overlooked — and as of 2026-08-28 it is ratified by directive with the deliberation it demanded **not** performed, so read `## Phase 0 close record` before building Phase 2.
+- Nothing in this plan has been built. **No build phase has started** — Phase 0 closed 2026-08-28 and Phases 1–6 have not started. The **Status** field at the top of this file is the authority.
 
 ## When resuming work
 
-1. Read this file end to end, then `CLAUDE.md`'s active-plan index for plans 68, 75, 87 and 88 — each constrains a decision here.
-2. Answer **D1 first**. Every phase shape below it depends on the answer.
-3. Re-grep the two counts in "Verified ground truth" before trusting them; they were taken on 2026-08-26 and the tree moves.
+1. Read this file end to end, then `CLAUDE.md`'s active-plan index for plans 68, 75, 87 and 88 — each constrains a decision here — plus 85 (it made `/devforge:grill` mandatory to run, which raises OQ-5's likelihood), and 89 and 90 (the two worked config-key examples Phase 2 models on).
+2. **D1 is answered — (a)**, ratified 2026-08-28. Every phase shape below it depends on that answer and Phases 1–3 are written for it, so read `## Phase 0 close record` — including its three caveats — before re-opening it or before starting Phase 2 or Phase 3.
+3. Re-grep the two counts in "Verified ground truth" before trusting them; they were taken 2026-08-26, re-taken 2026-08-27, and moved between those two readings. Four plans landed in that one-day gap.
 4. Follow the repository's working process: draft the step, argue it, get alignment, then build. Route markdown edits through `instruction-author` → `instruction-reviewer`; Python through `python-engineer` → `python-reviewer`, with a test written and run in the same turn as every function.
