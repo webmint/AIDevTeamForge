@@ -1,6 +1,6 @@
 # summary.md artifact shape
 
-This documents the shape of `specs/[feature]/summary.md`, the artifact `/devforge:summarize` writes (PHASE 4). Unlike `/devforge:verify`'s report, there is **no `render-report` helper verb** — the orchestrator composes the summary INLINE in PHASE 3 (agent-free, D1) and writes it with the Write tool. This file is **orientation only**, documenting the shape so the orchestrator knows what to produce. Do not treat it as a verbatim fill-in template — the synthesis is human-facing prose, not a mechanical substitution.
+This documents the shape of `<feature_dir>/summary.md`, the artifact `/devforge:summarize` writes (PHASE 4). `<feature_dir>` — here and everywhere else in this document — is the feature directory `/devforge:summarize` resolved at its PHASE 0.1 (see `main.md`) and held for the whole run; the summary is written to that directory plus the filename `summary.md`. Unlike `/devforge:verify`'s report, there is **no `render-report` helper verb** — the orchestrator composes the summary INLINE in PHASE 3 (agent-free, D1) and writes it with the Write tool. This file is **orientation only**, documenting the shape so the orchestrator knows what to produce. Do not treat it as a verbatim fill-in template — the synthesis is human-facing prose, not a mechanical substitution.
 
 ## Findings-free + verdict-free — UNLIKE /devforge:verify
 
