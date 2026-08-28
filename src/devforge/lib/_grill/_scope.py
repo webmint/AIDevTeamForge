@@ -38,6 +38,8 @@ import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from _shared.feature_alloc import iter_feature_dirs
+
 
 # ---------------------------------------------------------------------------
 # Feature numeric-prefix pattern
@@ -79,6 +81,30 @@ def resolve_target_feature(
     Auto-detection criteria: directory name must match r'^\\d+' (has a numeric
     NNN prefix) AND contain a plan.md file.  The one with the newest plan.md
     mtime is returned.  Directories without a numeric prefix are ignored.
+
+    Enumeration is delegated to _shared/feature_alloc.py's iter_feature_dirs
+    (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's resolution
+    accessor) rather than this function's own os.listdir() scan, so a
+    Phase-3 specs/YYYY/MM/TICKET/ directory is auto-detectable too, not just
+    the legacy specs/NNN-slug/ shape. `specs_root` passes straight through
+    to the accessor unmodified -- it may be an arbitrary, caller-supplied
+    directory decoupled from any repo_root (the CLI's `--specs-dir`
+    override; see cmd_resolve_scope below and
+    tests/lib/_grill/test_scope.py::test_explicit_specs_dir_override), which
+    iter_feature_dirs supports because it takes specs_root directly rather
+    than deriving it from a devforge_dir.
+
+    The r'^\\d+' check above still runs on top of the accessor's own
+    enumeration, against the specs_root-relative TOP-LEVEL path segment of
+    each returned directory (the whole name for the legacy shape, the YYYY
+    year directory for the new shape) -- the same logical position it
+    always occupied. It is not the same predicate as the accessor's own
+    two-arm dispatch (SPEC_NUMBER_DIR_RE / YEAR_DIR_RE): the accessor's
+    legacy arm requires exactly 3 digits, this check accepts any digit
+    count, so a directory shape only the accessor's arm rejects (e.g. a
+    2-digit "01-x") never reaches this filter at all, and the filter is
+    still evaluated on whatever the accessor DOES hand back rather than
+    dropped as redundant.
     """
     if feature_arg is not None:
         # Normalise: if the arg is a path to a plan.md file, use its parent.
@@ -101,21 +127,17 @@ def resolve_target_feature(
         )
 
     candidates = []
-    try:
-        entries = os.listdir(specs_root)
-    except OSError as exc:
-        return None, "cannot list {0!r}: {1}".format(specs_root, exc)
-
-    for entry in entries:
-        full = os.path.join(specs_root, entry)
-        if not os.path.isdir(full):
-            continue
-        # Must have a numeric NNN prefix.
-        if not _NNN_RE.match(entry):
+    for full in iter_feature_dirs(specs_root):
+        full_str = str(full)
+        # Must have a numeric NNN prefix -- checked on the specs_root-relative
+        # TOP-LEVEL segment (see the docstring's r'^\\d+' paragraph), not on
+        # the accessor's own two-arm classification.
+        top_level_name = os.path.relpath(full_str, specs_root).split(os.sep, 1)[0]
+        if not _NNN_RE.match(top_level_name):
             continue
         # Must have plan.md.
-        if os.path.isfile(os.path.join(full, "plan.md")):
-            candidates.append(full)
+        if os.path.isfile(os.path.join(full_str, "plan.md")):
+            candidates.append(full_str)
 
     if not candidates:
         return None, (

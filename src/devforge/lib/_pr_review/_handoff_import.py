@@ -105,7 +105,10 @@ import os
 import tempfile
 from typing import Dict, List, Optional
 
-from _shared.feature_alloc import SPEC_NUMBER_DIR_RE  # type: ignore[import]
+from _shared.feature_alloc import (  # type: ignore[import]
+    SPEC_NUMBER_DIR_RE,
+    find_feature_dirs_with,
+)
 
 from ._state import PRReviewState, state_path
 
@@ -134,13 +137,27 @@ _INTAKE_HANDOFF_KINDS = (
 def _scan_specs_dir(target: str) -> List[str]:
     """Return sorted list of intake handoff paths under <target>/specs/.
 
-    Scans every `specs/<feature-dir>/` subdirectory for
-    `research-handoff.json` and `discover-handoff.json` (68-INTAKE-OWNS-
-    FEATURE-DIR-PLAN.md D2/D7 unified layout — both lanes write inside the
-    feature dir they allocate). Unlike `/specify`'s `find-handoffs`, this
-    scanner does NOT filter out feature dirs that already contain
-    `spec.md` — pr-review wants historical research context regardless of
-    whether the feature's spec was ever finished.
+    Scans every feature directory under specs/ for `research-handoff.json`
+    and `discover-handoff.json` (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D2/D7
+    unified layout — both lanes write inside the feature dir they
+    allocate), via _shared/feature_alloc.py's find_feature_dirs_with (91-
+    FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's resolution
+    accessor) — one call per sentinel filename, unioned. Unlike
+    `/specify`'s `find-handoffs`, this scanner does NOT filter out feature
+    dirs that already contain `spec.md` — pr-review wants historical
+    research context regardless of whether the feature's spec was ever
+    finished.
+
+    Passes `os.path.join(target, "specs")` -- the repository root this
+    function already knows about, exactly as given -- straight through as
+    the accessor's specs_root argument. No devforge_dir is derived or
+    fabricated anywhere in this function, and find_feature_dirs_with
+    performs no implicit resolve() of its own on specs_root, so a hit's
+    path carries the literal `target` prefix unchanged -- matching the
+    pre-migration scan, which never called resolve()/realpath() anywhere
+    either (a real concern on macOS, where /tmp is itself a symlink to
+    /private/tmp: an accessor that silently canonicalised specs_root would
+    swap in a prefix this function's caller never asked for).
 
     Args:
         target: Absolute path to the repository root.
@@ -149,24 +166,12 @@ def _scan_specs_dir(target: str) -> List[str]:
         List of absolute paths to research-handoff.json / discover-
         handoff.json files (may be empty).
     """
-    specs_dir = os.path.join(target, "specs")
-    if not os.path.isdir(specs_dir):
-        return []
-
-    try:
-        entries = os.listdir(specs_dir)
-    except OSError:
-        return []
+    specs_root = os.path.join(target, "specs")
 
     paths = []
-    for name in entries:
-        subdir = os.path.join(specs_dir, name)
-        if not os.path.isdir(subdir):
-            continue
-        for filename, _kind in _INTAKE_HANDOFF_KINDS:
-            hf_path = os.path.join(subdir, filename)
-            if os.path.isfile(hf_path):
-                paths.append(hf_path)
+    for filename, _kind in _INTAKE_HANDOFF_KINDS:
+        for feature_dir in find_feature_dirs_with(specs_root, filename):
+            paths.append(str(feature_dir / filename))
 
     paths.sort()
     return paths

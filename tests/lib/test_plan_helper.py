@@ -361,6 +361,78 @@ class PickSpecTests(_CwdIsolation):
 
 
 # ---------------------------------------------------------------------------
+# Tests: _glob_specs (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+# Phase 1 -- migrated onto _shared/feature_alloc.py's find_feature_dirs_with)
+# ---------------------------------------------------------------------------
+
+
+class GlobSpecsAccessorMigrationTests(_CwdIsolation):
+    """_glob_specs now delegates to find_feature_dirs_with -- these tests
+    pin the legacy shape unchanged and prove the forward-compat payoff
+    (a Phase-3 specs/YYYY/MM/TICKET/ dir is now also found, even though
+    no writer produces that shape yet)."""
+
+    def test_legacy_shape_still_resolves(self):
+        """specs/NNN-slug/spec.md (today's only real shape) is found,
+        as an absolute resolved path -- same observable result as the
+        pre-migration flat iterdir() scan."""
+        specs_dir = self.tmp_path / "specs" / "001-legacy-feature"
+        specs_dir.mkdir(parents=True)
+        spec = specs_dir / "spec.md"
+        _write_minimal_spec(str(spec), status="Draft")
+
+        result = plan_helper._glob_specs(str(self.tmp_path))
+        self.assertEqual(result, [str(spec.resolve())])
+
+    def test_legacy_shape_multiple_dirs_all_found(self):
+        """Multiple legacy NNN-slug/ dirs each carrying a spec.md are all
+        returned (membership only -- both call sites re-sort by mtime)."""
+        specs_root = self.tmp_path / "specs"
+        spec_a = specs_root / "001-alpha" / "spec.md"
+        spec_b = specs_root / "002-beta" / "spec.md"
+        spec_a.parent.mkdir(parents=True)
+        spec_b.parent.mkdir(parents=True)
+        _write_minimal_spec(str(spec_a), status="Draft")
+        _write_minimal_spec(str(spec_b), status="Draft")
+
+        result = plan_helper._glob_specs(str(self.tmp_path))
+        self.assertEqual(
+            sorted(result), sorted([str(spec_a.resolve()), str(spec_b.resolve())])
+        )
+
+    def test_no_specs_dir_returns_empty(self):
+        result = plan_helper._glob_specs(str(self.tmp_path))
+        self.assertEqual(result, [])
+
+    def test_new_shape_tree_also_found(self):
+        """Forward-compat payoff (Phase 1's whole reason to build the
+        variable-depth accessor now): a Phase-3-shaped
+        specs/YYYY/MM/TICKET/spec.md is ALSO found, even though no writer
+        produces this shape yet."""
+        new_shape_dir = self.tmp_path / "specs" / "2026" / "08" / "PROJ-123"
+        new_shape_dir.mkdir(parents=True)
+        spec = new_shape_dir / "spec.md"
+        _write_minimal_spec(str(spec), status="Draft")
+
+        result = plan_helper._glob_specs(str(self.tmp_path))
+        self.assertEqual(result, [str(spec.resolve())])
+
+    def test_pick_spec_no_arg_still_works_with_no_devforge_dir_present(self):
+        """No .devforge/ directory exists at all under cwd (find_feature_
+        dirs_with's devforge_dir argument need not exist on disk) -- the
+        pick-spec CLI path still resolves the legacy spec normally."""
+        specs_dir = self.tmp_path / "specs" / "001-test"
+        specs_dir.mkdir(parents=True)
+        spec = specs_dir / "spec.md"
+        _write_minimal_spec(str(spec), status="Draft")
+        self.assertFalse((self.tmp_path / ".devforge").exists())
+
+        result = _run(self.tmp_path, "pick-spec")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(spec.resolve()))
+
+
+# ---------------------------------------------------------------------------
 # Tests: render-pick-summary
 # ---------------------------------------------------------------------------
 

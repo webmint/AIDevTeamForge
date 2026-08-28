@@ -33,17 +33,69 @@ decide_branch_action    -- pure decision: what to print / do for branch
                            identical on stdout for both (see docstring).
 allocate_feature_dir    -- creates specs/NNN-slug/ on disk (FRESH
                            allocation only -- see "Attach mode" below).
+specs_root_for          -- explicit devforge_dir -> specs_root derivation
+                           (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+                           PLAN.md Phase 1, revised).  A small pure-path
+                           helper, not a scan: it makes the devforge_dir
+                           -> repo_root -> specs_root arithmetic visible
+                           at the call site instead of hidden inside a
+                           scan function.
+iter_feature_dirs       -- every feature directory under a GIVEN specs
+                           root, across both the legacy NNN-slug/ shape
+                           and the Phase-3 YYYY/MM/TICKET/ shape (91-
+                           FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+                           Phase 1's resolution accessor).  Takes the
+                           specs/ directory directly, NOT a devforge_dir
+                           -- see "specs_root, not devforge_dir" below.
+                           Returns [] -- never raises -- when specs_root
+                           is absent, not a directory, or unreadable (any
+                           OSError while probing it); a feature-less
+                           caller (e.g. plan 88's cold /devforge:fix lane)
+                           is a supported state, not an error.
+find_feature_dirs_with  -- iter_feature_dirs filtered to dirs containing a
+                           given filename.  Same specs_root-not-devforge_dir
+                           signature.
 
-Repo-root / install-root resolution
-------------------------------------
-Every function here takes a `devforge_dir` argument and resolves the repo
-root (== install root in wrapper mode) as `Path(devforge_dir).resolve().parent`
--- the same convention `_next_spec_number` used before this move, and the
-same one every wrapper-mode-aware verb in this codebase relies on: the
-caller passes `--devforge-dir <install-root>/.devforge`, and the install
-root falls out as its parent.  No separate wrapper-mode branch is needed
-here because the wrapper/standalone distinction is already baked into
-which `--devforge-dir` value the caller passed in.
+specs_root, not devforge_dir
+-----------------------------
+(91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1, revised after the
+first cut of this accessor shipped with a `devforge_dir` parameter.)
+
+iter_feature_dirs and find_feature_dirs_with take a `specs_root` directly.
+Their actual job is "enumerate feature directories under a given specs
+root" -- the devforge_dir -> repo_root -> specs_root derivation is a
+caller CONVENIENCE, not part of that job, and baking it into these two
+functions forced every caller shape onto one parameter name:
+  - a caller holding a real devforge_dir (e.g. a CLI verb that received
+    --devforge-dir) derives its specs_root explicitly via
+    specs_root_for(devforge_dir) before calling either function.
+  - a caller holding a repo root it already knows about (most of the six
+    depth-1 consumers this accessor replaces) passes `root / "specs"`
+    directly -- no devforge_dir, fabricated or otherwise, anywhere in the
+    call.
+  - a caller holding an ARBITRARY, non-repo-root-derived specs directory
+    (/grill's `--specs-dir` override) passes it straight through. The
+    prior devforge_dir-only signature could not express this caller shape
+    at all, which is why /grill was the one site that could not migrate
+    onto the first cut of this accessor.
+iter_feature_dirs performs NO implicit resolution of its own on
+specs_root -- it is used exactly as given (see the function's own
+docstring). A caller that wants repo-root-derived canonicalisation gets
+it from specs_root_for (which does call Path(devforge_dir).resolve()); a
+caller that never asked for symlink canonicalisation -- because its own
+pre-migration behaviour never called resolve()/realpath() anywhere, e.g.
+_pr_review/_handoff_import.py's _scan_specs_dir -- never silently
+receives it now either.
+
+next_spec_number and allocate_feature_dir are UNCHANGED by this: they
+still take `devforge_dir` directly and resolve the repo root internally
+as `Path(devforge_dir).resolve().parent` -- the same convention
+`_next_spec_number` used before this module existed, and the same one
+every wrapper-mode-aware verb in this codebase relies on: the caller
+passes `--devforge-dir <install-root>/.devforge`, and the install root
+falls out as its parent. No separate wrapper-mode branch is needed here
+because the wrapper/standalone distinction is already baked into which
+`--devforge-dir` value the caller passed in.
 
 Attach mode (D6) is out of scope here -- read this before wiring a caller
 ------------------------------------------------------------------------
@@ -121,6 +173,22 @@ SPEC_NUMBER_WIDTH = 3
 # have trailing content past the slug) are new.
 SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-(.+)$")
 
+# Phase-3 forward structure (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md D2): specs/<YYYY>/<MM>/<TICKET>/, the layout Phase 3 will start
+# writing.  Matches nothing on any real install today -- allocate_feature_dir
+# above still exclusively writes the legacy specs/NNN-slug/ shape.  Defined
+# now (rather than at Phase 3) so iter_feature_dirs below can read this
+# shape before any writer produces it -- see that function's docstring and
+# Phase 1's ⚠ instruction to build the variable-depth branch from the
+# start, not as a later rewrite.
+#
+# No ambiguity with SPEC_NUMBER_DIR_RE above: a legacy dir name is exactly
+# three digits followed by a dash (the dash is required); a year dir name
+# is exactly four bare digits with no dash at all.  A name matching neither
+# (e.g. "9999-too-many-digits") is claimed by neither pattern.
+YEAR_DIR_RE = re.compile(r"^\d{4}$")
+MONTH_DIR_RE = re.compile(r"^\d{2}$")
+
 # The branch-name prefix every spec branch carries (spec/NNN-slug).
 _SPEC_BRANCH_PREFIX = "spec/"
 
@@ -173,11 +241,25 @@ def allocate_feature_dir(devforge_dir, slug):
     Returns (result, error), mirroring _shared/feature_scope.py's
     resolve_feature_scope convention:
       On success: (dict, None).  dict keys:
-        path             str  -- absolute path to the created directory
-        number           int  -- the allocated NNN, unpadded
-        formatted_number str  -- zero-padded NNN, e.g. "004"
+        path             str  -- CANONICAL: absolute path to the created
+                                  directory.  Every caller should use this
+                                  key -- it is shape-agnostic and keeps
+                                  working unchanged across a future layout
+                                  switch (91-FEATURE-DIR-IDENTITY-AND-
+                                  PROVENANCE-PLAN.md Phase 1 item 2).
+        number           int  -- LEGACY-SHAPE-ONLY: the allocated NNN,
+                                  unpadded.  Meaningless once a caller
+                                  writes the Phase-3 specs/YYYY/MM/TICKET/
+                                  layout -- still emitted for the current
+                                  NNN-slug shape, but new prose must not
+                                  consume it.
+        formatted_number str  -- LEGACY-SHAPE-ONLY: zero-padded NNN, e.g.
+                                  "004".  Same bound as `number` above.
         slug             str  -- the validated slug (echoed back, stripped)
-        dirname          str  -- "NNN-slug" (the directory's basename)
+        dirname          str  -- LEGACY-SHAPE-ONLY: "NNN-slug" (the
+                                  directory's basename).  Same bound as
+                                  `number` above -- a Phase-3 ticket-keyed
+                                  leaf has no "NNN-slug" shape to report.
         created          bool -- always True on success
       On error: ({}, message).  The caller writes message to stderr and
       exits non-zero.  Errors:
@@ -223,6 +305,214 @@ def allocate_feature_dir(devforge_dir, slug):
         "dirname": dirname,
         "created": True,
     }, None
+
+
+# ---------------------------------------------------------------------------
+# specs_root_for
+# ---------------------------------------------------------------------------
+
+
+def specs_root_for(devforge_dir):
+    # type: (Union[str, "os.PathLike[str]"]) -> Path
+    """Return the specs/ directory implied by a .devforge directory.
+
+    repo_root/specs, where repo_root = Path(devforge_dir).resolve().parent
+    -- the same convention next_spec_number / allocate_feature_dir use.
+    Pure path arithmetic: does not stat devforge_dir, the returned
+    specs_root, or any ancestor -- safe to call even when none of them
+    exist on disk.
+
+    Exists so a devforge_dir-holding caller can reach the specs_root
+    iter_feature_dirs / find_feature_dirs_with actually take in one
+    explicit call, without those two functions themselves needing a
+    devforge_dir parameter (see the module docstring's "specs_root, not
+    devforge_dir" section for why that split is the point, not an
+    inconvenience).
+    """
+    repo_root = Path(devforge_dir).resolve().parent
+    return repo_root / SPECS_ROOT_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# iter_feature_dirs / find_feature_dirs_with
+# (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's resolution
+# accessor -- see the module docstring's "What lives here" entry).
+# ---------------------------------------------------------------------------
+
+
+def iter_feature_dirs(specs_root):
+    # type: (Union[str, "os.PathLike[str]"]) -> List[Path]
+    """Return every feature directory under specs_root, across both layouts.
+
+    Takes the specs/ directory DIRECTLY, not a devforge_dir -- see the
+    module docstring's "specs_root, not devforge_dir" section. specs_root
+    is used exactly as given: this function performs NO implicit
+    .resolve() of its own, so a caller that never asked for symlink
+    canonicalisation never gets it (a devforge_dir-holding caller that
+    wants that canonicalisation gets it explicitly from specs_root_for).
+
+    Reads two shapes in a SINGLE pass over specs/'s own listing, dispatched
+    on directory-NAME shape -- not a flat iterdir() (that would only ever
+    see the legacy shape's own dirs plus, under the new layout, YEAR
+    directories, and could never see a new-shape feature dir at all; see
+    Phase 1's ⚠ on why the depth branch is built now rather than at
+    Phase 3):
+
+      1. Legacy: specs/NNN-slug/ -- an immediate child of specs/ whose
+         name matches SPEC_NUMBER_DIR_RE.  This is the ONLY shape any
+         installation has today; allocate_feature_dir still exclusively
+         writes it.
+      2. Phase-3 forward shape: specs/YYYY/MM/TICKET/ -- a 4-digit year
+         directory (YEAR_DIR_RE) containing a 2-digit month directory
+         (MONTH_DIR_RE) containing feature directories.  No writer
+         produces this shape yet, so this arm returns nothing on any real
+         install as of this writing; it exists so a later Phase-3 layout
+         switch does not require rewriting this accessor.
+
+    There is no ambiguity between the two arms: a legacy dir name is
+    exactly three digits then a dash (the dash is required); a year dir
+    name is exactly four bare digits with no dash.  A name matching
+    neither -- e.g. a stray "9999-too-many-digits" dir -- is claimed by
+    neither arm and is silently excluded from the result, exactly as it
+    always has been under next_spec_number's identical exclusion (see
+    SPEC_NUMBER_DIR_RE's own comment and
+    tests/lib/_shared/test_feature_alloc.py::test_non_nnn_dirs_ignored).
+    Because the two patterns are provably disjoint (a legacy match
+    requires a literal "-" at index 3, which disqualifies the all-digit
+    year pattern), each specs/ entry is classified with a single
+    if/elif -- one iterdir() of specs/ itself, not two -- so a directory
+    created or removed between two independent scans can no longer be
+    seen by one arm and missed by the other.
+
+    Returns [] -- never raises -- when specs_root does not exist, is not a
+    directory, or is UNREADABLE (any OSError -- e.g. EACCES from a
+    locked-down specs_root or an ancestor directory -- while probing
+    specs_root or walking its children is treated as "contains nothing"
+    at that level, exactly like the missing-directory case). This is a
+    SUPPORTED state,
+    not an error path: a caller may legitimately hold no feature reference
+    at all (plan 88's cold /devforge:fix lane runs with no feature
+    directory at all, by design -- see
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's "Scope"
+    paragraph). Do not add an exception path here for the
+    missing/unreadable-specs/ case.
+
+    Sort order (deliberate, not incidental Path/str comparison): every
+    legacy-shape dir sorts before every new-shape dir; within the legacy
+    family the order is by NNN (ascending); within the new-shape family
+    the order is by (YYYY, MM, leaf directory name), lexicographic on each
+    field. "Legacy first" is chosen because on any tree where both
+    families are present, every legacy dir necessarily predates the new
+    shape (no installation could have written specs/YYYY/MM/TICKET/ before
+    Phase 3 ships), so the ordering matches temporal reality rather than
+    an accident of how digits and letters compare. Non-directory entries
+    are ignored at every level (a stray file directly under specs/, under
+    a year directory, or under a month directory); symlinks are followed
+    via Path.is_dir()'s default behaviour, so a valid dir-symlink is
+    included and a dangling one is excluded like any other unreadable
+    entry.
+    """
+    specs_root = Path(specs_root)
+    try:
+        if not specs_root.exists() or not specs_root.is_dir():
+            return []
+    except OSError:
+        # e.g. EACCES walking an ancestor directory to stat specs_root --
+        # treated the same as "specs/ does not exist" (see docstring).
+        return []
+
+    try:
+        top_level = list(specs_root.iterdir())
+    except OSError:
+        # e.g. EACCES on specs_root itself (readable stat, unreadable
+        # listing) -- same "contains nothing" treatment.
+        return []
+
+    entries = []  # type: List[Tuple[tuple, Path]]
+
+    for entry in top_level:
+        try:
+            entry_is_dir = entry.is_dir()
+        except OSError:
+            continue
+        if not entry_is_dir:
+            continue
+
+        legacy_match = SPEC_NUMBER_DIR_RE.match(entry.name)
+        if legacy_match:
+            entries.append(((0, int(legacy_match.group(1)), entry.name), entry))
+        elif YEAR_DIR_RE.match(entry.name):
+            # Phase-3 forward arm: specs/YYYY/MM/TICKET/.  Currently
+            # matches nothing on any real install -- see the docstring.
+            try:
+                month_level = list(entry.iterdir())
+            except OSError:
+                continue
+            for month_entry in month_level:
+                try:
+                    month_is_dir = month_entry.is_dir()
+                except OSError:
+                    continue
+                if not month_is_dir or not MONTH_DIR_RE.match(month_entry.name):
+                    continue
+                try:
+                    leaf_level = list(month_entry.iterdir())
+                except OSError:
+                    continue
+                for leaf_entry in leaf_level:
+                    try:
+                        leaf_is_dir = leaf_entry.is_dir()
+                    except OSError:
+                        continue
+                    if not leaf_is_dir:
+                        continue
+                    entries.append((
+                        (1, entry.name, month_entry.name, leaf_entry.name),
+                        leaf_entry,
+                    ))
+
+    entries.sort(key=lambda pair: pair[0])
+    return [path for _, path in entries]
+
+
+def find_feature_dirs_with(specs_root, filename):
+    # type: (Union[str, "os.PathLike[str]"], str) -> List[Path]
+    """Return iter_feature_dirs(specs_root) filtered to dirs holding filename.
+
+    Takes the specs/ directory DIRECTLY, not a devforge_dir -- same
+    signature change and same reasoning as iter_feature_dirs (see the
+    module docstring's "specs_root, not devforge_dir" section).
+
+    filename is a single sentinel basename (e.g. "spec.md",
+    "breakdown-handoff.json", "research-handoff.json") -- not a glob, not
+    a list. Several of the depth-1 consumers this accessor replaces want
+    exactly one sentinel file's presence; a narrower single-filename
+    signature is harder to misuse than a glob-accepting one.
+
+    A feature dir containing a DIRECTORY named filename (not a file) does
+    not match -- Path.is_file() is the test, not mere existence.  A
+    symlink named filename that resolves to a regular file DOES match
+    (Path.is_file()'s default symlink-following behaviour); a dangling
+    symlink does not.
+
+    Same empty-list-not-exception contract as iter_feature_dirs: a
+    missing/unreadable specs_root (or a specs_root containing nothing
+    matching either shape) returns [], never raises -- and a feature dir
+    that itself becomes unreadable between iter_feature_dirs listing it
+    and this function's own is_file() probe (any OSError, e.g. EACCES) is
+    treated as "no match" rather than propagated. Sort order is inherited
+    unchanged from iter_feature_dirs.
+    """
+    matches = []
+    for feature_dir in iter_feature_dirs(specs_root):
+        candidate = feature_dir / filename
+        try:
+            is_match = candidate.is_file()
+        except OSError:
+            is_match = False
+        if is_match:
+            matches.append(feature_dir)
+    return matches
 
 
 # ---------------------------------------------------------------------------

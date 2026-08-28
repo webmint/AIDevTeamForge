@@ -218,6 +218,21 @@ class TestResolveTargetFeature(unittest.TestCase):
         self.assertIsNone(error)
         self.assertTrue(os.path.isabs(result))
 
+    def test_auto_detects_new_shape_year_month_ticket_layout(self):
+        """specs/YYYY/MM/TICKET/plan.md (91-FEATURE-DIR-IDENTITY-AND-
+        PROVENANCE-PLAN.md Phase 3's forward shape) is now auto-detectable:
+        enumeration is delegated to _shared/feature_alloc.py's
+        iter_feature_dirs, which walks into year/month directories --
+        this site no longer has its own single-level os.listdir() scan
+        that could only ever see the legacy specs/NNN-slug/ shape."""
+        specs = os.path.join(self.tmp, "specs")
+        feature_dir = os.path.join(specs, "2026", "08", "PROJ-123")
+        os.makedirs(feature_dir)
+        Path(os.path.join(feature_dir, "plan.md")).write_text("# plan\n")
+        result, error = resolve_target_feature(specs, None)
+        self.assertIsNone(error)
+        self.assertEqual(result, os.path.abspath(feature_dir))
+
     def test_auto_detection_relative_specs_root_returns_absolute_path(self):
         """Auto-detection with a RELATIVE specs_root must still return an absolute path.
 
@@ -541,6 +556,31 @@ class TestCmdResolveScope(unittest.TestCase):
                 _FakeArgs(workspace_root=self.tmp, specs_dir=self.specs)
             )
         self.assertEqual(code, 0)
+
+    def test_explicit_specs_dir_override_arbitrary_dir_outside_workspace(self):
+        """--specs-dir may point at a directory with no relation to
+        workspace_root at all (not <workspace_root>/specs) -- confirm the
+        override still reaches resolve_target_feature unchanged after the
+        _shared/feature_alloc.py migration, and that the accessor's own
+        new-shape enumeration works through that override too."""
+        arbitrary_root = tempfile.mkdtemp()
+        try:
+            arbitrary_specs = os.path.join(arbitrary_root, "elsewhere-specs")
+            feature_dir = os.path.join(arbitrary_specs, "2026", "08", "PROJ-999")
+            os.makedirs(feature_dir)
+            Path(os.path.join(feature_dir, "plan.md")).write_text("# plan\n")
+            Path(os.path.join(feature_dir, "spec.md")).write_text("# spec\n")
+            buf = io.StringIO()
+            with patch("sys.stdout", buf):
+                code = cmd_resolve_scope(
+                    _FakeArgs(workspace_root=self.tmp, specs_dir=arbitrary_specs)
+                )
+            self.assertEqual(code, 0)
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["feature_id"], "PROJ-999")
+        finally:
+            import shutil
+            shutil.rmtree(arbitrary_root, ignore_errors=True)
 
     def test_no_diff_computation_no_git_calls(self):
         """cmd_resolve_scope must not call subprocess (no git diff, no CBM).

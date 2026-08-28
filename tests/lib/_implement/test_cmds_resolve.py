@@ -78,6 +78,7 @@ from _implement._cmds_resolve import (  # noqa: E402
     _is_complete,
     _task_number_sort_key,
     _feature_sort_key,
+    _glob_feature_dirs,
     _read_task_statuses,
     _locate_task_file,
     _count_progress,
@@ -435,6 +436,70 @@ class TestFeatureSortKey(unittest.TestCase):
         dirs = [Path("specs/003-x"), Path("specs/001-y"), Path("specs/002-z")]
         dirs.sort(key=_feature_sort_key)
         self.assertEqual([d.name for d in dirs], ["001-y", "002-z", "003-x"])
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _glob_feature_dirs (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md Phase 1 -- migrated onto _shared/feature_alloc.py's
+# find_feature_dirs_with)
+# ---------------------------------------------------------------------------
+
+
+class TestGlobFeatureDirsAccessorMigration(unittest.TestCase):
+    """_glob_feature_dirs now delegates to find_feature_dirs_with for
+    membership, keeping its own _feature_sort_key sort on top."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_legacy_shape_still_resolves_sorted_by_nnn(self):
+        for name in ("003-gamma", "001-alpha", "002-beta"):
+            fdir = self.root / "specs" / name
+            fdir.mkdir(parents=True)
+            (fdir / "breakdown-handoff.json").write_text("{}", encoding="utf-8")
+
+        result = _glob_feature_dirs(self.root)
+        self.assertEqual(
+            [d.name for d in result], ["001-alpha", "002-beta", "003-gamma"],
+        )
+
+    def test_dirs_without_handoff_excluded(self):
+        no_handoff = self.root / "specs" / "001-no-handoff"
+        no_handoff.mkdir(parents=True)
+
+        result = _glob_feature_dirs(self.root)
+        self.assertEqual(result, [])
+
+    def test_no_specs_dir_returns_empty(self):
+        result = _glob_feature_dirs(self.root)
+        self.assertEqual(result, [])
+
+    def test_no_devforge_dir_present_still_resolves(self):
+        """find_feature_dirs_with's devforge_dir argument need not exist
+        on disk -- _glob_feature_dirs's caller only ever holds the repo
+        root, never a real .devforge/ path."""
+        fdir = self.root / "specs" / "001-alpha"
+        fdir.mkdir(parents=True)
+        (fdir / "breakdown-handoff.json").write_text("{}", encoding="utf-8")
+        self.assertFalse((self.root / ".devforge").exists())
+
+        result = _glob_feature_dirs(self.root)
+        self.assertEqual([d.name for d in result], ["001-alpha"])
+
+    def test_new_shape_tree_also_found(self):
+        """Forward-compat payoff: a Phase-3-shaped
+        specs/YYYY/MM/TICKET/breakdown-handoff.json is ALSO found, even
+        though no writer produces this shape yet."""
+        new_shape_dir = self.root / "specs" / "2026" / "08" / "PROJ-123"
+        new_shape_dir.mkdir(parents=True)
+        (new_shape_dir / "breakdown-handoff.json").write_text("{}", encoding="utf-8")
+
+        result = _glob_feature_dirs(self.root)
+        self.assertEqual([d.name for d in result], ["PROJ-123"])
 
 
 # ---------------------------------------------------------------------------

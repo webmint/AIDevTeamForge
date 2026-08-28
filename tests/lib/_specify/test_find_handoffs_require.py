@@ -934,5 +934,66 @@ class TestFindHandoffsD10ReentrySeed(unittest.TestCase):
             self.assertEqual(state["feature_slug"], "auth-token-refresh")
 
 
+class TestFindHandoffsAccessorMigration(unittest.TestCase):
+    """find-handoffs now scans via _shared/feature_alloc.py's
+    iter_feature_dirs (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    Phase 1's resolution accessor) instead of a flat
+    sorted(specs_root.iterdir()). These tests pin the legacy shape
+    unchanged and prove the forward-compat payoff (a Phase-3
+    specs/YYYY/MM/TICKET/ dir is now also found, even though no writer
+    produces that shape yet)."""
+
+    def _devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_legacy_shape_still_pending_and_found(self):
+        """A real producer-written specs/NNN-slug/research-handoff.json
+        (no spec.md yet) is still surfaced -- same D5 arm (a) result as
+        before this migration."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+
+            r = _run_specify([
+                "--devforge-dir", str(devforge), "find-handoffs", "--require",
+            ])
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+
+    def test_new_shape_tree_also_found(self):
+        """Forward-compat payoff: a Phase-3-shaped
+        specs/YYYY/MM/TICKET/research-handoff.json is ALSO surfaced as
+        pending, even though no writer produces this shape yet -- built
+        directly (no allocator exists for it), then round-tripped through
+        the real research_helper finalize-handoff producer exactly like
+        every other fixture in this file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "2026" / "08" / "PROJ-123"
+            _build_research_handoff(df_r, feature_dir)
+
+            r = _run_specify([
+                "--devforge-dir", str(devforge), "find-handoffs", "--require",
+            ])
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+            self.assertIn("specs/2026/08/PROJ-123", lines[0])
+
+
 if __name__ == "__main__":
     unittest.main()

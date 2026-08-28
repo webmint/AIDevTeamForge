@@ -82,6 +82,10 @@ if str(_HERE) not in sys.path:
 from _research import handoff_schema as research_handoff_schema  # noqa: E402  type: ignore[import]
 from _discover import handoff_schema as discover_handoff_schema  # noqa: E402  type: ignore[import]
 from . import handoff_schema as specify_handoff_schema  # noqa: E402
+from _shared.feature_alloc import (  # noqa: E402  type: ignore[import]
+    iter_feature_dirs,
+    specs_root_for,
+)
 
 # Legacy alias used by the existing function signatures that reference
 # handoff_schema.Handoff, handoff_schema.Constraint, etc.
@@ -1005,33 +1009,34 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
         return 2
 
     devforge_dir = Path(args.devforge_dir).resolve()
-    repo_root = devforge_dir.parent
-    specs_root = repo_root / "specs"
+    specs_root = specs_root_for(devforge_dir)
 
     hits: List[Dict[str, Any]] = []
 
-    if specs_root.exists() and specs_root.is_dir():
-        for feature_dir in sorted(specs_root.iterdir()):
-            if not feature_dir.is_dir():
+    # iter_feature_dirs (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    # Phase 1's resolution accessor) replaces the flat
+    # sorted(specs_root.iterdir()) scan. Its own return order is not
+    # load-bearing here -- the hits.sort() below re-sorts by
+    # (-mtime_ts, handoff_path), which fully determines output order
+    # regardless of scan order (see this function's own test file).
+    for feature_dir in iter_feature_dirs(specs_root):
+        reentry = False
+        if (feature_dir / "spec.md").exists():
+            # D5 arm (a) fails (already consumed) -- D10 arm (b): only
+            # pending if a re-entry seed targets this (spec) stage.
+            reentry = _has_spec_reentry_seed(feature_dir)
+            if not reentry:
                 continue
 
-            reentry = False
-            if (feature_dir / "spec.md").exists():
-                # D5 arm (a) fails (already consumed) -- D10 arm (b): only
-                # pending if a re-entry seed targets this (spec) stage.
-                reentry = _has_spec_reentry_seed(feature_dir)
-                if not reentry:
-                    continue
+        research_hit = _try_research_hit(feature_dir / "research-handoff.json")
+        if research_hit is not None:
+            research_hit["reentry"] = reentry
+            hits.append(research_hit)
 
-            research_hit = _try_research_hit(feature_dir / "research-handoff.json")
-            if research_hit is not None:
-                research_hit["reentry"] = reentry
-                hits.append(research_hit)
-
-            discover_hit = _try_discover_hit(feature_dir / "discover-handoff.json")
-            if discover_hit is not None:
-                discover_hit["reentry"] = reentry
-                hits.append(discover_hit)
+        discover_hit = _try_discover_hit(feature_dir / "discover-handoff.json")
+        if discover_hit is not None:
+            discover_hit["reentry"] = reentry
+            hits.append(discover_hit)
 
     # Most-recent mtime first; ties broken by handoff_path for determinism.
     hits.sort(key=lambda h: (-h["mtime_ts"], h["handoff_path"]))

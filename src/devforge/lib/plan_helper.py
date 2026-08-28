@@ -302,15 +302,29 @@ def _file_mtime_iso(path: str) -> str:
 
 
 def _glob_specs(cwd: str) -> List[str]:
-    """Return list of absolute paths to specs/*/spec.md under cwd."""
-    specs_dir = Path(cwd) / "specs"
-    if not specs_dir.is_dir():
-        return []
+    """Return list of absolute paths to specs/*/spec.md under cwd.
+
+    Delegates to _shared/feature_alloc.py's find_feature_dirs_with (91-
+    FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's resolution
+    accessor) instead of a flat specs_dir.iterdir(). Both callers of this
+    function (cmd_pick_spec / cmd_list_specs) re-sort the returned paths by
+    mtime, so the accessor's own ordering is not load-bearing here -- only
+    membership is.
+
+    Passes `cwd / "specs"` -- the repo root this function already knows
+    about -- straight through as the accessor's specs_root argument. No
+    devforge_dir is derived or fabricated anywhere in this function.
+    """
+    _lib_dir = Path(__file__).resolve().parent
+    if str(_lib_dir) not in sys.path:
+        sys.path.insert(0, str(_lib_dir))
+
+    from _shared.feature_alloc import find_feature_dirs_with
+
+    specs_root = Path(cwd) / "specs"
     result = []
-    for sub in specs_dir.iterdir():
-        candidate = sub / "spec.md"
-        if candidate.is_file():
-            result.append(str(candidate.resolve()))
+    for feature_dir in find_feature_dirs_with(specs_root, "spec.md"):
+        result.append(str((feature_dir / "spec.md").resolve()))
     return result
 
 

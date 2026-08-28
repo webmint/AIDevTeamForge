@@ -893,6 +893,72 @@ class PickPlanTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
+# Tests: _glob_plans (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+# Phase 1 -- migrated onto _shared/feature_alloc.py's find_feature_dirs_with)
+# ---------------------------------------------------------------------------
+
+
+class GlobPlansAccessorMigrationTests(_CwdIsolationBH):
+    """_glob_plans now delegates to find_feature_dirs_with -- these tests
+    pin the legacy shape unchanged and prove the forward-compat payoff
+    (a Phase-3 specs/YYYY/MM/TICKET/ dir is now also found, even though
+    no writer produces that shape yet)."""
+
+    def test_legacy_shape_still_resolves(self):
+        specs_dir = self.tmp_path / "specs" / "001-legacy-feature"
+        specs_dir.mkdir(parents=True)
+        plan = specs_dir / "plan.md"
+        _write_minimal_plan(str(plan))
+
+        result = breakdown_helper._glob_plans(str(self.tmp_path))
+        self.assertEqual(result, [str(plan.resolve())])
+
+    def test_legacy_shape_multiple_dirs_all_found(self):
+        specs_root = self.tmp_path / "specs"
+        plan_a = specs_root / "001-alpha" / "plan.md"
+        plan_b = specs_root / "002-beta" / "plan.md"
+        plan_a.parent.mkdir(parents=True)
+        plan_b.parent.mkdir(parents=True)
+        _write_minimal_plan(str(plan_a))
+        _write_minimal_plan(str(plan_b))
+
+        result = breakdown_helper._glob_plans(str(self.tmp_path))
+        self.assertEqual(
+            sorted(result), sorted([str(plan_a.resolve()), str(plan_b.resolve())])
+        )
+
+    def test_no_specs_dir_returns_empty(self):
+        result = breakdown_helper._glob_plans(str(self.tmp_path))
+        self.assertEqual(result, [])
+
+    def test_new_shape_tree_also_found(self):
+        """Forward-compat payoff: a Phase-3-shaped
+        specs/YYYY/MM/TICKET/plan.md is ALSO found, even though no writer
+        produces this shape yet."""
+        new_shape_dir = self.tmp_path / "specs" / "2026" / "08" / "PROJ-123"
+        new_shape_dir.mkdir(parents=True)
+        plan = new_shape_dir / "plan.md"
+        _write_minimal_plan(str(plan))
+
+        result = breakdown_helper._glob_plans(str(self.tmp_path))
+        self.assertEqual(result, [str(plan.resolve())])
+
+    def test_pick_plan_no_arg_still_works_with_no_devforge_dir_present(self):
+        """No .devforge/ directory exists at all under cwd (find_feature_
+        dirs_with's devforge_dir argument need not exist on disk) -- the
+        pick-plan CLI path still resolves the legacy plan normally."""
+        specs_dir = self.tmp_path / "specs" / "001-test"
+        specs_dir.mkdir(parents=True)
+        plan = specs_dir / "plan.md"
+        _write_minimal_plan(str(plan))
+        self.assertFalse((self.tmp_path / ".devforge").exists())
+
+        result = _run_bh(self.tmp_path, "pick-plan")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(plan.resolve()))
+
+
+# ---------------------------------------------------------------------------
 # Tests: render-pick-summary
 # ---------------------------------------------------------------------------
 

@@ -204,6 +204,53 @@ class TestScanSpecsDir(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# TestScanSpecsDirAccessorMigration (91-FEATURE-DIR-IDENTITY-AND-
+# PROVENANCE-PLAN.md Phase 1 -- _scan_specs_dir migrated onto
+# _shared/feature_alloc.py's find_feature_dirs_with).
+# ---------------------------------------------------------------------------
+
+
+class TestScanSpecsDirAccessorMigration(unittest.TestCase):
+    """Pins the legacy shape unchanged and proves the forward-compat
+    payoff (a Phase-3 specs/YYYY/MM/TICKET/ dir is now also found, even
+    though no writer produces that shape yet)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_legacy_shape_still_resolves(self):
+        specs = os.path.join(self._tmp, "specs")
+        hf = _make_research_handoff(specs, "001-auth-bug")
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(result, [hf])
+
+    def test_new_shape_tree_also_found(self):
+        """Forward-compat payoff: a Phase-3-shaped
+        specs/YYYY/MM/TICKET/research-handoff.json is ALSO found, even
+        though no writer produces this shape yet."""
+        specs = os.path.join(self._tmp, "specs")
+        feature_dir = "2026/08/PROJ-123"
+        hf = _make_research_handoff(specs, feature_dir)
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(result, [hf])
+
+    def test_both_kinds_in_same_new_shape_dir_both_found(self):
+        """A single new-shape feature dir carrying BOTH
+        research-handoff.json AND discover-handoff.json (mirrors
+        find-handoffs' equivalent legacy-shape test) surfaces both hits."""
+        specs = os.path.join(self._tmp, "specs")
+        feature_dir = "2026/08/PROJ-999"
+        research_hf = _make_research_handoff(specs, feature_dir)
+        discover_hf = _make_discover_handoff(specs, feature_dir)
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(sorted(result), sorted([research_hf, discover_hf]))
+
+
+# ---------------------------------------------------------------------------
 # TestParseHandoff.
 # ---------------------------------------------------------------------------
 

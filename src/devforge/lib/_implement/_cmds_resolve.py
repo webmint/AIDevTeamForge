@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from _shared.feature_alloc import find_feature_dirs_with  # type: ignore[import]
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -115,17 +117,18 @@ def _glob_feature_dirs(root):
     # type: (Path) -> List[Path]
     """Return sorted list of specs/* dirs that contain breakdown-handoff.json.
 
-    Sorted by NNN prefix (lowest-numbered feature first).
+    Sorted by NNN prefix (lowest-numbered feature first) via
+    _feature_sort_key -- kept ON TOP of find_feature_dirs_with's own
+    return order (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase
+    1's resolution accessor), which this function delegates to for
+    membership only.
+
+    Passes `root / "specs"` -- the repo root this function already knows
+    about -- straight through as the accessor's specs_root argument. No
+    devforge_dir is derived or fabricated anywhere in this function.
     """
-    specs_dir = root / "specs"
-    if not specs_dir.is_dir():
-        return []
-    candidates = []
-    for entry in specs_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        if (entry / "breakdown-handoff.json").is_file():
-            candidates.append(entry)
+    specs_root = root / "specs"
+    candidates = find_feature_dirs_with(specs_root, "breakdown-handoff.json")
     candidates.sort(key=_feature_sort_key)
     return candidates
 
