@@ -1,10 +1,13 @@
 # Spec-Check report layout
 
 This is the skeleton the `spec_check_helper render-report` verb produces and
-writes to `specs/[feature]/spec-check.md`. It is **orientation only** — the
-helper owns the actual render (`src/devforge/lib/_spec_check/_report.py`); this
-file documents the shape so the orchestrator knows what the report contains. Do
-not hand-author the report; call `render-report`.
+writes to `<feature_dir>/spec-check.md`. `<feature_dir>` — here and everywhere
+else in this document — is the feature directory `/devforge:spec-check` resolved
+at its PHASE 0.1 and passed to `render-report --feature-dir`. It is
+**orientation only** — the helper owns the actual render
+(`src/devforge/lib/_spec_check/_report.py`); this file documents the shape so the
+orchestrator knows what the report contains. Do not hand-author the report; call
+`render-report`.
 
 ## Two layers — check the SOFT layer, not the HARD one
 
@@ -22,12 +25,15 @@ human gate is the escape hatch when layer 1 is wrong.
 
 ## Sections (in render order)
 
-- **Header** — `# Spec-Check: <feature>`, then `**Feature**` and `**Date**` (the
-  helper computes the date itself), then `**Spec hash**: <sha256-hex>` when the
-  `render-report` call supplied a `--spec-file`: the content hash of the
-  `spec.md` this check ran over, so a later consumer can re-hash that file and
-  detect drift between when the report was produced and when it is consumed. No
-  `--spec-file`, no hash line.
+- **Header** — `# Spec-Check: <feature-dir-name>`, then `**Feature**` (the same
+  value again) and `**Date**` (the helper computes the date itself), then
+  `**Spec hash**: <sha256-hex>` when the `render-report` call supplied a
+  `--spec-file`: the content hash of the `spec.md` this check ran over, so a
+  later consumer can re-hash that file and detect drift between when the report
+  was produced and when it is consumed. No `--spec-file`, no hash line.
+  `<feature-dir-name>` is the last segment of `<feature_dir>` — the label
+  `/devforge:spec-check` passes to `render-report --feature`, a display value the
+  helper prints and never joins onto a path.
 - **Scope blockquote (D11)** — the verbatim "consistency prover, not a
   mind-reader" boundary. Rendered near the top of every report.
 - **`## Recommendation`** — the recommended disposition (CONSISTENT / REVISE-SPEC
@@ -82,7 +88,7 @@ does not independently verify reachability) is rendered after the reading sectio
 ## The re-entry seed (REVISE-SPEC only)
 
 The seed is NOT part of `spec-check.md`; it is a sibling JSON artifact
-(`specs/[feature]/spec-check-seed.json`) written by `write-seed` in the command's
+(`<feature_dir>/spec-check-seed.json`) written by `write-seed` in the command's
 PHASE 6 — ONLY when the user's human-gate pick is `Revise spec` AND the
 recommendation was REVISE-SPEC. It carries `source="spec-check"`,
 `target_stage="spec"`, `prior_conclusion` (the conflicting ACs as authored),
