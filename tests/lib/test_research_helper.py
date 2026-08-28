@@ -13159,6 +13159,26 @@ class TestAllocateFeatureDirCli(unittest.TestCase):
             self.assertIn("invalid slug", r.stderr)
             self.assertFalse((Path(tmp) / "specs").exists())
 
+    def test_relative_path_flows_through_real_cli_stdout(self):
+        """Round-trip through the real research_helper CLI wrapper (not a
+        hand-authored fixture): relative_path is present on the actual
+        stdout JSON and reconstructs the same call's absolute path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "cli-relative-path-check",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                payload["relative_path"], "specs/001-cli-relative-path-check",
+            )
+            repo_root = Path(tmp).resolve()
+            reconstructed = repo_root.joinpath(*payload["relative_path"].split("/"))
+            self.assertEqual(reconstructed, Path(payload["path"]))
+
     def test_stateless_no_state_files_written(self):
         """allocate-feature-dir must not read or write research state --
         pins the STATELESS claim Phase 2/3 rely on."""

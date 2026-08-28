@@ -293,6 +293,64 @@ class TestAllocateFeatureDir(unittest.TestCase):
             outer_specs = Path(td) / SPECS_ROOT_DEFAULT
             self.assertFalse(outer_specs.exists())
 
+    def test_relative_path_present_and_correct(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(devforge_dir, "add-dark-mode")
+            self.assertIsNone(error)
+            self.assertEqual(result["relative_path"], "specs/001-add-dark-mode")
+
+    def test_relative_path_is_genuinely_relative(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(devforge_dir, "genuinely-relative")
+            self.assertIsNone(error)
+            relative_path = result["relative_path"]
+            self.assertFalse(relative_path.startswith("/"))
+            self.assertNotIn(str(Path(td).resolve()), relative_path)
+            self.assertNotIn(td, relative_path)
+
+    def test_relative_path_uses_forward_slashes(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(devforge_dir, "forward-slash-check")
+            self.assertIsNone(error)
+            self.assertNotIn("\\", result["relative_path"])
+            self.assertIn("/", result["relative_path"])
+
+    def test_relative_path_recombines_to_absolute_path(self):
+        """os.path.join(repo_root, relative_path) must reconstruct exactly
+        the absolute `path` the SAME call returned -- the two keys must
+        never disagree."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(devforge_dir, "recombine-check")
+            self.assertIsNone(error)
+            repo_root = Path(td).resolve()
+            reconstructed = repo_root.joinpath(*result["relative_path"].split("/"))
+            self.assertEqual(reconstructed, Path(result["path"]))
+            # And the os.path.join form the spec text describes, resolved
+            # through Path for cross-platform separator equivalence.
+            joined = os.path.join(str(repo_root), result["relative_path"])
+            self.assertEqual(Path(joined).resolve(), Path(result["path"]).resolve())
+
+    def test_relative_path_wrapper_root_resolution(self):
+        """Wrapper mode: relative_path is relative to the install root
+        (devforge_dir's parent), not to any outer directory."""
+        with tempfile.TemporaryDirectory() as td:
+            wrapper_root = Path(td) / "wrapper-install-root"
+            devforge_dir = wrapper_root / ".devforge"
+            devforge_dir.mkdir(parents=True)
+            result, error = allocate_feature_dir(devforge_dir, "wrapper-relative")
+            self.assertIsNone(error)
+            self.assertEqual(result["relative_path"], "specs/001-wrapper-relative")
+            reconstructed = wrapper_root.resolve() / result["relative_path"]
+            self.assertEqual(reconstructed, Path(result["path"]))
+
     def test_number_100_plus_widens_gracefully(self):
         """SPEC_NUMBER_WIDTH (3) is a MINIMUM width, not a cap -- format()
         widens past 999 instead of truncating or erroring."""

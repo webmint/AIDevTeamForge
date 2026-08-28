@@ -241,12 +241,36 @@ def allocate_feature_dir(devforge_dir, slug):
     Returns (result, error), mirroring _shared/feature_scope.py's
     resolve_feature_scope convention:
       On success: (dict, None).  dict keys:
-        path             str  -- CANONICAL: absolute path to the created
-                                  directory.  Every caller should use this
-                                  key -- it is shape-agnostic and keeps
-                                  working unchanged across a future layout
-                                  switch (91-FEATURE-DIR-IDENTITY-AND-
-                                  PROVENANCE-PLAN.md Phase 1 item 2).
+        path             str  -- absolute path to the created directory.
+                                  For USER-FACING MESSAGES only (a status
+                                  line, an error string) -- never for a
+                                  path ARGUMENT passed to another helper
+                                  verb or a value WRITTEN into a committed
+                                  artifact, because it leaks the local
+                                  filesystem layout (e.g. a home directory)
+                                  into text that gets committed. Use
+                                  relative_path for those (see below); this
+                                  key's meaning is unchanged and it is not
+                                  deprecated.
+        relative_path    str  -- CANONICAL for path ARGUMENTS and for
+                                  anything WRITTEN into an artifact: the
+                                  feature directory relative to the repo
+                                  root (the same root `path` is resolved
+                                  against -- Path(devforge_dir).resolve()
+                                  .parent), e.g. "specs/007-user-auth".
+                                  Always forward-slash-separated, on every
+                                  platform -- this value is written into
+                                  markdown artifacts and passed as CLI
+                                  arguments, so a backslash variant on
+                                  Windows would produce a different byte
+                                  in a committed file. Follows the same
+                                  discipline _shared/memory.py's
+                                  MEMORY_RELATIVE_PATH documents for
+                                  itself: a forward-slash path, never
+                                  platform-joined. Never relative to the
+                                  current working directory and never
+                                  relative to specs/ itself -- always
+                                  relative to the repo root.
         number           int  -- LEGACY-SHAPE-ONLY: the allocated NNN,
                                   unpadded.  Meaningless once a caller
                                   writes the Phase-3 specs/YYYY/MM/TICKET/
@@ -255,11 +279,17 @@ def allocate_feature_dir(devforge_dir, slug):
                                   consume it.
         formatted_number str  -- LEGACY-SHAPE-ONLY: zero-padded NNN, e.g.
                                   "004".  Same bound as `number` above.
+                                  Still the value render-branch-command
+                                  --number consumes.
         slug             str  -- the validated slug (echoed back, stripped)
         dirname          str  -- LEGACY-SHAPE-ONLY: "NNN-slug" (the
-                                  directory's basename).  Same bound as
-                                  `number` above -- a Phase-3 ticket-keyed
-                                  leaf has no "NNN-slug" shape to report.
+                                  directory's basename, UN-prefixed --
+                                  callers that want the specs/-relative
+                                  path use relative_path instead of
+                                  composing "specs/" + dirname
+                                  themselves).  Same bound as `number`
+                                  above -- a Phase-3 ticket-keyed leaf has
+                                  no "NNN-slug" shape to report.
         created          bool -- always True on success
       On error: ({}, message).  The caller writes message to stderr and
       exits non-zero.  Errors:
@@ -299,6 +329,7 @@ def allocate_feature_dir(devforge_dir, slug):
 
     return {
         "path": str(target),
+        "relative_path": target.relative_to(repo_root).as_posix(),
         "number": number,
         "formatted_number": formatted_number,
         "slug": cleaned_slug,
