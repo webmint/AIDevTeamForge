@@ -105,6 +105,23 @@ def resolve_target_feature(
     2-digit "01-x") never reaches this filter at all, and the filter is
     still evaluated on whatever the accessor DOES hand back rather than
     dropped as redundant.
+
+    An unreadable specs_root now yields the same not-found outcome as an
+    empty one, rather than a distinct permission error: iter_feature_dirs
+    treats any OSError while probing specs_root as "[]" (see its own
+    docstring's OSError policy), and this function has no way to tell an
+    empty [] apart from an unreadable one once it holds that list. Before
+    this function migrated onto the accessor, it ran its own
+    os.listdir(specs_root) and returned a distinct
+    "cannot list {0!r}: {1}" error naming the path and the OS error on
+    OSError; that branch was deleted at the migration
+    (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1) and is not
+    being reinstated here -- duplicating a diagnostic on top of the
+    accessor's own OSError-means-absent contract would fight that
+    contract, not honour it. A MISSING specs_root is unaffected and is
+    still reported distinctly: the os.path.isdir(specs_root) check above
+    runs before iter_feature_dirs is ever called and returns its own
+    "specs directory ... does not exist" error.
     """
     if feature_arg is not None:
         # Normalise: if the arg is a path to a plan.md file, use its parent.

@@ -395,7 +395,12 @@ def iter_feature_dirs(specs_root):
     directory at all, by design -- see
     91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's "Scope"
     paragraph). Do not add an exception path here for the
-    missing/unreadable-specs/ case.
+    missing/unreadable-specs/ case. Consequence for callers: collapsing
+    "unreadable" into the same [] as "empty" means a caller cannot tell
+    "no feature directories" apart from "the specs root is unreadable"
+    from this return value alone -- a caller that needs that distinction
+    must probe specs_root itself (e.g. its own os.access/os.listdir call)
+    before calling this function, not after.
 
     Sort order (deliberate, not incidental Path/str comparison): every
     legacy-shape dir sorts before every new-shape dir; within the legacy
