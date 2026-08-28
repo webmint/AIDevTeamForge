@@ -123,7 +123,8 @@ def cmd_set_forcing_functions(args: argparse.Namespace) -> int:
     token_source_css = getattr(args, "token_source_css", None) or None
 
     # Parse --manifest-path (plain string or absent; design_token_provenance only,
-    # back-compat: when absent the detector globs specs/*/design-manifest.json)
+    # retained for config back-compat only — Checks 1-4 are manifest-independent
+    # and read nothing from it; the prior consumer, Check 5, was retired in plan 53)
     manifest_path = getattr(args, "manifest_path", None) or None
 
     config_path = _resolve_config_path(getattr(args, "config", None))
