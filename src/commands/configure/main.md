@@ -409,7 +409,7 @@ For each `decisions[]` entry, render `applies_to` as a comma-separated list (or 
 
 ## Phase 6 — Exclude framework folders from project linters
 
-Exclude the framework's installed folders (`.claude/`, `.devforge/`, `specs/`, `bugs/`, `research/`, `discover/`, `audits/` — NOT `docs/`) from the CONSUMER project's own linters and formatters, so the project's prettier/ruff/eslint/etc. don't reformat or flag the framework's templates + helper code. The `research/` and `discover/` entries are LEGACY — plan 68 retired those top-level dirs (intake artifacts now live in `specs/NNN-slug/`, already covered by the `specs/` entry) — and are kept so grandfathered installs that still have the dirs stay lint-ignored. Run `lint-ignore` in dry-run first to surface what would change, then ask the user to confirm before applying. This phase is NON-FATAL and writes into the user's OWN tooling config files — on any error it SKIPS rather than aborts, and on an ambiguous reply it defaults to SKIP rather than apply.
+Exclude the framework's installed folders (`.claude/`, `.devforge/`, `specs/`, `bugs/`, `research/`, `discover/`, `audits/` — NOT `docs/`) from the CONSUMER project's own linters and formatters, so the project's prettier/ruff/eslint/etc. don't reformat or flag the framework's templates + helper code. The `research/` and `discover/` entries are LEGACY — plan 68 retired those top-level dirs (intake artifacts now live in the feature's own directory under `specs/`, already covered by the `specs/` entry) — and are kept so grandfathered installs that still have the dirs stay lint-ignored. Run `lint-ignore` in dry-run first to surface what would change, then ask the user to confirm before applying. This phase is NON-FATAL and writes into the user's OWN tooling config files — on any error it SKIPS rather than aborts, and on an ambiguous reply it defaults to SKIP rather than apply.
 
 ```bash
 .devforge/lib/configure_helper lint-ignore
@@ -450,7 +450,7 @@ Reply 'yes' to apply the automatic exclusions, or 'cancel' to skip.
 
 List each `auto` entry grouped by `tool` → `file`, showing each line from its `lines[]` (mark `would-create` and `preemptive` entries, e.g. append `(folder not present yet — pre-emptive)`). List each `manual` entry's `instruction` under the separate "Manual — add these yourself" section. Omit either section when it has no entries.
 
-The folder list in the first echo line mirrors the helper's `FRAMEWORK_FOLDERS`; keep it in sync with that constant. `research/` and `discover/` are LEGACY entries retained for grandfathered installs (plan 68 moved intake artifacts into `specs/NNN-slug/`) — do not drop them from the echo while the helper still emits them.
+The folder list in the first echo line mirrors the helper's `FRAMEWORK_FOLDERS`; keep it in sync with that constant. `research/` and `discover/` are LEGACY entries retained for grandfathered installs (plan 68 moved intake artifacts into the feature's own directory under `specs/`) — do not drop them from the echo while the helper still emits them.
 
 **Stop discipline (mandatory).** After emitting the echo block, this phase MUST end the assistant turn and wait for the user's reply. Do NOT call `lint-ignore --apply` in the same turn. Do NOT call any setter or any other tool. Same rule as Phase 3's bulk-confirmation echo and Phase 5.2's prune-agents echo: plain-prose prompts have no harness-level "wait for user" affordance, so the LLM-level stop is the only mechanism preventing accidental auto-advance.
 

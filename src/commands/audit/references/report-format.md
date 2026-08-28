@@ -16,7 +16,7 @@ The category is producer-declared — each agent sets the `Category:` field on e
 
 Empty sub-sections and files with no findings are omitted entirely; the `## Summary` section always renders.
 
-Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past `specs/*/review.md`), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` finding the refutation stage could not confirm — surfaced in the headline, never buried in the appendix), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
+Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past feature's `review.md` report), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` finding the refutation stage could not confirm — surfaced in the headline, never buried in the appendix), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
 
 A finding line carries a trailing `(raised by N)` annotation when `N` duplicate reports of the same `(file, line, category)` were deduplicated into it (omitted when `N == 1`); it appears on both `## Top 10 Priorities` entries and `## Findings by File` finding lines.
 
@@ -30,7 +30,7 @@ The `## Top 10 Priorities` and `## Findings by File` sections draw from CONFIRME
 **Scope**: [full / uncommitted / path]
 **Files audited**: [count]
 **Agents invoked**: [list, with "skipped (not installed)" for missing]
-**Recurring-issue reviews consulted**: [list of specs/*/review.md, or "none"]
+**Recurring-issue reviews consulted**: [list of the consulted features' review.md reports, or "none"]
 **Source Root**: [from CLAUDE.md]
 **Framework / Language**: [from CLAUDE.md]
 
@@ -80,8 +80,8 @@ Force-ranked across all buckets. Fix these first.
 ## Recurring Issues Status
 | Past Review | Finding | Status |
 |---|---|---|
-| specs/003-foo/review.md | Null check bypass in X | STILL PRESENT, SPREAD TO 4 FILES |
-| specs/005-bar/review.md | Race condition in Y | RESOLVED |
+| [past feature A's review.md] | Null check bypass in X | STILL PRESENT, SPREAD TO 4 FILES |
+| [past feature B's review.md] | Race condition in Y | RESOLVED |
 
 ## Next Candidates (Hotspot)
 (Hotspot mode only.) Files ranked just outside the top hotspots — consider for next run.
