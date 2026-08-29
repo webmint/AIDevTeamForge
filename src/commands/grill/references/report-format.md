@@ -66,12 +66,16 @@ both are surfaced in the headline, never buried).
 
 ## Skeleton
 
+The `--` separators in the skeleton are ASCII because `_report.py` emits them that
+way; the em-dashes left in it mark this document's own annotations, which the
+renderer never emits.
+
 ```markdown
-# Plan Grill — <feature_dir> — YYYY-MM-DD
+# Plan Grill -- <feature_dir> -- YYYY-MM-DD
 
 **Feature**: <feature_dir>
-**Scope**: plan.md + referenced specs — [N files]
-**Finders invoked**: [list, with "skipped — not installed" for missing]
+**Scope**: plan.md + referenced specs -- [N files]
+**Finders invoked**: [list, with "skipped -- not installed" for missing]
 **Refuters invoked**: [list]
 **Source Root**: [from CLAUDE.md]
 **Framework / Language**: [from CLAUDE.md]
@@ -90,9 +94,9 @@ both are surfaced in the headline, never buried).
 > - RE-ENTER-UPSTREAM — the defect is rooted upstream; re-enter at the named stage (`/devforge:specify` for `spec`, `/devforge:discover` for `discovery`, `/devforge:research` for `research`). If you choose `Re-enter upstream` at the human gate, the orchestrator emits a `grill-seed.json` for that stage so the re-run is directed, not a repeat.
 > - KILL — the defect is fundamental; the plan should be abandoned (re-`/devforge:plan` with a wholly different approach).
 
-## Confirmed — Top Priorities
+## Confirmed -- Top Priorities
 Force-ranked across the confirmed findings. Fix these first.
-1. [severity] [file:line] — [one-line description] [confidence] [tags]
+1. [severity] [file:line] -- [one-line description] [confidence] [tags]
 ...
 
 ## Confirmed Findings
@@ -104,7 +108,7 @@ too, flagged.)
 ### [plan.md  OR  relative/path/to/source.ext]
 
 #### Security
-- [F-001] [Critical] :42 — [description]
+- [F-001] [Critical] :42 -- [description]
   Severity: Critical
   File: [plan.md or the anchor file named above]
   Line: 42
@@ -119,7 +123,7 @@ too, flagged.)
   artifact by path and line here, e.g. "duplicates the existing helper in
   src/util/foo.py:12"; the partner is referenced in prose, not quoted]
   Remediation: [specific design change]
-- [F-007] [High] :88 — [description]
+- [F-007] [High] :88 -- [description]
   [same finding format]
 
 #### System Design
@@ -152,13 +156,13 @@ a dismissal is itself a judgment that can be wrong. Clearly separated from the
 headline above; the whole section is omitted when both lists are empty.)
 
 ### Dismissed
-- [D-001] [Medium] [plan.md]:NN — [description]
+- [D-001] [Medium] [plan.md]:NN -- [description]
 
 ### Uncertain (low-stakes)
-- [U-001] [Info] [plan.md]:NN — [description]
+- [U-001] [Info] [plan.md]:NN -- [description]
 
 ## Methodology
-Findings are grounded — every finding carries a verbatim quote from the actual
+Findings are grounded -- every finding carries a verbatim quote from the actual
 plan/spec/research artefacts (or a re-fetchable external citation for a web
 claim). A refutation stage then cross-examines each grounded finding before it
 reaches the report: a finding earns the headline only by surviving an adversary

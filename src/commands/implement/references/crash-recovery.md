@@ -4,7 +4,7 @@ This reference defines the interrupted-session recovery handled by PHASE 0 of `m
 
 ## The WIP marker
 
-`.devforge/wip.md` is written by PHASE 2 before each task starts and cleared after the approved per-task commit (or on skip / rollback). It is markdown — human-readable and machine-parseable. The fields (written by the `_implement/_wip.py` helper module):
+`.devforge/wip.md` is written by PHASE 2 before each task starts and cleared after the approved per-task commit (or on skip / rollback). It is markdown — human-readable and machine-parseable. PHASE 2 writes the file directly and PHASE 0 parses it back; `_implement/_wip.py` states the same field shape in code, and both ends must honour it. The fields:
 
 ```markdown
 # WIP Marker — /implement
