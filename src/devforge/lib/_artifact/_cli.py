@@ -1,11 +1,22 @@
-"""_artifact._cli -- commit-artifacts verb for artifact_helper.
+"""_artifact._cli -- argparse registry + main() for artifact_helper.
 
-Stage ONLY the explicitly named paths into the install repo and create a
-[WIP] <label> commit.  This is the shared, tested git-discipline verb that
-each pipeline command calls after writing its own artifacts (spec.md,
-plan.md, *-handoff.json, review.md, etc.) so work is git-safe at every
-step.  The per-step [WIP] commits fold into /finalize's existing
-`git reset --soft` squash, leaving the final PR byte-identical to today.
+Two verbs are wired here; each verb's own logic lives in a sibling module
+(one file per concern, per this repository's module-split discipline) and
+this file stays the thin Controller (GRASP) that dispatches to them:
+
+  commit-artifacts        -- git primitives + handler defined IN THIS FILE
+                              below (the original, unmoved verb).
+  find-feature-artifacts  -- defined in _cmds_find_artifacts.py (91-
+                              FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+                              Phase 1b); registered here via import only.
+
+commit-artifacts stages ONLY the explicitly named paths into the install
+repo and creates a [WIP] <label> commit.  This is the shared, tested
+git-discipline verb that each pipeline command calls after writing its
+own artifacts (spec.md, plan.md, *-handoff.json, review.md, etc.) so work
+is git-safe at every step.  The per-step [WIP] commits fold into
+/finalize's existing `git reset --soft` squash, leaving the final PR
+byte-identical to today.
 
 Verb
 ----
@@ -76,6 +87,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from _implement._workspace import resolve_workspace  # type: ignore[import]
+
+from ._cmds_find_artifacts import (
+    add_find_feature_artifacts_args,
+    cmd_find_feature_artifacts,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -437,6 +453,11 @@ _SUBCOMMAND_REGISTRY = [
         ),
         _cmd_commit_artifacts,
     ),
+    (
+        "find-feature-artifacts",
+        add_find_feature_artifacts_args,
+        cmd_find_feature_artifacts,
+    ),
 ]
 
 
@@ -484,9 +505,11 @@ def main():
     try:
         return handler(args)
     except Exception as exc:  # noqa: BLE001 — catch-all: must never crash caller
+        # Prefixed with the actual subcommand (not a hardcoded "commit-
+        # artifacts") now that this dispatcher serves more than one verb.
         sys.stderr.write(
-            "commit-artifacts: unexpected error: {0}: {1}\n".format(
-                type(exc).__name__, exc
+            "{0}: unexpected error: {1}: {2}\n".format(
+                args.subcommand, type(exc).__name__, exc
             )
         )
         return EXIT_ERR
