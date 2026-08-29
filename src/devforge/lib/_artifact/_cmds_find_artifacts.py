@@ -6,14 +6,28 @@ every feature directory under specs/, regardless of directory-nesting shape
 PROVENANCE-PLAN.md Phase 3 forward specs/YYYY/MM/TICKET/ layout).
 
 Why this verb exists (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
-Phase 1b): several command specs run a depth-1 glob over specs/ themselves
-(specs/*/grill-seed.json, specs/*/*-seed.json, specs/NNN-* directory
-enumerations, specs/*/review.md) instead of asking a helper. Phase 1
-retired that same depth-1 assumption from all six Python resolvers by
-extracting _shared/feature_alloc.py's iter_feature_dirs /
-find_feature_dirs_with; this verb is the ONE place those globs move to
-once the owning command's prose is migrated (a separate, later task --
-this module only needs to exist and be tested here).
+Phase 1b): several command specs used to run a depth-1 glob over specs/
+themselves (specs/*/grill-seed.json, specs/*/*-seed.json, specs/NNN-*
+directory enumerations, specs/*/review.md) instead of asking a helper --
+a pattern that breaks the moment the directory layout stops being
+depth-1. Phase 1 retired that same depth-1 assumption from all six
+Python resolvers by extracting _shared/feature_alloc.py's
+iter_feature_dirs / find_feature_dirs_with; this verb is the one place
+those globs moved to. The migration is complete: eleven command specs
+(audit, discover, finalize, fix, plan, research, review, spec-check,
+specify, summarize, verify) now call find-feature-artifacts instead of
+globbing specs/ directly.
+
+One exception is deliberate, not an oversight: /devforge:specify's
+Phase 0.5 re-entry-seed lookup globs its own already-resolved
+<feature_dir>/*-seed.json directly rather than calling this verb. That
+lookup is scoped to the ONE feature directory /devforge:specify already
+resolved, on purpose -- so a stale seed sitting in another feature
+directory can never bind this run. This verb always walks every feature
+directory (iter_feature_dirs(specs_root), no per-call narrowing flag), so
+routing that lookup through it would perform exactly the project-wide
+enumeration the scoping exists to forbid. Do not "fix" that site into a
+find-feature-artifacts call.
 
 Why artifact_helper, not a command-owned helper: every consumer the
 Phase 1b inventory names (research, discover, plan, specify, review, fix,
