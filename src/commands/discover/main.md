@@ -12,7 +12,7 @@ Usage: `/devforge:discover "<topic>"` (e.g. `/devforge:discover "audit log persi
 
 ## Outputs of this phase
 
-`<feature_dir>` — here and everywhere else in this document — is the feature directory this run writes into: one path the orchestrator holds in working memory for the rest of the run. Phase 4's save flow takes it from `allocate-feature-dir`'s `relative_path` on a fresh allocation (step 1), and Phase 0.6's attach arm takes it from the re-entry seed file's parent directory. The orchestrator never composes it from parts, never re-shapes it, and never substitutes another key for it; every artifact path below is `<feature_dir>` plus a filename. In wrapper mode it resolves under the install root, never the nested source root.
+`<feature_dir>` — here and everywhere else in this document — is the feature directory this run writes into: one path the orchestrator holds in working memory for the rest of the run. Phase 4's save flow takes it from `allocate-feature-dir`'s `relative_path` on a fresh allocation (step 1), and Phase 0.6's attach arm takes it from the `feature_dir` its seed-discovery call reports. The orchestrator never composes it from parts, never re-shapes it, and never substitutes another key for it; every artifact path below is `<feature_dir>` plus a filename. In wrapper mode it resolves under the install root, never the nested source root.
 
 - `.devforge/discover-scope.json` — ScopingMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/discover-report.json` — DiscoveryReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
@@ -150,7 +150,15 @@ When the prompt is a clean single-requirement feature idea with no scope-expande
 
 ### Phase 0.6 — Re-entry from `/devforge:grill` (conditional — skip if no seed)
 
-Before beginning the investigation, check for a `/devforge:grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"discovery"` (this command's stage), you are re-entering from a `/devforge:grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS discovery / build-vs-buy stage's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/devforge:grill` is ever removed). The seed carries these fields:
+Before beginning the investigation, check for a `/devforge:grill` re-entry seed:
+
+```bash
+.devforge/lib/artifact_helper find-feature-artifacts --filenames '["grill-seed.json"]'
+```
+
+Stdout is a JSON object; take `matches` from it — one entry per seed file found, each carrying `file` (the seed's own path, ready to read) and `feature_dir` (the feature directory that holds it). Finding nothing is the normal outcome, not a failure: the call exits 0 with an empty `matches` array, so there is no exit code to test for it — branch on `matches` being empty and take the no-seed arm at the end of this block. A non-zero exit means the call itself failed (a malformed `--filenames` value, or a workspace that could not be resolved), never that no seed exists: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
+
+Read the JSON at each entry's `file`. If one of them has a `target_stage` equal to `"discovery"` (this command's stage), you are re-entering from a `/devforge:grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS discovery / build-vs-buy stage's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call `grill_helper`, or any other verb belonging to the command that PRODUCED the seed. What is banned is the producer, not helpers in general: `artifact_helper` is shared infrastructure this command already calls to commit its own artefacts, and the verb above matches filenames across feature directories without ever opening a seed or knowing what one means. Locating the file through it and interpreting the file here leaves nothing from `/devforge:grill` in this block's path, so it stays valid even if `/devforge:grill` is ever removed. The seed carries these fields:
 
 - `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
 - `prior_conclusion` — what the previous discovery / build-vs-buy conclusion was; it was invalidated, so do NOT re-derive it.
@@ -160,11 +168,11 @@ Before beginning the investigation, check for a `/devforge:grill` re-entry seed.
 
 State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 with the seed's directive constraining the investigation, and with Phase 4 in attach mode per the next paragraph.
 
-**Attach mode — the feature directory already exists.** Hold the matched seed file's PARENT DIRECTORY in working memory as this run's `<feature_dir>`. Because that directory was allocated by the earlier run of this feature, Phase 4's save flow SKIPS allocation and SKIPS branch creation, and overwrites the discovery report + handoff in place; the superseded versions stay recoverable from the earlier `[WIP]` commit. The parent directory is a path fact about where the seed was found — it is NOT the seed's `feature` field, which is the name you state in user-facing text.
+**Attach mode — the feature directory already exists.** The `feature_dir` reported on that same `matches` entry is this feature's already-allocated feature directory — a `/devforge:grill` seed exists only for a feature that already has one. Hold that path in working memory as this run's `<feature_dir>`, exactly as the call reported it. Because that directory was allocated by the earlier run of this feature, Phase 4's save flow SKIPS allocation and SKIPS branch creation, and overwrites the discovery report + handoff in place; the superseded versions stay recoverable from the earlier `[WIP]` commit. This is the one value you take from the discovery result rather than from the seed's contents — the seed's `feature` field is still the name you state in user-facing text; `feature_dir` is where you WRITE.
 
 This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/devforge:grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — a `/devforge:grill` run writes a seed only when it reaches a RE-ENTER-UPSTREAM recommendation AND the user picks the matching re-entry at its human gate, and most runs never reach one), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
+When `matches` comes back empty, and equally when it carries entries but none of them has `target_stage == "discovery"` (the normal case — a `/devforge:grill` run writes a seed only when it reaches a RE-ENTER-UPSTREAM recommendation AND the user picks the matching re-entry at its human gate, and most runs never reach one), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Scoping dialogue (rubric Q&A)
 
@@ -643,7 +651,7 @@ End the turn. The user's reply opens the next turn. Read the reply as:
 
 This prompt is also re-entered from `### On save` step 1 when `allocate-feature-dir` rejects the slug; the reply branches above apply unchanged on that second pass.
 
-**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while its parent directory is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug.
+**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug.
 
 ### On save
 

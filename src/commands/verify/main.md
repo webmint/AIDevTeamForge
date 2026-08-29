@@ -73,9 +73,17 @@ Cheapest guards first; preflight before any feature I/O.
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory, or a file inside one (e.g. `<feature_dir>/spec.md`), use that directory — strip a trailing filename to its parent directory, and re-shape nothing else.
-- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:review`).
+- When `$ARGUMENTS` is empty, auto-resolve the feature directory holding the most recently written artifact (the feature most likely just finished `/devforge:review`). Resolve it here:
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to verify (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as `<feature_dir>`, exactly as resolved — every subsequent `--feature` / `--feature-dir` flag takes it, and the spec file inside it is `<feature_dir>/spec.md` (the `--spec` value PHASE 3 needs).
+```bash
+.devforge/lib/artifact_helper find-feature-artifacts --filenames '["*"]' --limit 1
+```
+
+`find-feature-artifacts` walks every feature directory the install has and reports the files sitting directly in each one; a file inside a nested subdirectory — `<feature_dir>/tasks/`, the one child directory this command names — is not listed and so does not affect the ordering below. `--filenames '["*"]'` names no particular file on purpose: this resolution selects a feature DIRECTORY, and it selects one whatever artifacts that directory happens to hold. `/devforge:verify` does need `<feature_dir>/spec.md` later — PHASE 3.1 parses its acceptance criteria — but that is a requirement of the RUN, not of the resolution: narrowing `--filenames` to `spec.md` would skip a spec-less feature directory this resolution is meant to consider and silently verify an older one in its place, so do not "tighten" it. `--limit 1` caps the result to a single record, applied AFTER the recency ordering is computed — so the survivor is chosen from every artifact in the install, never from a pre-truncated slice.
+
+Stdout is a JSON object; take `matches_by_recency[0].feature_dir` from it — the first entry of the newest-artifact-first ordering, and under `--limit 1` the only entry. That path IS `<feature_dir>`: carry it forward exactly as reported. An EMPTY `matches_by_recency` means no feature directory holds any artifact: the call exits 0 in that case, because finding nothing is a normal outcome and not a failure, so there is no exit code to test for it — branch on the array being empty. A non-zero exit means the call itself failed (a malformed flag value, or a workspace that could not be resolved), never that no feature exists: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
+
+When `matches_by_recency` comes back empty, tell the user there is no feature to verify (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as `<feature_dir>`, exactly as resolved — every subsequent `--feature` / `--feature-dir` flag takes it, and the spec file inside it is `<feature_dir>/spec.md` (the `--spec` value PHASE 3 needs).
 
 ### 0.3 — Initialize run state + scratch dir
 
