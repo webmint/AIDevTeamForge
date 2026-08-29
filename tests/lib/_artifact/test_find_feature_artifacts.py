@@ -10,6 +10,15 @@ that delegation actually reaches BOTH directory shapes (legacy
 specs/NNN-slug/ and the Phase-3 forward specs/YYYY/MM/TICKET/), which is
 the entire point of building this verb before Phase 3 ships.
 
+This file pins the ORIGINAL committed contract (commit 617a867): the
+match/feature_dirs shape, layout order, dedup, glob matching, and error
+handling. The mtime + recency-ordering follow-up (added after 617a867,
+per plan 91 Phase 1b's Class-B gap) lives in its own sibling file,
+test_find_feature_artifacts_recency.py -- kept separate so neither file
+grows past this repository's 600-line test-file split threshold, and
+each file's own docstring stays a description of ONE coherent concern
+rather than needing "and" to summarize it.
+
 Coverage:
   - legacy-shape tree: single hit found.
   - new-shape tree: single hit found (the load-bearing case -- without

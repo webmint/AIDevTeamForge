@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ._schema import (
     AUTO_MODE_ENV_VAR,
@@ -30,6 +30,7 @@ from ._state import (
 from ._topic import (
     DISCOVERY_REPORT_BASENAME,
     RESEARCH_REPORT_BASENAME,
+    normalize_source_path,
     source_origin_for_path,
 )
 from ._validators import _die, _utc_timestamp, _validate_enum, _validate_scalar
@@ -119,6 +120,15 @@ def cmd_record_input_read(args: argparse.Namespace) -> int:
 
     Idempotent: re-recording the same path overwrites the prior entry.
 
+    source_origin_for_path is given `root` (the install root implied by
+    --devforge-dir, same convention as specs_root_for) so that an
+    absolute path -- e.g. the `<feature_dir>`-token reads main.md composes
+    off find-handoffs's `.resolve()`d handoff_path -- classifies exactly
+    as the repo-relative spelling of the same file would (91-FEATURE-DIR-
+    IDENTITY-AND-PROVENANCE-PLAN.md). `root` is inert for a relative
+    `path` (the common case), so this costs one extra `Path.resolve()`
+    per call and changes no relative-path classification.
+
     When `path` is the persistent-memory path (MEMORY_RELATIVE_PATH), the
     helper PROBES the file itself via probe_memory_state() and records the
     OBSERVED three-state result under MEMORY_STATE_KEY. This is a value the
@@ -134,14 +144,14 @@ def cmd_record_input_read(args: argparse.Namespace) -> int:
         path = _validate_scalar(args.path, "record-input-read.path")
     except ValueError as err:
         return _die(str(err), code=2)
-    origin = source_origin_for_path(path)
+    workspace_root = Path(args.devforge_dir).resolve().parent
+    origin = source_origin_for_path(path, root=str(workspace_root))
     entry: Dict[str, Any] = {
         "path": path,
         "source_origin": origin,
         "read_timestamp": _utc_timestamp(),
     }
     if path == MEMORY_RELATIVE_PATH:
-        workspace_root = Path(args.devforge_dir).resolve().parent
         entry[MEMORY_STATE_KEY] = probe_memory_state(str(workspace_root))
     try:
         with _state_transaction(args.devforge_dir) as state:
@@ -335,7 +345,7 @@ def cmd_verify_findings(args: argparse.Namespace) -> int:
     return 0
 
 
-def _group_for_path(path: str) -> str:
+def _group_for_path(path: str, root: Optional[str] = None) -> str:
     """Map a recorded input path to its render-group key.
 
     68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: specs/NNN-slug/research-
@@ -347,10 +357,24 @@ def _group_for_path(path: str) -> str:
     render under the wrong heading. _RENDER_SECTION_ORDER itself needs no
     change: its group KEYS ("research/", "discover/", "specs/", ...) are
     unchanged -- only which paths map to them changed.
+
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md: shares
+    normalize_source_path with source_origin_for_path so an absolute
+    `path` groups exactly as the repo-relative spelling of the same file
+    does -- the two functions answer DIFFERENT questions (this one a
+    render-heading key, not a 4-way provenance tag; see the module-level
+    comment above RESEARCH_REPORT_BASENAME for why they stay separate
+    functions) but were duplicating the same strip/"./"/absolute-path
+    normalization independently, which is the part that actually needed
+    to be shared. When `path` is absolute and NOT under `root`,
+    normalize_source_path hands back the (stripped) absolute original
+    unchanged and this function -- exactly like every other path
+    matching none of its prefixes -- returns it as its own private group
+    key, so it renders under no shared heading it doesn't belong to.
     """
-    p = path.strip()
-    if p.startswith("./"):
-        p = p[2:]
+    p, in_root = normalize_source_path(path, root)
+    if not in_root:
+        return p
     if p.startswith("specs/"):
         basename = p.rsplit("/", 1)[-1]
         if basename == RESEARCH_REPORT_BASENAME:
@@ -364,15 +388,26 @@ def _group_for_path(path: str) -> str:
 
 
 def cmd_render_findings(args: argparse.Namespace) -> int:
-    """Emit Phase 1.5 findings section in v3-verbatim format."""
+    """Emit Phase 1.5 findings section in v3-verbatim format.
+
+    `root` (derived the same way as cmd_record_input_read's
+    workspace_root: `Path(args.devforge_dir).resolve().parent`) is passed
+    to _group_for_path so a recorded absolute path -- e.g. the one
+    record-input-read stored verbatim from a `<feature_dir>`-token read --
+    groups under the same heading its repo-relative spelling would
+    (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md). --devforge-dir is a
+    global argument on every specify_helper subcommand, so it is already
+    in hand here exactly as it is in cmd_record_input_read.
+    """
     try:
         state = _load_state(args.devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
         return _die("render-findings: {0}".format(err))
+    workspace_root = str(Path(args.devforge_dir).resolve().parent)
     lines: List[str] = ["## Findings from Inputs", ""]
     reads_by_group: Dict[str, List[str]] = {}
     for r in state["input_reads"]:
-        g = _group_for_path(r.get("path", ""))
+        g = _group_for_path(r.get("path", ""), root=workspace_root)
         reads_by_group.setdefault(g, []).append(r["path"])
 
     for group in _RENDER_SECTION_ORDER:
