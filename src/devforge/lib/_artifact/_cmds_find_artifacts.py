@@ -77,10 +77,13 @@ Output (stdout, one JSON object)
   "matches": [
     {"feature_dir": "specs/003-foo",
      "file": "specs/003-foo/research-handoff.json",
-     "filename": "research-handoff.json"},
+     "filename": "research-handoff.json",
+     "mtime_ts": 1735689600.0,
+     "mtime_iso": "2025-01-01T00:00:00Z"},
     ...
   ],
-  "feature_dirs": ["specs/003-foo", ...]
+  "feature_dirs": ["specs/003-foo", ...],
+  "matches_by_recency": [ <same dicts as "matches", most-recent-mtime-first> ]
 }
 "matches" is one entry per (feature directory, matched file) pair, in
 iter_feature_dirs's documented order (legacy family first, ascending by
@@ -109,6 +112,77 @@ _shared/feature_alloc.py later established; this new verb is written to
 that later convention from the start rather than to find-handoffs's
 older one.
 
+mtime, and two output orders (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+PLAN.md Phase 1b follow-up)
+-----------------------------------------------------------------------
+The Phase 1b inventory splits into two classes. Class A finds a named or
+patterned file (/devforge:research, /devforge:discover, /devforge:plan,
+/devforge:specify's seed globs) -- "matches" in its documented layout
+order already serves this. Class B resolves the MOST-RECENTLY-MODIFIED
+feature directory carrying a sentinel (/devforge:review, /devforge:fix,
+/devforge:verify, /devforge:finalize, /devforge:summarize,
+/devforge:spec-check; /devforge:audit's recurring-issue scan additionally
+windows to the last 90 days before taking the 5 most recent) -- neither
+of which "matches"'s layout order can answer.
+
+"mtime_ts" / "mtime_iso" on every match, same field names and same
+"%Y-%m-%dT%H:%M:%SZ" UTC format _specify/_cmds_handoff.py's find-handoffs
+verb already uses for its own mtime fields -- the orchestrators that
+already parse find-handoffs's output see a familiar shape here rather
+than a third convention. Both are carried (not just one) because they
+answer two different questions an LLM orchestrator asks: mtime_ts (a raw
+float epoch, exactly what Path.stat().st_mtime returns, no rounding) is
+an unambiguous magnitude for "which of these is newest" with no date
+parsing; mtime_iso is a calendar date usable directly for a windowing
+question like "is this within the last 90 days" without first
+epoch-decoding anything. Neither field is derived from "now" -- both are
+facts about the file itself, so two runs against an unchanged filesystem
+emit byte-identical output regardless of when they are run. A THIRD,
+"now"-relative field (e.g. a precomputed age_days) was considered and
+rejected: it would make the verb's output non-deterministic across two
+runs of an unchanged tree (a fact this discovery primitive should not
+own), and neither of "newest" nor "within N days" actually needs it --
+"newest" is a plain magnitude comparison on mtime_ts, and a window is a
+comparison against a cutoff date the orchestrator derives once, not per
+file.
+
+"matches_by_recency" is the SAME list "matches" carries, re-sorted
+most-recent mtime_ts first (ties broken by "file" for determinism,
+mirroring find-handoffs's own tie-break-by-path convention exactly).
+Always present, unconditionally, alongside "matches" -- not behind a
+flag and not swapped in for "matches"'s existing order. This was the
+additive-safe choice among three read: (1) a --sort flag choosing which
+single order "matches" carries, (2) a --sort flag adding a *second* key
+only when passed, (3) always emitting both. (1) risks a Class-A call
+site silently keeping its old behavior only because nobody remembered to
+pass the flag, and (2) still requires every Class-B prose site to learn
+and pass a new flag to get a key that costs nothing to always compute
+(the mtime stat already ran for every match regardless; sorting an
+already-tiny list is negligible). (3) needs zero new flag, cannot regress
+a Class-A call site's existing "matches" order by construction (the key
+is genuinely NEW, matching this file's committed contract), and lets
+Class-B's own prose migration (not built here) read "matches_by_recency"
+directly with no CLI change to make first. A caller wanting the single
+most recent feature dir reads matches_by_recency[0]["feature_dir"]; a
+90-day-window "top 5" read is a slice of matches_by_recency filtered on
+mtime_ts against a cutoff the caller computes once. No separate
+recency-ordered feature_dirs list is added: the existing "feature_dirs"
+key stays tied to "matches"'s layout order exactly as committed, and a
+directory-level recency view was left out as unneeded speculative
+surface -- every currently-named Class-B need is already answered by
+matches_by_recency's per-match feature_dir field.
+
+A file that vanishes between discovery and this verb's own mtime stat
+(a genuine TOCTOU race -- a concurrent process deletes or replaces it)
+drops that match silently: no exception escapes, and the match is
+omitted from "matches", "feature_dirs" and "matches_by_recency" alike,
+consistent with the verb's existing empty/partial-result-is-not-an-error
+contract. A partial result from a filesystem race is not distinguishable
+from "the file was never there" from this output alone -- a caller that
+needs that distinction must stat the specific path itself, same
+limitation _shared/feature_alloc.py's iter_feature_dirs documents for
+its own OSError-means-absent collapsing.
+
 --root follows commit-artifacts's own convention exactly (same package,
 _cli.py): a path (default ".") resolved via
 _implement._workspace.resolve_workspace, so specs/ is always found under
@@ -122,8 +196,9 @@ import argparse
 import fnmatch
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from _implement._workspace import resolve_workspace  # type: ignore[import]
 from _shared.feature_alloc import (  # type: ignore[import]
@@ -170,17 +245,63 @@ def _relative_posix(path, root):
     return path.relative_to(root).as_posix()
 
 
+def _file_mtime(path):
+    # type: (Path) -> Optional[float]
+    """path's mtime in epoch seconds, or None if it cannot be stat'd.
+
+    None on any OSError -- e.g. the file vanished between discovery (the
+    is_file() check already performed by find_feature_dirs_with or this
+    module's own glob-matching loop) and this call, a genuine TOCTOU
+    race. Never raises. The caller drops the match entirely rather than
+    emitting a record with a missing or fabricated mtime -- the same
+    absent-not-fake discipline 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    PLAN.md D9 states for _specify/_render.py's own provenance line: a
+    value that cannot be honestly known is omitted, never faked.
+    """
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _mtime_iso(mtime_ts):
+    # type: (float) -> str
+    """UTC 'Z' ISO-8601 string for mtime_ts.
+
+    Same field shape ("%Y-%m-%dT%H:%M:%SZ") _specify/_cmds_handoff.py's
+    cmd_find_handoffs already emits for its own mtime_iso field -- see
+    this module's docstring for why the field NAME and FORMAT are
+    deliberately reused rather than invented fresh.
+    """
+    return datetime.fromtimestamp(mtime_ts, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
 def _record_match(matches, seen, feature_dir, file_path, filename, install_root):
-    # type: (List[Dict[str, str]], Set, Path, Path, str, Path) -> None
-    """Append one match dict, skipping an already-recorded (dir, file) pair."""
+    # type: (List[Dict[str, Any]], Set, Path, Path, str, Path) -> None
+    """Append one match dict, or silently skip it.
+
+    Skipped (not appended) in two cases, neither an error: the (dir,
+    file) pair was already recorded (an overlapping --filenames entry or
+    a repeated literal), or the file could not be stat'd for mtime (a
+    TOCTOU race -- see _file_mtime). A race is NOT added to `seen`: a
+    transient failure should not permanently suppress a later, different
+    pattern's attempt to record the same file.
+    """
     key = (str(feature_dir), str(file_path))
     if key in seen:
+        return
+    mtime_ts = _file_mtime(file_path)
+    if mtime_ts is None:
         return
     seen.add(key)
     matches.append({
         "feature_dir": _relative_posix(feature_dir, install_root),
         "file": _relative_posix(file_path, install_root),
         "filename": filename,
+        "mtime_ts": mtime_ts,
+        "mtime_iso": _mtime_iso(mtime_ts),
     })
 
 
@@ -252,7 +373,7 @@ def cmd_find_feature_artifacts(args):
         for name in literal_patterns
     }
 
-    matches = []  # type: List[Dict[str, str]]
+    matches = []  # type: List[Dict[str, Any]]
     seen = set()  # type: Set
 
     for feature_dir in feature_dirs:
@@ -288,9 +409,18 @@ def cmd_find_feature_artifacts(args):
             feature_dir_seen.add(m["feature_dir"])
             feature_dir_list.append(m["feature_dir"])
 
+    # Additive, always present -- see the module docstring's "mtime, and
+    # two output orders" section for why this is unconditional rather
+    # than flag-gated. "matches" itself is untouched: same objects, same
+    # order, same key names as the committed contract.
+    matches_by_recency = sorted(
+        matches, key=lambda m: (-m["mtime_ts"], m["file"])
+    )
+
     result_obj = {
         "matches": matches,
         "feature_dirs": feature_dir_list,
+        "matches_by_recency": matches_by_recency,
     }
     sys.stdout.write(json.dumps(result_obj) + "\n")
     return EXIT_OK
