@@ -10,6 +10,7 @@ allowed-tools:
   - Bash(.devforge/lib/fix_helper resolve-scope *)
   - Bash(.devforge/lib/fix_helper write-seed *)
   - Bash(.devforge/lib/fix_helper close-bug *)
+  - Bash(.devforge/lib/artifact_helper find-feature-artifacts *)
   - Bash(.devforge/lib/artifact_helper commit-artifacts *)
   - Bash(.devforge/lib/implement_helper verify-touched *)
   - Bash(.devforge/lib/implement_helper merge-review-panel *)
@@ -118,9 +119,17 @@ The test is the argument's PATH, not its content and not a judgment about how bi
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory or a file inside one (e.g. `<feature_dir>/spec.md`), use that feature directory — when the argument names a file, take its parent directory.
-- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:review` or `/devforge:verify`).
+- When `$ARGUMENTS` is empty, auto-resolve the feature directory holding the most recently written artifact (the feature most likely just finished `/devforge:review` or `/devforge:verify`). Resolve it here:
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to remediate (run `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as this run's `<feature_dir>`, exactly as resolved — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it.
+```bash
+.devforge/lib/artifact_helper find-feature-artifacts --filenames '["*"]' --limit 1
+```
+
+`find-feature-artifacts` walks every feature directory the install has and reports the files sitting directly in each one; a file inside a nested subdirectory is not listed and so does not affect the ordering below. `--filenames '["*"]'` names no particular file on purpose. `/devforge:fix` DOES read files from inside the resolved directory — 0.4a's `read-findings` parses `<feature_dir>/review.md` and `<feature_dir>/verification.md` — but neither report is a precondition for a legitimate run: a case-3 conversational defect is remediated on a feature that produced neither, and an in-window feature with no findings at all reaches 0.4a's empty-list STOP, which is an informative outcome rather than a resolution failure. Narrowing `--filenames` to either report name would make both cases unreachable by silently dropping the directory before 0.3 and 0.4a ever see it, so do not "tighten" it. `--limit 1` caps the result to a single record, applied AFTER the recency ordering is computed — so the survivor is chosen from every artifact in the install, never from a pre-truncated slice.
+
+Stdout is a JSON object; take `matches_by_recency[0].feature_dir` from it — the first entry of the newest-artifact-first ordering, and under `--limit 1` the only entry. That value is the directory this branch resolved. An EMPTY `matches_by_recency` means no feature directory holds any artifact: the call exits 0 in that case, because finding nothing is a normal outcome and not a failure, so there is no exit code to test for it — branch on the array being empty. A non-zero exit means the call itself failed (a malformed flag value, or a workspace that could not be resolved), never that no feature exists: copy the helper's stderr VERBATIM as a fenced code block and end the turn.
+
+When `matches_by_recency` comes back empty, tell the user there is no feature to remediate (run `/devforge:specify` → `/devforge:spec-check` → `/devforge:plan` → `/devforge:grill` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` first) and end the turn. Carry the resolved directory forward as this run's `<feature_dir>`, exactly as resolved — do not re-shape it, do not rebuild it from parts, and do not spell what is inside it.
 
 Every subsequent `--feature` flag takes `<feature_dir>` itself, with ONE exception: PHASE 1's `write-seed` call takes the feature directory's own name — the last segment of `<feature_dir>`, called `<feature-dir-name>` below — via `--feature`, and takes `<feature_dir>` via its separate `--feature-dir` flag. The two are not interchangeable, and the flag NAME does not tell you which one a verb wants: `in-fix-window --feature` and `read-findings --feature` each resolve sibling files under the path they are handed, while `write-seed --feature` becomes the seed's human-readable `feature` field and only `--feature-dir` decides where the seed file lands.
 
