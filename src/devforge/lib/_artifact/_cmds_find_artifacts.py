@@ -35,7 +35,7 @@ logic end to end (Controller / SRP).
 
 Verb
 ----
-find-feature-artifacts  --filenames <json>  [--root <path>]
+find-feature-artifacts  --filenames <json>  [--root <path>]  [--limit N]
 
 --filenames is a JSON array of one or more entries. Each entry is either:
   - a LITERAL basename (e.g. "research-handoff.json") -- matched by
@@ -183,6 +183,57 @@ needs that distinction must stat the specific path itself, same
 limitation _shared/feature_alloc.py's iter_feature_dirs documents for
 its own OSError-means-absent collapsing.
 
+--limit N: capping the population (91-FEATURE-DIR-IDENTITY-AND-
+PROVENANCE-PLAN.md Phase 1b, second follow-up)
+-----------------------------------------------------------------------
+Why: a Class-B consumer with no single sentinel calls --filenames '["*"]'
+-- one record per FILE per feature dir. At fifty features that is
+thousands of records across two keys, for a caller that wants one
+string (the newest feature_dir) or a handful (a windowed top-5). --limit
+caps the emitted population instead of pushing a shell-redirect-plus-
+python3-extraction workaround onto command prose with no python3
+dependency today.
+
+Absent by default = "no cap", the exact pre-existing behavior
+byte-for-byte. When given, MUST be a base-10 integer >= 0; anything else
+(non-integer, negative) is a clean EXIT_ERR (see _parse_limit) -- NOT
+argparse type=int, whose own failure exits 2, a second and wrong
+error-code convention for this file. --limit 0 is valid (an empty
+result, not an error), the same contract zero matches already has.
+
+Applied AFTER ordering, never before: the caller wants the N NEWEST
+records. The SET is chosen ONCE, by recency -- matches_by_recency
+(built over every match, before any cap) sliced to its first N -- and
+every key presents that SAME set through its own pre-existing rule,
+never three independently-capped populations that could disagree:
+  - "matches_by_recency" -- the slice itself (already recency-order).
+  - "matches" -- the same set, filtered out of the full layout-ordered
+    list, so survivors keep matches's OWN order (layout), not the
+    recency order used to pick them; only the POPULATION shrinks.
+  - "feature_dirs" -- re-derived from the (capped) "matches" by the
+    unchanged rule (dedup, first-seen order). It is a VIEW of matches,
+    not an independent population -- capping matches first is
+    sufficient; no limit-aware dedup logic exists or is needed.
+That is what "consistent" means under a limit: one recency-selected set,
+three existing presentations, never three independent caps.
+
+--limit counts MATCH RECORDS (files), not feature directories: if the N
+newest records land in fewer than N distinct dirs, "feature_dirs"
+legitimately has fewer than N entries (the existing dedup rule on a
+smaller input) -- exactly what --filenames '["*"]' --limit 1 wants: the
+single most recently touched file and which directory it lives in,
+regardless of how many other files that directory also holds. N >= the
+total match count is a no-op: every key ends up identical to --limit's
+absence (the slice `[:N]` keeps everything when N exceeds the length).
+
+feature_dirs_by_recency was reconsidered (a real consumer now exists)
+and still NOT added: --limit 1 already hands that consumer the single
+most recent record's feature_dir directly, and --limit 5's window-filter
+case reads feature_dir per record off matches_by_recency the same way --
+neither needs a pre-deduplicated directory list. The earlier YAGNI call
+stands, now for a demonstrated reason: --limit plus the existing
+feature_dir field closes the gap the real consumer hit.
+
 --root follows commit-artifacts's own convention exactly (same package,
 _cli.py): a path (default ".") resolved via
 _implement._workspace.resolve_workspace, so specs/ is always found under
@@ -198,7 +249,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from _implement._workspace import resolve_workspace  # type: ignore[import]
 from _shared.feature_alloc import (  # type: ignore[import]
@@ -278,6 +329,30 @@ def _mtime_iso(mtime_ts):
     )
 
 
+def _parse_limit(raw):
+    # type: (Optional[str]) -> Tuple[Optional[int], Optional[str]]
+    """Parse --limit's raw string value.
+
+    Returns (limit, error). raw is None (flag absent) -> (None, None):
+    "no cap", the exact pre-existing default. Otherwise raw must be a
+    base-10 integer >= 0; a non-integer string or a negative value
+    returns (None, <message>) -- the caller reports it as a clean
+    EXIT_ERR, matching this verb's other hand-validated inputs rather
+    than argparse's own type=int failure (a different, wrong exit code
+    for this file's convention). int() tolerates surrounding whitespace
+    the same way it always does; no extra stripping is performed here.
+    """
+    if raw is None:
+        return None, None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None, "--limit must be an integer, got {0!r}".format(raw)
+    if value < 0:
+        return None, "--limit must be >= 0, got {0}".format(value)
+    return value, None
+
+
 def _record_match(matches, seen, feature_dir, file_path, filename, install_root):
     # type: (List[Dict[str, Any]], Set, Path, Path, str, Path) -> None
     """Append one match dict, or silently skip it.
@@ -332,6 +407,11 @@ def cmd_find_feature_artifacts(args):
                 type(raw_filenames).__name__
             )
         )
+        return EXIT_ERR
+
+    limit, limit_err = _parse_limit(getattr(args, "limit", None))
+    if limit_err is not None:
+        sys.stderr.write("find-feature-artifacts: {0}\n".format(limit_err))
         return EXIT_ERR
 
     # Blank entries are a benign skip (mirrors commit-artifacts's own
@@ -402,25 +482,46 @@ def cmd_find_feature_artifacts(args):
                     )
                     break
 
+    # Additive, always present -- see the module docstring's "mtime, and
+    # two output orders" section for why this is unconditional rather
+    # than flag-gated. Built over EVERY discovered match, before any
+    # --limit is applied -- the cap always selects from the full
+    # recency-ordered population, never a pre-truncated one.
+    matches_by_recency_full = sorted(
+        matches, key=lambda m: (-m["mtime_ts"], m["file"])
+    )
+
+    # --limit N (see the module docstring's "capping the population"
+    # section for the full coherence rule): ONE set, chosen by recency,
+    # presented through each key's own pre-existing order/derivation.
+    # limit is None (flag absent) -> no cap, byte-identical to before
+    # --limit existed: matches_capped IS matches (same object, same
+    # order) and matches_by_recency_capped IS the full sorted list.
+    if limit is None:
+        matches_capped = matches
+        matches_by_recency_capped = matches_by_recency_full
+    else:
+        matches_by_recency_capped = matches_by_recency_full[:limit]
+        kept = {(m["feature_dir"], m["file"]) for m in matches_by_recency_capped}
+        matches_capped = [
+            m for m in matches if (m["feature_dir"], m["file"]) in kept
+        ]
+
+    # feature_dirs is a VIEW of (capped) matches -- same dedup/first-seen
+    # rule as always, just fed fewer records under a limit. No separate
+    # limit-aware dedup logic: capping matches first makes this
+    # unconditional loop correct in both the limited and unlimited case.
     feature_dir_list = []  # type: List[str]
     feature_dir_seen = set()  # type: Set[str]
-    for m in matches:
+    for m in matches_capped:
         if m["feature_dir"] not in feature_dir_seen:
             feature_dir_seen.add(m["feature_dir"])
             feature_dir_list.append(m["feature_dir"])
 
-    # Additive, always present -- see the module docstring's "mtime, and
-    # two output orders" section for why this is unconditional rather
-    # than flag-gated. "matches" itself is untouched: same objects, same
-    # order, same key names as the committed contract.
-    matches_by_recency = sorted(
-        matches, key=lambda m: (-m["mtime_ts"], m["file"])
-    )
-
     result_obj = {
-        "matches": matches,
+        "matches": matches_capped,
         "feature_dirs": feature_dir_list,
-        "matches_by_recency": matches_by_recency,
+        "matches_by_recency": matches_by_recency_capped,
     }
     sys.stdout.write(json.dumps(result_obj) + "\n")
     return EXIT_OK
@@ -454,5 +555,20 @@ def add_find_feature_artifacts_args(parser):
             "Install root path. Defaults to cwd. specs/ is always resolved "
             "under the install root (never the source root), matching "
             "commit-artifacts."
+        ),
+    )
+    parser.add_argument(
+        "--limit",
+        default=None,
+        help=(
+            "Cap the emitted population to the N most recent records "
+            "(by mtime), applied to \"matches\", \"feature_dirs\" and "
+            "\"matches_by_recency\" coherently -- one recency-selected "
+            "set, presented in each key's own existing order. Omit for "
+            "the pre-existing unbounded behavior (the default). Must be "
+            "a base-10 integer >= 0; 0 is valid (an empty result, not an "
+            "error). Not declared as an int type here so a malformed "
+            "value fails this verb's own EXIT_ERR convention rather than "
+            "argparse's separate exit code."
         ),
     )

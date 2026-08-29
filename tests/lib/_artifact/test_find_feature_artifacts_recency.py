@@ -34,6 +34,11 @@ Coverage:
     (a simulated TOCTOU race, _file_mtime patched for one path only)
     drops silently from every output view; exit stays 0, no exception.
 
+The --limit flag (a further follow-up, added after a real Class-B
+consumer hit token volume via --filenames '["*"]') has its OWN test
+file, test_find_feature_artifacts_limit.py, for the same 600-line-split
+reason this file exists separately from test_find_feature_artifacts.py.
+
 Stdlib only. Python 3.8+.
 """
 
