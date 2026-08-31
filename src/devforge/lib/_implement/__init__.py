@@ -3,7 +3,8 @@
 Domains owned by this package:
 
 - Task resolution: scan breakdown-handoff.json to find the next runnable task
-  (lowest-numbered feature, lowest dependency-ready task).
+  (the first feature in _cmds_resolve's resolution order, lowest
+  dependency-ready task within it).
 - WIP marker: write/read/clear the .devforge/wip.md interrupted-session marker
   (Command: /implement field distinguishes from a marker written by a different command).
 - Scope-aware verification: match touched files against PACKAGE_STACKS config,

@@ -1,9 +1,17 @@
 """_cmds_resolve -- resolve-next-task verb for implement_helper.
 
-Scans specs/*/ directories for features with breakdown-handoff.json, determines
-the incomplete-task set by reading each tasks/<NNN>.md **Status**: line, picks
-the lowest-numbered feature with at least one incomplete task, and within it
-picks the lowest-numbered task whose depends_on are all Complete.
+Scans the feature directories under specs/ for those carrying a
+breakdown-handoff.json, determines the incomplete-task set by reading each
+tasks/<NNN>.md **Status**: line, picks the first feature in resolution order
+with at least one incomplete task, and within it picks the lowest-numbered
+task whose depends_on are all Complete.
+
+Resolution order -- legacy NNN-<slug> feature directories first, in ascending
+NNN, then <YYYY>/<MM>/<leaf> directories by year, then month, then leaf name.
+Both shapes resolve; an install carrying only one of them sees only that half
+of the order.  See _glob_feature_dirs for the two sorts that produce it and
+for the property the ordering depends on.  Task numbering is a separate
+concern and is unaffected: task files stay NNN-title.md inside tasks/.
 
 Emits JSON to stdout.  Exit codes:
   0 — task found or all-complete
@@ -115,13 +123,45 @@ def _feature_sort_key(feature_dir):
 
 def _glob_feature_dirs(root):
     # type: (Path) -> List[Path]
-    """Return sorted list of specs/* dirs that contain breakdown-handoff.json.
+    """Return the feature dirs under specs/ that contain breakdown-handoff.json.
 
-    Sorted by NNN prefix (lowest-numbered feature first) via
-    _feature_sort_key -- kept ON TOP of find_feature_dirs_with's own
-    return order (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase
-    1's resolution accessor), which this function delegates to for
-    membership only.
+    RESOLUTION ORDER: legacy NNN-<slug> directories first, in ascending
+    NNN; then <YYYY>/<MM>/<leaf> directories, by year, then month, then
+    leaf name.  A mixed install therefore drains every legacy feature
+    before the first dated one, and an install carrying only one of the
+    two shapes sees only that half of the order.
+
+    That order is produced by two cooperating sorts, not by
+    _feature_sort_key alone:
+
+      1. find_feature_dirs_with (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+         PLAN.md Phase 1's resolution accessor, which this function
+         delegates to for membership) already returns both shapes in
+         exactly that order -- legacy keyed (0, NNN, name), dated keyed
+         (1, YYYY, MM, leaf).
+      2. _feature_sort_key then re-sorts on the leading digits of the
+         directory NAME.  A legacy dir yields its NNN (<= 999, the
+         pattern being exactly three digits); a dated dir's leaf never
+         starts with a digit, so every dated dir yields the 2**31
+         fallback and they all TIE.  list.sort is stable, so that tie
+         PRESERVES step 1's order instead of scrambling it, and the
+         legacy dirs still sort ahead of the whole tied block.
+
+    Step 2's tie rests on a property worth naming, because losing it
+    would silently reorder the queue: a dated leaf is either a normalized
+    ticket (_shared.feature_alloc.TICKET_RE, ^[A-Z]+-[0-9]+$) or, for a
+    ticketless allocation, a validated slug (FEATURE_NAME_RE, ^[a-z]...),
+    and both are anchored on a LETTER.  A leaf able to start with a digit
+    would sort into the legacy band instead.
+
+    Ordering inside a dated month bucket is by leaf name, which is NOT
+    chronological -- ticket leaves interleave across tracker prefixes
+    (ENG-* vs PROJ-*).  Do not read this queue as strictly oldest-first
+    below the month level.
+
+    Task numbering is untouched by all of this: task files inside a
+    feature's tasks/ dir stay NNN-title.md, ordered by
+    _task_number_sort_key.
 
     Passes `root / "specs"` -- the repo root this function already knows
     about -- straight through as the accessor's specs_root argument. No

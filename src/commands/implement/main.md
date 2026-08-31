@@ -24,11 +24,11 @@ allowed-tools:
 
 # /devforge:implement — Per-Task Execution Loop
 
-`/devforge:implement` is repeatable per feature. It drains the lowest-numbered incomplete feature's breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous four-reviewer review panel → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
+`/devforge:implement` is repeatable per feature. It drains the first incomplete feature in resolution order (PHASE 1 defines that order), taking its breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous four-reviewer review panel → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
 
 The orchestrator runs the loop in the main thread. Subagent dispatch via the Task tool is reserved for the implementing engineer (per task) and the four read-only review-panel agents (`code-reviewer`, `qa-reviewer`, `security-reviewer`, `performance-analyst`), fanned out in parallel per review-panel round. The helper (`.devforge/lib/implement_helper`) owns task resolution, scope-aware verification, the self-repair and review-panel counters, the forcing-functions gate, the per-task commit, completion marking, and session-state — the orchestrator composes values and drives the loop.
 
-Usage: `/devforge:implement` — no arguments. The command resolves the lowest-numbered incomplete feature and walks its tasks in dependency order; there is no `N`, range, or `all` form. Per-task human approval is logically incompatible with batch forms.
+Usage: `/devforge:implement` — no arguments. The command resolves the first incomplete feature in resolution order (PHASE 1) and walks its tasks in dependency order; there is no `N`, range, or `all` form. Per-task human approval is logically incompatible with batch forms.
 
 ## Outputs of this phase
 
@@ -80,13 +80,13 @@ Read `.devforge/wip.md`.
 
 ## PHASE 1: Resolve the next task
 
-Resolve the lowest-numbered incomplete feature's lowest dependency-ready task via the helper:
+Resolve the next runnable task — the first incomplete feature in resolution order, and within it that feature's lowest dependency-ready task — via the helper:
 
 ```bash
 .devforge/lib/implement_helper resolve-next-task
 ```
 
-The helper scans the feature directories under `specs/` for those carrying a `breakdown-handoff.json`, reads each task's `**Status**:` line, picks the lowest-numbered feature with ≥1 incomplete task (Status not `Complete` and not `Skipped`), and within it the lowest-numbered task whose `depends_on` are all `Complete` or `Skipped`. It emits one JSON object on stdout with a `state` field:
+The helper scans the feature directories under `specs/` for those carrying a `breakdown-handoff.json`, reads each task's `**Status**:` line, picks the first feature in resolution order with ≥1 incomplete task (Status not `Complete` and not `Skipped`), and within it the lowest-numbered task whose `depends_on` are all `Complete` or `Skipped`. **Resolution order** is: legacy `<NNN>-<slug>` feature directories first, in ascending `NNN`; then feature directories sitting in a `<YYYY>/<MM>/` bucket, ordered by year, then month, then directory name. Both namings resolve — an install carrying only one of them simply sees only that half of the order — and task numbering inside `tasks/` is untouched by either. It emits one JSON object on stdout with a `state` field:
 
 - **`{"state": "task", ...}`** (exit 0) → a runnable task. The object carries `feature_dir`, `number`, `title`, `agent`, `depends_on`, `touched_files`, `expects`, `produces`, `ac_addressed`, `doc_refs`, `review_checkpoint`, plus the resolved on-disk paths and progress snapshot: `task_file` (absolute path to the task's `tasks/NNN-*.md`, or `null` if the file is missing), `index_file` (absolute path to `tasks/README.md`, or `null` if missing), `completed_count` (int), and `total_count` (int) for the active feature. Capture all of these; they drive the rest of the loop. **Null-path guard:** if `task_file` is `null` OR `index_file` is `null`, STOP — do NOT proceed to PHASE 2. The task is scheduled in the breakdown handoff but its task file or index is missing on disk (a `/devforge:breakdown` setup failure). Tell the user which is missing (the `null` field) and that the breakdown must be re-run or repaired before `/devforge:implement` can advance. Otherwise proceed to PHASE 2.
 - **`{"state": "all-complete"}`** (exit 0) → every feature's tasks are `Complete` or `Skipped` (or there are no features with a breakdown handoff). Tell the user `"✅ All feature tasks complete. Next: run /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize"` and end the loop.

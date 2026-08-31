@@ -45,8 +45,9 @@ _SUBCOMMAND_REGISTRY = [
     (
         "resolve-next-task",
         (
-            "Scan specs/*/ for breakdown-handoff.json files and emit JSON "
-            "describing the next runnable task (lowest-numbered feature, "
+            "Scan the feature directories under specs/ for "
+            "breakdown-handoff.json files and emit JSON describing the "
+            "next runnable task (first feature in resolution order, "
             "lowest dependency-ready incomplete task). "
             "Emits {state: task|all-complete|blocked}."
         ),
