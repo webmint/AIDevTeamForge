@@ -142,12 +142,16 @@ AUTO_MODE_REMINDER_SUBSTRINGS: Tuple[str, ...] = (
 # pattern. Re-exported here under the original names so every existing
 # `from ._schema import FEATURE_NAME_RE` (etc.) import keeps resolving
 # unchanged -- this is a re-export, not a redefinition; edit the shared
-# module, not this one.
+# module, not this one. classify_feature_dir_identity (91-FEATURE-DIR-
+# IDENTITY-AND-PROVENANCE-PLAN.md Phase 3) joins this list for the same
+# reason: it is the single place _cmds_handoff.py's import-handoff gets
+# both the legacy regex AND the new-shape ancestry check it now needs.
 from _shared.feature_alloc import (  # type: ignore[import]  # noqa: E402
     FEATURE_NAME_RE,
     SPEC_NUMBER_DIR_RE,
     SPEC_NUMBER_WIDTH,
     SPECS_ROOT_DEFAULT,
+    classify_feature_dir_identity,
 )
 
 SUBSECTION_HEADING_BY_KEY: Dict[str, Tuple[str, str]] = {

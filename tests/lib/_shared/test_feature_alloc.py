@@ -70,6 +70,16 @@ spec/<NNN>-<slug>):
                            excluded, and so is a dir holding a DIRECTORY of
                            that name rather than a file; a symlinked
                            sentinel file matches, a dangling one does not.
+  classify_feature_dir_identity — Phase 3's "depth-branch problem" fix:
+                           legacy shape seeds both spec_number and
+                           feature_slug (unmodified); new-shape ticketless
+                           seeds feature_slug only (spec_number never
+                           fabricated); new-shape ticketed seeds neither
+                           (the leaf is a ticket, not a slug); a
+                           FEATURE_NAME_RE-shaped basename lacking real
+                           YYYY/MM ancestry seeds nothing (not
+                           misclassified as new-shape); shallow paths with
+                           no real ancestry do not crash.
 
 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2 coverage (ticket
 identity):
@@ -161,6 +171,7 @@ from _shared.feature_alloc import (  # noqa: E402
     TICKET_RE,
     YEAR_DIR_RE,
     allocate_feature_dir,
+    classify_feature_dir_identity,
     decide_branch_action,
     find_feature_dirs_with,
     iter_feature_dirs,
@@ -1041,6 +1052,82 @@ class TestFindFeatureDirsWith(unittest.TestCase):
                 self.assertEqual(result, [])
             finally:
                 os.chmod(feature_dir, 0o755)
+
+
+# ---------------------------------------------------------------------------
+# classify_feature_dir_identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md Phase 3's "depth-branch problem").
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyFeatureDirIdentity(unittest.TestCase):
+    def test_legacy_shape_seeds_both_fields(self):
+        """Byte-identical to the pre-Phase-3 behaviour: a legacy
+        NNN-slug basename yields both spec_number and feature_slug."""
+        result = classify_feature_dir_identity(
+            Path("specs") / "003-auth-token-refresh"
+        )
+        self.assertEqual(
+            result, {"spec_number": "003", "feature_slug": "auth-token-refresh"}
+        )
+
+    def test_new_shape_ticketless_leaf_seeds_feature_slug_only(self):
+        """A genuine specs/YYYY/MM/<slug>/ dir (no ticket at allocation) --
+        feature_slug is recoverable (the leaf IS the validated slug);
+        spec_number stays None, never fabricated."""
+        result = classify_feature_dir_identity(
+            Path("specs") / "2026" / "08" / "second-feature"
+        )
+        self.assertEqual(
+            result, {"spec_number": None, "feature_slug": "second-feature"}
+        )
+
+    def test_new_shape_ticketed_leaf_seeds_neither_field(self):
+        """A genuine specs/YYYY/MM/<TICKET>/ dir -- the leaf is a ticket,
+        not a slug (fails FEATURE_NAME_RE structurally: first char is
+        uppercase), so neither field is recoverable."""
+        result = classify_feature_dir_identity(
+            Path("specs") / "2026" / "08" / "PROJ-123"
+        )
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
+
+    def test_slug_shaped_leaf_without_real_yyyy_mm_ancestry_seeds_nothing(self):
+        """A FEATURE_NAME_RE-shaped basename that is NOT actually sitting
+        under a real YYYY/MM pair (e.g. a flat specs/<slug>/ or an
+        arbitrary tempdir) must not be misclassified as new-shape --
+        the ancestry check is what keeps this honest, exactly as
+        iter_feature_dirs already requires the same ancestry to admit a
+        dir as new-shape."""
+        result = classify_feature_dir_identity(Path("specs") / "some-slug")
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
+
+    def test_month_matches_but_year_does_not_seeds_nothing(self):
+        result = classify_feature_dir_identity(
+            Path("specs") / "notayear" / "08" / "second-feature"
+        )
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
+
+    def test_year_matches_but_month_does_not_seeds_nothing(self):
+        result = classify_feature_dir_identity(
+            Path("specs") / "2026" / "summer" / "second-feature"
+        )
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
+
+    def test_shallow_path_with_no_real_ancestry_does_not_crash(self):
+        """A bare single-segment path (no parent/grandparent at all) must
+        not raise -- Path.parent.parent on a shallow relative path returns
+        '.', whose name is '', which simply fails both ancestry regexes."""
+        result = classify_feature_dir_identity(Path("PROJ-123"))
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
+
+    def test_non_matching_basename_under_real_ancestry_seeds_nothing(self):
+        """A basename matching neither the legacy shape nor FEATURE_NAME_RE
+        (e.g. uppercase, or too many/few segments) under real YYYY/MM
+        ancestry still seeds nothing -- only a valid slug is recoverable."""
+        result = classify_feature_dir_identity(
+            Path("specs") / "2026" / "08" / "Not_A_Valid_Slug"
+        )
+        self.assertEqual(result, {"spec_number": None, "feature_slug": None})
 
 
 # ---------------------------------------------------------------------------

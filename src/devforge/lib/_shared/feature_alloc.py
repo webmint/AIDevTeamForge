@@ -108,6 +108,21 @@ iter_feature_dirs       -- every feature directory under a GIVEN specs
 find_feature_dirs_with  -- iter_feature_dirs filtered to dirs containing a
                            given filename.  Same specs_root-not-devforge_dir
                            signature.
+classify_feature_dir_identity
+                        -- given a RESOLVED feature directory (not a
+                           specs_root -- a single directory, e.g. what
+                           _specify/_cmds_handoff.py's import-handoff
+                           already has as handoff_path.parent), returns
+                           whatever legacy NNN-slug identity it carries:
+                           {"spec_number": Optional[str], "feature_slug":
+                           Optional[str]}.  Closes 91-FEATURE-DIR-IDENTITY-
+                           AND-PROVENANCE-PLAN.md Phase 3's own "depth-
+                           branch problem" ⚠ for the SEEDING half only --
+                           see the function's own docstring for the full
+                           three-shape argument and for what it deliberately
+                           does NOT fix (specify/main.md Step 4.1's
+                           warm/cold/fallback routing, which is prose, not
+                           seeding).
 TICKET_RE               -- OQ-2's ratified ticket-ID format:
                            [A-Z]+-[0-9]+ (e.g. "PROJ-123").  Full-string,
                            uppercase-only match -- see normalize_ticket's
@@ -242,7 +257,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +273,10 @@ SPEC_NUMBER_WIDTH = 3
 # now be split into (number, slug) in one match -- used by
 # _specify/_cmds_handoff.py's import-handoff to seed state["spec_number"] /
 # state["feature_slug"] from the RESOLVED intake dir the handoff already
-# sits in, instead of leaving them for a fresh NNN scan.
+# sits in, instead of leaving them for a fresh NNN scan. As of Phase 3,
+# import-handoff reaches this regex indirectly, via
+# classify_feature_dir_identity below (which also covers the two new-shape
+# cases that regex alone cannot) -- this regex itself is unchanged.
 #
 # Deliberately kept at EXACTLY 3 digits (not widened to \d{3,}) -- a
 # widened digit count would flip next_spec_number's existing "4+-digit
@@ -896,6 +914,110 @@ def find_feature_dirs_with(specs_root, filename):
         if is_match:
             matches.append(feature_dir)
     return matches
+
+
+# ---------------------------------------------------------------------------
+# classify_feature_dir_identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md Phase 3's "depth-branch problem" -- see the function's own
+# docstring for the full argument).
+# ---------------------------------------------------------------------------
+
+
+def classify_feature_dir_identity(feature_dir):
+    # type: (Union[str, "os.PathLike[str]"]) -> Dict[str, Optional[str]]
+    """Classify a RESOLVED feature directory's own legacy NNN-slug identity.
+
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's own ⚠ names
+    this "the depth-branch problem": _specify/_cmds_handoff.py's
+    import-handoff seeds state["spec_number"] / state["feature_slug"] by
+    matching SPEC_NUMBER_DIR_RE against the handoff's containing directory
+    name alone -- a test that only ever recognized the legacy
+    specs/NNN-slug/ shape. Under the Phase-3 layout
+    (specs/<YYYY>/<MM>/<leaf>/) that match always fails, so a fresh
+    install silently stopped seeding either field for every new-shape
+    intake. This function closes that gap. It is extracted here (not left
+    inline at the call site) because directory-shape knowledge --
+    SPEC_NUMBER_DIR_RE, FEATURE_NAME_RE, YEAR_DIR_RE, MONTH_DIR_RE -- all
+    already lives in this module and nowhere else; duplicating even one of
+    those four regexes at the call site would create a second place a
+    future layout change has to remember to edit.
+
+    Takes the feature directory itself (e.g. handoff_path.parent), not a
+    specs_root -- this is a single-directory classification, not a scan.
+
+    Returns {"spec_number": Optional[str], "feature_slug": Optional[str]}.
+    Never fabricates a value -- an unrecoverable field is None, never a
+    placeholder (this plan's own D9, "a fake value is worse than no
+    value", stated there for a different field but the same principle
+    applies here):
+
+    - Legacy shape (feature_dir's OWN basename matches SPEC_NUMBER_DIR_RE,
+      e.g. "003-auth-token-refresh"): spec_number = "003", feature_slug =
+      "auth-token-refresh" -- BYTE-IDENTICAL to the pre-Phase-3 behaviour
+      every existing caller depends on. Checked first and unconditionally:
+      a legacy name can never also satisfy the new-shape ancestry check
+      below (a legacy match requires a literal "-" at index 3, which a
+      bare 2-digit MONTH or 4-digit YEAR ancestor never has), so there is
+      no ordering hazard between the two branches.
+    - New shape, ticketless leaf: feature_dir's PARENT matches
+      MONTH_DIR_RE and its GRANDPARENT matches YEAR_DIR_RE (the exact
+      ancestry iter_feature_dirs already requires to admit a directory as
+      new-shape -- reused here, not reinvented) AND feature_dir's own
+      basename matches FEATURE_NAME_RE: feature_slug = that basename
+      verbatim (a REAL value -- allocate_feature_dir only ever writes a
+      FEATURE_NAME_RE-shaped ticketless leaf, so this is read-back, not a
+      guess), spec_number = None (there never was an NNN for this
+      directory; synthesising one would manufacture an identity nobody
+      assigned).
+    - New shape, ticketed leaf (e.g. "PROJ-123"): the same ancestry check
+      passes, but the basename is a ticket, not a slug, so it FAILS
+      FEATURE_NAME_RE (a ticket's first character is always uppercase;
+      FEATURE_NAME_RE's first-character class is `[a-z]` -- the two
+      patterns are structurally disjoint, so no separate ticket regex is
+      needed here to tell them apart). Both fields stay None: there is no
+      NNN, and writing the ticket into feature_slug would inject a value
+      that fails the very pattern every other feature_slug consumer
+      assumes (specify_helper's own assign-feature-name validates against
+      exactly FEATURE_NAME_RE). Recovering neither field is not a
+      limitation of this function -- it is the correct answer for a
+      directory whose only identity is a ticket.
+    - Anything else (a hand-made or pre-migration directory whose basename
+      matches neither shape, e.g. a handoff imported from an arbitrary
+      path outside the specs/ tree): both fields stay None, exactly as
+      before this function existed. The ancestry check is what keeps this
+      case honest -- a directory that merely HAS a FEATURE_NAME_RE-shaped
+      basename but is not actually sitting under a real YYYY/MM pair (an
+      arbitrary tempdir in a test, for instance) does not get
+      feature_slug seeded either.
+
+    What this function does NOT do: it does not fix
+    src/commands/specify/main.md's Step 4.1 warm/cold/fallback routing,
+    which independently re-parses the resolved directory's basename text
+    and requires the exact legacy <NNN>-<slug> shape for its own warm and
+    cold paths. A new-shape directory -- ticketed or ticketless -- still
+    falls through to Step 4.1's genuine-fallback arm today, which
+    allocates an UNRELATED fresh legacy-shaped directory rather than
+    reusing this one. That routing gap is prose, not seeding, and is
+    unchanged by this function -- closing it needs a fourth Step 4.1 path,
+    which is a command-spec edit this function does not make.
+    """
+    feature_dir = Path(feature_dir)
+    leaf = feature_dir.name
+
+    legacy_match = SPEC_NUMBER_DIR_RE.match(leaf)
+    if legacy_match:
+        return {
+            "spec_number": legacy_match.group(1),
+            "feature_slug": legacy_match.group(2),
+        }
+
+    month_name = feature_dir.parent.name
+    year_name = feature_dir.parent.parent.name
+    is_new_shape = bool(MONTH_DIR_RE.match(month_name) and YEAR_DIR_RE.match(year_name))
+    if is_new_shape and FEATURE_NAME_RE.match(leaf):
+        return {"spec_number": None, "feature_slug": leaf}
+
+    return {"spec_number": None, "feature_slug": None}
 
 
 # ---------------------------------------------------------------------------

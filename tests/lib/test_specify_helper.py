@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Project layout: tests/lib/<this>.py → ../../ is repo root.
@@ -25,6 +26,7 @@ LIB = ROOT / "src" / "devforge" / "lib"
 sys.path.insert(0, str(LIB))
 
 import specify_helper  # noqa: E402
+from _shared.feature_alloc import allocate_feature_dir  # noqa: E402
 from _shared.memory import MEMORY_RELATIVE_PATH  # noqa: E402
 
 HELPER = LIB / "specify_helper.py"
@@ -5957,6 +5959,69 @@ class TestImportHandoff(unittest.TestCase):
             self.assertIsNone(state["spec_number"])
             self.assertIsNone(state["feature_slug"])
 
+    def test_import_handoff_new_shape_ticketless_seeds_feature_slug_only(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's own
+        "depth-branch problem" ⚠, closed for the seeding half: a REAL
+        allocate_feature_dir call (no ticket -- REQUIRE_TICKET defaults
+        false) writes specs/YYYY/MM/<slug>/, and import-handoff now seeds
+        feature_slug from that leaf. spec_number stays None -- there was
+        never an NNN for this directory, and none is fabricated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(devforge, "second-feature", now=now)
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "second-feature")
+
+    def test_import_handoff_new_shape_ticketed_leaves_both_unseeded(self):
+        """Same real-producer round-trip, but WITH a ticket: the leaf is
+        "PROJ-123" -- a ticket, not a slug (fails FEATURE_NAME_RE
+        structurally: first char uppercase). Neither field is
+        recoverable: no NNN, and the leaf itself is not a valid
+        feature_slug value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(
+                devforge, "third-feature", ticket="PROJ-123", now=now,
+            )
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(state["spec_number"])
+            self.assertIsNone(state["feature_slug"])
+
     def test_import_handoff_outside_repo_root_stores_absolute_handoff_path(self):
         """python-reviewer finding 3: _root_relative's outside-root
         fallback -- a --handoff-path pointing at a file in a SIBLING tmp
@@ -6417,6 +6482,37 @@ class TestImportHandoffDiscover(unittest.TestCase):
             self.assertIsInstance(state["affected_areas"], list)
             self.assertIsInstance(state["risks"], list)
             self.assertIsInstance(state["open_questions"], list)
+
+    def test_import_handoff_discover_new_shape_ticketless_seeds_feature_slug_only(self):
+        """The discover-lane call site (_import_handoff_discover) wires
+        into the same classify_feature_dir_identity as the research lane
+        (see TestImportHandoff's matching test) -- a REAL
+        allocate_feature_dir call (no ticket) writes
+        specs/YYYY/MM/<slug>/, and import-handoff seeds feature_slug from
+        that leaf while leaving spec_number None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            devforge_d = tmp_path / "discover_df"
+            devforge_d.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(devforge, "fourth-feature", now=now)
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "discover-handoff.json"
+
+            r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "fourth-feature")
 
     def test_import_handoff_discover_rejects_unknown_kind(self):
         """handoff_kind='bogus' -> exit 2."""

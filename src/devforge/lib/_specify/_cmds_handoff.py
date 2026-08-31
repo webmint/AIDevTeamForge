@@ -20,14 +20,24 @@ import-handoff:
     absent / "research"  -> research branch (existing behaviour).
   Unknown explicit handoff_kind -> exit 2.
   68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 (python-reviewer finding 1):
-  also seeds state["spec_number"] / state["feature_slug"] by parsing the
-  handoff's own containing dir name (e.g. "003-foo-bar") against
-  SPEC_NUMBER_DIR_RE -- so a later Phase's spec.md write lands in the SAME
-  dir the intake handoff already lives in, instead of a fresh NNN scan
-  allocating a different one.  A non-matching dir name (pre-migration
-  handoff imported from an arbitrary path) leaves both fields unseeded, no
-  error -- the D5 fallback guard (assign-spec-number / the new
-  set-spec-number verb) covers that case.
+  also seeds state["spec_number"] / state["feature_slug"] from the
+  handoff's own containing dir name (e.g. "003-foo-bar") -- so a later
+  Phase's spec.md write lands in the SAME dir the intake handoff already
+  lives in, instead of a fresh NNN scan allocating a different one.
+  Delegates the classification to
+  _shared.feature_alloc.classify_feature_dir_identity (91-FEATURE-DIR-
+  IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's "depth-branch problem" fix --
+  see that function's own docstring for the full three-shape argument):
+  a legacy dir seeds both fields exactly as before; a Phase-3 new-shape
+  ticketless dir seeds feature_slug only (spec_number is never fabricated
+  -- there is no NNN); a new-shape ticketed dir seeds neither (the leaf is
+  a ticket, not a slug). Any dir matching none of the three -- e.g. a
+  pre-migration handoff imported from an arbitrary path -- leaves both
+  fields unseeded, no error -- the D5 fallback guard (assign-spec-number /
+  the new set-spec-number verb) covers that case. Seeding feature_slug
+  alone does NOT by itself route a new-shape spec.md write into the
+  resolved intake dir -- see classify_feature_dir_identity's own docstring
+  for why that routing gap is separate, and is not closed here.
 
 find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   One glob pass over specs/*/research-handoff.json AND
@@ -66,7 +76,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ._schema import SPEC_NUMBER_DIR_RE
+from ._schema import classify_feature_dir_identity
 from ._state import _atomic_write_json, _load_state, _state_path, _state_transaction
 from ._validators import _die
 
@@ -568,16 +578,17 @@ def _import_handoff_research(
     handoff_path_rel = _root_relative(handoff_path, repo_root)
     future_spec_path = _root_relative(handoff_path.parent / "spec.md", repo_root)
 
-    # python-reviewer finding 1 (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4):
-    # seed spec_number + feature_slug from the RESOLVED intake dir's own
-    # name -- without this, main.md's unconditional assign-spec-number
+    # python-reviewer finding 1 (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4),
+    # widened for Phase 3's depth-branch problem: classify whatever legacy
+    # NNN-slug identity the RESOLVED intake dir carries -- without seeding
+    # spec_number on a legacy dir, main.md's unconditional assign-spec-number
     # fresh-scan on a later Phase would allocate a NEW NNN and send spec.md
     # to a *different* directory than the one the handoff (and this
-    # future_spec_path) already lives in. A non-matching parent dir name
-    # (e.g. a pre-migration handoff imported manually from an arbitrary
-    # path) leaves both fields unseeded -- no error; the D5 fallback guard
-    # (assign-spec-number / set-spec-number) covers that case downstream.
-    dir_match = SPEC_NUMBER_DIR_RE.match(handoff_path.parent.name)
+    # future_spec_path) already lives in. See classify_feature_dir_identity's
+    # own docstring for the three-shape rule (legacy / new-shape ticketless /
+    # new-shape ticketed) and for why seeding alone does not also fix
+    # main.md's Step 4.1 routing for the two new-shape cases.
+    identity = classify_feature_dir_identity(handoff_path.parent)
 
     # Pre-seed state; check for re-import.
     warn_user_content = False
@@ -615,9 +626,10 @@ def _import_handoff_research(
             state["source"]["handoff_path"] = handoff_path_rel
             state["source"]["handoff_kind"] = "research"
             state["source"]["research_completed_at"] = research_completed_at
-            if dir_match:
-                state["spec_number"] = dir_match.group(1)
-                state["feature_slug"] = dir_match.group(2)
+            if identity["spec_number"] is not None:
+                state["spec_number"] = identity["spec_number"]
+            if identity["feature_slug"] is not None:
+                state["feature_slug"] = identity["feature_slug"]
     except (OSError, json.JSONDecodeError) as err:
         sys.stderr.write("import-handoff: state error: {0}\n".format(err))
         return 2
@@ -761,7 +773,7 @@ def _import_handoff_discover(
     # python-reviewer finding 1 -- see the matching comment in
     # _import_handoff_research above; identical rationale for the discover
     # lane.
-    dir_match = SPEC_NUMBER_DIR_RE.match(handoff_path.parent.name)
+    identity = classify_feature_dir_identity(handoff_path.parent)
 
     # Pre-seed state; check for re-import.
     warn_user_content = False
@@ -800,9 +812,10 @@ def _import_handoff_discover(
             state["source"]["handoff_kind"] = "discover"
             state["source"]["discover_completed_at"] = discover_completed_at
             state["source"]["discover_recommended_summary"] = discover_recommended_summary
-            if dir_match:
-                state["spec_number"] = dir_match.group(1)
-                state["feature_slug"] = dir_match.group(2)
+            if identity["spec_number"] is not None:
+                state["spec_number"] = identity["spec_number"]
+            if identity["feature_slug"] is not None:
+                state["feature_slug"] = identity["feature_slug"]
     except (OSError, json.JSONDecodeError) as err:
         sys.stderr.write("import-handoff: state error: {0}\n".format(err))
         return 2
