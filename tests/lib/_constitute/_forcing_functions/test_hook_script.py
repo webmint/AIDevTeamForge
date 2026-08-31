@@ -30,6 +30,23 @@ test_hook_exits_1_on_violation
 
 test_hook_stderr_message_contains_rule_name
     Error message includes the failing verb name.
+
+test_hook_runs_design_check_when_manifest_at_new_depth
+    design-manifest.json at specs/YYYY/MM/TICKET/ (depth 4) -> the
+    verify-design-tokens check RUNS (plan 91 Phase 3 regression: this is
+    the exact case that was silently skipped before the -maxdepth fix).
+
+test_hook_runs_design_check_when_manifest_at_legacy_depth
+    design-manifest.json at specs/NNN-slug/ (depth 2) -> still runs.
+
+test_hook_runs_design_check_when_both_shapes_present
+    Manifests at both depths -> runs.
+
+test_hook_skips_design_check_when_no_manifest_present
+    Feature directories exist at both depths but neither carries a
+    design-manifest.json -> the check is SKIPPED (exit 0). This is the
+    load-bearing negative: it proves the predicate finds manifests and
+    nothing else, not just that it finds manifests.
 """
 
 from __future__ import annotations
@@ -273,6 +290,74 @@ class TestHookMultipleRules(unittest.TestCase):
     def test_hook_exits_1_when_any_rule_violates(self):
         result = _run_hook(self.root)
         self.assertEqual(result.returncode, 1)
+
+
+class TestHookDesignManifestDepth(unittest.TestCase):
+    """verify-design-tokens is only run when a design-manifest.json is found.
+
+    Feature directories now exist in two coexisting shapes with no migration
+    (plan 91 D6): legacy specs/NNN-slug/ (depth 2 below specs/) and
+    specs/YYYY/MM/TICKET/ (depth 4). The hook's `find` predicate must cover
+    both. The stub helper's verify-design-tokens exits 2 (violation) so a
+    run is observable as hook exit 1; a skip is observable as hook exit 0 —
+    no other signal is needed to tell "ran" from "skipped".
+    """
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self.root = Path(self._td)
+        _git_init(self.root)
+        devforge = self.root / ".devforge"
+        _write_config(devforge, {
+            "design_token_provenance": {"enabled": True},
+        })
+        helper = devforge / "lib" / "constitute_helper"
+        _write_stub_helper(
+            helper,
+            list_output="verify-design-tokens\n",
+            verify_exit=2,
+        )
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_manifest(self, relative_dir: str) -> None:
+        manifest_dir = self.root / "specs" / relative_dir
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "design-manifest.json").write_text("{}", encoding="utf-8")
+
+    def test_hook_runs_design_check_when_manifest_at_new_depth(self):
+        # specs/YYYY/MM/TICKET/design-manifest.json — depth 4 below specs/.
+        self._write_manifest("2026/08/PROJ-123")
+        result = _run_hook(self.root)
+        self.assertEqual(result.returncode, 1)
+
+    def test_hook_runs_design_check_when_manifest_at_legacy_depth(self):
+        # specs/NNN-slug/design-manifest.json — depth 2 below specs/.
+        self._write_manifest("007-old-thing")
+        result = _run_hook(self.root)
+        self.assertEqual(result.returncode, 1)
+
+    def test_hook_runs_design_check_when_both_shapes_present(self):
+        self._write_manifest("2026/08/PROJ-123")
+        self._write_manifest("007-old-thing")
+        result = _run_hook(self.root)
+        self.assertEqual(result.returncode, 1)
+
+    def test_hook_skips_design_check_when_no_manifest_present(self):
+        # Feature directories exist in both shapes, but neither carries a
+        # design-manifest.json. The check must be SKIPPED (exit 0), not run
+        # against an absent file — proving the predicate is manifest-scoped,
+        # not just depth-scoped.
+        new_shape_dir = self.root / "specs" / "2026" / "08" / "PROJ-123"
+        new_shape_dir.mkdir(parents=True, exist_ok=True)
+        (new_shape_dir / "plan.md").write_text("# plan", encoding="utf-8")
+        legacy_dir = self.root / "specs" / "007-old-thing"
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        (legacy_dir / "plan.md").write_text("# plan", encoding="utf-8")
+        result = _run_hook(self.root)
+        self.assertEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":
