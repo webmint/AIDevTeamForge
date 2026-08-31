@@ -2830,6 +2830,13 @@ class TestPhase4SetDate(unittest.TestCase):
 
 class TestPhase4CreateBranch(unittest.TestCase):
     def test_emits_checkout_on_default_branch(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D5/D6: cmd_create_
+        branch always passes ticket=None (specify-state.json carries no
+        ticket field), so the 'create' arm falls back to feature_slug --
+        spec/<feature_slug>, never spec/<spec_number>-<feature_slug>.
+        assign-spec-number is still called above because spec_number still
+        matters for /specify's own directory allocation; it is no longer
+        consumed by create-branch itself."""
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
@@ -2847,7 +2854,7 @@ class TestPhase4CreateBranch(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn(
-                "git checkout -b spec/001-add-darkmode", r.stdout,
+                "git checkout -b spec/add-darkmode", r.stdout,
             )
             state = json.loads((dev / "specify-state.json").read_text())
             self.assertEqual(state["branch_decision"], "create")
@@ -2867,7 +2874,12 @@ class TestPhase4CreateBranch(unittest.TestCase):
             self.assertEqual(state["branch_decision"], "keep")
             self.assertFalse(state["branch_created"])
 
-    def test_rejects_missing_spec_number_when_default(self):
+    def test_rejects_missing_feature_slug_when_default(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3: since
+        ticket is always None for /specify, the 'create' arm's only
+        identity source is feature_slug -- the refusal message now names
+        that field, not spec_number (which decide_branch_action no longer
+        receives from this call site)."""
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
@@ -2876,7 +2888,7 @@ class TestPhase4CreateBranch(unittest.TestCase):
                 "--current-branch", "main", "--default-branch", "main",
             ])
             self.assertEqual(r.returncode, 2)
-            self.assertIn("spec_number", r.stderr)
+            self.assertIn("feature_slug", r.stderr)
 
 
 # ---------------------------------------------------------------------------

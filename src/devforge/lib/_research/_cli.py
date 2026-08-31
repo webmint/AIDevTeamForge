@@ -1119,21 +1119,40 @@ def _register_subcommands(subparsers) -> None:
     sp.add_argument(
         "--slug", required=True,
         help=(
-            "Feature slug for the branch name. Consumed only by the "
-            "'create' arm (current branch == default branch) -- CLI-required "
+            "Feature slug for the branch name -- the fallback identity "
+            "used when no --ticket is supplied (91-FEATURE-DIR-IDENTITY-"
+            "AND-PROVENANCE-PLAN.md D5). Consumed only by the 'create' arm "
+            "(current branch == default branch) -- CLI-required "
             "regardless, because plan 68 D1's finalize ordering guarantees "
             "allocation always precedes this call, so the caller always has "
             "it on hand."
         ),
     )
     sp.add_argument(
-        "--number", required=True,
+        "--ticket", default=None,
         help=(
-            "Zero-padded NNN spec number (e.g. '004'). Consumed only by the "
-            "'create' arm (current branch == default branch) -- CLI-required "
-            "regardless, because plan 68 D1's finalize ordering guarantees "
-            "allocation always precedes this call, so the caller always has "
-            "it on hand."
+            "Optional ticket ID (e.g. 'PROJ-123'), taking priority over "
+            "--slug on the 'create' arm (91-FEATURE-DIR-IDENTITY-AND-"
+            "PROVENANCE-PLAN.md D5: the branch is spec/<ticket> when one "
+            "is given, else spec/<slug>). Pass the SAME normalized value "
+            "allocate-feature-dir's own --ticket already validated and "
+            "echoed back in its 'ticket' JSON key -- this verb performs "
+            "no format validation of its own (decide_branch_action takes "
+            "the value verbatim)."
+        ),
+    )
+    sp.add_argument(
+        "--number",
+        default=None,
+        help=(
+            "ACCEPTED BUT IGNORED (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-"
+            "PLAN.md Phase 3, D5/D6): a NEW branch is never named "
+            "spec/<NNN>-<slug> any more, so this value is never read -- "
+            "see _shared.feature_alloc.decide_branch_action for the "
+            "ticket-or-slug rule that replaced it. Kept only so "
+            "src/commands/research/main.md's existing render-branch-command "
+            "call (which still passes --number) does not break; no longer "
+            "required."
         ),
     )
     sp.add_argument("--current-branch", required=True, dest="current_branch")

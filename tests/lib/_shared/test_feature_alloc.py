@@ -3,15 +3,54 @@
 Coverage:
   next_spec_number      — fresh repo -> 1; existing specs/003-* -> 4;
                            non-NNN dirs ignored; wrapper-root resolution.
-  allocate_feature_dir  — fresh repo -> 001-<slug>; existing specs/003-* ->
-                           004-<slug>; slug collision allowed (OQ-4);
-                           invalid slug rejected; existing-target-dir
-                           failure is loud (no silent reuse); result dict
-                           shape.
+                           UNCHANGED by 91-FEATURE-DIR-IDENTITY-AND-
+                           PROVENANCE-PLAN.md Phase 3 — allocate_feature_dir
+                           no longer calls this function (D6), but the
+                           function itself, and this whole coverage block,
+                           are untouched.
+
+91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3 coverage (the
+layout switch — allocate_feature_dir now composes
+specs/<YYYY>/<MM>/<leaf>/, never specs/<NNN>-<slug>/, for every fresh
+allocation; decide_branch_action now emits spec/<ticket-or-slug>, never
+spec/<NNN>-<slug>):
+  allocate_feature_dir  — new-shape composition (year/month from an
+                           injected `now`, deterministic); ticket-given ->
+                           leaf is the ticket; ticketless (require_ticket
+                           False) -> leaf is the SLUG (Phase 3's own
+                           unresolved item 1 — see feature_alloc.py's
+                           docstring for the full argument; pinned here);
+                           `number`/`formatted_number`/`dirname` ABSENT
+                           from the result; wrapper-root resolution;
+                           relative_path correctness (forward slashes,
+                           genuinely relative, recombines to `path`);
+                           invalid slug still rejected first, unchanged;
+                           never-overwrite fails loudly on a same-ticket
+                           collision AND on a same-slug (ticketless)
+                           collision, both in the same YYYY/MM bucket, with
+                           NO mocking needed (the collision is constructed
+                           directly via a fixed `now` + a repeated
+                           ticket/slug — the old NNN-scan race simulation
+                           this replaces needed mock.patch precisely
+                           because NNN was derived from a scan; a
+                           ticket/slug leaf is caller-supplied, so the
+                           collision is just two calls with the same
+                           inputs).
   decide_branch_action  — all three arms (create / keep-spec / keep-other);
-                           missing spec_number/slug on the default branch;
+                           ticket-given -> spec/<ticket>; ticketless ->
+                           spec/<slug> (same Phase-3 item-1 fallback,
+                           pinned on this function too); missing BOTH
+                           ticket and slug on the default branch refuses;
                            keep-spec and keep-other render IDENTICAL text
                            (the original /specify wording, preserved).
+  (mixed-shape coexistence — D6 mandates both the legacy specs/NNN-slug/
+  shape and the new specs/YYYY/MM/leaf/ shape resolve, forever, in the
+  SAME install; TestIterFeatureDirs / TestFindFeatureDirsWith below
+  already pin this with hand-built trees from Phase 1, and
+  TestMixedShapeRealProducerRoundTrip adds a real-producer round-trip: an
+  actual allocate_feature_dir call writing the new shape, discovered
+  alongside a hand-built legacy dir, via iter_feature_dirs /
+  find_feature_dirs_with unmodified.)
   specs_root_for        — repo-root and wrapper-root resolution; pure path
                            arithmetic (no stat, safe on nonexistent paths);
                            composes with iter_feature_dirs.
@@ -67,12 +106,12 @@ identity):
                            what is refusing.
 
 All tests use real tempfile-backed filesystem trees — no hand-fabricated
-JSON, no mocked Path objects (except the one deliberate race-simulation
-test, which patches next_spec_number specifically to force a collision
-that cannot occur through normal sequential allocation, and the
-read_require_ticket edge-case fixtures noted above, which mirror the
-_verify/test_e2e.py precedent for a project-config.json reader's own
-malformed-input paths).
+JSON, no mocked Path objects (except the read_require_ticket edge-case
+fixtures noted above, which mirror the _verify/test_e2e.py precedent for
+a project-config.json reader's own malformed-input paths). Phase 3's own
+collision tests need no mocking at all (see the coverage note above) —
+the pre-Phase-3 race-simulation test that patched next_spec_number is
+retired along with the NNN-scan it simulated a race against.
 
 Stdlib only. Python 3.8+.
 """
@@ -83,8 +122,8 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest import mock
 
 # ---------------------------------------------------------------------------
 # Permission-guarded test gate.
@@ -199,49 +238,105 @@ class TestNextSpecNumber(unittest.TestCase):
 
 
 class TestAllocateFeatureDir(unittest.TestCase):
-    def test_fresh_repo_allocates_001(self):
+    # Fixed clock for every test below that needs a deterministic
+    # year/month bucket -- mirrors this codebase's "inject the timestamp"
+    # convention (see allocate_feature_dir's "Date source" docstring
+    # paragraph) rather than mocking datetime.now itself.
+    _NOW = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_fresh_allocation_ticketless_uses_slug_as_leaf(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's own
+        unresolved item 1, pinned: REQUIRE_TICKET defaults False (OQ-1)
+        and a ticketless allocation must still succeed (Phase 2's shipped
+        contract) even though the ticket is now the leaf (D2/D3). The
+        chosen resolution: the SLUG becomes the leaf when no ticket is
+        given."""
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            result, error = allocate_feature_dir(devforge_dir, "add-dark-mode")
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["number"], 1)
-            self.assertEqual(result["formatted_number"], "001")
             self.assertEqual(result["slug"], "add-dark-mode")
-            self.assertEqual(result["dirname"], "001-add-dark-mode")
+            self.assertIsNone(result["ticket"])
+            self.assertEqual(result["year"], "2026")
+            self.assertEqual(result["month"], "08")
+            self.assertEqual(result["leaf"], "add-dark-mode")
             self.assertTrue(result["created"])
-            expected_path = Path(td).resolve() / SPECS_ROOT_DEFAULT / "001-add-dark-mode"
+            expected_path = (
+                Path(td).resolve() / SPECS_ROOT_DEFAULT / "2026" / "08" / "add-dark-mode"
+            )
             self.assertEqual(Path(result["path"]), expected_path)
             self.assertTrue(expected_path.is_dir())
 
-    def test_existing_specs_003_allocates_004(self):
+    def test_fresh_allocation_with_ticket_uses_ticket_as_leaf(self):
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            specs_root = Path(td) / SPECS_ROOT_DEFAULT
-            (specs_root / "003-prior-feature").mkdir(parents=True)
-            result, error = allocate_feature_dir(devforge_dir, "next-feature-here")
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="PROJ-123", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["number"], 4)
-            self.assertEqual(result["dirname"], "004-next-feature-here")
-            self.assertTrue((specs_root / "004-next-feature-here").is_dir())
+            self.assertEqual(result["ticket"], "PROJ-123")
+            self.assertEqual(result["leaf"], "PROJ-123")
+            expected_path = (
+                Path(td).resolve() / SPECS_ROOT_DEFAULT / "2026" / "08" / "PROJ-123"
+            )
+            self.assertEqual(Path(result["path"]), expected_path)
+            self.assertTrue(expected_path.is_dir())
+            # D3: no slug composite in the leaf.
+            self.assertNotIn("add-dark-mode", result["leaf"])
 
-    def test_slug_collision_across_nnn_is_allowed(self):
-        """OQ-4: same slug, different NNN — no error, two distinct dirs."""
+    def test_ticket_and_slug_both_given_ticket_wins(self):
+        """D3: the leaf is the ticket ONLY -- a supplied slug never rides
+        along even when both are available."""
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            result1, error1 = allocate_feature_dir(devforge_dir, "same-slug-twice")
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="ENG-9", now=self._NOW,
+            )
+            self.assertIsNone(error)
+            self.assertEqual(result["leaf"], "ENG-9")
+            self.assertEqual(result["relative_path"], "specs/2026/08/ENG-9")
+
+    def test_legacy_shape_keys_absent_from_new_result(self):
+        """number / formatted_number / dirname existed on the pre-Phase-3
+        legacy-shape result; a fresh allocation no longer computes an NNN
+        at all, so these keys must not appear -- a caller must not assume
+        they exist."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", now=self._NOW,
+            )
+            self.assertIsNone(error)
+            self.assertNotIn("number", result)
+            self.assertNotIn("formatted_number", result)
+            self.assertNotIn("dirname", result)
+
+    def test_slug_reused_across_different_tickets_same_month_allowed(self):
+        """The plan-68 OQ-4 precedent, carried forward: the identity
+        (now the ticket) is what must be unique, not the slug -- two
+        features may legitimately share a slug."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result1, error1 = allocate_feature_dir(
+                devforge_dir, "same-slug-twice", ticket="PROJ-1", now=self._NOW,
+            )
             self.assertIsNone(error1)
-            result2, error2 = allocate_feature_dir(devforge_dir, "same-slug-twice")
+            result2, error2 = allocate_feature_dir(
+                devforge_dir, "same-slug-twice", ticket="PROJ-2", now=self._NOW,
+            )
             self.assertIsNone(error2)
-            self.assertNotEqual(result1["number"], result2["number"])
             self.assertEqual(result1["slug"], result2["slug"])
-            self.assertEqual(result1["dirname"], "001-same-slug-twice")
-            self.assertEqual(result2["dirname"], "002-same-slug-twice")
-            specs_root = Path(td) / SPECS_ROOT_DEFAULT
-            self.assertTrue((specs_root / "001-same-slug-twice").is_dir())
-            self.assertTrue((specs_root / "002-same-slug-twice").is_dir())
+            self.assertNotEqual(result1["leaf"], result2["leaf"])
+            specs_root = Path(td) / SPECS_ROOT_DEFAULT / "2026" / "08"
+            self.assertTrue((specs_root / "PROJ-1").is_dir())
+            self.assertTrue((specs_root / "PROJ-2").is_dir())
 
     def test_invalid_slug_single_word_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -280,52 +375,84 @@ class TestAllocateFeatureDir(unittest.TestCase):
             self.assertEqual(result, {})
             self.assertIsNotNone(error)
 
-    def test_existing_target_dir_failure_is_loud(self):
-        """Race/retry: the computed target already exists -> no silent reuse."""
+    def test_existing_target_dir_failure_is_loud_same_ticket_same_month(self):
+        """Never-overwrite, ticket path: two allocations naming the SAME
+        ticket in the SAME YYYY/MM bucket -- the second fails loudly, no
+        mocking needed (the collision is just two calls with the same
+        ticket + the same injected `now`)."""
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            specs_root = Path(td) / SPECS_ROOT_DEFAULT
-            # Pre-create the exact dir a fresh allocation would compute by
-            # patching next_spec_number to force the collision — this
-            # cannot happen through normal sequential allocation (the
-            # scanner would have counted a real NNN-prefixed dir and moved
-            # the number forward), so simulating the TOCTOU race requires
-            # forcing the return value directly.
-            (specs_root / "001-clashing-slug").mkdir(parents=True)
-            with mock.patch(
-                "_shared.feature_alloc.next_spec_number", return_value=1,
-            ):
-                result, error = allocate_feature_dir(devforge_dir, "clashing-slug")
-            self.assertEqual(result, {})
-            self.assertIsNotNone(error)
-            self.assertIn("already exists", error)
-            self.assertIn("refusing to reuse", error)
+            result1, error1 = allocate_feature_dir(
+                devforge_dir, "first-slug", ticket="PROJ-123", now=self._NOW,
+            )
+            self.assertIsNone(error1)
+            result2, error2 = allocate_feature_dir(
+                devforge_dir, "second-slug", ticket="PROJ-123", now=self._NOW,
+            )
+            self.assertEqual(result2, {})
+            self.assertIsNotNone(error2)
+            self.assertIn("already exists", error2)
+            self.assertIn("refusing to reuse", error2)
+            # The first allocation's directory is untouched.
+            self.assertTrue(Path(result1["path"]).is_dir())
+
+    def test_existing_target_dir_failure_is_loud_same_slug_same_month_ticketless(self):
+        """Never-overwrite, item-1's slug-fallback path: two TICKETLESS
+        allocations naming the SAME slug in the SAME YYYY/MM bucket -- the
+        second fails loudly too. This is the disclosed narrowing of plan
+        68 OQ-4's original guarantee (see allocate_feature_dir's own
+        docstring): OQ-4 promised no collision on a shared slug because
+        NNN (now the ticket) was the identity: with no ticket, the slug
+        itself becomes that identity, so a repeat is a genuine collision,
+        not a label reuse."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result1, error1 = allocate_feature_dir(
+                devforge_dir, "same-slug-twice", now=self._NOW,
+            )
+            self.assertIsNone(error1)
+            result2, error2 = allocate_feature_dir(
+                devforge_dir, "same-slug-twice", now=self._NOW,
+            )
+            self.assertEqual(result2, {})
+            self.assertIsNotNone(error2)
+            self.assertIn("already exists", error2)
+            self.assertIn("refusing to reuse", error2)
+            self.assertTrue(Path(result1["path"]).is_dir())
 
     def test_valid_slug_boundaries_2_and_4_words(self):
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            result, error = allocate_feature_dir(devforge_dir, "two-words")
+            result, error = allocate_feature_dir(
+                devforge_dir, "two-words", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["dirname"], "001-two-words")
+            self.assertEqual(result["leaf"], "two-words")
 
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            result, error = allocate_feature_dir(devforge_dir, "one-two-three-four")
+            result, error = allocate_feature_dir(
+                devforge_dir, "one-two-three-four", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["dirname"], "001-one-two-three-four")
+            self.assertEqual(result["leaf"], "one-two-three-four")
 
     def test_wrapper_root_resolution(self):
         with tempfile.TemporaryDirectory() as td:
             wrapper_root = Path(td) / "wrapper-install-root"
             devforge_dir = wrapper_root / ".devforge"
             devforge_dir.mkdir(parents=True)
-            result, error = allocate_feature_dir(devforge_dir, "wrapper-mode-feature")
+            result, error = allocate_feature_dir(
+                devforge_dir, "wrapper-mode-feature", now=self._NOW,
+            )
             self.assertIsNone(error)
             expected_path = (
-                wrapper_root.resolve() / SPECS_ROOT_DEFAULT / "001-wrapper-mode-feature"
+                wrapper_root.resolve()
+                / SPECS_ROOT_DEFAULT / "2026" / "08" / "wrapper-mode-feature"
             )
             self.assertEqual(Path(result["path"]), expected_path)
             self.assertTrue(expected_path.is_dir())
@@ -337,9 +464,11 @@ class TestAllocateFeatureDir(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            result, error = allocate_feature_dir(devforge_dir, "add-dark-mode")
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["relative_path"], "specs/001-add-dark-mode")
+            self.assertEqual(result["relative_path"], "specs/2026/08/add-dark-mode")
 
     def test_relative_path_is_genuinely_relative(self):
         with tempfile.TemporaryDirectory() as td:
@@ -385,27 +514,33 @@ class TestAllocateFeatureDir(unittest.TestCase):
             wrapper_root = Path(td) / "wrapper-install-root"
             devforge_dir = wrapper_root / ".devforge"
             devforge_dir.mkdir(parents=True)
-            result, error = allocate_feature_dir(devforge_dir, "wrapper-relative")
+            result, error = allocate_feature_dir(
+                devforge_dir, "wrapper-relative", now=self._NOW,
+            )
             self.assertIsNone(error)
-            self.assertEqual(result["relative_path"], "specs/001-wrapper-relative")
+            self.assertEqual(result["relative_path"], "specs/2026/08/wrapper-relative")
             reconstructed = wrapper_root.resolve() / result["relative_path"]
             self.assertEqual(reconstructed, Path(result["path"]))
 
-    def test_number_100_plus_widens_gracefully(self):
-        """SPEC_NUMBER_WIDTH (3) is a MINIMUM width, not a cap -- format()
-        widens past 999 instead of truncating or erroring."""
+    def test_now_defaults_to_utc_now_when_not_injected(self):
+        """No `now` argument -> the function falls back to
+        datetime.now(timezone.utc), not local time (see the "Date source"
+        docstring paragraph for why UTC, not OQ-3's own -- incorrect --
+        "local date" claim). Bounded assertion: the returned year/month
+        match a UTC-now snapshot taken immediately either side of the
+        call, tolerating the (vanishingly rare) case of a UTC month
+        rollover occurring mid-test."""
+        before = datetime.now(timezone.utc)
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
-            specs_root = Path(td) / SPECS_ROOT_DEFAULT
-            (specs_root / "999-nine-nine-nine").mkdir(parents=True)
-            result, error = allocate_feature_dir(devforge_dir, "the-thousandth-feature")
-            self.assertIsNone(error)
-            self.assertEqual(result["number"], 1000)
-            self.assertEqual(result["formatted_number"], "1000")
-            self.assertTrue(result["dirname"].startswith("1000-"))
-            self.assertEqual(result["dirname"], "1000-the-thousandth-feature")
-            self.assertTrue((specs_root / "1000-the-thousandth-feature").is_dir())
+            result, error = allocate_feature_dir(devforge_dir, "no-now-injected")
+        after = datetime.now(timezone.utc)
+        self.assertIsNone(error)
+        possible_years = {before.strftime("%Y"), after.strftime("%Y")}
+        possible_months = {before.strftime("%m"), after.strftime("%m")}
+        self.assertIn(result["year"], possible_years)
+        self.assertIn(result["month"], possible_months)
 
 
 # ---------------------------------------------------------------------------
@@ -414,39 +549,55 @@ class TestAllocateFeatureDir(unittest.TestCase):
 
 
 class TestDecideBranchAction(unittest.TestCase):
-    def test_arm_create_on_default_branch(self):
+    """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D5: branch is
+    spec/<ticket> when a ticket is given, else spec/<slug> (the same
+    item-1 fallback allocate_feature_dir applies to the directory leaf).
+    Signature changed from (current, default, spec_number, slug) to
+    (current, default, ticket, slug) -- every test in this class is
+    rewritten, not merely re-pointed, because D5 retires the spec/NNN-slug
+    branch shape for a NEW branch outright."""
+
+    def test_arm_create_on_default_branch_with_ticket(self):
         decision, line, error = decide_branch_action(
-            "main", "main", "001", "add-dark-mode",
+            "main", "main", "PROJ-123", "add-dark-mode",
         )
         self.assertEqual(decision, "create")
         self.assertIsNone(error)
-        self.assertEqual(line, "git checkout -b spec/001-add-dark-mode")
+        self.assertEqual(line, "git checkout -b spec/PROJ-123")
 
-    def test_arm_create_missing_spec_number(self):
+    def test_arm_create_on_default_branch_ticketless_uses_slug(self):
+        """Item 1's fallback, pinned on the branch-naming side too."""
         decision, line, error = decide_branch_action(
             "main", "main", None, "add-dark-mode",
         )
         self.assertEqual(decision, "create")
-        self.assertEqual(line, "")
-        self.assertIsNotNone(error)
-        self.assertIn("spec_number", error)
+        self.assertIsNone(error)
+        self.assertEqual(line, "git checkout -b spec/add-dark-mode")
 
-    def test_arm_create_missing_slug(self):
+    def test_arm_create_ticket_wins_over_slug_when_both_given(self):
         decision, line, error = decide_branch_action(
-            "main", "main", "001", None,
+            "main", "main", "PROJ-123", "add-dark-mode",
         )
+        self.assertEqual(decision, "create")
+        self.assertIsNone(error)
+        self.assertNotIn("add-dark-mode", line)
+
+    def test_arm_create_missing_both_ticket_and_slug(self):
+        decision, line, error = decide_branch_action("main", "main", None, None)
         self.assertEqual(decision, "create")
         self.assertEqual(line, "")
         self.assertIsNotNone(error)
+        self.assertIn("ticket", error)
+        self.assertIn("slug", error)
 
-    def test_arm_create_missing_both(self):
+    def test_arm_create_missing_both_empty_strings(self):
         decision, line, error = decide_branch_action("main", "main", "", "")
         self.assertEqual(decision, "create")
         self.assertIsNotNone(error)
 
     def test_arm_keep_spec_on_existing_feature_branch(self):
         decision, line, error = decide_branch_action(
-            "spec/000-other-feature", "main", "001", "add-dark-mode",
+            "spec/000-other-feature", "main", "PROJ-123", "add-dark-mode",
         )
         self.assertEqual(decision, "keep-spec")
         self.assertIsNone(error)
@@ -458,7 +609,7 @@ class TestDecideBranchAction(unittest.TestCase):
 
     def test_arm_keep_other_on_unrelated_branch(self):
         decision, line, error = decide_branch_action(
-            "feature/scratch", "main", "001", "add-dark-mode",
+            "feature/scratch", "main", "PROJ-123", "add-dark-mode",
         )
         self.assertEqual(decision, "keep-other")
         self.assertIsNone(error)
@@ -473,10 +624,10 @@ class TestDecideBranchAction(unittest.TestCase):
         never in the surrounding template — /specify's stdout depends on
         this being the single original message shape."""
         _, line_spec, _ = decide_branch_action(
-            "spec/999-x", "main", "001", "add-dark-mode",
+            "spec/999-x", "main", "PROJ-123", "add-dark-mode",
         )
         _, line_other, _ = decide_branch_action(
-            "some-other-branch", "main", "001", "add-dark-mode",
+            "some-other-branch", "main", "PROJ-123", "add-dark-mode",
         )
         template = "# already on non-default branch {0!r}; no checkout emitted"
         self.assertEqual(line_spec, template.format("spec/999-x"))
@@ -486,19 +637,27 @@ class TestDecideBranchAction(unittest.TestCase):
         """If the default branch itself were named spec/..., current==default
         still wins (matches the original code's branch order)."""
         decision, line, error = decide_branch_action(
-            "spec/main", "spec/main", "002", "weird-default-branch",
+            "spec/main", "spec/main", "PROJ-2", "weird-default-branch",
         )
         self.assertEqual(decision, "create")
         self.assertIsNone(error)
-        self.assertEqual(line, "git checkout -b spec/002-weird-default-branch")
+        self.assertEqual(line, "git checkout -b spec/PROJ-2")
 
     def test_strips_whitespace_on_branch_names(self):
         decision, line, error = decide_branch_action(
-            "  main  ", "  main  ", "003", "trim-test-feature",
+            "  main  ", "  main  ", "PROJ-3", "trim-test-feature",
         )
         self.assertEqual(decision, "create")
         self.assertIsNone(error)
-        self.assertEqual(line, "git checkout -b spec/003-trim-test-feature")
+        self.assertEqual(line, "git checkout -b spec/PROJ-3")
+
+    def test_strips_whitespace_on_ticket_and_slug(self):
+        decision, line, error = decide_branch_action(
+            "main", "main", "  PROJ-4  ", "  trim-test-feature  ",
+        )
+        self.assertEqual(decision, "create")
+        self.assertIsNone(error)
+        self.assertEqual(line, "git checkout -b spec/PROJ-4")
 
 
 # ---------------------------------------------------------------------------
@@ -1083,8 +1242,8 @@ class TestAllocateFeatureDirTicket(unittest.TestCase):
             )
             self.assertIsNone(error)
             self.assertEqual(result["ticket"], "PROJ-123")
-            # Phase 3, not this one, changes the directory layout.
-            self.assertEqual(result["dirname"], "001-add-dark-mode")
+            # Phase 3 (built here): the ticket IS the directory leaf.
+            self.assertEqual(result["leaf"], "PROJ-123")
 
     def test_require_ticket_true_no_ticket_refuses_naming_both_routes(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1170,6 +1329,72 @@ class TestAllocateFeatureDirTicket(unittest.TestCase):
             )
             self.assertIsNone(error)
             self.assertEqual(result["ticket"], "ENG-7")
+
+
+# ---------------------------------------------------------------------------
+# Mixed-shape coexistence: a REAL allocate_feature_dir call (writing the
+# new specs/YYYY/MM/leaf/ shape) discovered alongside a hand-built legacy
+# specs/NNN-slug/ dir, via the unmodified Phase-1 read side.
+#
+# This is a real-producer round-trip (per the "Real-fixture testing"
+# discipline), not just a hand-authored iter_feature_dirs fixture:
+# TestIterFeatureDirs / TestFindFeatureDirsWith above already pin the
+# read-side contract with hand-built trees; this class additionally
+# proves that allocate_feature_dir's OWN new-shape output -- not a
+# stand-in -- is exactly what that read side finds.
+# ---------------------------------------------------------------------------
+
+
+class TestMixedShapeRealProducerRoundTrip(unittest.TestCase):
+    _NOW = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_iter_feature_dirs_finds_both_a_legacy_dir_and_a_real_new_allocation(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            repo_root = Path(td).resolve()
+            specs_root = repo_root / SPECS_ROOT_DEFAULT
+
+            # A hand-built legacy dir (nothing migrates plan 68 D3's
+            # inert history; D6 mandates it stays resolvable forever).
+            (specs_root / "003-legacy-feature").mkdir(parents=True)
+
+            # A REAL new-shape allocation via the function under test.
+            result, error = allocate_feature_dir(
+                devforge_dir, "brand-new-feature", ticket="PROJ-500", now=self._NOW,
+            )
+            self.assertIsNone(error)
+
+            found = iter_feature_dirs(specs_root)
+            self.assertEqual(
+                found,
+                [
+                    specs_root / "003-legacy-feature",
+                    specs_root / "2026" / "08" / "PROJ-500",
+                ],
+            )
+            self.assertEqual(Path(result["path"]), specs_root / "2026" / "08" / "PROJ-500")
+
+    def test_find_feature_dirs_with_finds_a_sentinel_in_a_real_new_allocation(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            repo_root = Path(td).resolve()
+            specs_root = repo_root / SPECS_ROOT_DEFAULT
+
+            legacy_dir = specs_root / "001-legacy-with-spec"
+            legacy_dir.mkdir(parents=True)
+            (legacy_dir / "spec.md").write_text("legacy spec")
+
+            result, error = allocate_feature_dir(
+                devforge_dir, "brand-new-feature", ticket="PROJ-501", now=self._NOW,
+            )
+            self.assertIsNone(error)
+            new_dir = Path(result["path"])
+            (new_dir / "spec.md").write_text("new spec")
+
+            found = find_feature_dirs_with(specs_root, "spec.md")
+            self.assertEqual(found, [legacy_dir, new_dir])
 
 
 if __name__ == "__main__":

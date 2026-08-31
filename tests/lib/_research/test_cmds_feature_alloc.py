@@ -5,12 +5,20 @@ gained an optional --ticket argument, read alongside REQUIRE_TICKET
 (_shared.feature_alloc.read_require_ticket) at the CLI verb, and both are
 passed through to _shared.feature_alloc.allocate_feature_dir unchanged.
 
+Phase 3 -- allocate_feature_dir's own result dict changed shape (`number`/
+`formatted_number`/`dirname` dropped, `year`/`month`/`leaf` added; the
+allocate-feature-dir tests below assert the new keys), and render-branch-
+command gained the SAME optional --ticket argument (TestRenderBranchCommand
+Ticket below), passed through unvalidated to
+_shared.feature_alloc.decide_branch_action.
+
 This is the FIRST test file under tests/lib/_research/ for the
-allocate-feature-dir verb -- a pre-existing gap the plan-91 build flagged:
-prior coverage for that verb lives only in the legacy monolith
-tests/lib/test_research_helper.py::TestAllocateFeatureDirCli (slug-only
-behaviour, no --ticket). This file covers ONLY the new --ticket surface and
-does not duplicate that file's slug-only cases.
+allocate-feature-dir + render-branch-command verbs -- a pre-existing gap
+the plan-91 build flagged: prior coverage for those verbs lives only in the
+legacy monolith tests/lib/test_research_helper.py::TestAllocateFeatureDirCli
+/ TestRenderBranchCommandCli (slug-only behaviour, no --ticket). This file
+covers ONLY the new --ticket surface and does not duplicate that file's
+slug-only cases.
 
 Coverage:
   REQUIRE_TICKET off (no project-config.json at all -- the default,
@@ -124,7 +132,8 @@ class TestAllocateFeatureDirTicketRequireTicketOff(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0, r.stderr)
             payload = json.loads(r.stdout)
-            self.assertEqual(payload["dirname"], "001-no-ticket-needed")
+            self.assertEqual(payload["slug"], "no-ticket-needed")
+            self.assertEqual(payload["leaf"], "no-ticket-needed")
             self.assertIn("ticket", payload)
             self.assertIsNone(payload["ticket"])
 
@@ -138,7 +147,10 @@ class TestAllocateFeatureDirTicketRequireTicketOff(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0, r.stderr)
             payload = json.loads(r.stdout)
-            self.assertEqual(payload["dirname"], "001-optional-ticket-here")
+            self.assertEqual(payload["slug"], "optional-ticket-here")
+            # 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D2/D3: the
+            # leaf is the ticket, not the slug, once one is supplied.
+            self.assertEqual(payload["leaf"], "PROJ-123")
             self.assertIn("ticket", payload)
             self.assertEqual(payload["ticket"], "PROJ-123")
 
@@ -173,7 +185,8 @@ class TestAllocateFeatureDirTicketRequireTicketOn(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0, r.stderr)
             payload = json.loads(r.stdout)
-            self.assertEqual(payload["dirname"], "001-ticketed-feature")
+            self.assertEqual(payload["slug"], "ticketed-feature")
+            self.assertEqual(payload["leaf"], "ENG-42")
             self.assertIn("ticket", payload)
             self.assertEqual(payload["ticket"], "ENG-42")
 
@@ -205,6 +218,50 @@ class TestAllocateFeatureDirTicketRequireTicketOn(unittest.TestCase):
             self.assertIn("supply a ticket", r.stderr)
             self.assertIn("turn REQUIRE_TICKET off", r.stderr)
             self.assertFalse((Path(tmp) / "specs").exists())
+
+
+class TestRenderBranchCommandTicket(unittest.TestCase):
+    """render-branch-command's --ticket wiring (91-FEATURE-DIR-IDENTITY-
+    AND-PROVENANCE-PLAN.md Phase 3 caller migration). Covers ONLY the new
+    --ticket surface; slug-only / keep-arm / --number-is-ignored coverage
+    lives in tests/lib/test_research_helper.py::TestRenderBranchCommandCli
+    -- same split as TestAllocateFeatureDirTicket* above."""
+
+    def test_ticket_takes_priority_emits_spec_ticket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run_research(
+                devforge, "render-branch-command",
+                "--slug", "add-dark-mode", "--ticket", "PROJ-123",
+                "--current-branch", "main", "--default-branch", "main",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "git checkout -b spec/PROJ-123")
+
+    def test_no_ticket_falls_back_to_slug(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run_research(
+                devforge, "render-branch-command",
+                "--slug", "add-dark-mode",
+                "--current-branch", "main", "--default-branch", "main",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "git checkout -b spec/add-dark-mode")
+
+    def test_neither_ticket_nor_slug_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run_research(
+                devforge, "render-branch-command",
+                "--slug", "",
+                "--current-branch", "main", "--default-branch", "main",
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("ticket or a slug is required", r.stderr)
 
 
 if __name__ == "__main__":

@@ -33,10 +33,16 @@ from _shared.feature_alloc import (  # type: ignore[import]
 
 
 def cmd_allocate_feature_dir(args: argparse.Namespace) -> int:
-    """Allocate a fresh specs/NNN-<slug>/ directory; print the result as JSON.
+    """Allocate a fresh specs/<YYYY>/<MM>/<leaf>/ directory; print the result as JSON.
 
-    Exit 0 with a JSON object on stdout (keys: path, number,
-    formatted_number, slug, dirname, ticket, created) on success.
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3: this wrapper's
+    body is unchanged -- it still forwards whatever
+    _shared.feature_alloc.allocate_feature_dir returns. What changed is
+    that dict's own key set (see that function's docstring): exit 0 with a
+    JSON object on stdout (keys: path, relative_path, slug, ticket, year,
+    month, leaf, created) on success. `number`, `formatted_number` and
+    `dirname` -- present before Phase 3 -- are ABSENT now; a caller must
+    not assume they exist.
     Exit 2 with a message on stderr on failure (invalid slug, a supplied
     ticket that fails normalize_ticket, REQUIRE_TICKET enabled with no
     valid ticket supplied, or the computed target directory already exists
@@ -58,16 +64,22 @@ def cmd_allocate_feature_dir(args: argparse.Namespace) -> int:
 
 def cmd_render_branch_command(args: argparse.Namespace) -> int:
     """Print the branch-decision line (checkout command or informational
-    comment) for the given current/default branch + spec number/slug.
+    comment) for the given current/default branch + ticket-or-slug.
+
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3 (D5): passes
+    (args.ticket, args.slug) through to decide_branch_action -- the
+    'create' arm names the branch spec/<ticket> when one was given, else
+    spec/<slug>. --number is ACCEPTED BUT IGNORED (see build_parser's own
+    comment on that argument for why it is kept rather than removed).
 
     Exit 0 with the line on stdout on success (whether or not a checkout
     was actually emitted -- decide_branch_action's "keep" arms are success,
     not failure).
-    Exit 2 with a message on stderr when --number/--slug are required (the
-    session is on the default branch) but were not supplied.
+    Exit 2 with a message on stderr when neither --ticket nor --slug can
+    supply an identity (the session is on the default branch).
     """
     decision, line, error = decide_branch_action(
-        args.current_branch, args.default_branch, args.number, args.slug,
+        args.current_branch, args.default_branch, args.ticket, args.slug,
     )
     if error is not None:
         sys.stderr.write(

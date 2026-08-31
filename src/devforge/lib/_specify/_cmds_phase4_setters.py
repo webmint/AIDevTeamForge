@@ -197,6 +197,18 @@ def cmd_create_branch(args: argparse.Namespace) -> int:
     reached via /specify's Phase 0.2 default-branch-or-other-non-default
     path -- see decide_branch_action's docstring for why the two "keep"
     arms render identical text either way).
+
+    ticket (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3): always
+    passed as None here. specify-state.json carries no ticket field --
+    Phase 2's ticket capture landed only on research_helper's and
+    discover_helper's own allocate-feature-dir verbs (their --ticket
+    argument), and /specify has no equivalent setter today. The 'create'
+    arm therefore always falls back to feature_slug as the branch identity
+    (spec/<feature_slug>) via decide_branch_action's ticket-or-slug rule; a
+    spec/<NNN>-<slug> branch is never composed for a NEW branch here,
+    whatever spec_number holds (spec_number still matters elsewhere --
+    /specify's own genuine-fallback directory allocation -- just not to
+    this decision).
     """
     current = (args.current_branch or "").strip()
     default = (args.default_branch or "").strip()
@@ -209,16 +221,14 @@ def cmd_create_branch(args: argparse.Namespace) -> int:
         with _state_transaction(args.devforge_dir) as state:
             state["current_branch"] = current
             state["default_branch"] = default
-            number = state.get("spec_number")
             slug = state.get("feature_slug")
             decision, line, error = decide_branch_action(
-                current, default, number, slug,
+                current, default, None, slug,
             )
             if decision == "create" and error is not None:
                 return _die(
-                    "create-branch: spec_number + feature_slug required "
-                    "before checkout (run assign-spec-number + "
-                    "assign-feature-name first)",
+                    "create-branch: feature_slug required before checkout "
+                    "(run assign-feature-name first)",
                     code=2,
                 )
             if decision == "create":

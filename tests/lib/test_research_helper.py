@@ -84,6 +84,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -13114,38 +13115,63 @@ class TestRenderIntakeEcho(unittest.TestCase):
 
 
 class TestAllocateFeatureDirCli(unittest.TestCase):
-    def test_fresh_repo_allocates_001_json_shape(self):
+    def test_fresh_repo_allocates_json_shape(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3: the
+        wrapper is a pure passthrough over allocate_feature_dir, whose own
+        key set changed -- `number`/`formatted_number`/`dirname` are ABSENT
+        now, replaced by `year`/`month`/`leaf`. Bounded year/month
+        assertion (before/after bracket) mirrors
+        tests/lib/_shared/test_feature_alloc.py's own
+        test_now_defaults_to_utc_now_when_not_injected, since this CLI verb
+        exposes no --now override."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             devforge.mkdir()
+            before = datetime.now(timezone.utc)
             r = _run([
                 "--devforge-dir", str(devforge),
                 "allocate-feature-dir", "--slug", "add-dark-mode",
             ])
+            after = datetime.now(timezone.utc)
             self.assertEqual(r.returncode, 0, r.stderr)
             payload = json.loads(r.stdout)
-            self.assertEqual(payload["number"], 1)
-            self.assertEqual(payload["formatted_number"], "001")
+            possible_years = {before.strftime("%Y"), after.strftime("%Y")}
+            possible_months = {before.strftime("%m"), after.strftime("%m")}
+            self.assertIn(payload["year"], possible_years)
+            self.assertIn(payload["month"], possible_months)
             self.assertEqual(payload["slug"], "add-dark-mode")
-            self.assertEqual(payload["dirname"], "001-add-dark-mode")
+            self.assertEqual(payload["leaf"], "add-dark-mode")
+            self.assertIsNone(payload["ticket"])
+            self.assertNotIn("number", payload)
+            self.assertNotIn("formatted_number", payload)
+            self.assertNotIn("dirname", payload)
             self.assertTrue(payload["created"])
             self.assertTrue(Path(payload["path"]).is_dir())
 
-    def test_second_allocation_increments(self):
+    def test_second_allocation_same_bucket_different_leaf(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D6: NNN is
+        retired, so a second ticketless allocation no longer increments a
+        counter -- it lands in the SAME YYYY/MM bucket (the allocation
+        moment, not a sequence) under its own slug-derived leaf."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             devforge.mkdir()
-            _run([
+            r1 = _run([
                 "--devforge-dir", str(devforge),
                 "allocate-feature-dir", "--slug", "first-feature-here",
             ])
-            r = _run([
+            r2 = _run([
                 "--devforge-dir", str(devforge),
                 "allocate-feature-dir", "--slug", "second-feature-here",
             ])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            payload = json.loads(r.stdout)
-            self.assertEqual(payload["formatted_number"], "002")
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            payload1 = json.loads(r1.stdout)
+            payload2 = json.loads(r2.stdout)
+            self.assertEqual(payload1["year"], payload2["year"])
+            self.assertEqual(payload1["month"], payload2["month"])
+            self.assertEqual(payload1["leaf"], "first-feature-here")
+            self.assertEqual(payload2["leaf"], "second-feature-here")
 
     def test_invalid_slug_exits_2(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -13162,19 +13188,27 @@ class TestAllocateFeatureDirCli(unittest.TestCase):
     def test_relative_path_flows_through_real_cli_stdout(self):
         """Round-trip through the real research_helper CLI wrapper (not a
         hand-authored fixture): relative_path is present on the actual
-        stdout JSON and reconstructs the same call's absolute path."""
+        stdout JSON and reconstructs the same call's absolute path. Bounded
+        year/month (before/after bracket, same reasoning as
+        test_fresh_repo_allocates_json_shape) since the Phase-3 layout puts
+        the allocation date inside relative_path itself."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             devforge.mkdir()
+            before = datetime.now(timezone.utc)
             r = _run([
                 "--devforge-dir", str(devforge),
                 "allocate-feature-dir", "--slug", "cli-relative-path-check",
             ])
+            after = datetime.now(timezone.utc)
             self.assertEqual(r.returncode, 0, r.stderr)
             payload = json.loads(r.stdout)
-            self.assertEqual(
-                payload["relative_path"], "specs/001-cli-relative-path-check",
-            )
+            possible = {
+                "specs/{0}/{1}/cli-relative-path-check".format(y, m)
+                for y in (before.strftime("%Y"), after.strftime("%Y"))
+                for m in (before.strftime("%m"), after.strftime("%m"))
+            }
+            self.assertIn(payload["relative_path"], possible)
             repo_root = Path(tmp).resolve()
             reconstructed = repo_root.joinpath(*payload["relative_path"].split("/"))
             self.assertEqual(reconstructed, Path(payload["path"]))
@@ -13218,6 +13252,11 @@ class TestAllocateFeatureDirCli(unittest.TestCase):
 
 class TestRenderBranchCommandCli(unittest.TestCase):
     def test_default_branch_emits_checkout(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D5/D6: with no
+        --ticket, the 'create' arm falls back to --slug -- spec/<slug>,
+        never spec/<NNN>-<slug>. --number is still passed here (the
+        precedent src/commands/research/main.md's own call still uses) to
+        pin that it is truly ignored, not merely omitted."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             devforge.mkdir()
@@ -13227,7 +13266,37 @@ class TestRenderBranchCommandCli(unittest.TestCase):
                 "--current-branch", "main", "--default-branch", "main",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "git checkout -b spec/001-add-dark-mode")
+            self.assertEqual(r.stdout.strip(), "git checkout -b spec/add-dark-mode")
+
+    def test_default_branch_with_ticket_emits_checkout_by_ticket(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D5: --ticket
+        takes priority over --slug on the 'create' arm."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "add-dark-mode", "--ticket", "PROJ-123",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "git checkout -b spec/PROJ-123")
+
+    def test_default_branch_neither_ticket_nor_slug_refuses(self):
+        """decide_branch_action's 'create' arm refuses (exit 2) when
+        neither identity is available -- --slug is CLI-required, so an
+        explicit empty string is how this state is reached through the
+        CLI."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("ticket or a slug is required", r.stderr)
 
     def test_non_default_branch_emits_informational_comment(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,6 +13,30 @@ framework does that today.  The precedent is _shared/feature_scope.py
 /finalize).  This module follows the exact same shape: pure functions here,
 thin per-package re-exports / CLI verbs in each consumer package.
 
+Two directory layouts, coexisting forever (91-FEATURE-DIR-IDENTITY-AND-
+PROVENANCE-PLAN.md D2/D3/D6)
+-----------------------------------------------------------------------
+Every allocate_feature_dir call from this point forward writes
+specs/<YYYY>/<MM>/<leaf>/ -- two date levels (the allocation moment, UTC;
+see allocate_feature_dir's own "Date source" paragraph), then an identity
+leaf, never a slug-bearing composite and never NNN. `leaf` is the
+normalized ticket when one was supplied, or the validated slug when it
+was not -- REQUIRE_TICKET is opt-in and defaults false (Phase 2, OQ-1),
+so a ticketless allocation must still succeed, and once the ticket IS the
+directory name there is nothing else to fall back to; see
+allocate_feature_dir's own docstring for the exact rule and the ratified
+scope this falls outside of (D3 describes only the ticket-bearing leaf).
+
+NNN is retired as an identity: nothing new is numbered, next_spec_number
+is no longer called by this module, and SPEC_NUMBER_DIR_RE is now a
+LEGACY-READ pattern only. Existing specs/NNN-slug/ directories are NOT
+migrated (plan 68 D3's precedent) and remain resolvable forever --
+iter_feature_dirs below reads both shapes in one pass, disjoint by
+construction (a legacy name is exactly three digits then a dash; a year
+name is exactly four bare digits with no dash). A future session must not
+read "NNN" anywhere in this module as describing a NEW allocation; every
+remaining NNN reference below is explicitly a legacy-read concern.
+
 What lives here
 ----------------
 FEATURE_NAME_RE        -- 2-4 word lowercase kebab-case slug validator.
@@ -20,19 +44,48 @@ FEATURE_NAME_RE        -- 2-4 word lowercase kebab-case slug validator.
                            under the same name so existing `from ._schema
                            import FEATURE_NAME_RE` imports are unaffected.
 SPECS_ROOT_DEFAULT, SPEC_NUMBER_WIDTH, SPEC_NUMBER_DIR_RE
-                        -- NNN dir-naming constants.  Same relocate-and-
-                           re-export treatment as FEATURE_NAME_RE (single
-                           source of truth for the constants
-                           next_spec_number / allocate_feature_dir use).
+                        -- legacy NNN dir-naming constants.
+                           SPEC_NUMBER_WIDTH and SPEC_NUMBER_DIR_RE now
+                           serve LEGACY-READ consumers only
+                           (SPEC_NUMBER_DIR_RE: iter_feature_dirs' legacy
+                           arm below, and next_spec_number's own scan;
+                           SPEC_NUMBER_WIDTH: only
+                           _specify/_cmds_phase4_setters.py's
+                           assign-spec-number, the specify-only
+                           genuine-fallback path this module's own
+                           allocate_feature_dir no longer feeds -- see
+                           that function's docstring). SPECS_ROOT_DEFAULT
+                           stays live for every caller, old shape or new.
+YEAR_DIR_RE, MONTH_DIR_RE
+                        -- the forward shape's own dir-naming constants: a
+                           4-digit year, a 2-digit month. Both the READ
+                           side (iter_feature_dirs) and the WRITE side
+                           (allocate_feature_dir) key off strftime("%Y") /
+                           strftime("%m"), which always produce exactly
+                           this shape.
 next_spec_number        -- pure filesystem scan: next NNN under specs/.
+                           DEAD as of 91-FEATURE-DIR-IDENTITY-AND-
+                           PROVENANCE-PLAN.md Phase 3 (D6): no longer
+                           called by allocate_feature_dir. Retained,
+                           unmodified, for its one remaining production
+                           caller (_specify/_cmds_phase4_setters.py's
+                           assign-spec-number -- the specify-only
+                           genuine-fallback path this plan takes no
+                           decision on) and for its own direct test
+                           coverage.
 decide_branch_action    -- pure decision: what to print / do for branch
-                           creation, given (current, default, spec_number,
+                           creation, given (current, default, ticket,
                            slug).  Three named arms (see its docstring);
                            /specify's cmd_create_branch delegates to this
-                           for its two reachable arms and stays byte-
-                           identical on stdout for both (see docstring).
-allocate_feature_dir    -- creates specs/NNN-slug/ on disk (FRESH
-                           allocation only -- see "Attach mode" below).
+                           for its two reachable arms.  Branch name is
+                           spec/<ticket> when a ticket is given, else
+                           spec/<slug> (91-FEATURE-DIR-IDENTITY-AND-
+                           PROVENANCE-PLAN.md D5, plus the same
+                           ticket-or-slug fallback allocate_feature_dir
+                           uses for the directory leaf).
+allocate_feature_dir    -- creates specs/<YYYY>/<MM>/<leaf>/ on disk
+                           (FRESH allocation only -- see "Attach mode"
+                           below).
 specs_root_for          -- explicit devforge_dir -> specs_root derivation
                            (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
                            PLAN.md Phase 1, revised).  A small pure-path
@@ -42,7 +95,7 @@ specs_root_for          -- explicit devforge_dir -> specs_root derivation
                            scan function.
 iter_feature_dirs       -- every feature directory under a GIVEN specs
                            root, across both the legacy NNN-slug/ shape
-                           and the Phase-3 YYYY/MM/TICKET/ shape (91-
+                           and the Phase-3 YYYY/MM/<leaf>/ shape (91-
                            FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
                            Phase 1's resolution accessor).  Takes the
                            specs/ directory directly, NOT a devforge_dir
@@ -110,13 +163,21 @@ falls out as its parent. No separate wrapper-mode branch is needed here
 because the wrapper/standalone distinction is already baked into which
 `--devforge-dir` value the caller passed in.
 
-Attach mode (D6) is out of scope here -- read this before wiring a caller
+Attach mode (plan 68's D6) is out of scope here -- read this before wiring
+a caller -- NOTE this is a DIFFERENT D6 than the one this module's own
+opening section discusses (this module's "Two directory layouts" section
+above and the "Slug collisions" section below both cite 91-FEATURE-DIR-
+IDENTITY-AND-PROVENANCE-PLAN.md's D6, the NNN-retirement decision; this
+section cites plan 68's D6, the grill-re-entry attach-mode decision --
+same label, two different plans, do not conflate them)
 ------------------------------------------------------------------------
 allocate_feature_dir is a FRESH-ALLOCATION-ONLY function.  Plan 68 D6
 (repeat intake on the same feature via a /grill RE-ENTER-UPSTREAM seed)
 needs the OPPOSITE behavior: skip allocation and branch creation entirely,
-because the seed's own location (specs/NNN-slug/grill-seed.json) already
-identifies the existing feature dir.  This module deliberately does NOT
+because the seed's own location (grill-seed.json, inside the existing
+feature directory -- whichever shape it was allocated under, legacy
+specs/NNN-slug/ or the specs/<YYYY>/<MM>/<leaf>/ shape D2/D3 introduce)
+already identifies the existing feature dir.  This module deliberately does NOT
 provide an "allocate-or-attach" mode, an `existing_dir` parameter, or any
 form of "give me the dir whether or not it already exists" -- adding one
 would let a caller silently paper over a real allocation bug (a second
@@ -141,17 +202,36 @@ callers never call it a second time for that feature in the first place.
 Never overwrite
 ----------------
 allocate_feature_dir refuses to reuse an existing target directory, even if
-that target happens to be exactly the NNN the scan would have picked next
-(a race between two concurrent invocations, or a manual retry after a
+that target happens to be exactly the leaf a fresh allocation would compute
+next (a race between two concurrent invocations, or a manual retry after a
 partial failure).  It fails loudly with a clear error string; the caller
 writes that to stderr and exits non-zero.  There is no silent-reuse path.
+This holds identically whether the leaf collision is on a ticket (two
+allocations naming the same ticket in the same YYYY/MM bucket) or on a
+slug (two ticketless allocations naming the same slug in the same bucket
+-- see "leaf" below).
 
-Slug collisions across different NNN (OQ-4)
---------------------------------------------
-allocate_feature_dir does NOT check whether the slug is already used by
-another NNN.  OQ-4 ratified this: NNN is the identity, the slug is a label,
-and two features may legitimately want the same slug.  See the module's
-test file for the round-trip proof (two allocations, same slug, two NNNs).
+Slug collisions (OQ-4 of plan 68, extended by 91-FEATURE-DIR-IDENTITY-AND-
+PROVENANCE-PLAN.md's ticket-or-slug leaf)
+---------------------------------------------------------------------------
+When a ticket is supplied, allocate_feature_dir does NOT check whether the
+slug is already used by another ticket -- plan 68's OQ-4 ratified this: the
+ticket is the identity, the slug is a label, and two features may
+legitimately want the same slug (they land at two different tickets, so no
+collision is possible; historically, at two different NNNs, for a legacy
+allocation). See the module's test file for the round-trip proof.
+
+When NO ticket is supplied (REQUIRE_TICKET is opt-in and defaults false --
+see allocate_feature_dir's own docstring), the slug itself becomes the
+leaf, so two ticketless allocations that land in the SAME YYYY/MM bucket
+with the SAME slug DO collide, loudly, per "Never overwrite" above -- this
+is a real, disclosed narrowing of OQ-4's original guarantee, scoped to the
+ticketless path only. It is not a decision this plan's D2/D3/D6 text
+states outright (they describe only the ticket-bearing leaf); it is the
+narrowest reading that keeps a ticketless allocation working (Phase 2's
+own shipped, tested contract) without inventing a second, un-ratified
+identity scheme.  See the module's test file for both the same-ticket and
+the same-slug collision cases.
 
 Stdlib only.  Python 3.8+.
 """
@@ -160,6 +240,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -186,21 +267,26 @@ SPEC_NUMBER_WIDTH = 3
 # which asserts a "9999-too-many-digits" dir is ignored), silently
 # growing that scanner's matching surface as an unintended side effect of
 # this unrelated change. Every existing group(1)-only consumer
-# (next_spec_number / allocate_feature_dir /
-# _cmds_phase4_setters._existing_spec_numbers) is therefore
-# match/non-match-identical to before this edit; only the added
+# (next_spec_number / _cmds_phase4_setters._existing_spec_numbers) is
+# therefore match/non-match-identical to before this edit; only the added
 # group(2) + the `$` end-anchor (harmless -- real dir basenames never
 # have trailing content past the slug) are new.
+#
+# 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3 (D6): as of this
+# plan, allocate_feature_dir below is NO LONGER a consumer of this pattern
+# (directly or via next_spec_number) -- it is LEGACY-READ ONLY now,
+# matched by iter_feature_dirs' legacy arm and by next_spec_number's own
+# scan (next_spec_number itself is dead code from allocate_feature_dir's
+# point of view; see the module docstring).
 SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-(.+)$")
 
 # Phase-3 forward structure (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
-# PLAN.md D2): specs/<YYYY>/<MM>/<TICKET>/, the layout Phase 3 will start
-# writing.  Matches nothing on any real install today -- allocate_feature_dir
-# above still exclusively writes the legacy specs/NNN-slug/ shape.  Defined
-# now (rather than at Phase 3) so iter_feature_dirs below can read this
-# shape before any writer produces it -- see that function's docstring and
-# Phase 1's ⚠ instruction to build the variable-depth branch from the
-# start, not as a later rewrite.
+# PLAN.md D2): specs/<YYYY>/<MM>/<leaf>/, the layout allocate_feature_dir
+# below now writes unconditionally for every fresh allocation (Phase 3).
+# Defined here (from Phase 1, before any writer produced this shape) so
+# iter_feature_dirs below could read it before allocate_feature_dir wrote
+# it -- see that function's docstring and Phase 1's ⚠ instruction to build
+# the variable-depth branch from the start, not as a later rewrite.
 #
 # No ambiguity with SPEC_NUMBER_DIR_RE above: a legacy dir name is exactly
 # three digits followed by a dash (the dash is required); a year dir name
@@ -209,7 +295,11 @@ SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-(.+)$")
 YEAR_DIR_RE = re.compile(r"^\d{4}$")
 MONTH_DIR_RE = re.compile(r"^\d{2}$")
 
-# The branch-name prefix every spec branch carries (spec/NNN-slug).
+# The branch-name prefix every spec branch carries: spec/<ticket> when a
+# ticket is given, else spec/<slug> (91-FEATURE-DIR-IDENTITY-AND-
+# PROVENANCE-PLAN.md D5); historically spec/NNN-slug for a legacy
+# allocation's own branch (decide_branch_action no longer composes that
+# form for a NEW branch, but an existing one is not renamed).
 _SPEC_BRANCH_PREFIX = "spec/"
 
 # Ticket identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2,
@@ -241,6 +331,15 @@ def next_spec_number(devforge_dir):
     repo_root/specs/, where repo_root is the parent of devforge_dir.
     Returns 1 if specs/ does not exist, is not a directory, or contains no
     NNN-* subdirectories.  Pure filesystem scan -- no state file involved.
+
+    DEAD as of 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3 (D6)
+    from allocate_feature_dir's point of view: allocate_feature_dir below
+    no longer calls this function -- a fresh allocation is keyed on the
+    ticket-or-slug leaf, never on NNN. This function's body is otherwise
+    UNCHANGED and it is retained, unmodified, for its one remaining
+    production caller (_specify/_cmds_phase4_setters.py's
+    assign-spec-number, the specify-only genuine-fallback path this plan
+    takes no decision on) and for its own direct test coverage.
     """
     repo_root = Path(devforge_dir).resolve().parent
     specs_root = repo_root / SPECS_ROOT_DEFAULT
@@ -378,18 +477,46 @@ def read_require_ticket(devforge_dir):
 # ---------------------------------------------------------------------------
 
 
-def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
-    # type: (Union[str, "os.PathLike[str]"], str, Optional[str], bool) -> Tuple[dict, Optional[str]]
-    """Allocate a fresh specs/NNN-<slug>/ directory.
+def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False, now=None):
+    # type: (Union[str, "os.PathLike[str]"], str, Optional[str], bool, Optional[datetime]) -> Tuple[dict, Optional[str]]
+    """Allocate a fresh specs/<YYYY>/<MM>/<leaf>/ directory.
 
     FRESH ALLOCATION ONLY -- see the module docstring's "Attach mode"
-    section before wiring an attach-mode (D6) caller into this function.
+    section before wiring a plan-68-D6 attach-mode caller into this
+    function.
 
     Validates slug (2-4 word lowercase kebab-case, the same shape
-    specify_helper assign-feature-name enforces via FEATURE_NAME_RE),
-    computes the next NNN via next_spec_number, and creates
-    repo_root/specs/NNN-<slug>/.  repo_root is the parent of devforge_dir
-    (== the install root in wrapper mode -- see module docstring).
+    specify_helper assign-feature-name enforces via FEATURE_NAME_RE), then
+    creates repo_root/specs/<YYYY>/<MM>/<leaf>/.  repo_root is the parent
+    of devforge_dir (== the install root in wrapper mode -- see module
+    docstring).  `parents=True` on the mkdir below means the year and
+    month directories are created as needed and are NOT themselves
+    exist_ok-gated -- only the leaf is; see "Never overwrite" in the
+    module docstring.
+
+    Date source (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md OQ-3):
+    YYYY/MM come from `now` (an injectable datetime, for deterministic
+    testing -- mirrors this codebase's existing "inject the timestamp,
+    don't mock the clock" convention, e.g.
+    _implement/_cmds_complete.py's mark-complete --completed-at), UTC when
+    not supplied (datetime.now(timezone.utc)).  UTC, NOT local time: OQ-3's
+    own text reads "local date, as set-date already enforces YYYY-MM-DD
+    elsewhere", but that claim does not survive a check against the actual
+    code. specify_helper's cmd_set_date (_cmds_phase4_setters.py) has NO
+    clock logic at all -- it only validates a caller-supplied string
+    against `^\\d{4}-\\d{2}-\\d{2}$` -- so "set-date already enforces" is
+    true of the FORMAT only, never of a timezone. The value that actually
+    reaches --date is composed by src/commands/specify/main.md's own
+    prose via `date -u +%Y-%m-%d` -- UTC, the opposite of what OQ-3
+    claims. Every other "now" timestamp in this codebase
+    (_implement/_cmds_complete.py, _implement/_cmds_session.py,
+    _research/_handoff_build.py, _discover/_handoff_build.py,
+    _generate_docs/_glossary.py, cbm_sync_helper.py, _pr_review/_output.py,
+    among others) also uses datetime.now(timezone.utc). UTC is therefore
+    both the actually-dominant convention and the one immune to a
+    server/operator timezone changing which YYYY/MM bucket "today"
+    resolves to. OQ-3's parenthetical is corrected here rather than
+    followed -- do not cite it as evidence for local time.
 
     ticket / require_ticket (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
     PLAN.md Phase 2): ticket is the raw string the operator supplied, or
@@ -402,10 +529,34 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
     validated via normalize_ticket whenever it is non-blank, regardless
     of require_ticket, so a malformed value is never silently accepted;
     it is additionally REQUIRED (missing/blank refuses too) when
-    require_ticket is True.  Phase 3, not this one, teaches the
-    directory layout itself to use the ticket -- see that plan's Phase 2
-    scope note -- so on success here the directory is still
-    specs/NNN-<slug>/ regardless of whether a ticket was supplied.
+    require_ticket is True.
+
+    Ticket-or-slug leaf (Phase 3's item this plan's own text left open --
+    see the module's "Slug collisions" section for the full argument):
+    D2/D3 ratified the ticket AS the directory leaf, with no fallback
+    named for a ticket-LESS allocation -- yet OQ-1 ratified
+    REQUIRE_TICKET defaulting to false, and Phase 2 shipped (and tests)
+    a ticketless allocation succeeding. Those two facts do not close on
+    their own. The rule this function applies: `leaf` is the normalized
+    ticket when one was supplied and valid, else the validated slug.
+    This is the narrowest resolution available -- it invents no new
+    identity scheme (no synthetic "LOCAL-1"-shaped placeholder ticket,
+    which would fabricate an identity nobody typed and contradict this
+    plan's own D9 "a fake value is worse than no value" principle stated
+    elsewhere for a different field), reuses input this function already
+    validates for an unrelated reason (FEATURE_NAME_RE), and keeps
+    REQUIRE_TICKET's ratified "opt-in, imposes nothing when off"
+    semantics intact: a ticketless allocation with require_ticket=False
+    still succeeds with ZERO extra input demanded of the operator. The
+    cost, stated once here and in the module docstring: two ticketless
+    allocations with the SAME slug in the SAME YYYY/MM bucket now collide
+    (loudly -- see "Never overwrite"), narrowing plan 68 OQ-4's original
+    "same slug, different identity, no collision" guarantee for that one
+    path. This reading is NOT literally written in D2/D3's ratified text
+    (which describes only the ticket-bearing leaf) and is flagged here as
+    a candidate for explicit ratification, not asserted as settled.
+    decide_branch_action below applies the identical ticket-or-slug rule
+    to the branch name (D5 names only the ticket-given case too).
 
     Returns (result, error), mirroring _shared/feature_scope.py's
     resolve_feature_scope convention:
@@ -426,7 +577,7 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
                                   feature directory relative to the repo
                                   root (the same root `path` is resolved
                                   against -- Path(devforge_dir).resolve()
-                                  .parent), e.g. "specs/007-user-auth".
+                                  .parent), e.g. "specs/2026/08/PROJ-123".
                                   Always forward-slash-separated, on every
                                   platform -- this value is written into
                                   markdown artifacts and passed as CLI
@@ -440,34 +591,26 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
                                   current working directory and never
                                   relative to specs/ itself -- always
                                   relative to the repo root.
-        number           int  -- LEGACY-SHAPE-ONLY: the allocated NNN,
-                                  unpadded.  Meaningless once a caller
-                                  writes the Phase-3 specs/YYYY/MM/TICKET/
-                                  layout -- still emitted for the current
-                                  NNN-slug shape, but new prose must not
-                                  consume it.
-        formatted_number str  -- LEGACY-SHAPE-ONLY: zero-padded NNN, e.g.
-                                  "004".  Same bound as `number` above.
-                                  Still the value render-branch-command
-                                  --number consumes.
         slug             str  -- the validated slug (echoed back, stripped)
-        dirname          str  -- LEGACY-SHAPE-ONLY: "NNN-slug" (the
-                                  directory's basename, UN-prefixed --
-                                  callers that want the specs/-relative
-                                  path use relative_path instead of
-                                  composing "specs/" + dirname
-                                  themselves).  Same bound as `number`
-                                  above -- a Phase-3 ticket-keyed leaf has
-                                  no "NNN-slug" shape to report.
         ticket           str | None -- the normalized ticket (canonical
                                   uppercase, per normalize_ticket) when
                                   one was supplied and valid; None when
                                   none was supplied (only possible when
-                                  require_ticket is False).  Not yet
-                                  consumed by the directory layout itself
-                                  -- see the ticket/require_ticket
-                                  paragraph above.
+                                  require_ticket is False).
+        year             str  -- the YYYY bucket actually used (4 digits).
+        month            str  -- the MM bucket actually used (2 digits).
+        leaf             str  -- the directory's final path segment: equal
+                                  to `ticket` when one was given, else
+                                  equal to `slug` (see the ticket-or-slug
+                                  paragraph above).
         created          bool -- always True on success
+      NOTE: `number`, `formatted_number` and `dirname` -- present on the
+      pre-Phase-3 result dict for the legacy specs/NNN-<slug>/ shape --
+      are ABSENT here. There is no NNN for a fresh allocation to report
+      (next_spec_number is no longer called; see the module docstring),
+      and emitting them as None/empty would be a dead field pretending to
+      still mean something. A caller reading this dict must not assume
+      those keys exist.
       On error: ({}, message).  The caller writes message to stderr and
       exits non-zero.  Errors:
         - slug is empty or fails FEATURE_NAME_RE
@@ -479,7 +622,7 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
           right format, or turn REQUIRE_TICKET off
         - the computed target directory already exists (see "Never
           overwrite" in the module docstring -- this is never silently
-          reused, including on a race between the scan and the mkdir)
+          reused, including on a race between two concurrent calls)
         - the directory cannot be created (permissions, etc.)
     """
     cleaned_slug = (slug or "").strip()
@@ -511,10 +654,11 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
 
     repo_root = Path(devforge_dir).resolve().parent
     specs_root = repo_root / SPECS_ROOT_DEFAULT
-    number = next_spec_number(devforge_dir)
-    formatted_number = "{0:0{w}d}".format(number, w=SPEC_NUMBER_WIDTH)
-    dirname = "{0}-{1}".format(formatted_number, cleaned_slug)
-    target = specs_root / dirname
+    moment = now if now is not None else datetime.now(timezone.utc)
+    year = moment.strftime("%Y")
+    month = moment.strftime("%m")
+    leaf = norm_ticket if norm_ticket else cleaned_slug
+    target = specs_root / year / month / leaf
 
     if target.exists():
         return {}, (
@@ -532,11 +676,11 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
     return {
         "path": str(target),
         "relative_path": target.relative_to(repo_root).as_posix(),
-        "number": number,
-        "formatted_number": formatted_number,
         "slug": cleaned_slug,
-        "dirname": dirname,
         "ticket": norm_ticket,
+        "year": year,
+        "month": month,
+        "leaf": leaf,
         "created": True,
     }, None
 
@@ -760,21 +904,36 @@ def find_feature_dirs_with(specs_root, filename):
 # ---------------------------------------------------------------------------
 
 
-def decide_branch_action(current_branch, default_branch, spec_number, slug):
+def decide_branch_action(current_branch, default_branch, ticket, slug):
     # type: (str, str, Optional[str], Optional[str]) -> Tuple[str, str, Optional[str]]
-    """Decide the branch-creation action for a spec/NNN-slug feature.
+    """Decide the branch-creation action for a feature branch.
 
     Pure function -- no filesystem or git access; the caller runs the
     returned git command (or does nothing, on a "keep" decision).
 
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D5: the branch name is
+    spec/<ticket> when a ticket is given (e.g. "spec/PROJ-123"), never
+    spec/NNN-slug for a NEW branch. D5's own text names only the
+    ticket-given case; it is silent on what a ticketless branch (legal --
+    REQUIRE_TICKET defaults false) should be named. This function applies
+    the SAME ticket-or-slug fallback allocate_feature_dir uses for the
+    directory leaf, for the same reason (see that function's docstring):
+    when no ticket is given, the branch is spec/<slug> instead, so a
+    ticketless run still gets a real feature branch with zero extra input
+    demanded of the operator. Existing spec/NNN-slug branches (from a
+    legacy allocation) are unaffected -- this function only decides the
+    name for a BRAND-NEW branch; it never renames one that already exists.
+
     Three arms:
       1. current_branch == default_branch
-         -> decision "create".  Requires spec_number and slug (both
-            truthy); if either is missing, returns decision="create" with
+         -> decision "create".  Requires ticket or slug (at least one
+            truthy, ticket taking priority when both are given -- see
+            above); if NEITHER is supplied, returns decision="create" with
             a non-None error and an empty line -- the caller must not
             treat that as success.  On success, line is the checkout
-            command "git checkout -b spec/<spec_number>-<slug>" (no
-            trailing newline -- the caller appends one).
+            command "git checkout -b spec/<ticket>" or
+            "git checkout -b spec/<slug>" (no trailing newline -- the
+            caller appends one).
       2. current_branch != default_branch AND current_branch already
          starts with "spec/"
          -> decision "keep-spec".  The session is already on a feature
@@ -803,20 +962,23 @@ def decide_branch_action(current_branch, default_branch, spec_number, slug):
                   comment), WITHOUT a trailing newline; "" when error is
                   not None.
       error    -- None on success; a message string when decision would
-                  be "create" but spec_number/slug were not supplied.
+                  be "create" but neither ticket nor slug was supplied.
     """
     current = (current_branch or "").strip()
     default = (default_branch or "").strip()
 
     if current == default:
-        if not spec_number or not slug:
+        cleaned_ticket = (ticket or "").strip()
+        cleaned_slug = (slug or "").strip()
+        identity = cleaned_ticket or cleaned_slug
+        if not identity:
             return (
                 "create",
                 "",
-                "spec_number and slug are required to create a branch "
+                "a ticket or a slug is required to create a branch "
                 "when on the default branch",
             )
-        branch = "{0}{1}-{2}".format(_SPEC_BRANCH_PREFIX, spec_number, slug)
+        branch = "{0}{1}".format(_SPEC_BRANCH_PREFIX, identity)
         return "create", "git checkout -b {0}".format(branch), None
 
     skip_line = "# already on non-default branch {0!r}; no checkout emitted".format(
