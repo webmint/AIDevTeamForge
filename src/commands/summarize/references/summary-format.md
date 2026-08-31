@@ -15,10 +15,22 @@ The orchestrator composes the summary from four scratch inputs captured during t
 3. **The task completion notes** (`parse-completion-notes` → `$WORKDIR/notes.json`) — a JSON array, one dict per task (`files_changed`, `notes`, `completed_at`, …). Drives the Changes section and the Deviations section.
 4. **The plan decisions** (`read-plan-decisions` → `$WORKDIR/decisions.json`) — `decisions` (one dict per decision with `decision`, `chosen`, `rationale`, `rejected`). Drives the Key-decisions section.
 
+The header's conditional `**Run by**:` line draws on none of these four — `main.md` PHASE 3 owns what composes it and whether it renders at all.
+
 ## Skeleton
 
 ```markdown
 ## Feature Summary: [NNN — feature name]
+**Run by**: [the name PHASE 3's provenance rule resolved]
+_Records who ran the command that created this document; not updated on later edits._
+
+(The two lines under the title are CONDITIONAL — they render together or not
+at all, and main.md PHASE 3 owns both the value and the condition. Unlike
+every other bracket in this skeleton, that name is not yours to compose. When
+PHASE 3's rule resolves no name, omit BOTH lines so that `### What was built`
+follows the title directly; never write `unknown`, an empty value, or a
+stand-in. The italic line is the bound that ships with the name — fixed text,
+reproduced verbatim.)
 
 ### What was built
 

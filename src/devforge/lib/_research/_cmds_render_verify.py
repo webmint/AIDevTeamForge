@@ -86,14 +86,21 @@ def cmd_render(args: argparse.Namespace) -> int:
     existing Run-by line, if any, is preserved (OQ-7's "keep the
     original") instead of a fresh value being captured every render.
 
-    Omitted (the default, and every call site until main.md is updated
-    to pass it on the attach-mode path): treated as a first-time render
-    -- a fresh value is captured, gated on AI_ATTRIBUTION (D9), exactly
-    as today's only call site (a genuinely first render) needs. This is
-    a KNOWN GAP, not an oversight: until that one prose call site passes
-    --existing-path, an attach-mode research-report.md re-render will
-    recompute rather than preserve -- tracked as this plan's open item,
-    same class as plan.md/summary.md's own prose-only Phase 4 items.
+    main.md's Step 4.4 passes it on exactly that path, and omits it
+    everywhere else.
+
+    Omitted: treated as a first-time render -- a fresh value is
+    captured, gated on AI_ATTRIBUTION (D9). That is what a fresh
+    allocation needs: Step 4.2's allocate-feature-dir refuses to reuse
+    an existing directory, so nothing sits at that path to read back
+    and the render is a first one by construction.
+
+    ONE divergence survives, deliberately: Phase 3's PREVIEW render
+    runs flagless in every mode, its bytes never reaching disk. On an
+    attach run the preview therefore resolves a fresh Run-by value
+    while Step 4.4's save preserves the existing report's -- a
+    difference main.md's Step 4.4 states to the reader rather than
+    hides.
     """
     import json as _json
     try:
