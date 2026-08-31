@@ -49,7 +49,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from ._schema import SPECS_ROOT_DEFAULT
+from ._schema import SPECS_ROOT_DEFAULT, resolve_bucketed_feature_dir
 from ._state import _atomic_write_json, _load_state
 from ._validators import _die
 
@@ -123,8 +123,12 @@ def _compute_source_hash(kind: str, file_: str, workspace_root: str) -> str:
 def cmd_write_design_anchor(args: argparse.Namespace) -> int:
     """Persist specs/[feature]/design-anchor.json from the /specify state.
 
-    Read-only on state. Requires spec_number + feature_slug (same
-    precondition as finalize-handoff) to compute the target path.
+    Read-only on state. Requires feature_slug, plus EITHER spec_number OR
+    a state shape resolve_bucketed_feature_dir can resolve to a feature
+    dir (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's fourth
+    Step 4.1 path -- a bucketed intake dir carries no spec_number by
+    design, D9, so it is not required there). Same precondition shape as
+    finalize-handoff.
 
     Args exposed via CLI:
       --devforge-dir    (required, inherited from parent parser)
@@ -134,8 +138,12 @@ def cmd_write_design_anchor(args: argparse.Namespace) -> int:
                          at the install/wrapper root, e.g. design/reference.html,
                          the same convention design_helper's --workspace-root
                          and /breakdown's `test -f design/reference.html` use)
-      --emit-path       (optional; overrides the default
-                         {specs-root}/{spec_number}-{feature_slug}/design-anchor.json)
+      --emit-path       (optional; overrides the default. Defaults to
+                         {specs-root}/{spec_number}-{feature_slug}/design-anchor.json,
+                         unless state resolves to a bucketed feature dir
+                         with no spec_number -- see
+                         resolve_bucketed_feature_dir -- in which case the
+                         default is <that dir>/design-anchor.json instead)
     """
     devforge_dir = args.devforge_dir
     specs_root = getattr(args, "specs_root", None) or SPECS_ROOT_DEFAULT
@@ -148,7 +156,14 @@ def cmd_write_design_anchor(args: argparse.Namespace) -> int:
 
     spec_number = state.get("spec_number") or ""
     feature_slug = state.get("feature_slug") or ""
-    if not spec_number or not feature_slug:
+    # 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's fourth Step
+    # 4.1 path: a bucketed intake dir carries no spec_number by design (D9
+    # -- none is invented), so the legacy spec_number+feature_slug
+    # composition below has nothing to build from. bucketed_feature_dir
+    # resolves the SAME directory Step 4.1's prose already picked, read
+    # back from state["source"]["handoff_path"] rather than re-composed.
+    bucketed_feature_dir = resolve_bucketed_feature_dir(state)
+    if not feature_slug or (not spec_number and bucketed_feature_dir is None):
         return _die(
             "write-design-anchor: spec_number and feature_slug must be set in state"
             " (run assign-spec-number + assign-feature-name first)",
@@ -166,9 +181,17 @@ def cmd_write_design_anchor(args: argparse.Namespace) -> int:
 
     emit_path = getattr(args, "emit_path", None)
     if not emit_path:
-        emit_path = "{0}/{1}-{2}/design-anchor.json".format(
-            specs_root, spec_number, feature_slug
-        )
+        if bucketed_feature_dir is not None:
+            # .as_posix(), not str(): bucketed_feature_dir is read back from
+            # a stored forward-slash string (source.handoff_path is written
+            # via _root_relative's .as_posix() convention). On Windows,
+            # Path.__str__ would render backslashes here, diverging from
+            # the legacy branch below's explicit forward-slash composition.
+            emit_path = (bucketed_feature_dir / "design-anchor.json").as_posix()
+        else:
+            emit_path = "{0}/{1}-{2}/design-anchor.json".format(
+                specs_root, spec_number, feature_slug
+            )
     target = Path(emit_path)
     if not target.is_absolute():
         target = Path.cwd() / target

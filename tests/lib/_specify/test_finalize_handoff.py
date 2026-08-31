@@ -870,5 +870,72 @@ class TestDesignAnchorDeliberatelyEmpty(unittest.TestCase):
         })
 
 
+# ---------------------------------------------------------------------------
+# TestBucketedFeatureDirNoSpecNumber.
+# ---------------------------------------------------------------------------
+
+
+class TestBucketedFeatureDirNoSpecNumber(unittest.TestCase):
+    """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3: state with
+    no spec_number but a bucketed source.handoff_path -- the fourth Step
+    4.1 path -- reaches exit 0 (not the "must be set in state" guard),
+    writes into the bucketed dir (never a hand-typed path), and emits a
+    schema-valid handoff.json whose classification.spec_number reconstructs
+    as None via the real _dict_to_dataclass path (not merely readable as
+    JSON null).
+
+    tests/lib/test_specify_helper.py::TestBucketedPathReachesDesignAnchorAndHandoff
+    covers the full real-producer round trip (allocate_feature_dir + the
+    real import-handoff CLI); this class is the in-process counterpart at
+    cmd_finalize_handoff's own established fixture level (_make_state /
+    _write_state, matching every other class in this file), added
+    specifically to exercise the Classification(spec_number=None)
+    reconstruction path."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.devforge_dir = self.tmp / ".devforge"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_bucketed_dir_reaches_completion_with_none_spec_number(self):
+        state = _make_state(
+            spec_number=None,
+            feature_slug="bucketed-feature",
+            feature_name="bucketed-feature",
+            source={
+                "handoff_path": "specs/2026/08/bucketed-feature/research-handoff.json",
+                "handoff_kind": "research",
+                "research_completed_at": "2026-08-31T08:00:00Z",
+                "discover_completed_at": None,
+                "discover_recommended_summary": None,
+            },
+        )
+        _write_state(self.devforge_dir, state)
+
+        emit_path = str(self.tmp / "out" / "handoff.json")
+        args = _make_args(
+            self.devforge_dir,
+            emit_path=emit_path,
+            completed_at="2026-08-31T10:00:00Z",
+        )
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0, "Expected exit 0 on the bucketed no-spec-number path")
+
+        with open(emit_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        self.assertIsNone(raw["classification"]["spec_number"])
+        self.assertEqual(
+            raw["spec_path"], "specs/2026/08/bucketed-feature/spec.md",
+        )
+
+        handoff = _dict_to_dataclass(specify_handoff_schema.Handoff, raw)
+        self.assertIsInstance(handoff, specify_handoff_schema.Handoff)
+        self.assertIsNone(handoff.classification.spec_number)
+        self.assertEqual(handoff.classification.feature_slug, "bucketed-feature")
+
+
 if __name__ == "__main__":
     unittest.main()

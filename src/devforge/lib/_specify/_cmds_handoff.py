@@ -6,8 +6,12 @@ pre-seeded fields.
 
 finalize-handoff (Phase 0.5 — specify -> plan producer):
   Reads specify-state.json, builds the specify Handoff dataclass,
-  validates it, and writes handoff.json to specs/{N}-{slug}/ (or
-  --emit-handoff-json override).  State is read-only; no mutation.
+  validates it, and writes handoff.json to specs/{N}-{slug}/ -- or, on
+  the bucketed feature-dir path (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+  PLAN.md Phase 3, no spec_number in state), to the feature dir
+  resolve_bucketed_feature_dir reads back from
+  state["source"]["handoff_path"] -- or --emit-handoff-json override.
+  State is read-only; no mutation.
 
 import-handoff:
   Reads a handoff.json produced by research_helper or discover_helper
@@ -36,8 +40,12 @@ import-handoff:
   fields unseeded, no error -- the D5 fallback guard (assign-spec-number /
   the new set-spec-number verb) covers that case. Seeding feature_slug
   alone does NOT by itself route a new-shape spec.md write into the
-  resolved intake dir -- see classify_feature_dir_identity's own docstring
-  for why that routing gap is separate, and is not closed here.
+  resolved intake dir -- that routing decision belongs to
+  src/commands/specify/main.md's Step 4.1 (a fourth, bucketed path as of
+  e1ffb2f) and to write-design-anchor / finalize-handoff's read-time
+  resolve_bucketed_feature_dir (_schema.py), neither of which lives in
+  this function -- see classify_feature_dir_identity's own docstring for
+  the full argument.
 
 find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   One glob pass over specs/*/research-handoff.json AND
@@ -76,7 +84,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ._schema import classify_feature_dir_identity
+from ._schema import classify_feature_dir_identity, resolve_bucketed_feature_dir
 from ._state import _atomic_write_json, _load_state, _state_path, _state_transaction
 from ._validators import _die
 
@@ -586,8 +594,13 @@ def _import_handoff_research(
     # to a *different* directory than the one the handoff (and this
     # future_spec_path) already lives in. See classify_feature_dir_identity's
     # own docstring for the three-shape rule (legacy / new-shape ticketless /
-    # new-shape ticketed) and for why seeding alone does not also fix
-    # main.md's Step 4.1 routing for the two new-shape cases.
+    # new-shape ticketed). e1ffb2f gave main.md's Step 4.1 a fourth,
+    # bucketed path that routes the two new-shape cases into THIS dir
+    # instead of genuine-fallback's fresh allocation; its read-time Python
+    # counterpart, resolve_bucketed_feature_dir (_schema.py), is what
+    # write-design-anchor and finalize-handoff consult when spec_number
+    # stays unseeded below -- it re-derives the same directory from
+    # state["source"]["handoff_path"], set unconditionally a few lines down.
     identity = classify_feature_dir_identity(handoff_path.parent)
 
     # Pre-seed state; check for re-import.
@@ -1105,13 +1118,17 @@ def cmd_finalize_handoff(args):
     seam is the /specify Phase 5 command spec calling this verb ONLY on the
     Phase 5.3 approve branch, after Phase 4 rendered + Phase 4.9 verifiers ran.
     Re-running gates here would duplicate gate logic (a second source of
-    truth). Render-completeness is still enforced: missing spec_number /
-    feature_slug fails fast, and empty/partial section content fails schema
-    validation (e.g. empty overview).
+    truth). Render-completeness is still enforced: missing feature_slug (and
+    missing spec_number, unless state resolves to a bucketed feature dir --
+    see resolve_bucketed_feature_dir) fails fast, and empty/partial section
+    content fails schema validation (e.g. empty overview).
 
     Args exposed via CLI:
       --devforge-dir     (required, inherited from parent parser)
-      --emit-handoff-json  (optional; default: {specs_root}/{number}-{slug}/handoff.json)
+      --emit-handoff-json  (optional; default: {specs_root}/{number}-{slug}/handoff.json,
+                            unless state resolves to a bucketed feature dir
+                            with no spec_number, in which case the default
+                            is <that dir>/handoff.json instead)
       --specs-root         (optional; default: "specs")
       --completed-at       (optional; ISO-8601 UTC string; defaults to now)
     """
@@ -1133,13 +1150,26 @@ def cmd_finalize_handoff(args):
     # Resolve spec_path.
     spec_number = state.get("spec_number") or ""
     feature_slug = state.get("feature_slug") or ""
-    if not spec_number or not feature_slug:
+    # 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's fourth Step
+    # 4.1 path: a bucketed intake dir carries no spec_number by design (D9
+    # -- none is invented). bucketed_feature_dir resolves the SAME
+    # directory Step 4.1's prose already picked, read back from
+    # state["source"]["handoff_path"] rather than re-composed from parts.
+    bucketed_feature_dir = resolve_bucketed_feature_dir(state)
+    if not feature_slug or (not spec_number and bucketed_feature_dir is None):
         return _die(
             "finalize-handoff: spec_number and feature_slug must be set in state"
             " (run assign-spec-number + assign-feature-name first)",
             code=2,
         )
-    spec_path = "{0}/{1}-{2}/spec.md".format(specs_root, spec_number, feature_slug)
+    if bucketed_feature_dir is not None:
+        # .as_posix(), not str(): keeps spec_path forward-slash on every
+        # platform, matching the legacy branch's explicit composition and
+        # _root_relative's own convention (source.handoff_path, which this
+        # value is read back from, is stored the same way).
+        spec_path = (bucketed_feature_dir / "spec.md").as_posix()
+    else:
+        spec_path = "{0}/{1}-{2}/spec.md".format(specs_root, spec_number, feature_slug)
 
     # Resolve specify_completed_at.
     if completed_at_override:
@@ -1155,7 +1185,11 @@ def cmd_finalize_handoff(args):
     # not a raw traceback.
     try:
         classification = specify_handoff_schema.Classification(
-            spec_number=state.get("spec_number") or "",
+            # spec_number is None (never "") on the bucketed path -- see
+            # Classification's own docstring for why the two are not
+            # equivalent. `spec_number` here is the local computed above,
+            # already "" when state carries no value.
+            spec_number=spec_number or None,
             feature_name=state.get("feature_name") or "",
             feature_slug=state.get("feature_slug") or "",
             spec_type=state.get("spec_type") or "",
@@ -1278,7 +1312,10 @@ def cmd_finalize_handoff(args):
     # Determine emit path.
     emit_path = getattr(args, "emit_handoff_json", None)
     if not emit_path:
-        emit_path = "{0}/{1}-{2}/handoff.json".format(specs_root, spec_number, feature_slug)
+        if bucketed_feature_dir is not None:
+            emit_path = (bucketed_feature_dir / "handoff.json").as_posix()
+        else:
+            emit_path = "{0}/{1}-{2}/handoff.json".format(specs_root, spec_number, feature_slug)
 
     target = Path(emit_path)
     if not target.is_absolute():

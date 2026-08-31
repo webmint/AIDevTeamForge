@@ -400,7 +400,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--emit-path", default=None, dest="emit_path",
         help=(
             "Override output path for design-anchor.json. Defaults to "
-            "{specs-root}/{spec_number}-{feature_slug}/design-anchor.json."
+            "{specs-root}/{spec_number}-{feature_slug}/design-anchor.json, "
+            "unless state resolves to a bucketed feature dir with no "
+            "spec_number, in which case the default is that dir's "
+            "design-anchor.json instead."
         ),
     )
     sp.set_defaults(func=cmd_write_design_anchor)
@@ -713,7 +716,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--emit-handoff-json", dest="emit_handoff_json", default=None,
         help=(
             "Override output path for handoff.json. "
-            "Defaults to {specs-root}/{spec_number}-{feature_slug}/handoff.json."
+            "Defaults to {specs-root}/{spec_number}-{feature_slug}/handoff.json, "
+            "unless state resolves to a bucketed feature dir with no "
+            "spec_number, in which case the default is that dir's "
+            "handoff.json instead."
         ),
     )
     sp.add_argument(

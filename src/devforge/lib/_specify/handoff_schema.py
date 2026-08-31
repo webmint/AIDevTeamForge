@@ -98,9 +98,19 @@ def _require_in_enum(value, allowed, field_name):
 
 @dataclass
 class Classification:
-    """Spec classification block -- number, name, type, status."""
+    """Spec classification block -- number, name, type, status.
 
-    spec_number: str
+    spec_number is Optional (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    PLAN.md Phase 3): a spec whose feature dir was intake-allocated under
+    the bucketed specs/<YYYY>/<MM>/<leaf>/ layout has no NNN at all -- D9
+    forbids inventing one, so None is the honest value, not an empty
+    string. None and "" are NOT equivalent here: None means "there is
+    genuinely no number for this spec" (skips the check below entirely);
+    "" is still rejected the same as before -- a caller passing an empty
+    string is a bug, not an absence.
+    """
+
+    spec_number: Optional[str]
     feature_name: str
     feature_slug: str
     spec_type: str
@@ -108,7 +118,8 @@ class Classification:
     status: str
 
     def __post_init__(self):
-        _require_nonempty(self.spec_number, "Classification.spec_number")
+        if self.spec_number is not None:
+            _require_nonempty(self.spec_number, "Classification.spec_number")
         _require_nonempty(self.feature_name, "Classification.feature_name")
         _require_nonempty(self.feature_slug, "Classification.feature_slug")
         _require_in_enum(self.spec_type, SPEC_TYPE_ENUM, "Classification.spec_type")

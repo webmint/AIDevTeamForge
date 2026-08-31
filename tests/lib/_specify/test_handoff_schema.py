@@ -309,6 +309,21 @@ class TestClassification(unittest.TestCase):
             _classification(spec_number="")
         self.assertIn("spec_number", str(ctx.exception))
 
+    def test_none_spec_number_accepted(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3: a
+        bucketed feature dir carries no NNN at all -- None is the honest
+        value (D9, nothing invented), and is NOT the same thing as the
+        empty string the test above still rejects."""
+        c = _classification(spec_number=None)
+        self.assertIsNone(c.spec_number)
+
+    def test_reject_non_string_non_none_spec_number(self):
+        """A non-string, non-None spec_number (e.g. a stray int) is still
+        a type error -- only the literal None sentinel is exempted."""
+        with self.assertRaises(ValueError) as ctx:
+            _classification(spec_number=42)
+        self.assertIn("spec_number", str(ctx.exception))
+
     def test_reject_whitespace_feature_name(self):
         with self.assertRaises(ValueError) as ctx:
             _classification(feature_name="   ")

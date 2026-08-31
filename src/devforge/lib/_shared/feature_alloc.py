@@ -990,16 +990,20 @@ def classify_feature_dir_identity(feature_dir):
       arbitrary tempdir in a test, for instance) does not get
       feature_slug seeded either.
 
-    What this function does NOT do: it does not fix
-    src/commands/specify/main.md's Step 4.1 warm/cold/fallback routing,
-    which independently re-parses the resolved directory's basename text
-    and requires the exact legacy <NNN>-<slug> shape for its own warm and
-    cold paths. A new-shape directory -- ticketed or ticketless -- still
-    falls through to Step 4.1's genuine-fallback arm today, which
-    allocates an UNRELATED fresh legacy-shaped directory rather than
-    reusing this one. That routing gap is prose, not seeding, and is
-    unchanged by this function -- closing it needs a fourth Step 4.1 path,
-    which is a command-spec edit this function does not make.
+    What this function does NOT do: it does not itself decide
+    src/commands/specify/main.md's Step 4.1 warm/cold/bucketed/fallback
+    routing, which independently re-parses the resolved directory's
+    basename text and ancestry. As of e1ffb2f, Step 4.1 has a FOURTH,
+    bucketed path (placed after warm/cold, before genuine-fallback) that
+    reuses a new-shape directory -- ticketed or ticketless -- instead of
+    routing it through genuine-fallback into an unrelated fresh
+    legacy-shaped directory; that routing gap this note used to describe
+    is closed. This function still cannot, by itself, tell a
+    bucketed-ticketed leaf apart from a genuinely orphaned pre-Phase-3
+    handoff (both return {spec_number: None, feature_slug: None} above)
+    -- Step 4.1's own ancestry test makes that call in prose, and its
+    read-time Python counterpart is `_specify._schema.
+    resolve_bucketed_feature_dir`, not this function.
     """
     feature_dir = Path(feature_dir)
     leaf = feature_dir.name

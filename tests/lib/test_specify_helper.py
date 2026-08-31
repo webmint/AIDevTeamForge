@@ -6071,6 +6071,192 @@ class TestImportHandoff(unittest.TestCase):
             self.assertIsNone(state["feature_slug"])
 
 
+class TestBucketedPathReachesDesignAnchorAndHandoff(unittest.TestCase):
+    """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's last
+    functional break: e1ffb2f gave /devforge:specify's Step 4.1 a fourth
+    path that reuses a bucketed specs/<YYYY>/<MM>/<leaf>/ intake directory
+    (state carries no spec_number on that path -- D9, nothing invented),
+    but write-design-anchor and finalize-handoff both composed their
+    output path from {spec_number}-{feature_slug} and neither was ever
+    handed the resolved feature directory, so a bucketed run wrote
+    spec.md and then hard-failed on both remaining Step 4.9/5.4 calls.
+
+    These are real-producer round-trips end to end: allocate_feature_dir
+    (the actual function, not a hand-built path) creates the feature dir,
+    a real research_helof finalize-handoff builds the handoff.json, the
+    real import-handoff CLI seeds state from it, and write-design-anchor
+    / finalize-handoff are then driven through the real specify_helper
+    CLI. Every assertion below reads the artifact back from the directory
+    allocate_feature_dir itself returned -- never a hand-typed path.
+    """
+
+    def _make_devforge(self, tmp) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_bucketed_ticketless_reaches_design_anchor_and_handoff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(devforge, "bucketed-feature", now=now)
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_import = _run([
+                "--devforge-dir", str(devforge), "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_import.returncode, 0, r_import.stderr)
+
+            # Step 4.1 "Feature name (all four paths)" runs even though
+            # import-handoff already seeded feature_slug from the leaf.
+            r_name = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "bucketed-feature",
+            ])
+            self.assertEqual(r_name.returncode, 0, r_name.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "bucketed-feature")
+
+            # write-design-anchor: no spec_number in state, but the
+            # bucketed directory is still recoverable from
+            # source.handoff_path -- must reach exit 0, not the
+            # "spec_number and feature_slug must be set" guard.
+            r_anchor = _run([
+                "--devforge-dir", str(devforge), "write-design-anchor",
+                "--workspace-root", str(tmp_path),
+            ], cwd=tmp_path)
+            self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
+            anchor_path = feature_dir / "design-anchor.json"
+            self.assertTrue(
+                anchor_path.exists(),
+                "design-anchor.json did not land in the allocated feature dir",
+            )
+
+            # Complete the state fields finalize-handoff needs that are
+            # orthogonal to this routing fix (overview / spec_type
+            # rationale) -- via the real setters, not a hand-built state.
+            r_overview = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Bucketed feature overview.",
+            ])
+            self.assertEqual(r_overview.returncode, 0, r_overview.stderr)
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Adding a bucketed feature.",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            r_finalize = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+            ], cwd=tmp_path)
+            self.assertEqual(r_finalize.returncode, 0, r_finalize.stderr)
+            handoff_json_path = feature_dir / "handoff.json"
+            self.assertTrue(
+                handoff_json_path.exists(),
+                "handoff.json did not land in the allocated feature dir",
+            )
+
+            data = json.loads(handoff_json_path.read_text(encoding="utf-8"))
+            self.assertIsNone(data["classification"]["spec_number"])
+            self.assertEqual(data["classification"]["feature_slug"], "bucketed-feature")
+            self.assertEqual(
+                data["spec_path"], result["relative_path"] + "/spec.md",
+            )
+
+    def test_bucketed_ticketed_reaches_design_anchor_and_handoff(self):
+        """Same real-producer round-trip, but with a ticket: the leaf is
+        PROJ-123 -- a ticket, not a slug, so import-handoff seeds neither
+        spec_number nor feature_slug (see
+        test_import_handoff_new_shape_ticketed_leaves_both_unseeded).
+        Step 4.1's "Feature name (all four paths)" then generates a fresh
+        name from $ARGUMENTS, since the leaf itself cannot be used."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(
+                devforge, "third-feature", ticket="PROJ-123", now=now,
+            )
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_import = _run([
+                "--devforge-dir", str(devforge), "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_import.returncode, 0, r_import.stderr)
+
+            r_name = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "third-feature",
+            ])
+            self.assertEqual(r_name.returncode, 0, r_name.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "third-feature")
+
+            r_anchor = _run([
+                "--devforge-dir", str(devforge), "write-design-anchor",
+                "--workspace-root", str(tmp_path),
+            ], cwd=tmp_path)
+            self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
+            anchor_path = feature_dir / "design-anchor.json"
+            self.assertTrue(
+                anchor_path.exists(),
+                "design-anchor.json did not land in the allocated (ticketed) feature dir",
+            )
+
+            r_overview = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Ticketed bucketed feature overview.",
+            ])
+            self.assertEqual(r_overview.returncode, 0, r_overview.stderr)
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Adding a ticketed bucketed feature.",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            r_finalize = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+            ], cwd=tmp_path)
+            self.assertEqual(r_finalize.returncode, 0, r_finalize.stderr)
+            handoff_json_path = feature_dir / "handoff.json"
+            self.assertTrue(
+                handoff_json_path.exists(),
+                "handoff.json did not land in the allocated (ticketed) feature dir",
+            )
+
+            data = json.loads(handoff_json_path.read_text(encoding="utf-8"))
+            self.assertIsNone(data["classification"]["spec_number"])
+            self.assertEqual(data["classification"]["feature_slug"], "third-feature")
+            self.assertEqual(
+                data["spec_path"], result["relative_path"] + "/spec.md",
+            )
+
+
 class TestFindHandoffs(unittest.TestCase):
     """Tests for specify_helper find-handoffs subcommand.
 

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Tuple
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 STATE_FILE_NAME = "specify-state.json"
 
@@ -146,13 +147,76 @@ AUTO_MODE_REMINDER_SUBSTRINGS: Tuple[str, ...] = (
 # IDENTITY-AND-PROVENANCE-PLAN.md Phase 3) joins this list for the same
 # reason: it is the single place _cmds_handoff.py's import-handoff gets
 # both the legacy regex AND the new-shape ancestry check it now needs.
+# MONTH_DIR_RE / YEAR_DIR_RE join the list for resolve_bucketed_feature_dir
+# below (e1ffb2f's Step 4.1 fourth path's read-time counterpart) -- the
+# same two-regex ancestry test classify_feature_dir_identity already runs
+# internally, needed again here because that function's return value alone
+# cannot tell a bucketed-ticketed leaf apart from a genuinely orphaned one
+# (both come back {spec_number: None, feature_slug: None} -- see its own
+# docstring). Reusing the constants, not reinventing the pattern.
 from _shared.feature_alloc import (  # type: ignore[import]  # noqa: E402
     FEATURE_NAME_RE,
+    MONTH_DIR_RE,
     SPEC_NUMBER_DIR_RE,
     SPEC_NUMBER_WIDTH,
     SPECS_ROOT_DEFAULT,
+    YEAR_DIR_RE,
     classify_feature_dir_identity,
 )
+
+
+def resolve_bucketed_feature_dir(state: Dict[str, Any]) -> Optional[Path]:
+    """Return the already-allocated bucketed feature dir, or None.
+
+    91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's fourth Step
+    4.1 path (e1ffb2f) reuses a specs/<YYYY>/<MM>/<leaf>/ intake directory
+    without ever allocating a spec_number. write-design-anchor and
+    finalize-handoff both composed their output path from
+    {specs_root}/{spec_number}-{feature_slug}/ -- a composition that has
+    nothing to build from on that path. This function is the read-time
+    counterpart of Step 4.1's routing decision: given /specify state, it
+    re-derives the SAME directory the command prose's ancestry test
+    already resolved (parent is a 2-digit month, grandparent a 4-digit
+    year) -- from state["source"]["handoff_path"], the one field
+    import-handoff sets on every importing arm (warm, cold, bucketed and
+    genuine-fallback alike) and never mutates afterwards.
+
+    Deliberately does not extend classify_feature_dir_identity: that
+    function classifies a directory's LEGACY NNN-slug identity and
+    returns the identical {spec_number: None, feature_slug: None} pair
+    for a bucketed-ticketed leaf and for a genuinely orphaned pre-Phase-3
+    handoff (see its own "What this function does NOT do" note) -- it
+    cannot tell the two apart, and this function does not ask it to. The
+    ancestry test below is the only signal that can, and it is the exact
+    test Step 4.1's "Bucketed path" paragraph specifies in prose.
+
+    Returns None (never a guess) when:
+      - state["spec_number"] is already set -- the legacy
+        {specs_root}/{spec_number}-{feature_slug}/ composition is correct
+        and this function has nothing to add;
+      - state["source"]["handoff_path"] is unset -- a manual /specify run
+        with no upstream handoff at all; or
+      - the handoff's directory does not sit under a real <YYYY>/<MM>
+        ancestry -- the genuine-fallback case: a stray or pre-migration
+        handoff Step 4.1 deliberately does NOT reuse, allocating a fresh
+        directory instead. Reusing it here would misroute the artifact
+        exactly the way this plan exists to stop.
+
+    Never fabricates a value: a non-None result is always read back from
+    a path already written by a real allocation, never synthesised.
+    """
+    if state.get("spec_number"):
+        return None
+    source = state.get("source") or {}
+    handoff_path_raw = source.get("handoff_path") if isinstance(source, dict) else None
+    if not handoff_path_raw:
+        return None
+    candidate = Path(handoff_path_raw).parent
+    month_name = candidate.parent.name
+    year_name = candidate.parent.parent.name
+    if MONTH_DIR_RE.match(month_name) and YEAR_DIR_RE.match(year_name):
+        return candidate
+    return None
 
 SUBSECTION_HEADING_BY_KEY: Dict[str, Tuple[str, str]] = {
     "tooling_artifact_presence": ("5.1", "Tooling / artifact presence and absence"),

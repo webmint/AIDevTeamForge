@@ -15,7 +15,43 @@ from ._schema import (
     SPEC_STATUS_DEFAULT,
     SUBSECTION_HEADING_BY_KEY,
     _SUBSECTION_RENDER_ORDER,
+    resolve_bucketed_feature_dir,
 )
+
+
+def _feature_dir_display(state: Dict[str, Any]) -> str:
+    """Return the feature-dir path segment `_approval_summary` /
+    `_plan_handoff_block` compose their user-facing `specs/...` literals
+    from.
+
+    e1ffb2f (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's
+    fourth Step 4.1 path) made the `{spec_number}-{feature_name}`
+    composition both functions used to hand-build WRONG on the bucketed
+    path: spec_number is None there (D9 -- none is invented), so the
+    composed literal would name a directory this run never wrote to.
+    resolve_bucketed_feature_dir reads back the SAME directory Step 4.1's
+    prose already picked, from state["source"]["handoff_path"], so both
+    callers stay correct-by-construction instead of composing a path from
+    parts that may no longer describe where the run actually wrote.
+
+    Falls back to the legacy "specs/{spec_number}-{feature_name}"
+    composition (with this module's pre-existing "NNN" / "feature"
+    placeholders when either is unset) when state does not resolve to a
+    bucketed dir -- byte-identical to each caller's prior behaviour on
+    every path that isn't bucketed. The bucketed branch needs no "specs/"
+    prefix of its own: bucketed_feature_dir is already the full
+    specs/<YYYY>/<MM>/<leaf> path, read back from state, not composed.
+    """
+    bucketed_feature_dir = resolve_bucketed_feature_dir(state)
+    if bucketed_feature_dir is not None:
+        # .as_posix(), not str(): matches _root_relative's own convention
+        # (bucketed_feature_dir is read back from a stored forward-slash
+        # string) so this stays forward-slash on every platform, like the
+        # legacy fallback below.
+        return bucketed_feature_dir.as_posix()
+    number = state.get("spec_number") or "NNN"
+    name = state.get("feature_name") or "feature"
+    return "specs/{0}-{1}".format(number, name)
 
 
 def _render_section_acs(
@@ -268,9 +304,15 @@ def _canonicalize_for_compare(b: bytes) -> bytes:
 
 
 def _approval_summary(state: Dict[str, Any]) -> str:
-    """Compose v3 4-bullet summary (Variance rule #9, verbatim shape)."""
-    number = state.get("spec_number") or "NNN"
-    name = state.get("feature_name") or "feature"
+    """Compose v3 4-bullet summary (Variance rule #9, verbatim shape).
+
+    The `specs/.../spec.md` literal below is `_feature_dir_display(state)`
+    -- see that function's docstring for why the plain
+    `{spec_number}-{feature_name}` composition this function used to
+    hand-build stopped being accurate once e1ffb2f shipped Step 4.1's
+    bucketed path, and for how the fallback still matches this function's
+    pre-existing behaviour on every other path.
+    """
     overview = (state.get("overview") or "_(no overview)_").strip()
     if len(overview) > 240:
         overview = overview[:237] + "..."
@@ -295,7 +337,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         oos_short = "_(none)_"
     return (
         "I've created the specification at "
-        "`specs/{n}-{f}/spec.md`. Key points:\n"
+        "`{fd}/spec.md`. Key points:\n"
         "- **What changes**: {ov}\n"
         "- **Files affected**: {fc} files across {ac} areas\n"
         "- **Acceptance criteria**: {acc} testable criteria across "
@@ -306,14 +348,20 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         "approved, run `/devforge:plan` to create the technical implementation "
         "plan."
     ).format(
-        n=number, f=name, ov=overview, fc=file_count, ac=area_count,
+        fd=_feature_dir_display(state), ov=overview, fc=file_count, ac=area_count,
         acc=ac_count, sc=subsection_count, oos=oos_short,
     )
 
 
 def _plan_handoff_block(state: Dict[str, Any]) -> str:
-    number = state.get("spec_number") or "NNN"
-    name = state.get("feature_name") or "feature"
+    """Compose the manual /devforge:plan handoff block.
+
+    Same `_feature_dir_display(state)` composition as `_approval_summary`
+    above for the `handoff.json` and `spec.md` literals below -- see that
+    shared function's docstring. Do not diverge the two functions'
+    handling of this.
+    """
+    feature_dir = _feature_dir_display(state)
     spec_type = state.get("spec_type") or "<unset>"
     status = state.get("status") or "Draft"
     acs = state["acceptance_criteria"]
@@ -350,7 +398,7 @@ def _plan_handoff_block(state: Dict[str, Any]) -> str:
     return (
         "## Manual next step — run /devforge:plan\n"
         "\n"
-        "A structured handoff (specs/{n}-{f}/handoff.json) is written for "
+        "A structured handoff ({fd}/handoff.json) is written for "
         "/devforge:plan. /devforge:plan auto-discovers it on its first run and reads the "
         "upstream plan-seeds — but you still launch /devforge:plan manually (there is "
         "no auto-dispatch from /devforge:specify). Restart Claude Code (exit and "
@@ -359,7 +407,7 @@ def _plan_handoff_block(state: Dict[str, Any]) -> str:
         "so /devforge:plan does not need most-recent-spec discovery:\n"
         "\n"
         "~~~\n"
-        "/devforge:plan specs/{n}-{f}/spec.md\n"
+        "/devforge:plan {fd}/spec.md\n"
         "~~~\n"
         "\n"
         "Minimum handoff data:\n"
@@ -375,9 +423,9 @@ def _plan_handoff_block(state: Dict[str, Any]) -> str:
         "- Risks: {rk}\n"
         "- Phase 1.5 finding coverage: 100% (all findings landed)\n"
         "\n"
-        "Reference: specs/{n}-{f}/spec.md"
+        "Reference: {fd}/spec.md"
     ).format(
-        n=number, f=name, status=status, st=spec_type,
+        fd=feature_dir, status=status, st=spec_type,
         acc=ac_count, sca=sub_active, sub_counts=sub_count_strs,
         ans=dp_by_status["answered"],
         da=dp_by_status["default_applied"],
