@@ -13,7 +13,8 @@ audits/
   .gitignore                           # Auto-created on first audit run (excludes .tmp-* files)
 
 specs/
-  NNN-feature-name/                # One numbered directory per feature (allocated by research or discover)
+  NNN-feature-name/                # Feature directory, numbered shape — read everywhere; intake never creates one
+  YYYY/MM/PROJ-123/                # Feature directory, bucketed shape — allocated by research or discover
     research-report.md             # Research report (research) — bug/enhancement lane
     research-handoff.json          # research→specify structured handoff (research)
     probe-script.<ext>             # Tier-1.5 runtime probe (research) — optional
@@ -44,21 +45,33 @@ docs/
 ```
 
 **Intake owns the feature directory.** `/devforge:research` and `/devforge:discover` allocate
-`specs/NNN-feature-name/` — and the feature branch, `spec/<ticket>` when the run
-names a ticket and `spec/<feature-name>` when it does not —
+`specs/<YYYY>/<MM>/<leaf>/` — the allocation year and month, then the ticket when
+the run named one and the confirmed 2-4 word slug when it did not — and the
+feature branch, `spec/<ticket>` or `spec/<feature-slug>` on that same rule —
 at the end of a run, once the user confirms the save and the feature name, and
 write their report + handoff inside it. `/devforge:specify` then RESOLVES that existing
-directory and writes `spec.md` beside those artifacts; it allocates no number
-of its own. A run the user declines to save leaves nothing under `specs/`.
+directory and writes `spec.md` beside those artifacts; it allocates a directory
+of its own only on its documented fallback path, when the handoff it imported
+sits in no directory intake named. A run the user declines to save leaves
+nothing under `specs/`.
 Top-level `research/` and `discover/` directories are legacy — installs that
 ran intake before this layout keep theirs as inert history, and nothing new is
 written there.
 
+**Both feature-directory shapes are permanent.** A directory allocated before the
+bucketed layout is named `specs/NNN-feature-name/` and sits one level under
+`specs/`. Nothing migrates it, nothing renames it, and every resolver reads both
+shapes — so an install holds whatever mix its own history produced, indefinitely.
+A directory of either shape holds the same files: the tree above lists them once,
+under the bucketed example. Read the shape off the directory itself, never off the
+command that wrote into it.
+
 **The `discovery-` / `discover-` stem asymmetry is deliberate.** `/devforge:discover`
 writes its report as `discovery-report.md` and its handoff as
 `discover-handoff.json`. Both literals are load-bearing — `specify_helper
-find-handoffs` globs `specs/*/discover-handoff.json`, and the handoff records
-the sibling report in its `report_path` field — so renaming either file to make
+find-handoffs` looks for a file named exactly `discover-handoff.json` in every
+feature directory it walks, whichever shape that directory has, and the handoff
+records the sibling report in its `report_path` field — so renaming either file to make
 the two stems match breaks discovery. Do not normalize them.
 
 NOTE: legacy layout (`docs/features/`, `docs/api/`, `docs/guides/`) is dropped.
@@ -112,17 +125,43 @@ consolidation, not a replacement.
   - **`.devforge/template/` (SINGULAR) is NOT in the CODE class — it stays fully tracked.** It is `update.sh`'s agent three-way-merge baseline + NEW/REMOVED agent enumeration source, so untracking it would risk blind agent overwrite + skipped pruning on the next `update.sh`. Do NOT untrack it. (Note `templates/` plural IS in the CODE class; `template/` singular is NOT — they differ by one character.)
   - **Rollout.** The untrack migration is carried by a FULL `install.sh` or `update.sh` run (both source `scripts/devforge-state-migrate.sh`); a surgical `install.sh --only <cmd>` patch exits before the migration and does NOT carry it — consistent with plan 49's OQ-3 pull-based rollout (no separate back-fill command). This matches the pre-existing plan-49 migration behavior; it is not a plan-56 regression.
 
-**Scratch ≠ record — do not conflate.** `.devforge/research-report.json` (EPHEMERAL single-slot scratch, gitignored) is a DIFFERENT file from `specs/NNN-slug/research-handoff.json` (FEATURE-SCOPED persistent record, committed). Same for `.devforge/discover-report.json` vs `specs/NNN-slug/discover-handoff.json`. The `.devforge/` copy is overwritten by the next run of that command; the copy inside the feature directory is the durable artifact.
+**Scratch ≠ record — do not conflate.** `.devforge/research-report.json` (EPHEMERAL single-slot scratch, gitignored) is a DIFFERENT file from `specs/<feature>/research-handoff.json` (FEATURE-SCOPED persistent record, committed). Same for `.devforge/discover-report.json` vs `specs/<feature>/discover-handoff.json`. The `.devforge/` copy is overwritten by the next run of that command; the copy inside the feature directory is the durable artifact.
 
-The trap is sharpest for the two files that share a NAME: `specs/NNN-slug/research-report.md` is the durable RECORD `/devforge:research` saves, while `.devforge/research-report.json` is the EPHEMERAL run state its setters mutate during the run. Same words, different class — read the class off the location, never off the name.
+The trap is sharpest for the two files that share a NAME: `specs/<feature>/research-report.md` is the durable RECORD `/devforge:research` saves, while `.devforge/research-report.json` is the EPHEMERAL run state its setters mutate during the run. Same words, different class — read the class off the location, never off the name.
 
 ## Naming Rules
 
 ### Feature Directories
-- **Format**: `NNN-feature-name` where NNN is a zero-padded sequential number
-- Scan existing `specs/` directories to determine the next number
+
+Two shapes, both live and both resolvable. Intake allocates the bucketed shape only; the
+numbered shape is what earlier installs allocated, and nothing migrates it.
+
+**Bucketed shape — what intake allocates:**
+- **Format**: `<YYYY>/<MM>/<leaf>` under `specs/`, where `<YYYY>`/`<MM>` are the year and
+  month the directory was allocated (UTC)
+- `<leaf>` is the ticket ID when the intake run named one, and the confirmed feature
+  slug when it did not — never a composite of the two
+- Ticket format: uppercase letters, a hyphen, digits (`PROJ-123`). A lowercase or
+  mixed-case value is refused, never silently upper-cased
+- Feature slug: lowercase kebab-case, 2-4 words
+- Examples: `specs/2026/08/PROJ-123`, `specs/2026/08/dark-mode-toggle`
+- The bucket records the ALLOCATION date, not the working period — a feature opened in
+  August and finished in October stays under `2026/08`. It is a birth index, never a
+  record of what was worked on that month
+- Whether a ticket is required at all is the project's own policy: the `REQUIRE_TICKET`
+  key in `.devforge/project-config.json`, answered at `/devforge:configure` and
+  changeable afterwards with `configure_helper set-require-ticket <true|false>`.
+  Nothing checks that the ticket EXISTS — the framework has no tracker integration and
+  tests the value's shape only, so `PROJ-0000` satisfies the rule exactly as a real
+  ticket does
+
+**Numbered shape — read, never created anew:**
+- **Format**: `NNN-feature-name` directly under `specs/`, where NNN is a zero-padded
+  sequential number
 - Examples: `001-user-auth`, `002-cart-pricing`, `003-order-history`
-- Feature name part: lowercase kebab-case, 2-4 words
+- Every resolver still finds these directories and nothing migrates or renames them
+- Intake never allocates one. `/devforge:specify`'s fallback path is the only step that
+  still can, and only when it imported a handoff from a directory intake did not name
 
 ### Task Files
 - **Format**: `NNN-short-task-title.md` where NNN is a zero-padded sequential number within the feature
@@ -130,16 +169,23 @@ The trap is sharpest for the two files that share a NAME: `specs/NNN-slug/resear
 - Title part: lowercase kebab-case, concise description of the task
 - Examples: `001-define-types.md`, `002-create-repository.md`, `003-build-form-component.md`
 
-### How to Determine Next Feature Number
-1. List all directories in `specs/`
-2. Extract the highest NNN prefix
-3. Next feature = highest + 1 (or 001 if empty)
+### How the Feature Directory Is Allocated
+1. `/devforge:research` and `/devforge:discover` ask for the ticket in the same
+   AskUserQuestion call that confirms the save and the feature name
+2. They call `allocate-feature-dir`, which composes `specs/<YYYY>/<MM>/<leaf>/` from the
+   allocation date and that ticket — or from the confirmed slug when no ticket was
+   given — and creates it
+3. An existing target directory is an ERROR, not a reuse: the verb refuses and the command
+   reports its message
 
-This scan runs at intake: `/devforge:research` and `/devforge:discover` call `allocate-feature-dir` once the user confirms the save. `/devforge:specify` reads the number off the directory it resolved and allocates none.
+The helper owns every segment of that path — no command composes one. Nothing scans
+`specs/` for a next number on this path; that scan survives only inside
+`/devforge:specify`'s fallback, named under Feature Directories above. On every other path
+`/devforge:specify` writes into the directory it resolved.
 
 ## Task File Format
 
-Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
+Each task file (`specs/<feature>/tasks/NNN-title.md`) contains:
 
 ```markdown
 # Task NNN: [Title]
@@ -206,21 +252,25 @@ The `**Dead code removal**:` line is likewise OPTIONAL — `render-task-file` em
 ## File Lifecycle
 
 ```
-research     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/<ticket> branch — spec/<name> when the run named no ticket — and writes research-report.md + research-handoff.json there (+ probe-script.<ext> when a tier-1.5 probe ran); a declined save leaves nothing in the repo
-discover     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/<ticket> branch — spec/<name> when the run named no ticket — and writes discovery-report.md + discover-handoff.json there; a declined save leaves nothing in the repo
-specify      → creates specs/NNN-name/spec.md inside the feature directory intake already allocated
-spec-check   → creates specs/NNN-name/spec-check.md (SMT AC-consistency report) + specs/NNN-name/spec-check-seed.json ONLY on a MATCHING REVISE-SPEC pick (user picks "Revise spec" AND the recommendation was REVISE-SPEC; a cross-pick / Consistent / Dismiss writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /devforge:specify); user-invoked between /devforge:specify and /devforge:plan, and /devforge:plan requires a fresh spec-check.md (presence + freshness only)
-plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
-breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... + specs/NNN-name/breakdown-handoff.json (machine contract for /devforge:implement; task .md files stay human-readable)
+research     → displays report in console; on a confirmed save allocates specs/<YYYY>/<MM>/<leaf>/ + the spec/<ticket> branch — spec/<slug> when the run named no ticket — and writes research-report.md + research-handoff.json there (+ probe-script.<ext> when a tier-1.5 probe ran); a declined save leaves nothing in the repo
+discover     → displays report in console; on a confirmed save allocates specs/<YYYY>/<MM>/<leaf>/ + the spec/<ticket> branch — spec/<slug> when the run named no ticket — and writes discovery-report.md + discover-handoff.json there; a declined save leaves nothing in the repo
+specify      → creates specs/<feature>/spec.md inside the feature directory intake already allocated
+spec-check   → creates specs/<feature>/spec-check.md (SMT AC-consistency report) + specs/<feature>/spec-check-seed.json ONLY on a MATCHING REVISE-SPEC pick (user picks "Revise spec" AND the recommendation was REVISE-SPEC; a cross-pick / Consistent / Dismiss writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /devforge:specify); user-invoked between /devforge:specify and /devforge:plan, and /devforge:plan requires a fresh spec-check.md (presence + freshness only)
+plan         → creates specs/<feature>/plan.md (+ research.md, data-model.md, contracts.md if needed)
+breakdown    → creates specs/<feature>/tasks/001-xxx.md, 002-xxx.md, ... + specs/<feature>/breakdown-handoff.json (machine contract for /devforge:implement; task .md files stay human-readable)
 implement    → updates individual task file status + completion notes
-review       → creates specs/NNN-name/review.md (emergent cross-task findings; findings only, no verdict)
-verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
-summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
+review       → creates specs/<feature>/review.md (emergent cross-task findings; findings only, no verdict)
+verify       → updates specs/<feature>/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
+summarize    → creates specs/<feature>/summary.md (PR-ready feature summary)
 finalize     → squashes WIP commits + surgical docs/ updates via tech-writer
 report-bug   → creates bugs/NNN-description.md
-fix          → FEATURE lane: writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/NNN-name/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the verdict gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two. COLD lane (typed with a bugs/NNN-*.md argument): writes a clean fix(scope): commit AND flips that ONE bug file to Fixed; its bounce recommends /devforge:research, writes no seed, and leaves the bug Open. Creates no bugs/ file in either lane
+fix          → FEATURE lane: writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/<feature>/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the verdict gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two. COLD lane (typed with a bugs/NNN-*.md argument): writes a clean fix(scope): commit AND flips that ONE bug file to Fixed; its bounce recommends /devforge:research, writes no seed, and leaves the bug Open. Creates no bugs/ file in either lane
 audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
+
+`specs/<feature>/` above is the feature directory intake allocated — `specs/<YYYY>/<MM>/<leaf>/`
+on everything allocated since the bucketed layout, `specs/NNN-name/` in installs that predate
+it. Both resolve everywhere; see Naming Rules → Feature Directories.
 
 ## Status Tracking
 
@@ -334,7 +384,7 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 **Status**: Open | In Progress | Fixed
 **Severity**: Critical | Warning | Info
 **Source**: verify | manual
-**Feature**: [spec path, e.g. specs/001-feature/spec.md — or N/A for standalone bugs]
+**Feature**: [spec path, e.g. specs/2026/08/PROJ-123/spec.md or specs/001-feature/spec.md — or N/A for standalone bugs]
 **AC**: [AC-N — or N/A if not tied to an acceptance criterion]
 **Reported**: [YYYY-MM-DD]
 **Fixed**: [YYYY-MM-DD or empty]

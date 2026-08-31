@@ -66,9 +66,9 @@ Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/
 
 ### Per-feature pipeline
 
-- **`/devforge:research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/devforge:specify`. On save it allocates the feature dir `specs/NNN-name/` and the `spec/NNN-name` branch, and writes its report + handoff there.
+- **`/devforge:research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/devforge:specify`. On save it allocates the feature dir — `specs/2026/08/PROJ-123/`: the year and month it was allocated, then the ticket you name (a short slug when you name none) — plus the matching branch (`spec/PROJ-123`, or `spec/<slug>` without a ticket), and writes its report + handoff there.
 - **`/devforge:discover "idea"`** — Survey a greenfield feature (internal prior art + web) → discovery handoff. The other intake lane for `/devforge:specify`. Allocates the feature dir + branch on save, same as `/devforge:research`.
-- **`/devforge:specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
+- **`/devforge:specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
 - **`/devforge:spec-check`** *(required before `/devforge:plan`; you type it)* — SMT consistency prover for the spec's acceptance criteria: resolves each criterion's subject against the code, formalizes what resolves, and proves (via Z3) whether the criteria contradict each other → `spec-check.md`. Recommends CONSISTENT / REVISE-SPEC / DISMISS; you check the translation and own every verdict it raises, while a clean result is accepted without asking. `/devforge:plan` blocks until this report exists and still matches the spec — presence and freshness only, never the verdict. A consistency prover, not a mind-reader. Needs `z3-solver` (a one-time `pip install z3-solver`, not installed by the template).
 - **`/devforge:plan`** — Technical plan from the approved spec: architecture, data model, API contracts, research → `plan.md`.
 - **`/devforge:grill`** *(required before `/devforge:breakdown`; you type it)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own every verdict it raises, while a run where nothing survived cross-examination is accepted without asking. `/devforge:breakdown` blocks until this report exists for the plan — presence and the recorded adversary run only, never freshness and never the disposition, so a KILL report unblocks it exactly as a PROCEED one does. What is mandatory is that the grill RAN, never that its disposition binds.
@@ -89,10 +89,11 @@ Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/
 ## Artifact layout
 
 ```
-specs/NNN-feature/                     bugs/NNN-slug.md
+specs/2026/08/PROJ-123/                bugs/NNN-slug.md
   research-report.md research-handoff.json     (/devforge:research lane)
   discovery-report.md discover-handoff.json    (/devforge:discover lane)
   spec.md plan.md tasks/ review.md verification.md summary.md
+specs/NNN-feature/                     (allocated before the YYYY/MM layout — same contents, still read)
 audits/  YYYY-MM-DD-audit.md
 ```
 
