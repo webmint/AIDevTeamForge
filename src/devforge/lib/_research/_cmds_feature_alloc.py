@@ -8,6 +8,14 @@ allocate specs/NNN-slug/ and decide the branch action at intake finalize
 time (plan 68 D1), the same capability /specify already has via
 specify_helper create-branch.
 
+91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2 -- allocate-feature-dir
+gained an optional --ticket argument.  This verb reads REQUIRE_TICKET via
+read_require_ticket(args.devforge_dir) itself (the one place per plan 91 D4's
+substrate docstring that reads that config key for this call) and passes
+both the ticket and that boolean through to allocate_feature_dir, which
+stays a pure function of its arguments -- see that function's own docstring
+for the validation/refusal rules this wrapper does not duplicate.
+
 Stdlib only. Python 3.8+.
 """
 
@@ -20,6 +28,7 @@ import sys
 from _shared.feature_alloc import (  # type: ignore[import]
     allocate_feature_dir,
     decide_branch_action,
+    read_require_ticket,
 )
 
 
@@ -27,12 +36,17 @@ def cmd_allocate_feature_dir(args: argparse.Namespace) -> int:
     """Allocate a fresh specs/NNN-<slug>/ directory; print the result as JSON.
 
     Exit 0 with a JSON object on stdout (keys: path, number,
-    formatted_number, slug, dirname, created) on success.
-    Exit 2 with a message on stderr on failure (invalid slug, or the
-    computed target directory already exists -- see
-    _shared.feature_alloc.allocate_feature_dir for the full error catalog).
+    formatted_number, slug, dirname, ticket, created) on success.
+    Exit 2 with a message on stderr on failure (invalid slug, a supplied
+    ticket that fails normalize_ticket, REQUIRE_TICKET enabled with no
+    valid ticket supplied, or the computed target directory already exists
+    -- see _shared.feature_alloc.allocate_feature_dir for the full error
+    catalog).
     """
-    result, error = allocate_feature_dir(args.devforge_dir, args.slug)
+    require_ticket = read_require_ticket(args.devforge_dir)
+    result, error = allocate_feature_dir(
+        args.devforge_dir, args.slug, ticket=args.ticket, require_ticket=require_ticket,
+    )
     if error is not None:
         sys.stderr.write(
             "research_helper: allocate-feature-dir: {0}\n".format(error)

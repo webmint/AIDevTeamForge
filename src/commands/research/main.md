@@ -1185,22 +1185,38 @@ Surface the composed matrix in the same user-facing message as the rendered repo
 
 ## Phase 4 — Save + recommend
 
-Phase 4 runs in one fixed order: confirm the save + the feature name → resolve the feature directory (allocate, or attach) → create the branch → write the report → copy the probe script → write the emission matrix → write the handoff → commit. Nothing outside `.devforge/` scratch is created before the user's confirmation in Step 4.1, and no step below runs on the don't-save arm.
+Phase 4 runs in one fixed order: confirm the save, the feature name and the ticket → resolve the feature directory (allocate, or attach) → create the branch → write the report → copy the probe script → write the emission matrix → write the handoff → commit. Nothing outside `.devforge/` scratch is created before the user's confirmation in Step 4.1, and no step below runs on the don't-save arm.
 
-### Step 4.1 — Ask to save (one question, feature name included)
+### Step 4.1 — Ask to save (one call, feature name and ticket included)
 
 Compose the proposed feature slug from `memo.topic_slug` (already in state — `read-memo` prints it). The slug becomes the permanent feature-directory name and the branch name, so it must be 2-4 lowercase kebab-case words whose first character is a letter. `set-topic` derives `topic_slug` by lowercasing the topic, replacing each non-alphanumeric run with `-`, and keeping the first 4 words — that value can come out as a single word or with a leading digit, neither of which is a valid feature slug. When it does, adjust it before displaying: add a distinguishing word from the topic to reach two words, and reword or drop a leading numeric segment.
 
-After echoing the rendered report, ask ONE question via AskUserQuestion — single-line question text `"Save this research as feature '<proposed-slug>'?"` — with exactly two options: `"Save as <proposed-slug> (Recommended)"` and `"Don't save"`. Do NOT add an "Other" option of your own; the tool appends its own free-text row, and that row is the rename path.
+After echoing the rendered report, ask via AskUserQuestion — TWO questions in ONE call, so the save decision and the ticket are settled in the same turn.
 
-End the turn. The user's reply opens the next turn. Read the reply as follows:
+**Question 1 — the save and the feature name.** Single-line question text `"Save this research as feature '<proposed-slug>'?"` with exactly two options: `"Save as <proposed-slug> (Recommended)"` and `"Don't save"`. Do NOT add an "Other" option of your own; the tool appends its own free-text row, and that row is the rename path.
+
+**Question 2 — the ticket.** Single-line question text `"Which ticket is this feature tracked under?"` with exactly two options: `"No ticket"` and `"I'll type the ticket"`. Do NOT add an "Other" option of your own here either; the tool appends its own free-text row, and that row is where the ticket ID goes — typing `PROJ-123` into it answers the question in one step. Mark neither option `(Recommended)`: which one is right is the project's own policy, not this run's call.
+
+State this plainly in the message that carries the two questions, not as an aside: **nothing checks that the ticket exists.** This framework has no tracker integration, and the only test applied to the value is its shape (`LETTERS-NUMBER`), so `PROJ-0000` satisfies the rule exactly as a real ticket does. Naming a ticket is a discipline a project may require of itself — it is never evidence that the ticket named is a real one.
+
+End the turn. The user's reply opens the next turn. Read question 1's answer as follows:
 
 - `Save as <proposed-slug> (Recommended)` → save under the proposed slug; go to Step 4.2.
 - `Don't save` → go to Step 4.7.
 - Free text (the tool's own row) → treat it as SAVE, using the typed text as the feature name — UNLESS the text clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. Normalize the typed text by the same rule as the proposed slug: lowercase it, replace each non-alphanumeric run with `-`, keep the first 4 words, and require 2-4 words with a letter as the first character. Use the normalized slug for the rest of Phase 4.
-- Free text that yields no valid slug under that rule (fewer than two usable words, or nothing that can start with a letter) → do not guess a name. Ask Step 4.1's question again, naming what was wrong with the typed text; the user can also pick either literal option to move on.
+- Free text that yields no valid slug under that rule (fewer than two usable words, or nothing that can start with a letter) → do not guess a name. Ask Step 4.1's question 1 again, naming what was wrong with the typed text; the user can also pick either literal option to move on.
+
+Read question 2's answer as follows, and carry the result to Step 4.2 as `<ticket>`:
+
+- `No ticket` → `<ticket>` is unset for this run.
+- `I'll type the ticket`, picked with nothing typed → ask question 2 again on its own, naming that the ticket ID goes in the free-text row. Do not guess an ID, and do not read the bare pick as `No ticket` — the two answers mean opposite things.
+- Free text (the tool's own row) → that text is `<ticket>`, carried to Step 4.2 exactly as typed. Do not upper-case it, do not add or strip a prefix, and do not repair a near-miss such as `proj 123`: the helper owns the format and refuses what it cannot accept, and repairing it here would bake into the run a value the user never typed.
+
+On the `Don't save` arm, question 2's answer is discarded — Step 4.7 allocates nothing, so no ticket is used.
 
 **Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<feature>'?"` with exactly two options, `"Save to <feature> (Recommended)"` and `"Don't save"` — `<feature>` is the seed's `feature` field, per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<feature_dir>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm.
+
+That variant asks its one save question and nothing else — there is no ticket question in attach mode. Step 4.2's attach arm skips `allocate-feature-dir` entirely, and that helper verb is the only place the ticket rule applies, so an attach run neither asks for a ticket nor requires one, whatever the project's policy is.
 
 ### Step 4.2 — Resolve the feature directory
 
@@ -1209,12 +1225,22 @@ End the turn. The user's reply opens the next turn. Read the reply as follows:
 **Fresh allocation.** Otherwise allocate a new feature directory with the confirmed slug:
 
 ```bash
-.devforge/lib/research_helper allocate-feature-dir --slug "<confirmed-slug>"
+.devforge/lib/research_helper allocate-feature-dir \
+    --slug "<confirmed-slug>" \
+    --ticket "<ticket>"
 ```
 
-Stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form Step 4.4 would write verbatim into the rendered report's `Research reference:` line. No step in this command reads `path`. Take `formatted_number` as well; it is Step 4.3's `--number` input and this command reads it for nothing else, so no step composes a path from it. The helper creates the directory and fails loudly rather than reusing an existing one.
+Pass `--ticket` only when Step 4.1's question 2 produced one; omit the flag entirely on the `No ticket` answer. Whether a ticket is required at all is the project's policy, read by the helper — this command never reads that policy itself, never decides the answer, and never substitutes a stand-in value for a ticket the user did not give.
 
-On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then: on a rejected slug, return to Step 4.1 and ask again with a corrected proposal; on any other error, report it and end the turn — nothing has been written yet, so the run stops cleanly and the user can re-run `/devforge:research`.
+Stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form Step 4.4 would write verbatim into the rendered report's `Research reference:` line. No step in this command reads `path`. Take `formatted_number` as well; it is Step 4.3's `--number` input and this command reads it for nothing else, so no step composes a path from it. The object also carries `ticket` — the ticket as the helper accepted it, or `null` when none was passed; no step in this command reads it either. The helper creates the directory and fails loudly rather than reusing an existing one.
+
+On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on what the helper cited:
+
+- **A rejected slug** — return to Step 4.1 and ask question 1 again with a corrected proposal.
+- **A missing or rejected ticket** — the stderr you just copied already names both routes out: supply a ticket in the format it states, or turn the requirement off. Do not paraphrase either route away and do not pick one on the user's behalf. Re-ask Step 4.1's question 2 on its own so a ticket can be supplied without re-confirming the save; if the user takes the other route instead, name `/devforge:configure` for them to type and end the turn — that command is human-typed only, so never run it yourself.
+- **Any other error** — report it and end the turn.
+
+Nothing has been written yet on any of these arms, so the run stops cleanly and the user can re-run `/devforge:research`.
 
 **A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/devforge:research` again on a topic that already has a feature directory produces a second, separate one, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
 

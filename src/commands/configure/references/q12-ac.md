@@ -19,7 +19,7 @@ Save via `.devforge/lib/configure_helper set-ac-verification-mode <choice>`.
 - **`runtime-assisted`** — `/devforge:verify` boots the app (or assumes it is already running) and probes via Chrome DevTools MCP and/or API calls to validate user-facing behavior. Suitable for web apps with a stable dev server.
 - **`off`** — `/devforge:verify` skips behavioral AC verification (no browser/API probing, no test execution) but still applies a code-reading floor: it reads the changed files and produces per-AC code-only statuses, noted as code-verified in the verdict (advisory, not blocking). Pick this when the project has no running app and no test suite, or when behavioral AC verification is owned by an external pipeline.
 
-If the user picks `code-only`, `tests`, or `off`, Phase 4 advances directly to Phase 5 — Q12.1 / Q12.2 / Q12.3 are NOT asked.
+If the user picks `code-only`, `tests`, or `off`, Q12.1 / Q12.2 / Q12.3 are NOT asked — Phase 4 advances directly to Q13.
 
 If the user picks `runtime-assisted`, proceed to the conditional follow-up triple below.
 

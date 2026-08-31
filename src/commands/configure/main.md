@@ -6,12 +6,12 @@ disable-model-invocation: true
 
 # /devforge:configure — Project Configuration
 
-`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 30 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 31 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
 
 ## Outputs of this phase
 
-- `.devforge/configure.yaml` — canonical state (31 fields). Owned + shaped by the helper; mutated only via setter subcommands.
-- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (39 keys: 31 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.devforge/configure.yaml` — canonical state (32 fields). Owned + shaped by the helper; mutated only via setter subcommands.
+- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (40 keys: 32 from configure.yaml + 5 from init.yaml + 3 derived).
 - `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain.
 - `CLAUDE.md` — substituted in place; no `{{KEY}}` markers remain.
 
@@ -279,7 +279,7 @@ If `set-package-stacks` exits non-zero, capture its stderr, surface it verbatim,
 
 ## Phase 4 — Sequential user-only prompts
 
-These six fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order. Persist each answer via its setter before issuing the next question.
+These seven fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order. Persist each answer via its setter before issuing the next question.
 
 ### Q9: Workflow Enforcement
 
@@ -306,9 +306,24 @@ Three sequential AskUserQuestion calls — Q11.1 (think), Q11.2 (do), Q11.3 (ver
 
 Use AskUserQuestion to pick the mode, then conditionally ask the runtime triple. See `references/q12-ac.md` for the full prompt text, the four mode options, and the conditional Q12.1 / Q12.2 / Q12.3 follow-up logic that runs only when the user selects `runtime-assisted`.
 
+### Q13: Ticket at Intake
+
+Use AskUserQuestion: "Require a ticket ID before `/devforge:research` or `/devforge:discover` creates a feature directory?"
+- `false` — intake allocates whether or not a ticket is supplied
+- `true` — intake refuses to allocate until a ticket ID in `PROJ-123` form is supplied
+
+Which option carries the `(Recommended)` marker depends on `INIT_JSON.workspace_mode` (captured in Phase 1): mark `true` when it is `wrapper`, `false` otherwise — exactly one option, never both. Wrapper mode already assumes an external tracker: `/devforge:implement` composes its source-repo commit subjects as `[TICKET-ID] - <title> (Task NNN)`, scraping that token out of the source branch name, so a wrapper install has a ticket to name.
+
+State both bounds below in the message that carries the question, in your own words. Neither is a footnote — the first is what the user is actually choosing:
+
+- **The rule is discipline, not verification.** Nothing checks that the ticket exists. This framework has no tracker integration, and the only test applied to the value is its shape (`LETTERS-NUMBER`), so `PROJ-0000` satisfies the rule exactly as a real ticket does. `true` buys the habit of always naming a ticket — never evidence that the ticket named is a real one.
+- **The answer is reversible without re-running this command.** `.devforge/lib/configure_helper set-require-ticket <true|false>`, then re-run `render-config` so the change reaches `project-config.json`.
+
+Save via `.devforge/lib/configure_helper set-require-ticket <choice>`.
+
 ## Phase 5 — Render + prune + substitute
 
-Once `configure.yaml` is fully populated (30 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
+Once `configure.yaml` is fully populated (31 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
 
 ### Phase 5.1 — Render config
 
@@ -321,7 +336,7 @@ Once `configure.yaml` is fully populated (30 fields set), render the consolidate
 - Exit 0 → success.
 - Exit 1 → `.devforge/init.yaml` missing or unreadable, OR `.devforge/configure.yaml` unreadable, OR write to `project-config.json` failed. Surface stderr verbatim and ABORT.
 
-**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 31 fields; the 30 this command populates are set in Phase 3 (24 detection-derived values) and Phase 4 (6 user-only prompts). One field, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
+**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 32 fields; the 31 this command populates are set in Phase 3 (24 detection-derived values) and Phase 4 (7 user-only prompts). One field, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
 
 ### Phase 5.2 — Prune agents
 
@@ -488,4 +503,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/devforge:configure` is complete. The 30 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 39 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."
+`/devforge:configure` is complete. The 31 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 40 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."

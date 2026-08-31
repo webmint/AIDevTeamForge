@@ -637,21 +637,33 @@ Phase 4 is the only phase that writes outside `.devforge/` scratch. Nothing belo
 
 ### Ask to save
 
-After echoing the rendered report, propose the feature name, then ask ONE question. There is no separate feature-name question: the save prompt carries the proposal, and AskUserQuestion's own free-text row is the override path.
+After echoing the rendered report, propose the feature name, then ask TWO questions in ONE AskUserQuestion call — the save and the ticket, settled in the same turn. There is still no separate feature-name question: the save prompt carries the proposal, and AskUserQuestion's own free-text row is the override path.
 
 **Compose the proposed feature name.** Start from `memo.topic_slug` (auto-derived by `set-topic` at Phase 0.3; visible in the `read-memo` output read at the start of Phase 3) and normalize it to a 2-4 word lowercase kebab-case slug — first character a letter, 2 to 4 alphanumeric segments joined by `-` (e.g. a topic slug of `auth-in-a-typescript-backend-framework` becomes `typescript-auth-backend`). `allocate-feature-dir` rejects any value outside that shape, so a `topic_slug` with 5+ segments MUST be shortened here rather than passed through. This confirmed slug is the `--slug` value step 1 passes to `allocate-feature-dir`; the rest of Phase 4 calls it `<feature-name>`.
 
-Then ask via AskUserQuestion `"Save this discovery as feature '<feature-name>'?"` with options `["Save as <feature-name>", "Don't save"]`. Single-line question text. Do NOT add an explicit "Other" option — AskUserQuestion always offers a free-text row of its own. Name `Save as <feature-name>` as the recommended choice in the prose above the question.
+**Question 1 — the save and the feature name.** Ask via AskUserQuestion `"Save this discovery as feature '<feature-name>'?"` with options `["Save as <feature-name>", "Don't save"]`. Single-line question text. Do NOT add an explicit "Other" option — AskUserQuestion always offers a free-text row of its own. Name `Save as <feature-name>` as the recommended choice in the prose above the question.
 
-End the turn. The user's reply opens the next turn. Read the reply as:
+**Question 2 — the ticket.** In that same call, ask `"Which ticket is this feature tracked under?"` with options `["No ticket", "I'll type the ticket"]`. Single-line question text. Do NOT add an explicit "Other" option here either — the free-text row AskUserQuestion offers is where the ticket ID goes, and typing `PROJ-123` into it answers the question in one step. Recommend neither option: which one is right is the project's own policy, not this run's call.
+
+State this plainly in the prose above the questions, not as an aside: **nothing checks that the ticket exists.** This framework has no tracker integration, and the only test applied to the value is its shape (`LETTERS-NUMBER`), so `PROJ-0000` satisfies the rule exactly as a real ticket does. Naming a ticket is a discipline a project may require of itself — it is never evidence that the ticket named is a real one.
+
+End the turn. The user's reply opens the next turn. Read question 1's answer as:
 
 - `Save as <feature-name>` → save under the proposed slug; run the `### On save` flow.
 - `Don't save` → run the `### On don't-save` branch.
 - **Free text** → treat it as "save, and this text is the feature name", UNLESS the text clearly declines (`"no"`, `"skip"`, `"not now"`, or equivalent), which is a `Don't save`. Normalize the text to the same 2-4 word lowercase kebab-case shape and use it as `<feature-name>`. If it cannot be normalized (no alphanumeric content to work with), ask this same question once more with a corrected proposal and the same two options, then end the turn.
 
-This prompt is also re-entered from `### On save` step 1 when `allocate-feature-dir` rejects the slug; the reply branches above apply unchanged on that second pass.
+Read question 2's answer as, carrying the result into `### On save` step 1 as `<ticket>`:
 
-**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug.
+- `No ticket` → `<ticket>` is unset for this run.
+- `I'll type the ticket`, picked with nothing typed → ask question 2 again on its own, naming that the ticket ID goes in the free-text row. Do not guess an ID, and do not read the bare pick as `No ticket` — the two answers mean opposite things.
+- **Free text** → that text is `<ticket>`, carried to step 1 exactly as typed. Do not upper-case it, do not add or strip a prefix, and do not repair a near-miss such as `proj 123`: the helper owns the format and refuses what it cannot accept, and repairing it here would bake into the run a value the user never typed.
+
+On the `Don't save` branch question 2's answer is discarded — nothing is allocated, so no ticket is used.
+
+This prompt is also re-entered from `### On save` step 1 when `allocate-feature-dir` rejects the slug or the ticket; the reply branches above apply unchanged on that second pass, and step 1 says which of the two questions to re-ask.
+
+**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug. That variant asks its one save question and nothing else — there is no ticket question in attach mode. Step 1 of `### On save` skips `allocate-feature-dir` entirely in attach mode, and that helper verb is the only place the ticket rule applies, so an attach run neither asks for a ticket nor requires one, whatever the project's policy is.
 
 ### On save
 
@@ -664,14 +676,19 @@ In attach mode (Phase 0.6 recorded an existing feature directory), that director
 Otherwise allocate a fresh directory:
 
 ```bash
-.devforge/lib/discover_helper allocate-feature-dir --slug "<feature-name>"
+.devforge/lib/discover_helper allocate-feature-dir \
+    --slug "<feature-name>" \
+    --ticket "<ticket>"
 ```
 
-Exit 0 → stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form step 3 would hand to `set-next-step-text --feature-dir`, which renders it verbatim into the `Discovery reference:` line step 4 writes to disk and step 6 commits. No step in this command reads `path`. Take `formatted_number` as well; it is step 2's `--number` input and this command reads it for nothing else, so no step composes a path from it.
+Pass `--ticket` only when `### Ask to save`'s question 2 produced one; omit the flag entirely on the `No ticket` answer. Whether a ticket is required at all is the project's policy, read by the helper — this command never reads that policy itself, never decides the answer, and never substitutes a stand-in value for a ticket the user did not give.
 
-Exit 2 → copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on which error the helper cited. Nothing has been written to the repository in either branch:
+Exit 0 → stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form step 3 would hand to `set-next-step-text --feature-dir`, which renders it verbatim into the `Discovery reference:` line step 4 writes to disk and step 6 commits. No step in this command reads `path`. Take `formatted_number` as well; it is step 2's `--number` input and this command reads it for nothing else, so no step composes a path from it. The object also carries `ticket` — the ticket as the helper accepted it, or `null` when none was passed; no step in this command reads it either.
 
-- **`invalid slug ...`** — the helper rejected `<feature-name>` against the 2-4 word lowercase kebab-case shape. Do NOT end the run. Compose a corrected name that satisfies that shape and return to `### Ask to save`, re-asking that question with the corrected proposal; end the turn there. Sending the user back to re-invoke `/devforge:discover` instead would be destructive: Phase 0.3 resets the memo and report unconditionally on every invocation, so the eight rubric answers and the whole Phase 2 investigation would be thrown away over a name the user can fix in one turn.
+Exit 2 → copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on which error the helper cited. Nothing has been written to the repository in any branch:
+
+- **`invalid slug ...`** — the helper rejected `<feature-name>` against the 2-4 word lowercase kebab-case shape. Do NOT end the run. Compose a corrected name that satisfies that shape and return to `### Ask to save`, re-asking question 1 with the corrected proposal; end the turn there. Sending the user back to re-invoke `/devforge:discover` instead would be destructive: Phase 0.3 resets the memo and report unconditionally on every invocation, so the eight rubric answers and the whole Phase 2 investigation would be thrown away over a name the user can fix in one turn.
+- **A missing or rejected ticket** — the stderr you just copied already names both routes out: supply a ticket in the format it states, or turn the requirement off. Do NOT end the run, and do not paraphrase either route away or pick one on the user's behalf. Re-ask `### Ask to save`'s question 2 on its own, so a ticket can be supplied without re-confirming the save; the same reason applies as for a rejected slug — a re-invocation would discard the whole run over a value the user can supply in one turn. If the user takes the other route instead, name `/devforge:configure` for them to type and end the turn — that command is human-typed only, so never run it yourself.
 - **Any other error** (`feature dir already exists ...`, `cannot create ...`) — a filesystem condition this run cannot compose its way out of. End the turn; the user resolves the cited condition and re-invokes `/devforge:discover`.
 
 A seedless run ALWAYS allocates a new directory, even when an earlier `/devforge:discover` already covered the same topic — this command does no topic matching against existing features. Say so in the closing message so the user can delete the duplicate if that was not the intent.

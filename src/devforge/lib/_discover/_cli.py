@@ -736,6 +736,16 @@ def _register_subcommands(subparsers) -> None:
         help="Allocate a fresh specs/NNN-<slug>/ directory; print result as JSON.",
     )
     sp.add_argument("--slug", required=True, help="2-4 word lowercase kebab-case feature slug.")
+    sp.add_argument(
+        "--ticket", default=None,
+        help=(
+            "Optional ticket ID (e.g. 'PROJ-123', uppercase letters only). "
+            "Required only when REQUIRE_TICKET is enabled in "
+            "project-config.json -- see _shared.feature_alloc.normalize_ticket "
+            "for the format and _shared.feature_alloc.read_require_ticket for "
+            "the config key this verb reads."
+        ),
+    )
     sp.set_defaults(func=cmd_allocate_feature_dir)
 
     sp = subparsers.add_parser(
