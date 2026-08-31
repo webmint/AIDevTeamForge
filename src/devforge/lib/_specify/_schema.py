@@ -177,9 +177,14 @@ def resolve_bucketed_feature_dir(state: Dict[str, Any]) -> Optional[Path]:
     counterpart of Step 4.1's routing decision: given /specify state, it
     re-derives the SAME directory the command prose's ancestry test
     already resolved (parent is a 2-digit month, grandparent a 4-digit
-    year) -- from state["source"]["handoff_path"], the one field
-    import-handoff sets on every importing arm (warm, cold, bucketed and
-    genuine-fallback alike) and never mutates afterwards.
+    year) -- from state["source"]["handoff_path"]. import-handoff sets
+    this field on every importing Phase 0.4 arm and never mutates it
+    afterwards. Phase 3's residual gave Phase 0.4's `cold` arm -- which
+    deliberately never calls import-handoff -- a second, narrower writer,
+    record-handoff-path (_cmds_handoff.py): it records this SAME field
+    from the same resolved handoff path, without pre-seeding any of the
+    spec CONTENT import-handoff also seeds. Either writer leaves this
+    function's read side, and its ancestry test below, unchanged.
 
     Deliberately does not extend classify_feature_dir_identity: that
     function classifies a directory's LEGACY NNN-slug identity and

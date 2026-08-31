@@ -70,6 +70,7 @@ from ._cmds_handoff import (
     cmd_find_handoffs,
     cmd_finalize_handoff,
     cmd_import_handoff,
+    cmd_record_handoff_path,
 )
 from ._cmds_design_anchor import cmd_write_design_anchor
 from ._cmds_phase5 import (
@@ -707,6 +708,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to handoff.json (absolute or relative to cwd).",
     )
     sp.set_defaults(func=cmd_import_handoff)
+
+    sp = sub.add_parser(
+        "record-handoff-path",
+        help=(
+            "Record which handoff path this run resolved to, without "
+            "importing its content -- the Phase 0.4 `cold`-arm directory-"
+            "recovery fix (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md "
+            "Phase 3 residual). See cmd_record_handoff_path's docstring."
+        ),
+    )
+    sp.add_argument(
+        "--handoff-path", required=True, dest="handoff_path",
+        help=(
+            "Path to handoff.json (absolute or relative to cwd) -- the "
+            "same path a `yes-most-recent` or `pick-other` pick would "
+            "have passed to import-handoff."
+        ),
+    )
+    sp.set_defaults(func=cmd_record_handoff_path)
 
     sp = sub.add_parser(
         "finalize-handoff",

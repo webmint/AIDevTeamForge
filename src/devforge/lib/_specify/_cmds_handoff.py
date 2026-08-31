@@ -337,6 +337,26 @@ def _root_relative(path: Path, repo_root: Path) -> str:
         return str(path)
 
 
+def _default_source_bucket() -> Dict[str, Any]:
+    """Fresh state["source"] shape -- mirrors _state.default_state()'s bucket.
+
+    Rebuilt here (not imported) for the same reason the two call sites that
+    used to inline this dict predate it: "source" can be absent from a
+    state.json written before that key existed in the schema. A THIRD site
+    (record-handoff-path, the residual's cold-arm writer) needing the exact
+    same rebuild is what pushed this over the Rule-of-Three line -- extract
+    once, all three callers stay byte-identical to what they inlined before.
+    Returns a fresh dict every call; callers hold no shared mutable default.
+    """
+    return {
+        "handoff_path": None,
+        "handoff_kind": None,
+        "research_completed_at": None,
+        "discover_completed_at": None,
+        "discover_recommended_summary": None,
+    }
+
+
 def _normalize_ws(s: str) -> str:
     """Collapse internal whitespace runs and strip ends.
 
@@ -620,13 +640,7 @@ def _import_handoff_research(
 
             # Ensure "source" key exists (may be missing in old state).
             if "source" not in state:
-                state["source"] = {
-                    "handoff_path": None,
-                    "handoff_kind": None,
-                    "research_completed_at": None,
-                    "discover_completed_at": None,
-                    "discover_recommended_summary": None,
-                }
+                state["source"] = _default_source_bucket()
 
             # Pre-seed fields (overwrite pre-seeded blocks; user content preserved).
             state["spec_type"] = spec_type
@@ -805,13 +819,7 @@ def _import_handoff_discover(
 
             # Ensure "source" key exists (may be missing in old state).
             if "source" not in state:
-                state["source"] = {
-                    "handoff_path": None,
-                    "handoff_kind": None,
-                    "research_completed_at": None,
-                    "discover_completed_at": None,
-                    "discover_recommended_summary": None,
-                }
+                state["source"] = _default_source_bucket()
 
             # Pre-seed fields.
             state["spec_type"] = spec_type
@@ -974,6 +982,93 @@ def _has_spec_reentry_seed(feature_dir: Path) -> bool:
         if isinstance(raw, dict) and raw.get("target_stage") == "spec":
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# cmd_record_handoff_path (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+# Phase 3 residual -- the Phase 0.4 `cold`-arm directory-recovery fix).
+# ---------------------------------------------------------------------------
+
+
+def cmd_record_handoff_path(args: argparse.Namespace) -> int:
+    """Record which handoff path this run resolved to -- no content import.
+
+    src/commands/specify/main.md Phase 0.4's `cold` arm resolves a feature
+    directory exactly like `yes-most-recent` does -- "the resolved feature
+    dir is the FIRST (most-recent) line's parent directory" -- and Step
+    4.1's bucketed path already writes spec.md into it, deliberately
+    calling neither number setter. But import-handoff is the ONLY verb
+    that ever wrote state["source"]["handoff_path"], and `cold` skips it
+    by definition, so on a specs/<YYYY>/<MM>/<leaf>/ pick
+    resolve_bucketed_feature_dir (_schema.py) -- the read-time function
+    write-design-anchor and finalize-handoff both consult -- had nothing
+    to read back, and both verbs exited 2 even though the orchestrator
+    had already resolved (and Step 4.1 had already written spec.md into)
+    a perfectly good directory.
+
+    `cold` means "do not pre-seed the spec from the handoff's CONTENT"
+    (Phase 0.4's own wording) -- it does not mean the directory is
+    unknown, and this verb changes nothing a downstream consumer of
+    CONTENT can observe: it sets exactly one field,
+    state["source"]["handoff_path"], and deliberately leaves
+    state["source"]["handoff_kind"] at its default (None) -- only
+    import-handoff ever sets that one. cmd_finalize_handoff's Provenance
+    construction reads handoff_kind, not handoff_path, as the signal that
+    an upstream handoff's CONTENT actually seeded this spec, so a
+    cold-recorded handoff_path (kind still None) still emits
+    upstream_handoff_path=None / upstream_handoff_kind=None -- exactly as
+    it would with no upstream handoff at all. That distinction matters
+    downstream: /devforge:plan's PHASE 0a.5 reads a non-null provenance
+    pair to decide whether to surface the ORIGINAL handoff's plan_seeds
+    as "the authoritative starting point for planning" -- were this verb
+    to also set handoff_kind, a cold /devforge:specify run would silently
+    reintroduce that exact content pre-seed one command downstream,
+    instead of never.
+
+    Args exposed via CLI:
+      --devforge-dir   (required, inherited from parent parser)
+      --handoff-path   (required) the SAME path a `yes-most-recent` or
+                        `pick-other` pick would have passed to
+                        import-handoff -- the chosen find-handoffs
+                        stdout line's second field.
+
+    Idempotent: safe to call more than once in a run (later calls
+    overwrite with the same value) -- Phase 0.4 resolves exactly one
+    feature dir per invocation, so nothing in the documented flow calls
+    this more than once, but nothing breaks if it did.
+    """
+    handoff_arg = getattr(args, "handoff_path", None)
+    if not handoff_arg:
+        sys.stderr.write("record-handoff-path: --handoff-path is required\n")
+        return 2
+
+    handoff_path = Path(handoff_arg)
+    if not handoff_path.is_absolute():
+        handoff_path = Path.cwd() / handoff_path
+    handoff_path = handoff_path.resolve()
+
+    if not handoff_path.exists():
+        sys.stderr.write(
+            "record-handoff-path: handoff-path not found: {0}\n".format(handoff_path)
+        )
+        return 2
+
+    devforge_dir = Path(args.devforge_dir).resolve()
+    repo_root = devforge_dir.parent
+    handoff_path_rel = _root_relative(handoff_path, repo_root)
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            # Ensure "source" key exists (may be missing in old state).
+            if "source" not in state:
+                state["source"] = _default_source_bucket()
+            state["source"]["handoff_path"] = handoff_path_rel
+    except (OSError, json.JSONDecodeError) as err:
+        sys.stderr.write("record-handoff-path: state error: {0}\n".format(err))
+        return 2
+
+    sys.stdout.write("recorded: {0}\n".format(handoff_path_rel))
+    return 0
 
 
 def cmd_find_handoffs(args: argparse.Namespace) -> int:
@@ -1265,10 +1360,25 @@ def cmd_finalize_handoff(args):
             code=2,
         )
 
-    # Build Provenance from state["source"].
+    # Build Provenance from state["source"]. handoff_kind, not handoff_path,
+    # is the provenance signal: only import-handoff ever sets handoff_kind,
+    # after pre-seeding this spec's CONTENT from that handoff. The Phase 0.4
+    # `cold`-arm writer (record-handoff-path, _cmds_handoff.py) sets
+    # handoff_path alone, for feature-dir routing only, and deliberately
+    # never sets handoff_kind -- so a cold-recorded path must not surface
+    # here as upstream provenance (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    # PLAN.md Phase 3 residual). Gating path on kind, rather than reading
+    # both independently, is what keeps a cold-recorded handoff_path out of
+    # this emitted handoff.json's provenance block -- and so out of
+    # /devforge:plan's PHASE 0a.5 upstream-plan-seeds surface -- exactly as
+    # if no upstream handoff existed at all.
     source = state.get("source") or {}
-    upstream_handoff_path = source.get("handoff_path") or None
     upstream_handoff_kind = source.get("handoff_kind") or None
+    upstream_handoff_path = (
+        source.get("handoff_path") or None
+        if upstream_handoff_kind is not None
+        else None
+    )
 
     # Map completed_at from the correct source key based on kind.
     upstream_completed_at = None  # type: Optional[str]

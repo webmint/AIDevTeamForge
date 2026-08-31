@@ -446,6 +446,39 @@ class TestNoUpstreamProvenance(unittest.TestCase):
         handoff = _dict_to_dataclass(specify_handoff_schema.Handoff, raw)
         self.assertIsNone(handoff.provenance.upstream_handoff_path)
 
+    def test_handoff_path_set_without_kind_produces_no_upstream_provenance(self):
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3 residual:
+        record-handoff-path (the Phase 0.4 `cold`-arm writer) sets
+        state["source"]["handoff_path"] alone, for feature-dir routing
+        only, and deliberately never sets handoff_kind. Provenance is
+        keyed on handoff_kind, not handoff_path, so this combination must
+        emit all-None provenance -- exactly as if no upstream handoff
+        existed -- rather than raising Provenance's co-vary invariant
+        (path set, kind None) or leaking the cold-recorded path into the
+        emitted handoff.json's provenance block."""
+        state = _make_state(
+            source={
+                "handoff_path": "specs/2026/08/cold-feature/research-handoff.json",
+                "handoff_kind": None,
+                "research_completed_at": None,
+                "discover_completed_at": None,
+                "discover_recommended_summary": None,
+            }
+        )
+        _write_state(self.devforge_dir, state)
+        emit_path = str(self.tmp / "out" / "handoff.json")
+        args = _make_args(self.devforge_dir, emit_path=emit_path)
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0, "finalize-handoff must not raise on a"
+                                 " cold-recorded handoff_path with no kind")
+
+        with open(emit_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        handoff = _dict_to_dataclass(specify_handoff_schema.Handoff, raw)
+        self.assertIsNone(handoff.provenance.upstream_handoff_path)
+        self.assertIsNone(handoff.provenance.upstream_handoff_kind)
+        self.assertIsNone(handoff.provenance.upstream_completed_at)
+
 
 # ---------------------------------------------------------------------------
 # TestUpstreamHandoffPathRootRelative (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md

@@ -6257,6 +6257,298 @@ class TestBucketedPathReachesDesignAnchorAndHandoff(unittest.TestCase):
             )
 
 
+class TestBucketedPathColdArmReachesDesignAnchorAndHandoff(unittest.TestCase):
+    """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's residual:
+    src/commands/specify/main.md Phase 0.4's `cold` arm resolves the SAME
+    bucketed feature directory `yes-most-recent` would have imported from
+    ("Every arm resolves a feature directory... The resolved feature dir
+    is the FIRST (most-recent) line's parent directory") and Step 4.1's
+    bucketed path already writes spec.md into it -- but `cold` skips
+    import-handoff entirely, and that was the ONLY verb that ever wrote
+    state["source"]["handoff_path"], so resolve_bucketed_feature_dir
+    (_schema.py) had nothing to read back and both write-design-anchor
+    and finalize-handoff exited 2 on a bucketed cold pick, even though
+    the directory was already known and spec.md already lived in it.
+
+    record-handoff-path (_cmds_handoff.py) is the fix: it records the
+    SAME path import-handoff would have, without reading the handoff's
+    content. These tests mirror TestBucketedPathReachesDesignAnchorAndHandoff's
+    real-producer round trip exactly, substituting record-handoff-path for
+    import-handoff, and additionally assert that content stayed
+    unimported: state["constraints"] -- which the shared fixture's
+    research handoff DOES carry, via research_helper's real
+    set-constitution-constraints setter -- stays empty,
+    state["spec_type_seeded_by_upstream"] stays False, and the emitted
+    handoff.json's provenance is all-None, exactly as a no-upstream-handoff
+    run would render. That last point is load-bearing, not incidental:
+    /devforge:plan's PHASE 0a.5 reads a non-null provenance pair to decide
+    whether to surface the ORIGINAL handoff's plan_seeds as "the
+    authoritative starting point for planning" -- were a cold-recorded
+    handoff_path to surface there, `cold` would have been silently
+    reintroduced downstream instead of honored.
+    """
+
+    def _make_devforge(self, tmp) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_cold_bucketed_ticketless_reaches_design_anchor_and_handoff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(devforge, "cold-bucketed-feature", now=now)
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # Phase 0.4 `cold` arm: record the resolved handoff path
+            # WITHOUT importing its content -- import-handoff is never
+            # called on this arm.
+            r_record = _run([
+                "--devforge-dir", str(devforge), "record-handoff-path",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_record.returncode, 0, r_record.stderr)
+
+            # Step 4.1 "Feature name (all four paths)" still runs on cold,
+            # passing the leaf verbatim -- the ONLY source of feature_slug
+            # on this arm, since import-handoff never ran.
+            r_name = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "cold-bucketed-feature",
+            ])
+            self.assertEqual(r_name.returncode, 0, r_name.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "cold-bucketed-feature")
+
+            # Directory recorded (root-relative string; resolve it against
+            # tmp_path -- the install repo_root -- not the test process's
+            # own ambient cwd) ...
+            self.assertEqual(
+                (tmp_path / state["source"]["handoff_path"]).resolve(),
+                handoff_out.resolve(),
+            )
+            # ... content NOT imported.
+            self.assertIsNone(state["source"]["handoff_kind"])
+            self.assertIs(state["spec_type_seeded_by_upstream"], False)
+            self.assertEqual(state["constraints"], [])
+
+            # write-design-anchor: no spec_number in state, but the
+            # bucketed directory is still recoverable from
+            # source.handoff_path -- must reach exit 0, not the
+            # "spec_number and feature_slug must be set" guard.
+            r_anchor = _run([
+                "--devforge-dir", str(devforge), "write-design-anchor",
+                "--workspace-root", str(tmp_path),
+            ], cwd=tmp_path)
+            self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
+            anchor_path = feature_dir / "design-anchor.json"
+            self.assertTrue(
+                anchor_path.exists(),
+                "design-anchor.json did not land in the allocated feature dir",
+            )
+
+            r_overview = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Cold bucketed feature overview.",
+            ])
+            self.assertEqual(r_overview.returncode, 0, r_overview.stderr)
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Adding a cold bucketed feature.",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            r_finalize = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+            ], cwd=tmp_path)
+            self.assertEqual(r_finalize.returncode, 0, r_finalize.stderr)
+            handoff_json_path = feature_dir / "handoff.json"
+            self.assertTrue(
+                handoff_json_path.exists(),
+                "handoff.json did not land in the allocated feature dir",
+            )
+
+            data = json.loads(handoff_json_path.read_text(encoding="utf-8"))
+            self.assertIsNone(data["classification"]["spec_number"])
+            self.assertEqual(data["classification"]["feature_slug"], "cold-bucketed-feature")
+            self.assertEqual(
+                data["spec_path"], result["relative_path"] + "/spec.md",
+            )
+            # Cold means no content pre-seed, all the way through the
+            # pipeline: the emitted handoff's provenance must be all-None,
+            # NOT pointing back at the research handoff whose content was
+            # never imported.
+            self.assertIsNone(data["provenance"]["upstream_handoff_path"])
+            self.assertIsNone(data["provenance"]["upstream_handoff_kind"])
+
+    def test_cold_bucketed_ticketed_reaches_design_anchor_and_handoff(self):
+        """Same cold round trip, but the leaf is a ticket (PROJ-456, not a
+        slug) -- assign-feature-name generates a name from $ARGUMENTS
+        instead, exactly as the warm ticketed test does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            now = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+            result, error = allocate_feature_dir(
+                devforge, "cold-third-feature", ticket="PROJ-456", now=now,
+            )
+            self.assertIsNone(error, error)
+            feature_dir = Path(result["path"])
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_record = _run([
+                "--devforge-dir", str(devforge), "record-handoff-path",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_record.returncode, 0, r_record.stderr)
+
+            r_name = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "cold-third-feature",
+            ])
+            self.assertEqual(r_name.returncode, 0, r_name.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertIsNone(state["spec_number"])
+            self.assertEqual(state["feature_slug"], "cold-third-feature")
+            self.assertIsNone(state["source"]["handoff_kind"])
+            self.assertEqual(state["constraints"], [])
+
+            r_anchor = _run([
+                "--devforge-dir", str(devforge), "write-design-anchor",
+                "--workspace-root", str(tmp_path),
+            ], cwd=tmp_path)
+            self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
+            anchor_path = feature_dir / "design-anchor.json"
+            self.assertTrue(
+                anchor_path.exists(),
+                "design-anchor.json did not land in the allocated (ticketed) feature dir",
+            )
+
+            r_overview = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Cold ticketed bucketed feature overview.",
+            ])
+            self.assertEqual(r_overview.returncode, 0, r_overview.stderr)
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Adding a cold ticketed bucketed feature.",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            r_finalize = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+            ], cwd=tmp_path)
+            self.assertEqual(r_finalize.returncode, 0, r_finalize.stderr)
+            handoff_json_path = feature_dir / "handoff.json"
+            self.assertTrue(
+                handoff_json_path.exists(),
+                "handoff.json did not land in the allocated (ticketed) feature dir",
+            )
+
+            data = json.loads(handoff_json_path.read_text(encoding="utf-8"))
+            self.assertIsNone(data["classification"]["spec_number"])
+            self.assertEqual(data["classification"]["feature_slug"], "cold-third-feature")
+            self.assertEqual(
+                data["spec_path"], result["relative_path"] + "/spec.md",
+            )
+            self.assertIsNone(data["provenance"]["upstream_handoff_path"])
+            self.assertIsNone(data["provenance"]["upstream_handoff_kind"])
+
+    def test_cold_legacy_directory_reaches_design_anchor_and_handoff_unchanged(self):
+        """Phase 0.4 `cold` on a LEGACY specs/NNN-slug/ pick is UNAFFECTED
+        by this residual's fix -- included here as the regression anchor
+        for that claim, not because this plan changed anything on this
+        path. Step 4.1's existing Cold path splits <NNN> off the resolved
+        dir's own basename; record-handoff-path is never called, and
+        resolve_bucketed_feature_dir's early spec_number-set return keeps
+        composing the legacy {specs_root}/{spec_number}-{feature_slug}/
+        path exactly as it did before record-handoff-path existed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+
+            feature_dir = tmp_path / "specs" / "003-legacy-cold-feature"
+            handoff_out = feature_dir / "research-handoff.json"
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # Cold arm: import-handoff is never called AND
+            # record-handoff-path is never called -- Step 4.1's Cold path
+            # needs neither, since the legacy basename carries the number.
+            r_number = _run([
+                "--devforge-dir", str(devforge), "set-spec-number",
+                "--value", "003",
+            ])
+            self.assertEqual(r_number.returncode, 0, r_number.stderr)
+            r_name = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "legacy-cold-feature",
+            ])
+            self.assertEqual(r_name.returncode, 0, r_name.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["spec_number"], "003")
+            self.assertEqual(state["feature_slug"], "legacy-cold-feature")
+            self.assertIsNone(state["source"]["handoff_path"])
+            self.assertIsNone(state["source"]["handoff_kind"])
+
+            r_anchor = _run([
+                "--devforge-dir", str(devforge), "write-design-anchor",
+                "--workspace-root", str(tmp_path),
+            ], cwd=tmp_path)
+            self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
+            anchor_path = feature_dir / "design-anchor.json"
+            self.assertTrue(anchor_path.exists())
+
+            r_overview = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Legacy cold feature overview.",
+            ])
+            self.assertEqual(r_overview.returncode, 0, r_overview.stderr)
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Adding a legacy cold feature.",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            r_finalize = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+            ], cwd=tmp_path)
+            self.assertEqual(r_finalize.returncode, 0, r_finalize.stderr)
+            handoff_json_path = feature_dir / "handoff.json"
+            self.assertTrue(handoff_json_path.exists())
+
+            data = json.loads(handoff_json_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"]["spec_number"], "003")
+            self.assertEqual(data["classification"]["feature_slug"], "legacy-cold-feature")
+            self.assertEqual(data["spec_path"], "specs/003-legacy-cold-feature/spec.md")
+            self.assertIsNone(data["provenance"]["upstream_handoff_path"])
+            self.assertIsNone(data["provenance"]["upstream_handoff_kind"])
+
+
 class TestFindHandoffs(unittest.TestCase):
     """Tests for specify_helper find-handoffs subcommand.
 
