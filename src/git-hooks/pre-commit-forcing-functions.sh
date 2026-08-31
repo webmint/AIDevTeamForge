@@ -44,14 +44,20 @@ fi
 FAILED=0
 for VERB in $ENABLED_VERBS; do
     # verify-design-tokens is a UI-feature check; only run it when at least
-    # one binding exists (specs/*/design-manifest.json — the route+pairs
+    # one binding exists (specs/**/design-manifest.json — the route+pairs
     # binding, not the retired plan-40 disposition manifest).  Non-UI
     # projects that have the rule enabled in constitute.json are skipped here
     # so the hook remains silent on non-UI features (consistent with how the
     # verify-magic-enum / verify-any-leak checks skip silently when their
     # preconditions are absent — e.g. no generated_types_dirs present).
+    #
+    # Feature directories are searched at two depths because both layout
+    # shapes coexist indefinitely with no migration (plan 91 D6): legacy
+    # specs/NNN-slug/design-manifest.json (depth 2 below specs/) and
+    # specs/YYYY/MM/TICKET/design-manifest.json (depth 4). -maxdepth 4
+    # covers both without widening past the deeper of the two.
     if [ "$VERB" = "verify-design-tokens" ]; then
-        MANIFEST_FOUND="$(find "$ROOT/specs" -maxdepth 2 -name "design-manifest.json" 2>/dev/null | head -1)"
+        MANIFEST_FOUND="$(find "$ROOT/specs" -maxdepth 4 -name "design-manifest.json" 2>/dev/null | head -1)"
         if [ -z "$MANIFEST_FOUND" ]; then
             continue
         fi
