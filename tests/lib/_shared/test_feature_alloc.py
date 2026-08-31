@@ -32,10 +32,47 @@ Coverage:
                            that name rather than a file; a symlinked
                            sentinel file matches, a dangling one does not.
 
+91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2 coverage (ticket
+identity):
+  normalize_ticket      — valid "PROJ-123"; whitespace stripped around an
+                           otherwise-valid ticket; every close-but-wrong
+                           input (lowercase, mixed case, a bare number, a
+                           space where the dash belongs, empty string,
+                           None) rejected with a message, never silently
+                           coerced.
+  read_require_ticket   — hand-written project-config.json fixtures for
+                           the reader's own edge/error paths (absent
+                           file, malformed JSON, non-object top level,
+                           key absent, key present with a non-"true"
+                           value) — mirroring tests/lib/_verify/
+                           test_e2e.py's precedent for testing a
+                           project-config.json reader in isolation. The
+                           REAL-PRODUCER round-trip (configure_helper
+                           set-require-ticket + render-config feeding
+                           this same function) lives in
+                           tests/lib/_configure/test_require_ticket.py,
+                           where the configure_helper subprocess
+                           machinery already lives.
+  allocate_feature_dir  — ticket/require_ticket wiring: ticketless
+                           allocation still succeeds when require_ticket
+                           is False; a valid ticket is accepted and
+                           echoed back (canonical case) in the result;
+                           require_ticket True + no ticket refuses,
+                           naming both routes out; require_ticket True +
+                           a malformed ticket refuses the same way;
+                           require_ticket False + a malformed ticket
+                           supplied anyway still refuses (format is
+                           always checked), but WITHOUT the "REQUIRE_
+                           TICKET" framing, since the gate itself is not
+                           what is refusing.
+
 All tests use real tempfile-backed filesystem trees — no hand-fabricated
 JSON, no mocked Path objects (except the one deliberate race-simulation
 test, which patches next_spec_number specifically to force a collision
-that cannot occur through normal sequential allocation).
+that cannot occur through normal sequential allocation, and the
+read_require_ticket edge-case fixtures noted above, which mirror the
+_verify/test_e2e.py precedent for a project-config.json reader's own
+malformed-input paths).
 
 Stdlib only. Python 3.8+.
 """
@@ -82,12 +119,15 @@ from _shared.feature_alloc import (  # noqa: E402
     SPEC_NUMBER_DIR_RE,
     SPEC_NUMBER_WIDTH,
     SPECS_ROOT_DEFAULT,
+    TICKET_RE,
     YEAR_DIR_RE,
     allocate_feature_dir,
     decide_branch_action,
     find_feature_dirs_with,
     iter_feature_dirs,
     next_spec_number,
+    normalize_ticket,
+    read_require_ticket,
     specs_root_for,
 )
 
@@ -842,6 +882,294 @@ class TestFindFeatureDirsWith(unittest.TestCase):
                 self.assertEqual(result, [])
             finally:
                 os.chmod(feature_dir, 0o755)
+
+
+# ---------------------------------------------------------------------------
+# normalize_ticket (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2,
+# OQ-2).
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeTicket(unittest.TestCase):
+    def test_valid_ticket_accepted(self):
+        ticket, error = normalize_ticket("PROJ-123")
+        self.assertIsNone(error)
+        self.assertEqual(ticket, "PROJ-123")
+
+    def test_multi_letter_prefix_accepted(self):
+        ticket, error = normalize_ticket("ENG-4")
+        self.assertIsNone(error)
+        self.assertEqual(ticket, "ENG-4")
+
+    def test_surrounding_whitespace_stripped(self):
+        """The only transformation applied: strip, not case-fold."""
+        ticket, error = normalize_ticket("  PROJ-123  ")
+        self.assertIsNone(error)
+        self.assertEqual(ticket, "PROJ-123")
+
+    def test_none_rejected(self):
+        ticket, error = normalize_ticket(None)
+        self.assertIsNone(ticket)
+        self.assertIsNotNone(error)
+        self.assertIn("no ticket supplied", error)
+
+    def test_empty_string_rejected(self):
+        ticket, error = normalize_ticket("")
+        self.assertIsNone(ticket)
+        self.assertIn("no ticket supplied", error)
+
+    def test_blank_after_strip_rejected(self):
+        ticket, error = normalize_ticket("   ")
+        self.assertIsNone(ticket)
+        self.assertIn("no ticket supplied", error)
+
+    def test_lowercase_rejected_not_silently_upper_cased(self):
+        """OQ-2's closed hazard: lowercase FAILS, it is never coerced to
+        the case-insensitive-filesystem-safe uppercase spelling."""
+        ticket, error = normalize_ticket("proj-123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+        self.assertIn("proj-123", error)
+
+    def test_mixed_case_rejected(self):
+        ticket, error = normalize_ticket("Proj-123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_bare_number_rejected(self):
+        ticket, error = normalize_ticket("123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_space_instead_of_dash_rejected(self):
+        ticket, error = normalize_ticket("PROJ 123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_spaces_around_dash_rejected(self):
+        ticket, error = normalize_ticket("PROJ - 123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_trailing_garbage_rejected(self):
+        ticket, error = normalize_ticket("PROJ-123-extra")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_no_digits_rejected(self):
+        ticket, error = normalize_ticket("PROJ-")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_no_letters_before_dash_rejected(self):
+        ticket, error = normalize_ticket("-123")
+        self.assertIsNone(ticket)
+        self.assertIn("invalid ticket", error)
+
+    def test_ticket_re_matches_normalize_ticket_success_shape(self):
+        """TICKET_RE is the exported constant normalize_ticket enforces."""
+        self.assertTrue(TICKET_RE.match("PROJ-123"))
+        self.assertFalse(TICKET_RE.match("proj-123"))
+
+
+# ---------------------------------------------------------------------------
+# read_require_ticket (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+# Phase 2, OQ-1).  Edge/error paths use hand-written project-config.json
+# fixtures (mirroring tests/lib/_verify/test_e2e.py's precedent for
+# testing a project-config.json reader's own malformed-input handling in
+# isolation); the real-producer round-trip lives in
+# tests/lib/_configure/test_require_ticket.py.
+# ---------------------------------------------------------------------------
+
+
+class TestReadRequireTicket(unittest.TestCase):
+    def test_missing_file_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_missing_devforge_dir_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / "nonexistent" / ".devforge"
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_true_value_returns_true(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                '{"REQUIRE_TICKET": "true"}', encoding="utf-8"
+            )
+            self.assertTrue(read_require_ticket(devforge_dir))
+
+    def test_false_value_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                '{"REQUIRE_TICKET": "false"}', encoding="utf-8"
+            )
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_key_absent_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                '{"WORKSPACE_MODE": "standalone"}', encoding="utf-8"
+            )
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_unexpected_value_returns_false(self):
+        """Neither "True" (wrong case) nor a JSON boolean is accepted --
+        only the exact string "true"."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                '{"REQUIRE_TICKET": true}', encoding="utf-8"
+            )
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_malformed_json_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                "{not valid json", encoding="utf-8"
+            )
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_non_object_top_level_returns_false(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            (devforge_dir / "project-config.json").write_text(
+                "[1, 2, 3]", encoding="utf-8"
+            )
+            self.assertFalse(read_require_ticket(devforge_dir))
+
+    def test_never_raises_on_unreadable_directory_as_file(self):
+        """devforge_dir pointing at a plain FILE (not a dir) must not raise."""
+        with tempfile.TemporaryDirectory() as td:
+            not_a_dir = Path(td) / "actually-a-file"
+            not_a_dir.write_text("x")
+            self.assertFalse(read_require_ticket(not_a_dir))
+
+
+# ---------------------------------------------------------------------------
+# allocate_feature_dir -- ticket / require_ticket wiring (Phase 2, D4).
+# ---------------------------------------------------------------------------
+
+
+class TestAllocateFeatureDirTicket(unittest.TestCase):
+    def test_require_ticket_false_ticketless_still_succeeds(self):
+        """Zero behaviour change for every existing caller: no ticket
+        argument at all, require_ticket defaults False."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(devforge_dir, "add-dark-mode")
+            self.assertIsNone(error)
+            self.assertIsNone(result["ticket"])
+
+    def test_require_ticket_true_with_valid_ticket_succeeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="PROJ-123", require_ticket=True,
+            )
+            self.assertIsNone(error)
+            self.assertEqual(result["ticket"], "PROJ-123")
+            # Phase 3, not this one, changes the directory layout.
+            self.assertEqual(result["dirname"], "001-add-dark-mode")
+
+    def test_require_ticket_true_no_ticket_refuses_naming_both_routes(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket=None, require_ticket=True,
+            )
+            self.assertEqual(result, {})
+            self.assertIsNotNone(error)
+            self.assertIn("REQUIRE_TICKET", error)
+            # Route 1: supply a ticket.
+            self.assertIn("supply a ticket", error)
+            # Route 2: turn the key off.
+            self.assertIn("turn REQUIRE_TICKET off", error)
+            # No directory was created on refusal.
+            self.assertFalse((Path(td) / "specs").exists())
+
+    def test_require_ticket_true_malformed_ticket_refuses(self):
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="proj-123", require_ticket=True,
+            )
+            self.assertEqual(result, {})
+            self.assertIn("REQUIRE_TICKET", error)
+            self.assertIn("supply a ticket", error)
+            self.assertIn("turn REQUIRE_TICKET off", error)
+
+    def test_require_ticket_false_malformed_ticket_still_refuses(self):
+        """Format is ALWAYS checked when a ticket is supplied, regardless
+        of require_ticket -- but the message does not invoke REQUIRE_
+        TICKET, since the gate itself is not what refused."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="not a ticket", require_ticket=False,
+            )
+            self.assertEqual(result, {})
+            self.assertIsNotNone(error)
+            self.assertNotIn("REQUIRE_TICKET", error)
+            self.assertIn("invalid ticket", error)
+
+    def test_require_ticket_false_empty_string_ticket_treated_as_absent(self):
+        """An explicit empty-string ticket behaves exactly like None when
+        require_ticket is False -- no validation is even attempted."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="", require_ticket=False,
+            )
+            self.assertIsNone(error)
+            self.assertIsNone(result["ticket"])
+
+    def test_slug_error_takes_precedence_over_ticket_error(self):
+        """Both invalid: the pre-existing slug check still fires first --
+        unmodified behaviour for the check that existed before this
+        parameter pair was added."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "onlyoneword", ticket=None, require_ticket=True,
+            )
+            self.assertEqual(result, {})
+            self.assertIn("invalid slug", error)
+            self.assertNotIn("REQUIRE_TICKET", error)
+
+    def test_ticket_normalized_to_canonical_case_in_result(self):
+        """The ticket in the result dict is normalize_ticket's canonical
+        (already-uppercase) form -- this test only exercises the already-
+        uppercase case, since a lowercase input is rejected outright
+        (see TestNormalizeTicket / the *_true_malformed_ticket_refuses
+        tests above for the rejection path)."""
+        with tempfile.TemporaryDirectory() as td:
+            devforge_dir = Path(td) / ".devforge"
+            devforge_dir.mkdir()
+            result, error = allocate_feature_dir(
+                devforge_dir, "add-dark-mode", ticket="  ENG-7  ", require_ticket=True,
+            )
+            self.assertIsNone(error)
+            self.assertEqual(result["ticket"], "ENG-7")
 
 
 if __name__ == "__main__":

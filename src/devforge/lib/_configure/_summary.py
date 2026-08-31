@@ -47,6 +47,10 @@ _SUMMARY_GROUPS = (
             "claude_tier_think",
             "claude_tier_do",
             "claude_tier_verify",
+            # require_ticket (plan 91 D4) joins here rather than a new
+            # single-field group — it is a per-install process-rigor
+            # policy, the same theme as workflow_enforcement above.
+            "require_ticket",
         ),
     ),
     (

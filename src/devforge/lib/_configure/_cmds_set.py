@@ -528,6 +528,11 @@ def cmd_set_regression_gate(args: argparse.Namespace) -> int:
     return _cmd_set_enum(args, "regression_gate")
 
 
+def cmd_set_require_ticket(args: argparse.Namespace) -> int:
+    """Set require_ticket enum scalar (true | false). Default: false (plan 91 D4/OQ-1)."""
+    return _cmd_set_enum(args, "require_ticket")
+
+
 # ---------------------------------------------------------------------------
 # AC runtime scalar setters (3).
 # ---------------------------------------------------------------------------

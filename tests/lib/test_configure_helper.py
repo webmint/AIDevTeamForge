@@ -167,13 +167,13 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_31_fields(self):
-        # 30 + e2e_command (plan 90 Phase 1).
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 31)
+    def test_field_schema_has_32_fields(self):
+        # 31 + require_ticket (plan 91 Phase 2).
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 32)
 
-    def test_default_state_has_31_keys(self):
+    def test_default_state_has_32_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 31)
+        self.assertEqual(len(state), 32)
 
     def test_default_state_scalars_are_none(self):
         # Fields listed in FIELD_DEFAULTS have non-None defaults and are
@@ -245,13 +245,14 @@ class SchemaTests(unittest.TestCase):
             "ac_runtime_cli_command",
             "regression_gate",
             "e2e_command",
+            "require_ticket",
         ]
         self.assertEqual(names, expected)
 
-    def test_enum_fields_has_4_entries(self):
+    def test_enum_fields_has_5_entries(self):
         # claude_tier_* deliberately omitted to allow custom model aliases
         # via Q11 Other branch.
-        self.assertEqual(len(configure_helper.ENUM_FIELDS), 4)
+        self.assertEqual(len(configure_helper.ENUM_FIELDS), 5)
 
     def test_enum_fields_correct_keys(self):
         expected_keys = {
@@ -259,6 +260,7 @@ class SchemaTests(unittest.TestCase):
             "ai_attribution",
             "ac_verification_mode",
             "regression_gate",
+            "require_ticket",
         }
         self.assertEqual(set(configure_helper.ENUM_FIELDS.keys()), expected_keys)
 
@@ -278,6 +280,10 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(
             configure_helper.ENUM_FIELDS["regression_gate"],
             {"off", "full"},
+        )
+        self.assertEqual(
+            configure_helper.ENUM_FIELDS["require_ticket"],
+            {"true", "false"},
         )
 
 
@@ -521,7 +527,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 31 fields populated — comprehensive round-trip (incl. e2e_command)."""
+        """All 32 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket)."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -565,6 +571,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "ac_runtime_cli_command": "npm run start",
             "regression_gate": "full",
             "e2e_command": "npx playwright test",
+            "require_ticket": "true",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -3361,12 +3368,12 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_39_keys_present(self):
-        # 38 + E2E_COMMAND (plan 90 Phase 1).
+    def test_all_40_keys_present(self):
+        # 39 + REQUIRE_TICKET (plan 91 Phase 2).
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 39)
+        self.assertEqual(len(result), 40)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3518,14 +3525,14 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_39_keys_with_defaults(self):
-        # 38 + E2E_COMMAND (plan 90 Phase 1).
+    def test_renders_40_keys_with_defaults(self):
+        # 39 + REQUIRE_TICKET (plan 91 Phase 2).
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 39)
+        self.assertEqual(len(data), 40)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 

@@ -55,6 +55,19 @@ iter_feature_dirs       -- every feature directory under a GIVEN specs
 find_feature_dirs_with  -- iter_feature_dirs filtered to dirs containing a
                            given filename.  Same specs_root-not-devforge_dir
                            signature.
+TICKET_RE               -- OQ-2's ratified ticket-ID format:
+                           [A-Z]+-[0-9]+ (e.g. "PROJ-123").  Full-string,
+                           uppercase-only match -- see normalize_ticket's
+                           docstring for why lowercase is rejected rather
+                           than folded.
+normalize_ticket        -- validate + normalize a ticket ID (OQ-2).
+                           Format-only; never confirms the ticket exists
+                           anywhere (91-FEATURE-DIR-IDENTITY-AND-
+                           PROVENANCE-PLAN.md Phase 2, D4 point 1).
+read_require_ticket      -- read REQUIRE_TICKET from
+                           devforge_dir/project-config.json (OQ-1).
+                           Fails open (False) on any read/parse problem
+                           or on an absent key -- see its own docstring.
 
 specs_root, not devforge_dir
 -----------------------------
@@ -113,7 +126,13 @@ that were never asked for.
 The decision (recorded for Phase 2/3, which wire the actual command specs):
 a caller in attach mode must already know the feature dir path (it read it
 off the seed) and must skip calling allocate_feature_dir altogether -- it
-writes directly into the known dir.  allocate_feature_dir's own idempotence
+writes directly into the known dir.  This is also why REQUIRE_TICKET
+(Phase 2, D4/OQ-5) is a deliberate no-op on the attach-mode path: since
+attach mode never calls allocate_feature_dir, the ticket/require_ticket
+parameters below never execute for it -- there is no separate attach-mode
+branch to write inside this function, because the function itself is
+simply never reached.  The ticket, if the resumed feature has one, is
+already sitting in that feature's own directory/state, not re-asked.  allocate_feature_dir's own idempotence
 story is therefore simple: it always either creates a brand-new directory
 or fails loudly (see "Never overwrite" below); it is never asked to be
 idempotent across two calls for the "same" feature, because attach-mode
@@ -139,6 +158,7 @@ Stdlib only.  Python 3.8+.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -192,6 +212,21 @@ MONTH_DIR_RE = re.compile(r"^\d{2}$")
 # The branch-name prefix every spec branch carries (spec/NNN-slug).
 _SPEC_BRANCH_PREFIX = "spec/"
 
+# Ticket identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2,
+# OQ-2 ratified): one-or-more uppercase letters, a dash, one-or-more digits
+# (e.g. "PROJ-123").  Full-string match (re.match anchors at the start;
+# the trailing "$" anchors the end) -- see normalize_ticket's docstring
+# below for why this is upper-case-only rather than case-insensitive.
+# The same shape _implement/_cmds_commit.py's _TICKET_PATTERN extracts
+# from a branch name (there via re.search with word boundaries, scraping
+# a token out of a larger string; here via re.match, validating a value
+# the operator typed directly) -- one ticket notion, not two.
+TICKET_RE = re.compile(r"^[A-Z]+-[0-9]+$")
+
+# project-config.json filename + key, read by read_require_ticket below.
+_PROJECT_CONFIG_FILENAME = "project-config.json"
+_REQUIRE_TICKET_KEY = "REQUIRE_TICKET"
+
 
 # ---------------------------------------------------------------------------
 # next_spec_number (moved from _specify/_cmds_handoff.py::_next_spec_number).
@@ -221,12 +256,130 @@ def next_spec_number(devforge_dir):
 
 
 # ---------------------------------------------------------------------------
+# Ticket identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2).
+# ---------------------------------------------------------------------------
+
+
+def normalize_ticket(raw):
+    # type: (Optional[str]) -> Tuple[Optional[str], Optional[str]]
+    """Validate and normalize a ticket ID (OQ-2, ratified).
+
+    Format: TICKET_RE -- one-or-more uppercase letters, a dash, one-or-
+    more digits (e.g. "PROJ-123").
+
+    Canonical case is UPPERCASE.  The ONLY transformation this function
+    applies is stripping leading/trailing whitespace (mirroring
+    allocate_feature_dir's own `cleaned_slug = (slug or "").strip()`
+    convention) -- it never folds case.  A lowercase or mixed-case value,
+    e.g. "proj-123", is therefore REJECTED, not silently upper-cased into
+    a spelling the caller never typed.
+
+    This is the deliberate reading of OQ-2's "must be normalized at
+    allocation, not left to the typist" instruction, chosen over case-
+    folding for two reasons:
+
+    1. OQ-2's own text lists lowercase input as a "close but wrong" case
+       that "must fail cleanly, not silently normalize into something
+       else" -- which rules out auto-uppercasing directly.
+    2. Rejection closes the case-insensitive-filesystem hazard the same
+       note names (on macOS, "PROJ-123" and "proj-123" would collide; on
+       Linux they would not) BY CONSTRUCTION rather than by coercion:
+       since only the one canonical (uppercase) spelling can ever pass
+       this function, two differently-cased directories for "the same"
+       ticket can never both be created downstream, on either kind of
+       filesystem -- there is no second spelling left to collide with
+       the first. Silently coercing the case instead would also bake a
+       value the operator never confirmed into a directory name and a
+       git branch (D5) -- the opposite of what "normalized at
+       allocation" is trying to prevent.
+
+    Returns (ticket, error):
+      Success: (the stripped, already-canonical ticket string, None).
+      Failure: (None, a message naming the expected format) when raw is
+        None, empty, or blank after stripping, or does not match
+        TICKET_RE once stripped -- covers a bare number ("123"), a space
+        where the dash belongs ("PROJ 123"), lowercase or mixed case
+        ("proj-123", "Proj-123"), and any other close-but-wrong
+        spelling. Every failure returns a message; none is silently
+        reinterpreted into something the caller did not type.
+
+    This function checks FORMAT only. It never confirms the ticket
+    exists in an external tracker -- nothing in this framework can. A
+    caller must not read a successful return as verification of
+    anything beyond "this string is shaped like a ticket ID".
+    """
+    stripped = (raw or "").strip()
+    if not stripped:
+        return None, (
+            "no ticket supplied: expected the format LETTERS-NUMBER "
+            "(e.g. 'PROJ-123', uppercase letters only)"
+        )
+    if not TICKET_RE.match(stripped):
+        return None, (
+            "invalid ticket {0!r}: expected the format LETTERS-NUMBER "
+            "(e.g. 'PROJ-123', uppercase letters only -- lowercase and "
+            "mixed case are rejected, never silently upper-cased)".format(raw)
+        )
+    return stripped, None
+
+
+def read_require_ticket(devforge_dir):
+    # type: (Union[str, "os.PathLike[str]"]) -> bool
+    """Read REQUIRE_TICKET from devforge_dir/project-config.json (OQ-1).
+
+    Returns True iff the key's value is EXACTLY the string "true". Every
+    other case returns False:
+      - project-config.json is absent or unreadable (any OSError)
+      - its content is not valid JSON, or the top-level value is not a
+        JSON object
+      - the REQUIRE_TICKET key is absent
+      - the key's value is anything other than the string "true"
+        (including "false", "True", "TRUE", a JSON boolean, or garbage)
+
+    This is a deliberate fail-OPEN default, matching OQ-1's ratified
+    "opt-in, default false" policy: an install that never configured the
+    key, or whose config this function could not read for any reason,
+    must not be silently handed ticket-required friction it never chose
+    (D4's own framing -- "a key nobody must enable imposes nothing").
+    REQUIRE_TICKET is discipline, not verification (D4 point 1) -- it is
+    not a security control -- so failing open here trades away no safety
+    property for that guarantee.
+
+    Never raises.
+
+    Deliberately independent of any project-config.json reader elsewhere
+    in this codebase (e.g. _verify/_e2e.py's own _read_config,
+    _implement/_cmds_commit.py's _load_project_config): see
+    _verify/_e2e.py's module docstring for the precedent this follows --
+    "two independent config readers for two independent keys, so a
+    change to one gate's read path can never silently move the other's".
+    This module already avoids the opposite anti-pattern (a cross-helper
+    shell-out) for a parallel reason -- see the module docstring's "Why
+    shared" section -- but reading the SAME file that other helpers also
+    read is not that anti-pattern: it is one file, several independent
+    readers, each owning only the one key it needs.
+    """
+    config_path = Path(devforge_dir) / _PROJECT_CONFIG_FILENAME
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    return data.get(_REQUIRE_TICKET_KEY) == "true"
+
+
+# ---------------------------------------------------------------------------
 # allocate_feature_dir
 # ---------------------------------------------------------------------------
 
 
-def allocate_feature_dir(devforge_dir, slug):
-    # type: (Union[str, "os.PathLike[str]"], str) -> Tuple[dict, Optional[str]]
+def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False):
+    # type: (Union[str, "os.PathLike[str]"], str, Optional[str], bool) -> Tuple[dict, Optional[str]]
     """Allocate a fresh specs/NNN-<slug>/ directory.
 
     FRESH ALLOCATION ONLY -- see the module docstring's "Attach mode"
@@ -237,6 +390,22 @@ def allocate_feature_dir(devforge_dir, slug):
     computes the next NNN via next_spec_number, and creates
     repo_root/specs/NNN-<slug>/.  repo_root is the parent of devforge_dir
     (== the install root in wrapper mode -- see module docstring).
+
+    ticket / require_ticket (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    PLAN.md Phase 2): ticket is the raw string the operator supplied, or
+    None/empty when none was given.  require_ticket is the caller's own
+    read_require_ticket(devforge_dir) result -- passed in explicitly
+    rather than read here, so this function stays a plain function of
+    its arguments (testable with a bare boolean, no project-config.json
+    fixture needed per case) and so config-file reading stays owned by
+    read_require_ticket alone (one reader, not two).  ticket is
+    validated via normalize_ticket whenever it is non-blank, regardless
+    of require_ticket, so a malformed value is never silently accepted;
+    it is additionally REQUIRED (missing/blank refuses too) when
+    require_ticket is True.  Phase 3, not this one, teaches the
+    directory layout itself to use the ticket -- see that plan's Phase 2
+    scope note -- so on success here the directory is still
+    specs/NNN-<slug>/ regardless of whether a ticket was supplied.
 
     Returns (result, error), mirroring _shared/feature_scope.py's
     resolve_feature_scope convention:
@@ -290,10 +459,24 @@ def allocate_feature_dir(devforge_dir, slug):
                                   themselves).  Same bound as `number`
                                   above -- a Phase-3 ticket-keyed leaf has
                                   no "NNN-slug" shape to report.
+        ticket           str | None -- the normalized ticket (canonical
+                                  uppercase, per normalize_ticket) when
+                                  one was supplied and valid; None when
+                                  none was supplied (only possible when
+                                  require_ticket is False).  Not yet
+                                  consumed by the directory layout itself
+                                  -- see the ticket/require_ticket
+                                  paragraph above.
         created          bool -- always True on success
       On error: ({}, message).  The caller writes message to stderr and
       exits non-zero.  Errors:
         - slug is empty or fails FEATURE_NAME_RE
+        - a ticket was supplied but fails normalize_ticket (checked
+          regardless of require_ticket -- a malformed ticket is never
+          silently accepted)
+        - require_ticket is True and no ticket (or an invalid one) was
+          supplied -- message names both routes out: supply one in the
+          right format, or turn REQUIRE_TICKET off
         - the computed target directory already exists (see "Never
           overwrite" in the module docstring -- this is never silently
           reused, including on a race between the scan and the mkdir)
@@ -306,6 +489,25 @@ def allocate_feature_dir(devforge_dir, slug):
             "(lower-case alnum segments joined by '-', first char a "
             "letter, 2-4 segments)".format(slug)
         )
+
+    # Ticket identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    # Phase 2, D4/OQ-2).  Validate whenever a ticket was supplied (so a
+    # malformed value is never silently accepted, whatever require_ticket
+    # is); additionally REQUIRE a valid one when require_ticket is True.
+    norm_ticket = None
+    ticket_supplied = bool((ticket or "").strip())
+    if ticket_supplied or require_ticket:
+        norm_ticket, ticket_error = normalize_ticket(ticket)
+        if ticket_error is not None:
+            if require_ticket:
+                return {}, (
+                    "{0} -- REQUIRE_TICKET is enabled for this project. "
+                    "Either supply a ticket in that format, or run "
+                    "/devforge:configure and turn REQUIRE_TICKET off "
+                    "(configure_helper set-require-ticket false) to "
+                    "allocate without one.".format(ticket_error)
+                )
+            return {}, ticket_error
 
     repo_root = Path(devforge_dir).resolve().parent
     specs_root = repo_root / SPECS_ROOT_DEFAULT
@@ -334,6 +536,7 @@ def allocate_feature_dir(devforge_dir, slug):
         "formatted_number": formatted_number,
         "slug": cleaned_slug,
         "dirname": dirname,
+        "ticket": norm_ticket,
         "created": True,
     }, None
 

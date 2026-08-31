@@ -11,11 +11,11 @@ from typing import Dict, List, Optional, Tuple
 
 
 # Ordered list of keys in project-config.json.
-# 31 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 32 from configure.yaml (FIELD_SCHEMA, uppercased) +
 # 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
 #                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
 # 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
-# Total: 39 keys.
+# Total: 40 keys.
 _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (identity)
     "PROJECT_NAME",
@@ -68,6 +68,8 @@ _PROJECT_CONFIG_KEY_ORDER = (
     "REGRESSION_GATE",
     # From configure.yaml (e2e)
     "E2E_COMMAND",
+    # From configure.yaml (ticket identity — plan 91 D4)
+    "REQUIRE_TICKET",
 )
 
 # Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".

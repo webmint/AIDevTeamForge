@@ -59,6 +59,7 @@ from ._cmds_set import (
     cmd_set_project_structure,
     cmd_set_project_type,
     cmd_set_regression_gate,
+    cmd_set_require_ticket,
     cmd_set_test_commands,
     cmd_set_testings,
     cmd_set_type_check_commands,
@@ -309,6 +310,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("value", help="Regression gate setting.")
     sp.set_defaults(func=cmd_set_regression_gate)
+
+    sp = subparsers.add_parser(
+        "set-require-ticket",
+        help="Set require_ticket enum (true | false). Default: false.",
+    )
+    sp.add_argument("value", help="Whether intake allocation requires a ticket.")
+    sp.set_defaults(func=cmd_set_require_ticket)
 
     # ------------------------------------------------------------------
     # AC runtime scalar setters.

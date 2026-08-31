@@ -73,6 +73,16 @@ FIELD_SCHEMA = (
     # Top-level (not per-package): an e2e suite is a property of the
     # deployed product, not of a single package.
     ("e2e_command",            "scalar"),
+
+    # Ticket identity (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D4):
+    # "no ticket, no spec" as a per-install policy, mechanical and opt-in
+    # (OQ-1 — default "false"; see FIELD_DEFAULTS below). Stored as the
+    # lowercase string "true"/"false" (an ENUM_FIELDS member below),
+    # matching this codebase's other string-boolean config values rather
+    # than a native JSON boolean — see e.g. _discover/_cli.py's own
+    # `--internal-extension-followed` flag, which already uses the same
+    # ("true", "false") string-literal convention.
+    ("require_ticket",         "scalar"),
 )
 
 # Enum-restricted scalars; key = field name, value = allowed set.
@@ -88,6 +98,7 @@ ENUM_FIELDS = {
     "ai_attribution":        {"Yes", "No"},
     "ac_verification_mode":  {"code-only", "tests", "runtime-assisted", "off"},
     "regression_gate":       {"off", "full"},
+    "require_ticket":        {"true", "false"},
 }
 
 # Non-None defaults for specific scalar fields (applied by default_state() and
@@ -98,10 +109,16 @@ FIELD_DEFAULTS = {
     "regression_gate": "full",
     # "" (not None) is the legitimate "no e2e suite" value (plan 90 D1);
     # the structurally simpler default over inventing a discriminator —
-    # e2e_command has no analogous gating field the way ac_runtime_* has
-    # ac_verification_mode. A non-None default also keeps this field out
-    # of _cmds_verify.py's null-scalar check with no exemption needed.
+    # e2e_command has no analogous gating field the way ac_verification_mode
+    # has. A non-None default also keeps this field out of
+    # _cmds_verify.py's null-scalar check with no exemption needed.
     "e2e_command": "",
+    # "false" (OQ-1, ratified): opt-in, never imposed on an install that
+    # never configured it. Same mechanism as e2e_command above — a
+    # non-None default keeps this field out of _cmds_verify.py's
+    # null-scalar check with no exemption needed, on a fresh install AND
+    # on an existing configure.yaml written before this field existed.
+    "require_ticket": "false",
 }
 
 # package_stack_array record field order — locked so emit is deterministic.
