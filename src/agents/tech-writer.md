@@ -83,7 +83,7 @@ NOTE: free-form per-file templates below (`docs/features/`, `docs/api/`, `docs/g
 
 You will be given, per the invoking command:
 
-- **From `/devforge:finalize`**: the feature's `spec.md`, all task files under `specs/NNN-feature/tasks/`, and the aggregated list of changed files across tasks.
+- **From `/devforge:finalize`**: the feature's `spec.md`, all task files under that feature directory's `tasks/` subdirectory, and the aggregated list of changed files across tasks. The directory is named for you in the brief and its shape varies — `specs/<YYYY>/<MM>/<leaf>/` for a feature allocated under the bucketed layout, `specs/<NNN>-<slug>/` for one allocated before it; both are in use and nothing migrates either, so read the path you were given rather than composing one.
 - **From `/devforge:implement`**: a single task file + its feature spec + files changed by that task.
 
 In all Normal-Mode cases you receive a **list of changed files** — that's the common contract. Read only those files and the context the invoking command provided. Do NOT explore the broader codebase. (Skeleton-Fill Mode has a different input contract — see its dedicated section.)

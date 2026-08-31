@@ -547,7 +547,7 @@ On three of the four paths below, `spec_number` + `feature_slug` decide which di
 
 **Warm path — state already carries `spec_number` and `feature_slug` (the normal case).** `import-handoff` seeded both in Phase 0.4 from the resolved feature dir's `<NNN>-<slug>` basename. Do NOT call `assign-spec-number`: its fresh `max+1` scan would produce a different number and send `spec.md` to a different directory than the intake artifacts. Take `<NNN>` and `<slug>` from that basename and go straight to the feature-name step.
 
-**Cold path — state carries neither field, and the resolved feature dir's basename has the form `<NNN>-<slug>`** (exactly three digits, a hyphen, then the slug — the shape intake allocates). This is the `cold` pick in Phase 0.4: no import ran, so nothing was seeded. Split the basename at the first hyphen and seed the number from it:
+**Cold path — state carries neither field, and the resolved feature dir's basename has the form `<NNN>-<slug>`** (exactly three digits, a hyphen, then the slug — the shape intake allocated before the `<YYYY>/<MM>` bucketed layout; nothing migrates those directories, so this path still resolves them). This is the `cold` pick in Phase 0.4: no import ran, so nothing was seeded. Split the basename at the first hyphen and seed the number from it:
 
 ```bash
 .devforge/lib/specify_helper set-spec-number --value "<NNN>"
@@ -886,10 +886,10 @@ Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (app
 .devforge/lib/specify_helper render-summary
 ```
 
-Stdout is the deterministic 4-bullet approval summary. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path spelling below is the helper's own string, composed by `render-summary` — do not rewrite it here):
+Stdout is the deterministic 4-bullet approval summary. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path in its first line is the helper's own string, composed by `render-summary` from the feature directory this run wrote into — `specs/<YYYY>/<MM>/<leaf>` on Step 4.1's bucketed path, and `specs/<NNN>-<feature-name>` on the warm, cold and genuine-fallback paths, which carry a spec number; do not rewrite it here):
 
 ```
-I've created the specification at `specs/NNN-[feature-name]/spec.md`. Key points:
+I've created the specification at `specs/.../spec.md`. Key points:
 - **What changes**: [1-2 sentences]
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria across [count of applicable subsections] AC categories

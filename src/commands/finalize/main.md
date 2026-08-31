@@ -151,8 +151,10 @@ Handle the three outcomes:
 - **Docs written.** If the agent created or updated docs, `[WIP]`-commit them so they fold into the squash (D8 — docs BEFORE the squash). Stage and commit ONLY `docs/`:
 
 ```bash
-git add docs/ && git commit -m "[WIP] Feature docs: <NNN-slug>"
+git add docs/ && git commit -m "[WIP] Feature docs: <feature-dir-name>"
 ```
+
+`<feature-dir-name>` is the last segment of `<feature_dir>` — the directory's own name, not its path; it is a commit LABEL and no path is composed from it. It names the directory PHASE 0.1 resolved, so it holds whatever identity that directory carries: the `<NNN>-<slug>` pair for a feature directory allocated before the `<YYYY>/<MM>` bucketed layout, and the single identity segment intake gave the directory for one allocated under it. Both shapes are in use and nothing migrates either, so take the segment as resolved rather than expecting one shape.
 
 Carry the written-docs targets forward for the PHASE-4 results block (`Docs: updated <targets>`).
 
