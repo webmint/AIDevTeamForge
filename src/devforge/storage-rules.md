@@ -44,7 +44,8 @@ docs/
 ```
 
 **Intake owns the feature directory.** `/devforge:research` and `/devforge:discover` allocate
-`specs/NNN-feature-name/` — and the matching `spec/NNN-feature-name` branch —
+`specs/NNN-feature-name/` — and the feature branch, `spec/<ticket>` when the run
+names a ticket and `spec/<feature-name>` when it does not —
 at the end of a run, once the user confirms the save and the feature name, and
 write their report + handoff inside it. `/devforge:specify` then RESOLVES that existing
 directory and writes `spec.md` beside those artifacts; it allocates no number
@@ -205,8 +206,8 @@ The `**Dead code removal**:` line is likewise OPTIONAL — `render-task-file` em
 ## File Lifecycle
 
 ```
-research     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/NNN-name branch and writes research-report.md + research-handoff.json there (+ probe-script.<ext> when a tier-1.5 probe ran); a declined save leaves nothing in the repo
-discover     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/NNN-name branch and writes discovery-report.md + discover-handoff.json there; a declined save leaves nothing in the repo
+research     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/<ticket> branch — spec/<name> when the run named no ticket — and writes research-report.md + research-handoff.json there (+ probe-script.<ext> when a tier-1.5 probe ran); a declined save leaves nothing in the repo
+discover     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/<ticket> branch — spec/<name> when the run named no ticket — and writes discovery-report.md + discover-handoff.json there; a declined save leaves nothing in the repo
 specify      → creates specs/NNN-name/spec.md inside the feature directory intake already allocated
 spec-check   → creates specs/NNN-name/spec-check.md (SMT AC-consistency report) + specs/NNN-name/spec-check-seed.json ONLY on a MATCHING REVISE-SPEC pick (user picks "Revise spec" AND the recommendation was REVISE-SPEC; a cross-pick / Consistent / Dismiss writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /devforge:specify); user-invoked between /devforge:specify and /devforge:plan, and /devforge:plan requires a fresh spec-check.md (presence + freshness only)
 plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)

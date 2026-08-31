@@ -8,7 +8,7 @@ argument-hint: "<topic>"
 
 `/devforge:research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
 
-`/devforge:research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the `spec/NNN-<feature-slug>` branch, and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
+`/devforge:research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the feature branch — `spec/<ticket>` when the run named a ticket, `spec/<feature-slug>` when it did not — and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
 
 Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorted in admin products view"` or `/devforge:research "make export faster on large datasets"`).
 
@@ -23,7 +23,7 @@ Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorte
 - `<feature_dir>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
 - `<feature_dir>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
 - `<feature_dir>/emission-matrix.md` — CONDITIONAL: present only when the recommended approach removes or suppresses a value the changed code emits; composed by the orchestrator in Phase 3 and written by Phase 4 on save. Its absence means that trigger did not fire — see Phase 3's Emission matrix step.
-- Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
+- Branch `spec/<ticket>`, or `spec/<feature-slug>` when the run named no ticket — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
 
 On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
 
@@ -1232,7 +1232,7 @@ That variant asks its one save question and nothing else — there is no ticket 
 
 Pass `--ticket` only when Step 4.1's question 2 produced one; omit the flag entirely on the `No ticket` answer. Whether a ticket is required at all is the project's policy, read by the helper — this command never reads that policy itself, never decides the answer, and never substitutes a stand-in value for a ticket the user did not give.
 
-Stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form Step 4.4 would write verbatim into the rendered report's `Research reference:` line. No step in this command reads `path`. Take `formatted_number` as well; it is Step 4.3's `--number` input and this command reads it for nothing else, so no step composes a path from it. The object also carries `ticket` — the ticket as the helper accepted it, or `null` when none was passed; no step in this command reads it either. The helper creates the directory and fails loudly rather than reusing an existing one.
+Stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form Step 4.4 would write verbatim into the rendered report's `Research reference:` line. No step in this command reads `path`. Take `ticket` as well — the ticket as the helper accepted it, or `null` when none was passed; it is Step 4.3's `--ticket` input and this command reads it for nothing else, so no step composes a path from it. The helper creates the directory and fails loudly rather than reusing an existing one.
 
 On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on what the helper cited:
 
@@ -1270,12 +1270,16 @@ Then ask the helper what to do:
 ```bash
 .devforge/lib/research_helper render-branch-command \
     --slug "<confirmed-slug>" \
-    --number "<formatted_number from Step 4.2>" \
+    --ticket "<the ticket Step 4.2's stdout reported>" \
     --current-branch "<current branch>" \
     --default-branch "<default branch>"
 ```
 
-Stdout is a single line. When the run is on the default branch it is a checkout command of the form `git checkout -b spec/NNN-<slug>` — execute that line and tell the user `"Created and switched to branch spec/NNN-<slug>"`. On any other branch it is a `# already on non-default branch ...` informational comment — emit no checkout, keep the current branch, and continue.
+Pass `--ticket` only when Step 4.2's `ticket` came back non-null; omit the flag entirely when it came back `null`. Pass that reported value rather than the text the user typed at Step 4.1 — it is the same ticket as the helper accepted it, and this verb validates no format of its own, so whatever reaches it becomes the branch name unchecked.
+
+The ticket is what names the branch: with one the branch is `spec/<ticket>`; without one the helper falls back to the slug and the branch is `spec/<confirmed-slug>`. Nothing composes a hybrid of the two.
+
+Stdout is a single line. When the run is on the default branch it is a checkout command — `git checkout -b spec/<ticket>` when a ticket was passed, `git checkout -b spec/<confirmed-slug>` when none was. Execute that line exactly as the helper printed it, and tell the user `"Created and switched to branch <the branch that line names>"` — read the name off the line rather than recomposing it. On any other branch it is a `# already on non-default branch ...` informational comment — emit no checkout, keep the current branch, and continue.
 
 ### Step 4.4 — Re-render with the real path, then write the report
 

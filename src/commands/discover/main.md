@@ -6,7 +6,7 @@ argument-hint: "<topic>"
 
 # /devforge:discover — Greenfield Feature Discovery
 
-`/devforge:discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and — once the user confirms the save — allocates the feature directory and writes the rendered report plus its specify-bound handoff inside it. `/devforge:discover` reads source code without modifying it, but a saved run is NOT inert on the repository: it creates that directory, creates a `spec/NNN-<feature-name>` git branch when the session is on the default branch, and `[WIP]`-commits what it wrote. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
+`/devforge:discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and — once the user confirms the save — allocates the feature directory and writes the rendered report plus its specify-bound handoff inside it. `/devforge:discover` reads source code without modifying it, but a saved run is NOT inert on the repository: it creates that directory, creates a git branch when the session is on the default branch — `spec/<ticket>` when the run named a ticket, `spec/<feature-name>` when it did not — and `[WIP]`-commits what it wrote. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
 
 Usage: `/devforge:discover "<topic>"` (e.g. `/devforge:discover "audit log persistence layer"` or `/devforge:discover "auth in a TypeScript backend framework"`).
 
@@ -16,7 +16,7 @@ Usage: `/devforge:discover "<topic>"` (e.g. `/devforge:discover "audit log persi
 
 - `.devforge/discover-scope.json` — ScopingMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/discover-report.json` — DiscoveryReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
-- `<feature_dir>` — the feature directory, allocated by Phase 4's `allocate-feature-dir` only after the user confirms the save and the feature name (a `/devforge:grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). A run the user does not save leaves nothing here. A `spec/NNN-<feature-name>` git branch is created alongside it when the session is on the default branch.
+- `<feature_dir>` — the feature directory, allocated by Phase 4's `allocate-feature-dir` only after the user confirms the save and the feature name (a `/devforge:grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). A run the user does not save leaves nothing here. A git branch is created alongside it when the session is on the default branch — `spec/<ticket>` when the run named a ticket, `spec/<feature-name>` when it did not.
 - `<feature_dir>/discovery-report.md` — rendered report. Helper's `render` writes to stdout; the orchestrator writes those bytes into the feature directory in Phase 4's save flow.
 - `<feature_dir>/discover-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff` (sibling to the rendered report). The report stem is `discovery-` and the handoff stem is `discover-`; that asymmetry is deliberate — never normalize one to match the other.
 
@@ -683,7 +683,7 @@ Otherwise allocate a fresh directory:
 
 Pass `--ticket` only when `### Ask to save`'s question 2 produced one; omit the flag entirely on the `No ticket` answer. Whether a ticket is required at all is the project's policy, read by the helper — this command never reads that policy itself, never decides the answer, and never substitutes a stand-in value for a ticket the user did not give.
 
-Exit 0 → stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form step 3 would hand to `set-next-step-text --feature-dir`, which renders it verbatim into the `Discovery reference:` line step 4 writes to disk and step 6 commits. No step in this command reads `path`. Take `formatted_number` as well; it is step 2's `--number` input and this command reads it for nothing else, so no step composes a path from it. The object also carries `ticket` — the ticket as the helper accepted it, or `null` when none was passed; no step in this command reads it either.
+Exit 0 → stdout is a JSON object. Take `relative_path` from it — that value is this run's `<feature_dir>`, and it is what every step below writes into. Hold it in working memory exactly as the helper reported it: do not re-shape it, do not rebuild it from any other key on that object, and do not substitute the sibling `path` key, whose absolute form step 3 would hand to `set-next-step-text --feature-dir`, which renders it verbatim into the `Discovery reference:` line step 4 writes to disk and step 6 commits. No step in this command reads `path`. Take `ticket` as well — the ticket as the helper accepted it, or `null` when none was passed; it is step 2's `--ticket` input and this command reads it for nothing else, so no step composes a path from it.
 
 Exit 2 → copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on which error the helper cited. Nothing has been written to the repository in any branch:
 
@@ -701,19 +701,23 @@ Read the current branch with `git branch --show-current`. Resolve the repository
 2. `git show-ref --verify --quiet refs/heads/main` → `main`.
 3. `git show-ref --verify --quiet refs/heads/master` → `master`.
 
-If the current-branch command fails (for example the install root is not a git repository) or none of the three resolves a default branch, SKIP this step: tell the user no branch was created and name which of the two reasons applied — adding that they can create one with `git checkout -b spec/NNN-<feature-name>` when the repository does exist — then continue to step 3. Do not ask the user and do not stop the save — the artefacts, not the branch, are what this phase exists to produce.
+If the current-branch command fails (for example the install root is not a git repository) or none of the three resolves a default branch, SKIP this step: tell the user no branch was created and name which of the two reasons applied — adding that, when the repository does exist, they can create one with `git checkout -b spec/<ticket>`, or with `git checkout -b spec/<feature-name>` when the run named no ticket — then continue to step 3. Do not ask the user and do not stop the save — the artefacts, not the branch, are what this phase exists to produce.
 
 With both branch names in hand:
 
 ```bash
 .devforge/lib/discover_helper render-branch-command \
     --slug "<feature-name>" \
-    --number "<formatted_number from step 1>" \
+    --ticket "<the ticket step 1's stdout reported>" \
     --current-branch "<current branch>" \
     --default-branch "<default branch>"
 ```
 
-Stdout is exactly one line. When it is a `git checkout -b spec/NNN-<feature-name>` command, execute that line as written and tell the user `"Created and switched to branch spec/NNN-<feature-name>"`. When it is a `# already on non-default branch ...` informational comment, no checkout is emitted — continue to step 3 unchanged.
+Pass `--ticket` only when step 1's `ticket` came back non-null; omit the flag entirely when it came back `null`. Pass that reported value rather than the text the user typed at `### Ask to save` — it is the same ticket as the helper accepted it, and this verb validates no format of its own, so whatever reaches it becomes the branch name unchecked.
+
+The ticket is what names the branch: with one the branch is `spec/<ticket>`; without one the helper falls back to the slug and the branch is `spec/<feature-name>`. Nothing composes a hybrid of the two.
+
+Stdout is exactly one line. When it is a `git checkout -b` command — naming `spec/<ticket>` when a ticket was passed and `spec/<feature-name>` when none was — execute that line as written and tell the user `"Created and switched to branch <the branch that line names>"`, reading the name off the line rather than recomposing it. When it is a `# already on non-default branch ...` informational comment, no checkout is emitted — continue to step 3 unchanged.
 
 **3 — Re-render the report against the real feature directory.**
 
