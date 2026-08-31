@@ -99,8 +99,10 @@ Design notes:
   but NOT committed by wip-commit in wrapper mode.  The wrapper tree accumulates
   those changes separately (not auto-committed per task, per D1 of the plan).
 - D2 (ticket-id source): in wrapper mode the TICKET-ID derives from the SOURCE
-  repo's branch name, not the wrapper branch.  The wrapper branch (spec/NNN-…)
-  is irrelevant to the source repo commit message.
+  repo's branch name, not the wrapper branch.  Whatever the wrapper branch is
+  named — spec/<ticket> when the feature named a ticket, else spec/<slug>, per
+  _shared/feature_alloc.py's decide_branch_action — it is irrelevant to the
+  source repo commit message.
 - TICKET-ID pattern [A-Z]+-[0-9]+: industry-standard Jira-style ticket pattern.
   Applied after stripping path prefixes:
     bugfix/ABC-123-desc → ABC-123
