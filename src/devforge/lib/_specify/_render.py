@@ -17,6 +17,7 @@ from ._schema import (
     _SUBSECTION_RENDER_ORDER,
     resolve_bucketed_feature_dir,
 )
+from _shared.provenance import RUN_BY_BOUND_NOTE  # type: ignore[import]
 
 
 def _feature_dir_display(state: Dict[str, Any]) -> str:
@@ -156,6 +157,21 @@ def render_spec(state: Dict[str, Any]) -> str:
 
     Determinism: byte-identical input state → byte-identical output. No
     timestamps, no environment-dependent values.
+
+    state["run_by"] (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    Phase 4, D7-D9): an OPAQUE, pre-resolved value, never computed here.
+    This function only decides whether to render the line -- it never
+    reads git config, never reads project-config.json, and never reads
+    an existing spec.md off disk; that resolution (fresh capture vs.
+    OQ-7's "keep the original" on a re-render) is the caller's job --
+    see _cmds_phase4_verify.py's cmd_render / cmd_verify_rendered --
+    specifically so this function's own determinism claim above stays
+    true regardless of what git config or project-config.json say at
+    call time. Not part of the on-disk specify-state.json schema (no
+    setter populates it; default_state() does not carry it) -- callers
+    inject it into a COPY of the loaded state before calling render_spec,
+    exactly as they already inject nothing else here, so state.get(...)
+    below is the only read.
     """
     out: List[str] = []
     name = state.get("feature_name") or "Feature"
@@ -168,7 +184,10 @@ def render_spec(state: Dict[str, Any]) -> str:
     out.append("**Date**: {0}".format(date))
     out.append("**Status**: {0}".format(status))
     out.append("**Design source**: {0}".format(design_source))
-    out.append("**Author**: Claude + User")
+    run_by = state.get("run_by")
+    if run_by:
+        out.append("**Run by**: {0}".format(run_by))
+        out.append(RUN_BY_BOUND_NOTE)
     out.append("")
 
     out.append("## 1. Overview")

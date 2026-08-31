@@ -3,7 +3,6 @@
 **Date**: 2026-05-15
 **Status**: Draft
 **Design source**: none
-**Author**: Claude + User
 
 ## 1. Overview
 

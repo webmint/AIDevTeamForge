@@ -688,6 +688,19 @@ def _register_subcommands(subparsers) -> None:
         "render",
         help="Walk schema + state; emit research report md to stdout.",
     )
+    sp.add_argument(
+        "--existing-path",
+        dest="existing_path",
+        default=None,
+        help=(
+            "Path to an already-written research-report.md, when this "
+            "run is revising one in place (attach mode / a grill "
+            "re-entry). When given and the file exists, its Run-by line "
+            "(if any) is preserved verbatim instead of being recomputed "
+            "-- see _shared.provenance.resolve_run_by_for_render. Omit "
+            "on a fresh, first-time render."
+        ),
+    )
     sp.set_defaults(func=cmd_render)
 
     sp = subparsers.add_parser(

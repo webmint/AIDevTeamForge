@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from ._render import _canonicalize_for_compare, render_spec
+from ._render import _canonicalize_for_compare, _feature_dir_display, render_spec
 from ._schema import (
     AC_SUBSECTION_ENUM,
     CONSTITUTION_RULE_RE,
@@ -21,6 +21,10 @@ from ._schema import (
 )
 from ._state import _load_state
 from ._validators import _die
+from _shared.provenance import (  # type: ignore[import]
+    extract_run_by,
+    resolve_run_by_for_render,
+)
 from _shared.text_overlap import tokenize_for_overlap  # type: ignore[import]
 
 
@@ -323,18 +327,73 @@ def cmd_verify_scope_coherence(args: argparse.Namespace) -> int:
     return 0
 
 
+def _with_resolved_run_by(state: Dict, devforge_dir: str) -> Dict:
+    """Return a shallow copy of `state` with "run_by" resolved (D9/OQ-7).
+
+    Determines the spec.md path THIS render targets via the same
+    _feature_dir_display composition _approval_summary /
+    _plan_handoff_block already use to reference "this run's own
+    spec.md" elsewhere in the same render pass -- reusing it here means
+    this function inherits that composition's existing behaviour on
+    every path (warm / cold / bucketed / genuine-fallback) exactly,
+    rather than re-deriving a second, possibly-diverging notion of
+    "where does this render's output go".
+
+    - the target spec.md already exists on disk -> preserve exactly
+      what its own Run-by line says, present or absent (OQ-7's "keep
+      the original"; see resolve_run_by_for_render's docstring for why
+      an absent line is never backfilled).
+    - it does not exist yet (first-time render for this feature) ->
+      capture a fresh value, gated on AI_ATTRIBUTION (D9).
+
+    Never mutates the on-disk specify-state.json and never writes
+    anything -- this is a read-only lookup that feeds render_spec a
+    pre-resolved value; render_spec itself performs no I/O (see its own
+    docstring).
+    """
+    repo_root = Path(devforge_dir).resolve().parent
+    feature_dir_rel = _feature_dir_display(state)
+    target = repo_root / feature_dir_rel / "spec.md"
+    existing_text = None
+    try:
+        if target.is_file():
+            existing_text = target.read_text(encoding="utf-8")
+    except OSError:
+        existing_text = None
+    new_state = dict(state)
+    new_state["run_by"] = resolve_run_by_for_render(
+        existing_text, devforge_dir, repo_root,
+    )
+    return new_state
+
+
 def cmd_render(args: argparse.Namespace) -> int:
-    """Emit spec markdown to stdout. Pure read — no state mutation."""
+    """Emit spec markdown to stdout.
+
+    Read-only on state (no mutation of specify-state.json), but NOT a
+    pure filesystem read: _with_resolved_run_by may read the target
+    spec.md, when one already exists, to preserve its Run-by line
+    across a re-render (D9/OQ-7) -- see that function's docstring.
+    """
     try:
         state = _load_state(args.devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
         return _die("render: {0}".format(err))
+    state = _with_resolved_run_by(state, args.devforge_dir)
     sys.stdout.write(render_spec(state))
     return 0
 
 
 def cmd_verify_rendered(args: argparse.Namespace) -> int:
-    """Post-write integrity check: on-disk spec.md vs helper render."""
+    """Post-write integrity check: on-disk spec.md vs helper render.
+
+    The on-disk file's OWN "Run by" line (if any) is threaded into the
+    comparison state verbatim (via extract_run_by), never recomputed --
+    this field is exempt from the render/state consistency this gate
+    otherwise enforces, by design (D9: it records the creator and is
+    never updated on a later edit, so there is nothing for a fresh
+    git-config read to agree or disagree with here).
+    """
     path = Path(args.path)
     if not path.is_file():
         sys.stderr.write(
@@ -352,6 +411,8 @@ def cmd_verify_rendered(args: argparse.Namespace) -> int:
         state = _load_state(args.devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
         return _die("verify-rendered: cannot load state: {0}".format(err))
+    state = dict(state)
+    state["run_by"] = extract_run_by(disk_bytes.decode("utf-8"))
     rendered = render_spec(state).encode("utf-8")
     canonical_disk = _canonicalize_for_compare(disk_bytes)
     canonical_rendered = _canonicalize_for_compare(rendered)

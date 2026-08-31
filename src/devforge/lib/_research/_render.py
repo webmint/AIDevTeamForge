@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import List
 
+from _shared.provenance import RUN_BY_BOUND_NOTE  # type: ignore[import]
+
 
 def _render_report_md(memo: dict, report: dict) -> str:
     """Compose the research report markdown.
@@ -38,6 +40,15 @@ def _render_report_md(memo: dict, report: dict) -> str:
           state, by design — see the section's own code comment)
       16. Open Uncertainties (when gaps present)
       17. Next step (when verdict proceeds)
+
+    report["run_by"] (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    Phase 4, D7-D9): an OPAQUE, pre-resolved value, same convention as
+    _specify/_render.py's render_spec — this function never reads git
+    config, project-config.json, or an existing research-report.md off
+    disk; cmd_render (_cmds_render_verify.py) resolves it before calling
+    this function. Not part of the persisted research-report.json
+    schema (no setter populates it); a caller injects it into a COPY of
+    the loaded report dict.
     """
     out = []  # type: List[str]
     topic = report.get("topic") or _derive_topic_for_render(memo, report)
@@ -52,6 +63,10 @@ def _render_report_md(memo: dict, report: dict) -> str:
     out.append("**Topic**: {0}".format(topic))
     out.append("**Mode**: {0}".format(mode_label))
     out.append("**Verdict**: {0}".format(verdict))
+    run_by = report.get("run_by")
+    if run_by:
+        out.append("**Run by**: {0}".format(run_by))
+        out.append(RUN_BY_BOUND_NOTE)
     out.append("")
 
     out.append("## Summary")

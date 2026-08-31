@@ -8,7 +8,7 @@ Render:
   - state with design_source='figma:https://figma.com/file/x?node-id=1:2' renders
     the full URL including internal colons
   - state with design_source='screenshot:design/mockup.png' renders correctly
-  - Design source line appears AFTER **Status**: and BEFORE **Author**:
+  - Design source line appears AFTER **Status**:
   - cmd_verify_rendered round-trips with design_source='none' (state default)
   - cmd_verify_rendered round-trips with design_source='figma:https://...'
 
@@ -141,22 +141,28 @@ class TestDesignSourceRender(unittest.TestCase):
                 "**Design source**: screenshot:design/mockup.png", output,
             )
 
-    def test_design_source_line_position_after_status_before_author(self):
-        """**Design source**: must appear after **Status**: and before **Author**:."""
+    def test_design_source_line_position_after_status(self):
+        """**Design source**: must appear after **Status**:.
+
+        The header's original fourth line, "before **Author**:", is
+        gone as an anchor -- 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+        PLAN.md Phase 4 (D8) REPLACED the hardcoded "**Author**: Claude
+        + User" literal, it did not rename it, and the isolated temp
+        state this test seeds carries no AI_ATTRIBUTION gate, so no
+        "**Run by**:" line renders here either -- there is no fourth
+        header field to anchor against any more. See
+        tests/lib/_specify/test_render_run_by.py for the "**Run by**:"
+        line's own position/presence coverage.
+        """
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _seed_minimal(dev)
             output = self._render(dev)
             pos_status = output.index("**Status**:")
             pos_design = output.index("**Design source**:")
-            pos_author = output.index("**Author**:")
             self.assertLess(
                 pos_status, pos_design,
                 "**Design source**: must come AFTER **Status**:",
-            )
-            self.assertLess(
-                pos_design, pos_author,
-                "**Design source**: must come BEFORE **Author**:",
             )
 
 

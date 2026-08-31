@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from ._constants import RESTS_ON_LITERAL_NONE, VERDICT_ENUM
@@ -23,6 +24,7 @@ from ._layer_package import (
     _is_presentation_layer,
 )
 from _shared.literal_call_shape import _detect_arg_duplication, _detect_literal_replacement
+from _shared.provenance import resolve_run_by_for_render  # type: ignore[import]
 from _shared.text_overlap import tokenize_for_overlap as _tokenize_hypothesis
 from ._probe_tier import _classify_probe_tier, _read_test_infra_status
 from ._render import _render_report_md
@@ -67,13 +69,55 @@ def _probe_tier_is_unverified(probe_feasibility, test_infra_status, chrome_mcp, 
 
 
 def cmd_render(args: argparse.Namespace) -> int:
-    """Render report md to stdout. Caller decides where to save (Phase 3)."""
+    """Render report md to stdout. Caller decides where to save (Phase 3).
+
+    "Run by" provenance (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    Phase 4, D7-D9/OQ-7): unlike /devforge:specify, this command's state
+    (memo/report) carries no field this helper can use to independently
+    derive the feature directory research-report.md is written into --
+    /devforge:research's own prose composes and holds `<feature_dir>` in
+    working memory, never round-tripping it through a setter (there is
+    no research-state equivalent of specify's
+    state["source"]["handoff_path"]). --existing-path is therefore an
+    EXPLICIT, OPTIONAL argument: pass the path of the research-report.md
+    this run would overwrite (attach mode / a grill re-entry revising an
+    existing report in place -- src/commands/research/main.md's Step 4.2
+    "Attach mode" already documents this as the overwrite case) so its
+    existing Run-by line, if any, is preserved (OQ-7's "keep the
+    original") instead of a fresh value being captured every render.
+
+    Omitted (the default, and every call site until main.md is updated
+    to pass it on the attach-mode path): treated as a first-time render
+    -- a fresh value is captured, gated on AI_ATTRIBUTION (D9), exactly
+    as today's only call site (a genuinely first render) needs. This is
+    a KNOWN GAP, not an oversight: until that one prose call site passes
+    --existing-path, an attach-mode research-report.md re-render will
+    recompute rather than preserve -- tracked as this plan's open item,
+    same class as plan.md/summary.md's own prose-only Phase 4 items.
+    """
     import json as _json
     try:
         memo = _load_memo(args.devforge_dir)
         report = _load_report(args.devforge_dir)
     except (OSError, _json.JSONDecodeError) as err:
         return _die("render: {0}".format(err))
+    existing_path = getattr(args, "existing_path", None)
+    existing_text = None
+    if existing_path:
+        try:
+            existing_text = Path(existing_path).read_text(encoding="utf-8")
+        except OSError:
+            existing_text = None
+    # repo_root anchors the `git -C <repo_root> config user.name` read
+    # (capture_git_user_name) to the install repo rather than to
+    # whatever cwd the research_helper process happens to inherit --
+    # the same repo_root _specify/_cmds_phase4_verify.py's
+    # _with_resolved_run_by derives.
+    repo_root = Path(args.devforge_dir).resolve().parent
+    report = dict(report)
+    report["run_by"] = resolve_run_by_for_render(
+        existing_text, args.devforge_dir, repo_root,
+    )
     try:
         text = _render_report_md(memo, report)
     except ValueError as err:
