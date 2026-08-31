@@ -55,8 +55,10 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 # workflow commands.
 #
 # "research" / "discover" are legacy top-level dirs: plan 68 (intake owns the
-# feature dir) relocated /research and /discover artifacts into specs/NNN-slug/
-# (already listed below) for all NEW work. These two entries are kept only so
+# feature dir) relocated /research and /discover artifacts inside the feature
+# directory (already listed below) for all NEW work -- specs/NNN-slug/ at the
+# time, also specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-IDENTITY-AND-
+# PROVENANCE-PLAN.md Phase 3. These two entries are kept only so
 # a grandfathered install's pre-plan-68 research/ and discover/ dirs stay
 # lint-ignored (D3 clean cut — old dirs persist on disk, nothing migrates).
 FRAMEWORK_FOLDERS: List[str] = [

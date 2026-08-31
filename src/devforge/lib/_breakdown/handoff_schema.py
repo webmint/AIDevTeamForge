@@ -1,7 +1,10 @@
 """handoff_schema -- dataclass schema for the breakdown-handoff artefact.
 
-Single source of truth for the shape of ``specs/NNN-<slug>/breakdown-handoff.json``
-emitted by ``breakdown_helper finalize-handoff`` and consumed by ``/implement``
+Single source of truth for the shape of the feature directory's
+``breakdown-handoff.json`` (legacy ``specs/NNN-<slug>/`` or Phase-3
+``specs/YYYY/MM/<leaf>/`` -- 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+PLAN.md D2/D3/D6) emitted by ``breakdown_helper finalize-handoff`` and
+consumed by ``/implement``
 (consumer not yet implemented; will conform to this schema).
 
 Design notes:
@@ -161,7 +164,9 @@ class TaskRow:
 class Provenance:
     """Upstream handoff provenance for the breakdown-handoff artefact.
 
-    Upstream refers to the sibling plan handoff (specs/NNN/plan-handoff.json).
+    Upstream refers to the sibling plan handoff (plan-handoff.json in the
+    same feature directory, either shape -- legacy specs/NNN/ or Phase-3
+    specs/YYYY/MM/<leaf>/).
     Both upstream_handoff_path and upstream_handoff_kind must be set or
     both must be None (co-vary invariant). plan_path points to plan.md
     (best-effort, may be None). spec_path points to spec.md (best-effort,

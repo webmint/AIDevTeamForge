@@ -56,9 +56,11 @@ def _probe_scratch_dir():
     its own WORKDIR at the start of a run.
 
     Not created here and not the FINAL artifact location -- the orchestrator
-    copies the scratch script into ``specs/NNN-slug/probe-script.<ext>`` at
-    finalize when the run saves (plan 68 D1/D8); a dead-end run leaves it in
-    scratch only.
+    copies the scratch script into the feature directory as
+    ``probe-script.<ext>`` at finalize when the run saves (plan 68 D1/D8;
+    either shape -- legacy ``specs/NNN-slug/`` or Phase-3
+    ``specs/YYYY/MM/leaf/``, 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    PLAN.md D2/D3/D6); a dead-end run leaves it in scratch only.
     """
     return Path(os.environ.get("TMPDIR") or "/tmp") / "forge-research"
 

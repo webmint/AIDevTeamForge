@@ -1,7 +1,10 @@
 """handoff_schema -- dataclass schema for the plan -> breakdown handoff artefact.
 
-Single source of truth for the shape of ``specs/NNN-<slug>/plan-handoff.json``
-emitted by ``plan_helper finalize-handoff`` and consumed by ``/breakdown``
+Single source of truth for the shape of the feature directory's
+``plan-handoff.json`` (legacy ``specs/NNN-<slug>/`` or Phase-3
+``specs/YYYY/MM/<leaf>/`` -- 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+PLAN.md D2/D3/D6) emitted by ``plan_helper finalize-handoff`` and
+consumed by ``/breakdown``
 (consumer not yet implemented; will conform to this schema).
 
 Design notes:
@@ -365,7 +368,9 @@ class BreakdownSeeds:
 class Provenance:
     """Upstream handoff provenance for the plan-handoff artefact.
 
-    Upstream refers to the sibling specify handoff (specs/NNN/handoff.json).
+    Upstream refers to the sibling specify handoff (handoff.json in the
+    same feature directory, either shape -- legacy specs/NNN/ or Phase-3
+    specs/YYYY/MM/<leaf>/).
     Both upstream_handoff_path and upstream_handoff_kind must be set or
     both must be None (co-vary invariant). spec_path points to the spec.md
     (best-effort, may be None when no sibling spec.md exists).

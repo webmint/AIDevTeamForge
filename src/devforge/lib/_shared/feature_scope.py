@@ -313,8 +313,10 @@ def resolve_feature_scope(
     Parameters
     ----------
     feature_dir:
-        Path to the specs/NNN-<name>/ directory (used for context only —
-        not for git operations; included in the JSON output).
+        Path to the feature directory (either shape -- legacy
+        specs/NNN-<name>/ or Phase-3 specs/YYYY/MM/<leaf>/; used for
+        context only — not for git operations; included in the JSON
+        output).
     source_root:
         Absolute path to the source tree (where git runs).
         In standalone mode this is the repo root; in wrapper mode it is the

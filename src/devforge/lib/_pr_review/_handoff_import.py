@@ -10,9 +10,11 @@ relevance to state.ticket_text or PR title, and APPENDS/REPLACES the
 
 ## Re-point note (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5, D3 clean cut)
 
-Both intake lanes now write inside the feature dir they allocate:
-`specs/NNN-slug/research-handoff.json` (the `/research` lane) and
-`specs/NNN-slug/discover-handoff.json` (the `/discover` lane). This module
+Both intake lanes now write inside the feature dir they allocate --
+`research-handoff.json` (the `/research` lane) and
+`discover-handoff.json` (the `/discover` lane), under either shape
+(legacy `specs/NNN-slug/` or Phase-3 `specs/YYYY/MM/<leaf>/` --
+91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D2/D3/D6). This module
 reads ONLY the new layout — the old top-level `<target>/research/<date>-
 <slug>/handoff.json` dirs are never scanned again (D3: no dual-glob
 transition code; old installs' pre-migration `research/` dirs are simply
@@ -36,7 +38,7 @@ After import-handoffs, state.bundle["research_handoffs"] contains:
         {
             "path": "<absolute path to research-handoff.json / discover-handoff.json>",
             "date": "YYYY-MM-DD",
-            "slug": "<feature slug, from the specs/NNN-slug/ dir name>",
+            "slug": "<feature slug, from the feature dir name -- see _parse_handoff's own docstring for the ticket-leaf caveat>",
             "verdict": "<see per-kind extraction below>",
             "mode": "<top-level 'mode' from the handoff, or '' (discover has none)>",
             "kind": "research" | "discover",
@@ -48,8 +50,10 @@ After import-handoffs, state.bundle["research_handoffs"] contains:
 
 `date` is read from the handoff's own completion timestamp
 (`research_completed_at` for research-handoff.json, `discover_completed_at`
-for discover-handoff.json) — the new `NNN-slug` feature-dir name carries no
-date, unlike the old `YYYY-MM-DD-slug` research dir name.
+for discover-handoff.json) — neither the legacy `NNN-slug` feature-dir
+name nor the Phase-3 `YYYY/MM/<leaf>` shape (91-FEATURE-DIR-IDENTITY-AND-
+PROVENANCE-PLAN.md D2/D3/D6) carries a date, unlike the old
+`YYYY-MM-DD-slug` research dir name.
 
 `verdict` extraction is kind-aware (research and discover carry the concept
 in different places):
@@ -72,8 +76,10 @@ in different places):
 ## Filtering
 
 Substring matching is case-insensitive. The filter checks whether `slug`
-(the feature-dir name with its `NNN-` prefix stripped) contains any word
-from ticket_text or PR title (split on whitespace, minimum 3 chars).
+(the legacy feature-dir name with its `NNN-` prefix stripped, or the
+Phase-3 leaf name verbatim -- see `_parse_handoff`'s own docstring for
+the ticket-leaf caveat) contains any word from ticket_text or PR title
+(split on whitespace, minimum 3 chars).
 
 If both ticket_text and a derivable PR title are empty, the filter is
 skipped and all handoffs are returned with matched_via="all".
@@ -193,17 +199,24 @@ def _parse_handoff(path: str) -> Optional[Dict]:
     (a foreign/hand-placed file) defaults to "research" (the pre-68
     default kind, preserved for fail-soft tolerance).
 
-    The parent dir name is expected to be the plan-68 feature-dir shape
-    `NNN-<slug>` (e.g. `003-checkout-flow`) — see `SPEC_NUMBER_DIR_RE`. If
-    the name does not match, `slug` falls back to the full dir name
-    (fail-soft — a foreign/non-conforming dir still parses).
+    The parent dir name is checked against the legacy plan-68 feature-dir
+    shape `NNN-<slug>` (e.g. `003-checkout-flow`) — see
+    `SPEC_NUMBER_DIR_RE`. When it matches, `slug` is the captured slug
+    portion. When it does not match, `slug` falls back to the full dir
+    name — this is the fail-soft branch, and it is also the NORMAL path
+    for every 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase-3
+    feature dir (`specs/YYYY/MM/<leaf>/`, leaf a ticket or a slug): the
+    dir name IS the slug already for a ticketless leaf, and IS the ticket
+    string (not a slug) for a ticketed one. It is not a "foreign" or
+    malformed case for a Phase-3 install; it only reads that way for a
+    legacy-shape dir that itself fails to conform.
 
     `date` is read from the handoff's own completion timestamp
     (`research_completed_at` for a research-handoff.json,
     `discover_completed_at` for a discover-handoff.json), truncated to the
-    first 10 chars (the ISO date prefix of an ISO 8601 timestamp) — the
-    new `NNN-slug` dir name carries no date, unlike the retired
-    `YYYY-MM-DD-slug` research dir name.
+    first 10 chars (the ISO date prefix of an ISO 8601 timestamp) — neither
+    the legacy `NNN-slug` dir name nor the Phase-3 leaf name carries a
+    date, unlike the retired `YYYY-MM-DD-slug` research dir name.
 
     The `verdict` output field uses a kind-aware fallback chain (research
     and discover carry the concept in different places):

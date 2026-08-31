@@ -10,10 +10,14 @@ Coverage:
                          AI_ATTRIBUTION="No" (or the gate never
                          configured at all) -> ABSENT regardless of the
                          configured name.
-  --existing-path        (OQ-7's read-back, KNOWN GAP -- see cmd_render's
-                         own docstring): omitted -> always a fresh
-                         capture, matching today's only real call site
-                         (a first-time render with nothing to preserve);
+  --existing-path        (OQ-7's read-back -- see cmd_render's own
+                         docstring for the full contract): omitted ->
+                         always a fresh capture, matching Phase 3's
+                         PREVIEW render, which runs flagless in every
+                         mode (a first-time render with nothing to
+                         preserve, or an attach run whose preview
+                         resolves freshly while the later save preserves
+                         the existing value);
                          given and the target file already carries a
                          Run-by line -> that value is preserved even
                          when the configured git name has since changed;
@@ -181,9 +185,10 @@ class TestResearchRunByExistingPath(_RunByFixture):
         return report_path
 
     def test_omitted_existing_path_always_captures_fresh(self):
-        """No --existing-path -- matches today's only call site: even
-        though a report already sits on disk, this run doesn't know
-        about it and behaves exactly like a first-time render."""
+        """No --existing-path -- matches Phase 3's PREVIEW render, which
+        stays flagless in every mode: even though a report already sits
+        on disk, this call doesn't know about it and behaves exactly
+        like a first-time render."""
         self._write_gate(enabled=True)
         self._set_git_name("Original Author")
         report_path = self._first_render_and_write()

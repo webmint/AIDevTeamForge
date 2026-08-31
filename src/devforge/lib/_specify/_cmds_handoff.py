@@ -48,10 +48,14 @@ import-handoff:
   the full argument.
 
 find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
-  One glob pass over specs/*/research-handoff.json AND
-  specs/*/discover-handoff.json under the repo root (parent of .devforge
-  dir), filtered to feature dirs that are PENDING -- D5's structural
-  predicate, extended by D10: a feature dir is pending when its intake
+  Walks iter_feature_dirs(specs_root) -- 91-FEATURE-DIR-IDENTITY-AND-
+  PROVENANCE-PLAN.md Phase 1's resolution accessor, which covers every
+  feature dir under the repo root's specs/ (parent of .devforge dir)
+  across both the legacy specs/NNN-slug/ shape and the Phase-3
+  specs/YYYY/MM/<leaf>/ shape -- and checks each returned dir directly
+  for research-handoff.json / discover-handoff.json, filtered to feature
+  dirs that are PENDING -- D5's structural predicate, extended by D10: a
+  feature dir is pending when its intake
   handoff is present AND (spec.md is absent OR a sibling *-seed.json file
   (grill-seed.json / spec-check-seed.json / fix-seed.json) exists whose
   target_stage == "spec").  The second arm exists because a /grill
@@ -63,8 +67,8 @@ find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   making re-entry structurally unreachable.  A dir admitted only via the
   seed arm is marked with a trailing " | re-entry" token on its output
   line (see cmd_find_handoffs) so the caller can tell the two arms apart
-  without re-globbing.  mtime is used only to ORDER hits, most-recent
-  first -- --since is accepted-but-ignored, kept only so pre-Phase-4
+  without a second walk of specs_root.  mtime is used only to ORDER hits,
+  most-recent first -- --since is accepted-but-ignored, kept only so pre-Phase-4
   callers do not break (see cmd_find_handoffs).  Emit one line per hit;
   skip corrupt or schema-invalid files silently.  Exit 0 on zero hits
   (unless --require is passed; see cmd_find_handoffs for gate behavior).
@@ -1074,8 +1078,10 @@ def cmd_record_handoff_path(args: argparse.Namespace) -> int:
 def cmd_find_handoffs(args: argparse.Namespace) -> int:
     """List feature dirs carrying a PENDING intake handoff (plan 68 D5+D10).
 
-    One glob pass over specs/*/research-handoff.json and
-    specs/*/discover-handoff.json, filtered to feature dirs that are
+    Walks iter_feature_dirs(specs_root) -- across both the legacy
+    specs/NNN-slug/ shape and the Phase-3 specs/YYYY/MM/<leaf>/ shape --
+    and checks each returned dir directly for research-handoff.json /
+    discover-handoff.json, filtered to feature dirs that are
     PENDING: an intake handoff is present AND EITHER (a) spec.md is absent
     (D5's original predicate: "the feature has not already been consumed
     by /specify") OR (b) spec.md IS present but a sibling *-seed.json file

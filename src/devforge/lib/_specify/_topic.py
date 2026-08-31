@@ -16,7 +16,11 @@ _TOPIC_STOPWORDS = frozenset({
 })
 
 # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D2 -- the two intake report basenames
-# that now live INSIDE specs/NNN-slug/, side-by-side with the spec's own
+# that now live INSIDE the feature directory (specs/NNN-slug/ at the time;
+# also specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md Phase 3 -- this module's own checks below are basename-first and
+# shape-independent, see source_origin_for_path's docstring), side-by-side
+# with the spec's own
 # prior_spec artifacts (spec.md, handoff.json, plan.md, ...). Filename-aware
 # dispatch (not prefix-based) is required because both share the "specs/"
 # prefix with prior_spec files -- a prefix-only test would silently mis-tag
@@ -84,12 +88,17 @@ def source_origin_for_path(path: str, root: Optional[str] = None) -> str:
     """Auto-tag source_origin from file path. Variance rule #5.
 
     68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: /research and /discover now
-    write their durable intake artifacts INSIDE specs/NNN-slug/ (D1/D2/D7)
-    instead of top-level research/ or discover/ dirs. specs/*/research-
-    report.md and specs/*/discovery-report.md must therefore be checked by
-    FILENAME before the generic "specs/" prefix is allowed to fall through
-    to prior_spec -- otherwise every new intake report would silently
-    mis-tag as prior_spec (no error, just degraded corpus grouping).
+    write their durable intake artifacts INSIDE the feature directory
+    (D1/D2/D7) -- specs/NNN-slug/ at the time, also
+    specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+    PLAN.md Phase 3 -- instead of top-level research/ or discover/ dirs.
+    specs/*/research-report.md and specs/*/discovery-report.md must
+    therefore be checked by FILENAME before the generic "specs/" prefix is
+    allowed to fall through to prior_spec -- otherwise every new intake
+    report would silently mis-tag as prior_spec (no error, just degraded
+    corpus grouping). This basename-first check is what makes the
+    classification shape-independent: it never inspects how many path
+    segments sit between "specs/" and the filename.
 
     The legacy top-level "discover/" and "research/" prefix checks are kept
     for origin-TAGGING only (D3 clean cut: they exist so a pre-migration

@@ -3461,8 +3461,9 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
     # feature must have a present-and-valid design-manifest.json before the
     # handoff is written.  Uses the same _validate_manifest_present predicate as
     # the standalone verify-manifest-present verb (Phase 3.5).
-    # feature_dir = plan_dir (the manifest is specs/NNN-slug/design-manifest.json,
-    # sibling to plan.md; plan_dir is the parent of tasks_dir).
+    # feature_dir = plan_dir (the manifest is design-manifest.json inside the
+    # feature directory -- either shape -- sibling to plan.md; plan_dir is
+    # the parent of tasks_dir).
     # reference_path is always the default for finalize-handoff — the
     # finalize-handoff subparser registers no --reference-path flag (only
     # verify-manifest-present does), so this is the constant 'design/reference.html'.

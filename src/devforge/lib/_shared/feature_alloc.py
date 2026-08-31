@@ -755,15 +755,19 @@ def iter_feature_dirs(specs_root):
     Phase 3):
 
       1. Legacy: specs/NNN-slug/ -- an immediate child of specs/ whose
-         name matches SPEC_NUMBER_DIR_RE.  This is the ONLY shape any
-         installation has today; allocate_feature_dir still exclusively
-         writes it.
-      2. Phase-3 forward shape: specs/YYYY/MM/TICKET/ -- a 4-digit year
+         name matches SPEC_NUMBER_DIR_RE.  LEGACY-READ ONLY as of Phase 3
+         (D6): allocate_feature_dir below no longer writes this shape for
+         a fresh allocation, but an install that allocated before Phase 3
+         shipped still holds it on disk -- there is no migration (D6, the
+         plan-68-D3 precedent) -- and this arm keeps resolving it forever.
+      2. Phase-3 forward shape: specs/YYYY/MM/<leaf>/ -- a 4-digit year
          directory (YEAR_DIR_RE) containing a 2-digit month directory
-         (MONTH_DIR_RE) containing feature directories.  No writer
-         produces this shape yet, so this arm returns nothing on any real
-         install as of this writing; it exists so a later Phase-3 layout
-         switch does not require rewriting this accessor.
+         (MONTH_DIR_RE) containing feature directories, <leaf> the
+         ticket-or-slug allocate_feature_dir below composes.  This is the
+         shape every fresh allocation writes as of Phase 3; an install
+         with no allocation since Phase 3 shipped has none of these on
+         disk yet, which is why this arm can still return nothing against
+         a legacy-only tree.
 
     There is no ambiguity between the two arms: a legacy dir name is
     exactly three digits then a dash (the dash is required); a year dir

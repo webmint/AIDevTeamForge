@@ -212,7 +212,11 @@ def _register_subcommands(subparsers):
                 default="",
                 dest="feature_dir",
                 metavar="DIR",
-                help="Path to the specs/NNN-feature/ directory (for context in the scope block).",
+                help=(
+                    "Path to the feature directory (either shape -- legacy "
+                    "specs/NNN-feature/ or Phase-3 specs/YYYY/MM/<leaf>/) "
+                    "for context in the scope block."
+                ),
             )
             sp.add_argument(
                 "--source-root",

@@ -9,9 +9,11 @@ CLAUDE.md. The agent holds the codebase-memory MCP tools and performs any
 blast-radius traversal itself — this helper cannot call MCP. Therefore
 _scope's ONLY responsibility is:
 
-  1. Resolve the target feature directory — from an explicit arg
-     (specs/NNN-*/ dir or a plan.md path) or by auto-detecting the
-     most-recently-modified feature under specs/ that has a plan.md.
+  1. Resolve the target feature directory — from an explicit arg (a
+     feature directory, either shape -- legacy specs/NNN-slug/ or
+     Phase-3 specs/YYYY/MM/leaf/ -- or a plan.md path) or by
+     auto-detecting the most-recently-modified feature under specs/
+     that has a plan.md.
 
   2. Build a GrillScopeManifest — a small dataclass carrying the
      existence-checked paths the agent will be handed. File CONTENTS are
@@ -66,7 +68,8 @@ def resolve_target_feature(
         Absolute path to the specs/ directory (e.g. /project/specs).
     feature_arg:
         Optional explicit argument — either:
-          - a path to a specs/NNN-*/ directory, or
+          - a path to a feature directory, either shape (legacy
+            specs/NNN-slug/ or Phase-3 specs/YYYY/MM/leaf/), or
           - a path to a plan.md file (parent dir is used as the feature dir).
         When None, auto-detect: pick the most-recently-modified (by plan.md
         mtime) subdir of specs_root that contains a plan.md file.
@@ -78,9 +81,11 @@ def resolve_target_feature(
                      or None on error.
         error:       human-readable error string, or None on success.
 
-    Auto-detection criteria: directory name must match r'^\\d+' (has a numeric
-    NNN prefix) AND contain a plan.md file.  The one with the newest plan.md
-    mtime is returned.  Directories without a numeric prefix are ignored.
+    Auto-detection criteria: directory name must match r'^\\d+' (a numeric
+    prefix -- NNN on the legacy shape, YYYY on the Phase-3 shape; see the
+    paragraph below) AND contain a plan.md file.  The one with the newest
+    plan.md mtime is returned.  Directories without a numeric prefix are
+    ignored.
 
     Enumeration is delegated to _shared/feature_alloc.py's iter_feature_dirs
     (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 1's resolution
@@ -132,7 +137,8 @@ def resolve_target_feature(
         if not os.path.isdir(candidate):
             return None, (
                 "feature argument {0!r} does not resolve to a directory. "
-                "Pass a specs/NNN-*/ directory or a plan.md path.".format(feature_arg)
+                "Pass a feature directory (specs/NNN-slug/ or "
+                "specs/YYYY/MM/leaf/) or a plan.md path.".format(feature_arg)
             )
         return candidate, None
 

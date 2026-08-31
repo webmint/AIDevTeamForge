@@ -1,8 +1,10 @@
 """_source.py — design-source parser and check-design-source CLI verb.
 
-A feature declares its design source in specs/NNN-<slug>/spec.md frontmatter
-as a **Design source**: line.  The value is shaped `scheme:target` where
-scheme ∈ {html, figma, screenshot}, or the literal "none".
+A feature declares its design source in its spec.md frontmatter (either
+feature-dir shape -- legacy specs/NNN-<slug>/ or Phase-3
+specs/YYYY/MM/<leaf>/) as a **Design source**: line.  The value is
+shaped `scheme:target` where scheme ∈ {html, figma, screenshot}, or the
+literal "none".
 
 check-design-source reads that line and emits a loud NON-BLOCKING WARN on
 stderr (exit 0) when a non-file design source is declared but no enforceable

@@ -138,9 +138,13 @@ AUTO_MODE_REMINDER_SUBSTRINGS: Tuple[str, ...] = (
 
 # Feature-slug validation regex + NNN spec-number allocation constants now
 # live in _shared/feature_alloc.py (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md
-# Phase 1) so /research and /discover can allocate specs/NNN-slug/
+# Phase 1) so /research and /discover can allocate their feature dir
 # themselves at intake finalize without duplicating the regex/width/dir
-# pattern. Re-exported here under the original names so every existing
+# pattern. (At the time this move was made, the allocated shape was
+# specs/NNN-slug/; 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3
+# retired that as the fresh-allocation shape -- see
+# _shared/feature_alloc.py's own module docstring for what ships now.)
+# Re-exported here under the original names so every existing
 # `from ._schema import FEATURE_NAME_RE` (etc.) import keeps resolving
 # unchanged -- this is a re-export, not a redefinition; edit the shared
 # module, not this one. classify_feature_dir_identity (91-FEATURE-DIR-
@@ -365,14 +369,18 @@ MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
          "memory.md prior-feature lessons"),
         ("specs/*/discovery-report.md",
          "/devforge:discover reference md (if Phase 1 adapter loaded one) -- "
-         "68-INTAKE-OWNS-FEATURE-DIR-PLAN.md moved this inside "
-         "specs/NNN-slug/ (was discover/*.md)"),
+         "68-INTAKE-OWNS-FEATURE-DIR-PLAN.md moved this inside the feature "
+         "directory (specs/NNN-slug/ at the time; also "
+         "specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-IDENTITY-AND-"
+         "PROVENANCE-PLAN.md Phase 3) -- was discover/*.md"),
     ),
 }
 
 # Helper-owned render-group order for findings.
 # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: no change needed here despite
-# /research and /discover now writing under specs/NNN-slug/ -- the group
+# /research and /discover now writing inside the feature directory (specs/
+# NNN-slug/ at the time; also specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-
+# IDENTITY-AND-PROVENANCE-PLAN.md Phase 3) -- the group
 # KEYS below are unchanged; _cmds_phase01._group_for_path was updated to
 # classify specs/*/research-report.md and specs/*/discovery-report.md by
 # FILENAME into the "research/" / "discover/" keys before falling back to

@@ -2713,7 +2713,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "specify_handoff_path",
-        help="Path to the specify handoff.json (specs/NNN-slug/handoff.json).",
+        help=(
+            "Path to the specify handoff.json (in the feature directory, "
+            "either shape -- legacy specs/NNN-slug/ or Phase-3 "
+            "specs/YYYY/MM/<leaf>/)."
+        ),
     )
     sp.set_defaults(func=cmd_render_plan_seeds)
 
@@ -2728,7 +2732,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "plan_path",
-        help="Path to plan.md (specs/NNN-slug/plan.md).",
+        help=(
+            "Path to plan.md (in the feature directory, either shape -- "
+            "legacy specs/NNN-slug/ or Phase-3 specs/YYYY/MM/<leaf>/)."
+        ),
     )
     sp.add_argument(
         "--completed-at",
@@ -2751,7 +2758,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "plan_handoff_path",
-        help="Path to plan-handoff.json (specs/NNN-slug/plan-handoff.json).",
+        help=(
+            "Path to plan-handoff.json (in the feature directory, either "
+            "shape -- legacy specs/NNN-slug/ or Phase-3 "
+            "specs/YYYY/MM/<leaf>/)."
+        ),
     )
     sp.set_defaults(func=cmd_stakes_hint)
 

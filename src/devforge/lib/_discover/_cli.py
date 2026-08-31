@@ -574,7 +574,9 @@ def _register_subcommands(subparsers) -> None:
         default=None,
         dest="feature_dir",
         help=(
-            "specs/NNN-slug feature dir (plan 68 D1/D2), when already known. "
+            "The feature directory (either shape -- legacy specs/NNN-slug/ "
+            "or Phase-3 specs/YYYY/MM/leaf/), when already known (plan 68 "
+            "D1/D2). "
             "Embeds a 'Discovery reference: <feature-dir>/discovery-report.md' "
             "line. OPTIONAL -- this verb runs at Phase 3, before D1's Phase 4 "
             "allocation, so the feature dir is usually not known yet at this "
@@ -654,7 +656,8 @@ def _register_subcommands(subparsers) -> None:
         default=None,
         dest="feature_dir",
         help=(
-            "specs/NNN-slug feature dir (plan 68 D1/D2/D7). Derives the "
+            "The feature directory (either shape -- legacy specs/NNN-slug/ "
+            "or Phase-3 specs/YYYY/MM/leaf/; plan 68 D1/D2/D7). Derives the "
             "default handoff output path (<feature-dir>/"
             "discover-handoff.json) and the default report_path "
             "(<feature-dir>/discovery-report.md). Mutually exclusive with "
@@ -683,7 +686,11 @@ def _register_subcommands(subparsers) -> None:
         "--handoff-path",
         required=True,
         dest="handoff_path",
-        help="Path to the handoff.json file (e.g. specs/NNN-slug/discover-handoff.json).",
+        help=(
+            "Path to the handoff.json file (e.g. "
+            "specs/YYYY/MM/leaf/discover-handoff.json; a legacy "
+            "specs/NNN-slug/ path also resolves)."
+        ),
     )
     sp.add_argument(
         "--design-option-shipped-id",
@@ -733,7 +740,10 @@ def _register_subcommands(subparsers) -> None:
     # see _cmds_feature_alloc.py).
     sp = subparsers.add_parser(
         "allocate-feature-dir",
-        help="Allocate a fresh specs/NNN-<slug>/ directory; print result as JSON.",
+        help=(
+            "Allocate a fresh specs/YYYY/MM/<leaf>/ directory "
+            "(ticket-or-slug leaf); print result as JSON."
+        ),
     )
     sp.add_argument("--slug", required=True, help="2-4 word lowercase kebab-case feature slug.")
     sp.add_argument(

@@ -271,7 +271,8 @@ def _register_subcommands(subparsers) -> None:
         default=None,
         dest="feature_dir",
         help=(
-            "specs/NNN-slug feature dir (plan 68 D1/D2/D7). Derives the "
+            "The feature directory (either shape -- legacy specs/NNN-slug/ "
+            "or Phase-3 specs/YYYY/MM/leaf/; plan 68 D1/D2/D7). Derives the "
             "default --emit-handoff-json target (<feature-dir>/"
             "research-handoff.json) and the default research_path "
             "(<feature-dir>/research-report.md). Mutually exclusive with "
@@ -1072,7 +1073,11 @@ def _register_subcommands(subparsers) -> None:
         help="Record the post-probe outcome into handoff.json (Step 7).",
     )
     sp.add_argument("--handoff-path", required=True, dest="handoff_path",
-                    help="Path to the handoff.json file (e.g. specs/NNN-slug/research-handoff.json).")
+                    help=(
+                        "Path to the handoff.json file (e.g. "
+                        "specs/YYYY/MM/leaf/research-handoff.json; a legacy "
+                        "specs/NNN-slug/ path also resolves)."
+                    ))
     sp.add_argument(
         "--hypothesis-confirmed",
         required=True,
@@ -1110,7 +1115,10 @@ def _register_subcommands(subparsers) -> None:
     # see _cmds_feature_alloc.py).
     sp = subparsers.add_parser(
         "allocate-feature-dir",
-        help="Allocate a fresh specs/NNN-<slug>/ directory; print result as JSON.",
+        help=(
+            "Allocate a fresh specs/YYYY/MM/<leaf>/ directory "
+            "(ticket-or-slug leaf); print result as JSON."
+        ),
     )
     sp.add_argument("--slug", required=True, help="2-4 word lowercase kebab-case feature slug.")
     sp.add_argument(

@@ -348,8 +348,9 @@ def cmd_verify_findings(args: argparse.Namespace) -> int:
 def _group_for_path(path: str, root: Optional[str] = None) -> str:
     """Map a recorded input path to its render-group key.
 
-    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: specs/NNN-slug/research-
-    report.md and .../discovery-report.md must still land in the
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: a feature dir's
+    research-report.md and discovery-report.md (either shape -- legacy
+    specs/NNN-slug/ or Phase-3 specs/YYYY/MM/<leaf>/) must still land in the
     "research/" / "discover/" render groups (matching
     source_origin_for_path's filename-aware dispatch in _topic.py), not
     fall through to the generic "specs/" prefix group shared with

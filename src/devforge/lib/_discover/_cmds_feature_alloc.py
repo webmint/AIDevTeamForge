@@ -4,9 +4,12 @@
 _shared/feature_alloc.py substrate.  Both verbs are STATELESS (args-only):
 neither reads nor writes discover-scope.json / discover-report.json.  They
 exist so a future /discover command spec (Phase 3, not built here) can
-allocate specs/NNN-slug/ and decide the branch action at intake finalize
+allocate a feature dir and decide the branch action at intake finalize
 time (plan 68 D1), the same capability /specify already has via
-specify_helper create-branch.
+specify_helper create-branch. (At the time this note was written the
+allocated shape was specs/NNN-slug/; 91-FEATURE-DIR-IDENTITY-AND-
+PROVENANCE-PLAN.md Phase 3 retired that as the fresh-allocation shape --
+see cmd_allocate_feature_dir's own docstring below for what ships now.)
 
 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 2 -- allocate-feature-dir
 gained an optional --ticket argument.  This verb reads REQUIRE_TICKET via

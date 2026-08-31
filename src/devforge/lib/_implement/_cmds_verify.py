@@ -164,8 +164,10 @@ _CONFIG_FILENAME = "project-config.json"
 # Check: path-relative entries checked as os.path.exists(source_root / entry).
 #
 # "research" is a legacy top-level dir: plan 68 relocated /research (and
-# /discover) artifacts into specs/NNN-slug/ (already listed above) for all
-# NEW work. Kept here only so a grandfathered install's pre-plan-68
+# /discover) artifacts inside the feature directory (already listed
+# above) for all NEW work -- specs/NNN-slug/ at the time, also
+# specs/YYYY/MM/<leaf>/ as of 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+# PLAN.md Phase 3. Kept here only so a grandfathered install's pre-plan-68
 # research/ dir is still guarded against wrapper-mode pollution (D3 clean
 # cut — old dirs persist on disk, nothing migrates). The pre-existing
 # asymmetry below (research present, discover never had an entry here) is

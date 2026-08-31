@@ -29,8 +29,9 @@ def derive_topic_slug(topic: str, max_words: int = 4) -> str:
     Empty input or no-alnum-chars → "topic" as fallback. Used solely for
     memo.topic_slug (set-topic / detect-mode call sites in
     _cmds_basic.py / _cmds_phase0.py) -- which also feeds the proposed
-    specs/NNN-slug feature-dir slug the save prompt displays at intake
-    finalize (plan 68 D1).
+    feature-dir slug the save prompt displays at intake finalize (plan 68
+    D1): the leaf segment under either shape (legacy specs/NNN-slug/ or
+    Phase-3 specs/YYYY/MM/leaf/ when no ticket is supplied).
     """
     lowered = topic.lower().strip()
     cleaned = _SLUG_NON_ALNUM.sub("-", lowered).strip("-")

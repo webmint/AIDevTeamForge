@@ -1,8 +1,10 @@
 """handoff_schema -- dataclass schema for the specify -> plan handoff artefact.
 
-Single source of truth for the shape of ``specs/NNN-<slug>/handoff.json``
-emitted by ``specify_helper finalize-handoff`` and consumed by
-``plan_helper import-handoff``.
+Single source of truth for the shape of the feature directory's
+``handoff.json`` (legacy ``specs/NNN-<slug>/`` or Phase-3
+``specs/YYYY/MM/<leaf>/`` -- 91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-
+PLAN.md D2/D3/D6) emitted by ``specify_helper finalize-handoff`` and
+consumed by ``plan_helper import-handoff``.
 
 Design notes:
 
