@@ -424,6 +424,7 @@ Save to `<feature_dir>/plan.md`. The Layer Map below shows a Domain/Data/Present
 **Date**: [YYYY-MM-DD]
 **Spec**: [path to spec.md]
 **Status**: Draft
+**Run by**: [include this line — and the italic bound note on the line directly under it — ONLY when the provenance rule below this template resolves a name; omit BOTH lines entirely when it does not]
 
 ## Specialist Consultation
 
@@ -568,6 +569,26 @@ For the `## Specialist Consultation` section's consultation table, emit the cont
 ```
 
 The helper takes no arguments and owns the column names and verdict enum. Copy its stdout into the `## Specialist Consultation` section of `plan.md` and fill the rows; this table is the single source of truth for consultation provenance.
+
+### The `**Run by**:` provenance line
+
+The header's `**Run by**:` line records who ran the command that CREATED this plan. No helper composes it — `plan.md` is orchestrator-authored prose end to end, so this line is yours to resolve, and there is no `plan_helper` verb for it (do not add one). Resolve it in this order, and stop at the first step that yields an answer:
+
+1. **Read back before rewriting.** If `<feature_dir>/plan.md` already exists at this point — a Phase 0a.7 re-entry rewriting a prior plan, or a Phase 3 `request-changes` loop coming back through this phase — read that file and carry its existing `**Run by**:` value into the new header VERBATIM. Whatever the file on disk records is what the rewrite records: a value carries over unchanged, and a file with no `**Run by**:` line stays without one — do not backfill a name onto a plan that never carried one. Then stop; steps 2 and 3 do not run on a rewrite. This step is what keeps the bound below true, since without it the field would silently become whoever re-ran the command last.
+2. **The gate.** On a first write only (no `plan.md` at that path yet), read `AI_ATTRIBUTION` from `.devforge/project-config.json`. The gate is open only when that key's value is exactly the string `"Yes"`; every other state closes it — `"No"`, the key absent, the file absent or unreadable. This is the answer `/devforge:configure` already captured for attribution in files. There is no separate provenance key, and none is to be added: an install that answered "no attribution in files" must not receive a human name by this route either.
+3. **The value.** With the gate open, run `git config user.name` and use exactly what it prints. Read no other git-config key — never `user.email` — and put nothing else in the line: no path, no address, no handle, no name taken from elsewhere in the session.
+
+**Absent, never a placeholder.** When the gate is closed, or `git config user.name` prints nothing (unset, or git unavailable), `plan.md` carries NO `**Run by**:` line and no bound note — omit both lines. Never write `unknown`, never leave the value blank, and never substitute a stand-in.
+
+**The bound ships beside the line.** Whenever the `**Run by**:` line renders, the line directly under it is this sentence, verbatim:
+
+```markdown
+_Records who ran the command that created this document; not updated on later edits._
+```
+
+That sentence is the whole provenance claim: the field names the creator, and later edits — a `request-changes` rewrite, a `/devforge:grill` re-entry through Phase 0a.7, a downstream `**Status**:` flip — do not update it. A per-edit trail is deliberately not built here; `git log` already carries one.
+
+`spec.md` and `research-report.md` carry the same line, the same bound sentence and the same rules; there they are rendered by `/devforge:specify`'s and `/devforge:research`'s own helpers rather than composed by hand.
 
 ## PHASE 2.5: Plan-Spec Cross-Reference Check
 

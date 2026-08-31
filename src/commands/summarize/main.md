@@ -22,7 +22,7 @@ This file lives at `src/commands/summarize/main.md` in the AIDevTeamForge templa
 
 The only file this command writes under the repo is:
 
-- `<feature_dir>/summary.md` — the rendered feature summary (What was built / Changes / Files changed / Key decisions / Deviations / Acceptance criteria). Composed INLINE by the orchestrator in PHASE 3 and written with the Write tool in PHASE 4. Idempotent: re-running `/devforge:summarize` on the same feature OVERWRITES `summary.md`.
+- `<feature_dir>/summary.md` — the rendered feature summary: a conditional `**Run by**:` provenance line in the header, then six sections (What was built / Changes / Files changed / Key decisions / Deviations / Acceptance criteria). Composed INLINE by the orchestrator in PHASE 3 and written with the Write tool in PHASE 4. Idempotent: re-running `/devforge:summarize` on the same feature OVERWRITES `summary.md`.
 
 `/devforge:summarize` makes ONE `[WIP]` commit (PHASE 4) that adds `summary.md`; it mutates no other tracked file. The WIP commit is squashed later by `/devforge:finalize`.
 
@@ -181,6 +181,21 @@ Compose the summary INLINE from the scratch inputs — `$WORKDIR/changes.json`, 
 5. **Deviations from plan** — **OMIT THIS SECTION ENTIRELY if no task noted a deviation** (no task in `$WORKDIR/notes.json` has a non-empty `notes`). When present, one line per deviating task.
 6. **Acceptance criteria** — a compact checklist, with each AC's status taken VERBATIM from `$WORKDIR/verification.json`'s `ac_list` (NOT re-derived from the spec). When `verification.json` is the empty-fallback from 2.1, render the unverified note instead of a checklist.
 
+**The `**Run by**:` provenance line.** Above those six sections, on the line directly under the summary's title, `summary.md` may carry one provenance line recording who ran the command that CREATED this summary. It is document provenance, not feature content — it is composed from the two sources named below and from nothing in the `$WORKDIR` scratch inputs, so the no-speculation rule below is not in tension with it. No helper composes it: this synthesis is inline (D6), and there is no `summarize_helper` verb for the line (do not add one). Resolve it in two steps:
+
+1. **The gate.** Read `AI_ATTRIBUTION` from `.devforge/project-config.json`. The gate is open only when that key's value is exactly the string `"Yes"`; every other state closes it — `"No"`, the key absent, the file absent or unreadable. This is the answer `/devforge:configure` already captured for attribution in files. There is no separate provenance key, and none is to be added: an install that answered "no attribution in files" must not receive a human name by this route either.
+2. **The value.** With the gate open, run `git config user.name` and use exactly what it prints. Read no other git-config key — never `user.email` — and put nothing else in the line: no path, no address, no handle, no name taken from elsewhere in the session.
+
+**Absent, never a placeholder.** When the gate is closed, or `git config user.name` prints nothing (unset, or git unavailable), `summary.md` carries NO `**Run by**:` line and no bound note — omit both lines entirely. Never write `unknown`, never leave the value blank, and never substitute a stand-in.
+
+**The bound ships beside the line.** Whenever the `**Run by**:` line renders, the line directly under it is this sentence, verbatim:
+
+```
+_Records who ran the command that created this document; not updated on later edits._
+```
+
+**No read-back here, and none is owed.** `/devforge:summarize` is the only command that writes `summary.md` — `/devforge:finalize` checks whether the file exists and folds its `[WIP]` commit into the squash, and edits nothing inside it — so there are no later edits for that bound to be wrong about. A re-run overwrites the file (rule 5), composing the document again from the current feature record, and its `**Run by**:` line names the run that wrote the file now on disk. That is where `summary.md` differs from `spec.md`, `plan.md` and `research-report.md`, which are revised in place and so read their existing value back before rewriting; do not add a read-back step here on the strength of what those artifacts do.
+
 Keep it concise: this is a summary, not a report. Deduplicate — group files by area rather than listing each. Do not speculate — include only what is present in the spec, plan, task notes, `verification.md`, or git data.
 
 ## PHASE 4 — Write summary.md + WIP commit
@@ -217,7 +232,7 @@ rm -rf "$WORKDIR"
 1. **Concise over comprehensive** — this is a summary, not a report. Each section targets 1-5 lines. If a section would be empty (e.g. no deviations), omit it entirely.
 2. **User-facing language** — describe what was built in terms of behavior and outcomes, not implementation mechanics. "Added email validation to signup", not "Created `validateEmail` in `utils/validation.ts`".
 3. **Deduplicate** — when multiple tasks touched the same directory or area, group them in Files changed rather than listing each file.
-4. **No speculation** — include only information present in the spec, plan, task `## Completion Notes`, `verification.md`, or git data. Do not infer or guess.
+4. **No speculation** — include only information present in the spec, plan, task `## Completion Notes`, `verification.md`, or git data. Do not infer or guess. This rule governs the six SECTIONS; the header's `**Run by**:` provenance line is not feature content and is composed under PHASE 3's own rules for it.
 5. **Idempotent** — re-running `/devforge:summarize` overwrites `summary.md` with a fresh summary (D6).
 6. **Renders no verdict** (D1) — the verdict is `/devforge:verify`'s. `/devforge:summarize` REFERENCES the verdict it reads from `verification.md` but never computes or renders one of its own. There is no finder ensemble, no refutation pass, and no agent dispatch.
 7. **Read-only on inputs** (D4) — `/devforge:summarize` writes ONLY `<feature_dir>/summary.md` (and the one `[WIP]` commit that adds it). It never mutates the spec, plan, task files, `verification.md`, or git history. This is the deliberate contrast with `/devforge:verify`, which writes back to the spec.

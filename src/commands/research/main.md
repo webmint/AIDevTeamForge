@@ -1289,10 +1289,14 @@ The Phase-3 render was a preview whose `Research reference:` line carries a plac
 .devforge/lib/research_helper set-next-step-text \
     --research-path "<feature_dir>/research-report.md"
 
+# Attach mode ONLY — append to the render call below:
+#   --existing-path "<feature_dir>/research-report.md"
 .devforge/lib/research_helper render
 ```
 
-Write THAT `render` stdout, byte-verbatim, to `<feature_dir>/research-report.md`. Do not re-format, re-shape, or hand-edit it — the only difference between the preview the user already saw and the saved file is the helper-rendered reference line. In attach mode this overwrites the previous `research-report.md`, which is the intent.
+Pass `--existing-path` only in attach mode, and pass the path of the report this render is about to overwrite. Phase 0.6's attach arm reuses a directory that already holds a `research-report.md`, and the flag is what makes the helper carry that report's existing `**Run by**:` line into the new render instead of capturing a fresh value — the field records who ran the command that CREATED the report, and re-rendering one in place is not a creation. Omit the flag entirely on a fresh allocation: Step 4.2's `allocate-feature-dir` fails rather than reusing a directory, so nothing exists at that path to read back and the render is a first one by construction.
+
+Write THAT `render` stdout, byte-verbatim, to `<feature_dir>/research-report.md`. Do not re-format, re-shape, or hand-edit it — on a fresh allocation the only difference between the preview the user already saw and the saved file is the helper-rendered reference line. In attach mode this overwrites the previous `research-report.md`, which is the intent, and the saved file may differ from that preview in one further line: the Phase-3 preview ran without `--existing-path` and so resolved its `**Run by**:` line freshly, while this render carries the value the existing report already had.
 
 On a verdict outside the proceeding-set, `set-next-step-text` is a no-op that ignores `--research-path`, and the rendered report carries no Next-Step section (see Phase 3 setter 7). Run both calls anyway — the re-render is what gets written either way.
 
