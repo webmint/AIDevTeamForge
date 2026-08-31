@@ -76,7 +76,9 @@ def _flip_findings(
 
 
 def cmd_assign_spec_number(args: argparse.Namespace) -> int:
-    """Scan specs/ for highest NNN-* dir, persist + emit next zero-padded.
+    """Scan specs/ for the highest NNN-* dir (the earlier numbered shape;
+    the bucketed <YYYY>/<MM>/<leaf> shape carries no NNN to scan),
+    persist + emit next zero-padded.
 
     68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 python-reviewer finding 4:
     delegates the scan to _shared.feature_alloc.next_spec_number(devforge_dir)

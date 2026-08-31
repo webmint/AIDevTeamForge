@@ -321,7 +321,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "assign-spec-number",
-        help="Scan specs/ for highest NNN-*; emit + persist next.",
+        help=(
+            "Scan specs/ for the highest legacy NNN-* dir (the earlier "
+            "numbered feature-dir shape, not today's bucketed "
+            "<YYYY>/<MM>/<leaf> layout); emit + persist next."
+        ),
     )
     sp.add_argument(
         "--specs-root", default=SPECS_ROOT_DEFAULT, dest="specs_root",
