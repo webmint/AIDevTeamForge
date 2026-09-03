@@ -634,6 +634,12 @@ echo "$REMOVED_AGENTS" | while IFS= read -r name; do
   overwrt "PRUNE  $AGENTS_TGT_DIR/$name"
 done
 
+# Agent model/effort apply preview (plan 92 D1) — same HAS_CONFIG guard the
+# execute phase uses below.
+if [ "$HAS_CONFIG" = true ]; then
+  merged "APPLY agent models: .claude/agents/*.md model:/effort: from .devforge/project-config.json"
+fi
+
 # Removed/leftover commands to prune (FIX B) — since the devforge/ namespace
 # move (plan 63), NO canonical command lives flat at the top level of
 # .claude/commands/ anymore: every promoted command is re-emitted to
@@ -925,6 +931,48 @@ done
 # Cleanup agent regeneration temp dir
 if [ -n "$REGEN_AGENTS_DIR" ]; then
   rm -rf "$REGEN_AGENTS_DIR"
+fi
+
+# ── Execute: apply-agent-models (plan 92 D1) ────────────────────────────────
+# Rewrites model:/effort: frontmatter on every .claude/agents/*.md from
+# .devforge/project-config.json, keyed on each file's model_tier: line. This
+# MUST run AFTER the merge loop above (never before it). An apply that ran
+# BEFORE the merge would pre-mutate the live file (the "current" side of the
+# three-way diff) before the diff is computed; if the same release also
+# changed a tier's static default, that manufactures a spurious three-way
+# conflict. And a conflicted merge already skips that file's snapshot
+# refresh (the loop above refreshes only on success), leaving the snapshot
+# STALE for next time rather than resolving anything. A failure here is
+# reported, not fatal — the update continues (mirrors the agent-regeneration
+# failure handling above).
+if [ "$HAS_CONFIG" = true ]; then
+  AGENT_MODELS_ERR="$(mktemp)"
+  AGENT_MODELS_RC=0
+  AGENT_MODELS_JSON="$("$PYTHON3_CMD" "$TEMPLATE_DIR/src/devforge/lib/configure_helper.py" \
+    --devforge-dir "$TARGET_DIR/.devforge" --install-root "$TARGET_DIR" \
+    apply-agent-models 2>"$AGENT_MODELS_ERR")" || AGENT_MODELS_RC=$?
+  if [ "$AGENT_MODELS_RC" -eq 0 ]; then
+    # jq guarded (2>/dev/null || fallback), matching the bad_keys precedent
+    # above: a helper regression that exits 0 with empty/malformed stdout
+    # must not abort the whole script via set -euo pipefail — it must
+    # degrade to a legible "?" instead.
+    AGENT_MODELS_TOTAL="$(printf '%s' "$AGENT_MODELS_JSON" | jq -r '.applied | length' 2>/dev/null)" || AGENT_MODELS_TOTAL="?"
+    AGENT_MODELS_CHANGED="$(printf '%s' "$AGENT_MODELS_JSON" | jq -r '[.applied[] | select(.changed == true)] | length' 2>/dev/null)" || AGENT_MODELS_CHANGED="?"
+    AGENT_MODELS_SKIPPED="$(printf '%s' "$AGENT_MODELS_JSON" | jq -r '.skipped | length' 2>/dev/null)" || AGENT_MODELS_SKIPPED="?"
+    merged "Applied agent models: $AGENT_MODELS_TOTAL with model_tier ($AGENT_MODELS_CHANGED changed), $AGENT_MODELS_SKIPPED skipped"
+    printf '%s' "$AGENT_MODELS_JSON" | jq -r \
+      '.applied[] | select(.changed == true) | "\(.agent): model=\(.model) effort=\(.effort // "default")"' \
+      2>/dev/null | while IFS= read -r _am_line; do
+      [ -z "$_am_line" ] && continue
+      info "$_am_line"
+    done || true
+  else
+    warn "apply-agent-models failed (exit $AGENT_MODELS_RC) — some agents' model/effort lines may be out of date or partially applied; re-run /devforge:configure to reconcile"
+    while IFS= read -r _am_err_line; do
+      warn "$_am_err_line"
+    done < "$AGENT_MODELS_ERR"
+  fi
+  rm -f "$AGENT_MODELS_ERR"
 fi
 
 # ── Execute: mergeFiles ────────────────────────────────────────────────────
