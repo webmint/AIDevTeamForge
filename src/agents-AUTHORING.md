@@ -4,21 +4,24 @@ Standing convention for authoring or editing an agent **source** file in `src/ag
 
 ## Why this file lives here (not in `src/agents/`)
 
-This doc sits at `src/agents-AUTHORING.md`, a **sibling** of `src/agents/`, deliberately NOT inside it. `scripts/generate-agents.py:260` globs `args.src.glob("*.md")` (default `--src src/agents`) and parses **every** match as an agent meta-block source. A `.md` placed inside `src/agents/` would be emitted as a junk agent (or error the build). One level up keeps the doc co-discoverable while staying outside that glob — provably build-inert, no generator change.
+This doc sits at `src/agents-AUTHORING.md`, a **sibling** of `src/agents/`, deliberately NOT inside it. `scripts/generate-agents.py:328` globs `args.src.glob("*.md")` (default `--src src/agents`) and parses **every** match as an agent meta-block source. A `.md` placed inside `src/agents/` would be emitted as a junk agent (or error the build). One level up keeps the doc co-discoverable while staying outside that glob — provably build-inert, no generator change.
 
 Corollary: do not add new `.md` files under `src/agents/` unless they are real agent sources. A new agent source IS a new `.md` in that directory (e.g. `qa-reviewer.md`); anything else goes elsewhere.
 
 ## The meta-block contract
 
-Every source opens with a fenced ` ```yaml ` block, then a free-form markdown body. The generator reads the block as semantic data and emits a Claude-native `.claude/agents/<name>.md` (`emit_claude`, `generate-agents.py:168`); the body passes through unchanged as the agent's system prompt. The contract is **fixed** — author to it, never change it.
+Every source opens with a fenced ` ```yaml ` block, then a free-form markdown body. The generator reads the block as semantic data and emits a Claude-native `.claude/agents/<name>.md` (`emit_claude`, `generate-agents.py:195`); the body passes through unchanged as the agent's system prompt. The contract is **fixed** — author to it, never change it.
 
 | Field | Required | Form | Notes |
 |---|---|---|---|
 | `name` | yes | lowercase-hyphen identifier | Becomes the emitted filename and the `{{AGENT_LIST}}` entry (filename-derived). |
-| `description` | yes | non-empty string (see [description form](#description-form-f1)) | Generator errors on empty (`generate-agents.py:215`). |
-| `model_tier` | yes | one of `think \| do \| verify \| scan` | Emitted as `model:` — `think→opus`, `do→sonnet`, `verify→sonnet`, `scan→haiku` (`install_defaults.py:30`). Not a placeholder. |
+| `description` | yes | non-empty string (see [description form](#description-form-f1)) | Generator errors on empty (`generate-agents.py:278`). |
+| `model_tier` | yes | one of `think \| do \| verify \| scan` | Emitted TWICE: as the static `model:` default — `think→opus`, `do→sonnet`, `verify→sonnet`, `scan→haiku` (`install_defaults.py:39`) — and as a `model_tier: <tier>` line, which the consumer-side `configure_helper apply-agent-models` keys on to rewrite that file's `model:` / `effort:` from the install's Q11 answers. Not a placeholder. Both lines are replaced by a single pinned `model:` when `model_pin` is set. |
 | `tools` | optional | comma-separated list (e.g. `Read, Grep, Glob, Bash`) | Emitted verbatim when non-empty after `.strip()`; **omit to inherit all tools**. See [tools allowlist](#tools-read-only-allowlist-d5). |
 | `applies_to` | optional | project-natures list (e.g. `["all"]`) | Consumed by `configure_helper prune-agents`. Claude Code ignores the unknown key. |
+| `model_pin` | optional | lowercase alias token matching `^[a-z][a-z-]*$` — never a digit, never a version (`generate-agents.py:84`) | Emitted as `model: <pin>` with NO `model_tier:` line, so `configure_helper apply-agent-models` leaves the file untouched. Declared by exactly one agent: `security-reviewer` (`opus`). See the contract-extension note below. |
+
+**Contract extension — 2026-09-03 (`92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md` D6).** The fixity clause above was extended once, consciously: `model_pin` joined the table as an OPTIONAL field so a single agent can opt out of tier-based model selection. Nothing else moved — the five fields above it keep their names and their required/optional status, and the clause still binds every one of them. The one emitted-form change is `model_tier`'s own: it gained the companion `model_tier:` line described in its row above, which is exactly the mechanism this extension lets one agent opt out of. The extension exists for one documented failure mode: the vendor documents that `fable`'s cyber classifiers can refuse security-focused analysis, and a refused reviewer inside `/devforge:implement`'s reviewer panel or `/devforge:grill`'s refutation pass surfaces as a **missing verdict**, not as an error. So `security-reviewer` is pinned to `opus`. The pin is a floor against that one failure mode and a ceiling on a project that has reason to want `fable` there — that cost is accepted, not answered. A second pin needs its own reason, recorded beside its own agent.
 
 Skeleton meta block:
 
@@ -30,7 +33,7 @@ model_tier: verify
 applies_to: ["all"]
 ```
 
-(`tools:` line present only for the 6 pure reviewers; omit it for everyone else.)
+(`tools:` line present only for the 6 pure reviewers; omit it for everyone else. `model_pin:` is absent from this skeleton deliberately — `security-reviewer` is the only source that declares it.)
 
 ## The canonical body skeleton (D-Skeleton)
 
@@ -178,7 +181,7 @@ Every agent's `## Rules` list closes with these conventions (combine the order t
 
 Before declaring an agent source done:
 
-- [ ] Meta block has `name`, `description` (non-empty), `model_tier` ∈ {think, do, verify, scan}.
+- [ ] Meta block has `name`, `description` (non-empty), `model_tier` ∈ {think, do, verify, scan}; `model_pin` present **only** when the agent opts out of tier selection, and then a lowercase alias token (`^[a-z][a-z-]*$`, no digits).
 - [ ] `tools:` present **iff** the agent is one of the 6 pure reviewers (and lists no `Edit`/`Write`/`Agent`); omitted otherwise.
 - [ ] Body sections appear in skeleton order with the fixed names; `## Project Paths` carries `{{PROJECT_PATHS}}`.
 - [ ] Pure reviewer: `## Output` present with unified severity + one verdict vocab + read-only stance.

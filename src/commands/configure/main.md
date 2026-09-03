@@ -6,13 +6,13 @@ disable-model-invocation: true
 
 # /devforge:configure — Project Configuration
 
-`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 31 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 34 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, substitutes `{{KEY}}` placeholders in the framework's templates, and applies the configured per-tier agent models.
 
 ## Outputs of this phase
 
-- `.devforge/configure.yaml` — canonical state (32 fields). Owned + shaped by the helper; mutated only via setter subcommands.
-- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (40 keys: 32 from configure.yaml + 5 from init.yaml + 3 derived).
-- `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain.
+- `.devforge/configure.yaml` — canonical state (35 fields). Owned + shaped by the helper; mutated only via setter subcommands.
+- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (43 keys: 35 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain; every remaining file that carries a `model_tier:` line has its `model:` / `effort:` frontmatter rewritten from the Q11 answers (Phase 5.4).
 - `CLAUDE.md` — substituted in place; no `{{KEY}}` markers remain.
 
 ## Phase 0 — Pre-flight gate
@@ -279,7 +279,7 @@ If `set-package-stacks` exits non-zero, capture its stderr, surface it verbatim,
 
 ## Phase 4 — Sequential user-only prompts
 
-These seven fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order. Persist each answer via its setter before issuing the next question.
+These ten fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order — with one exception: Q11 makes one call per tier carrying TWO questions (that tier's model and that tier's effort level), per `references/q11-tiers.md`. Persist each answer via its setter before issuing the next question.
 
 ### Q9: Workflow Enforcement
 
@@ -298,9 +298,9 @@ Use AskUserQuestion: "Add AI attribution footer to commit messages?"
 
 Save via `.devforge/lib/configure_helper set-ai-attribution <choice>`.
 
-### Q11: Claude Tier Models
+### Q11: Claude Tier Models and Effort
 
-Three sequential AskUserQuestion calls — Q11.1 (think), Q11.2 (do), Q11.3 (verify). See `references/q11-tiers.md` for the full prompt text, options, and recommended-defaults rationale per tier.
+Probe first, then ask. Before Q11.1, dispatch one minimal subagent per Claude Code model alias to find out which ones this session can dispatch on, and report the four results in one line; an alias that fails the probe is not offered as an option. Then make three AskUserQuestion calls — Q11.1 (think), Q11.2 (do), Q11.3 (verify) — each carrying two questions, that tier's model and that tier's effort level, for six answers persisted through six setters (`set-claude-tier-<tier>` + `set-claude-effort-<tier>`). See `references/q11-tiers.md` for the probe procedure, the full prompt text and options per tier, the arm for a session where fewer than two aliases are available, the route for pinning a model that was not offered, and the recommended-defaults rationale.
 
 ### Q12: AC Verification Mode
 
@@ -321,9 +321,9 @@ State both bounds below in the message that carries the question, in your own wo
 
 Save via `.devforge/lib/configure_helper set-require-ticket <choice>`.
 
-## Phase 5 — Render + prune + substitute
+## Phase 5 — Render + prune + substitute + apply
 
-Once `configure.yaml` is fully populated (31 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
+Once `configure.yaml` is fully populated (34 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, substitute the templates, then apply the Q11 model and effort answers to the agent files that remain. Four sub-steps in fixed order: render-config → prune-agents → substitute-templates → apply-agent-models. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted. `apply-agent-models` runs LAST so it rewrites the post-prune, post-substitution files, keyed on the `model_tier:` line each one carries.
 
 ### Phase 5.1 — Render config
 
@@ -336,7 +336,7 @@ Once `configure.yaml` is fully populated (31 fields set), render the consolidate
 - Exit 0 → success.
 - Exit 1 → `.devforge/init.yaml` missing or unreadable, OR `.devforge/configure.yaml` unreadable, OR write to `project-config.json` failed. Surface stderr verbatim and ABORT.
 
-**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 32 fields; the 31 this command populates are set in Phase 3 (24 detection-derived values) and Phase 4 (7 user-only prompts). One field, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
+**One emitted key is set by no phase of this command: `regression_gate`.** The schema carries 35 fields; the 34 this command populates are set in Phase 3 (24 detection-derived values) and Phase 4 (10 user-only prompts). One field, `regression_gate`, carries the built-in default `"full"` and has no prompt, so `render-config` emits it as `REGRESSION_GATE` in `.devforge/project-config.json` on every run without anyone choosing it. `/devforge:verify`'s PHASE 4.3 full-suite regression gate reads that key, and treats an absent value as `"full"`. Its accepted values are `off` and `full`. To disable that gate, run `.devforge/lib/configure_helper set-regression-gate off` and re-run `render-config` so the change reaches `project-config.json`; pass `full` to re-enable it. Do not add a prompt for this key to Phase 4 — the default is correct for nearly every project, and the setter above is the supported way to change it.
 
 ### Phase 5.2 — Prune agents
 
@@ -422,6 +422,22 @@ For each `decisions[]` entry, render `applies_to` as a comma-separated list (or 
 - Exit 1 → `project-config.json` missing or malformed, OR `CLAUDE.md` missing, OR a per-file write failed. Surface stderr verbatim and ABORT. (Note: `.devforge/init.yaml` missing is NOT an exit-1 condition for this subcommand — substitute-templates falls back to empty `packages_detected` when init.yaml is absent. The init.yaml dependency is enforced earlier by Phase 0's pre-flight gate and by `render-config` exit 1.)
 - Exit 2 → at least one template contained a placeholder the helper cannot resolve. Stderr enumerates the unknown placeholders per file. Failed files are NOT modified (atomic per-file). Surface stderr verbatim and ABORT — the project state is partial; the user must extend the substitution map (helper-side) before re-running.
 
+### Phase 5.4 — Apply agent models
+
+```bash
+.devforge/lib/configure_helper apply-agent-models
+```
+
+`apply-agent-models` reads `.devforge/project-config.json`, walks every `.claude/agents/*.md` file remaining after Phase 5.2, and rewrites the frontmatter of each file that carries a `model_tier:` line: `model:` is set from that tier's `CLAUDE_TIER_*` value (or the tier's built-in default when that value is null), and `effort:` is set from that tier's `CLAUDE_EFFORT_*` value — the line is REMOVED when the value is `default`, which is what makes those agents inherit the session's own effort level. A file with no `model_tier:` line — an agent the framework pins to one model, or an agent this project wrote itself — is left byte-identical and reported under `skipped[]`, as is any file whose frontmatter block is missing or unterminated. No body byte is touched in any file. The verb is idempotent: running it twice changes nothing the second time.
+
+Stdout is a JSON report with two keys: `applied[]`, one `{agent, tier, model, effort, changed}` entry per file that carries a `model_tier:` line (`effort` is `null` when the file is left with no effort line, `changed` is `false` when the file was already correct), and `skipped[]`, one `{agent, reason}` entry per untouched file. Exit codes:
+
+- Exit 0 → the report was emitted. Print a compact `agent → model / effort` list built from `applied[]` (write `-` for a null effort), followed by the names in `skipped[]`, so the user sees which agents moved and which were left alone.
+- Exit 1 → `.devforge/project-config.json` is missing or malformed, or an agent file could not be read or written. Surface stderr verbatim and ABORT.
+- Exit 2 → at least one file failed validation (an unknown `model_tier:` value, a `CLAUDE_EFFORT_*` value outside `default | low | medium | high | xhigh | max`, a duplicated `model_tier:` / `model:` / `effort:` key inside one file's frontmatter, or a `model_tier:` line with no sibling `model:` line). Stderr names the offending file or configuration key. NOTHING was written — surface stderr verbatim and STOP; fix the named value and re-run this sub-step.
+
+`update.sh` runs this same verb after it merges the regenerated agent files and refreshes their snapshot, under the same configuration guard as placeholder substitution, so a configured project keeps its model and effort choices across framework updates instead of depending on how the merge resolved each `model:` line. It prints `Applied agent models: N agents (M changed, K skipped)` plus one line per changed agent, and a failure there is reported rather than fatal — the agents keep their current model lines and the update continues. An install whose framework files predate this build gets that call on its next `update.sh` like any other, since the script ships with the framework rather than with the project.
+
 ## Phase 6 — Exclude framework folders from project linters
 
 Exclude the framework's installed folders (`.claude/`, `.devforge/`, `specs/`, `bugs/`, `research/`, `discover/`, `audits/` — NOT `docs/`) from the CONSUMER project's own linters and formatters, so the project's prettier/ruff/eslint/etc. don't reformat or flag the framework's templates + helper code. The `research/` and `discover/` entries are LEGACY — plan 68 retired those top-level dirs (intake artifacts now live in the feature's own directory under `specs/`, already covered by the `specs/` entry) — and are kept so grandfathered installs that still have the dirs stay lint-ignored. Run `lint-ignore` in dry-run first to surface what would change, then ask the user to confirm before applying. This phase is NON-FATAL and writes into the user's OWN tooling config files — on any error it SKIPS rather than aborts, and on an ambiguous reply it defaults to SKIP rather than apply.
@@ -503,4 +519,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/devforge:configure` is complete. The 31 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 40 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."
+`/devforge:configure` is complete. The 34 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 43 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; every remaining agent carrying a `model_tier:` line runs on the model and effort level Q11 chose (Phase 5.4); the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."
