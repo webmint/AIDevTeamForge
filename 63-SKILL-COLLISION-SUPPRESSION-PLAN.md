@@ -18,6 +18,9 @@ check (`/devforge:verify` appears; no `:references:*` phantoms) is the PRIMARY c
 invocation form, not belt-and-suspenders.
 **Amended 2026-08-07** after src re-verification (4 findings: helper CLI refs-dir defaults; update.sh pruner
 adaptation; installer comment reconcile; anchor precision).
+**Amended 2026-09-03 by plan 93 (`93-MODEL-INVOCATION-CARVE-OUT-NARROWING-PLAN.md`): OQ-2's keep-7 set
+narrowed to keep-4 — `grill`, `spec-check` and `fix` dropped the flag; counts 16/4. See the OQ-2
+amendment block.**
 **Branch:** `develop-2.0-init`.
 
 ---
@@ -274,12 +277,30 @@ to both (plus a `storage-rules.md` CODE-class row) is REQUIRED work, not a free 
   decide when to apply the skill"* and is truncated at 1,536 characters in the listing, and
   **all frontmatter fields are optional** — `name`, `argument-hint` and
   `disable-model-invocation` on `grill` are all valid and none was changed.
+  **(AMENDED 2026-09-03 — the KEEP decision for `grill`, `spec-check` and `fix` is
+  REVERSED by plan 93; the setup four KEEP, so the counts are now 16 model-invocable / 4
+  human-typed only.)** The 2026-08-07 carve-out rested on three criteria; two expired
+  (plans 82 and 85 made `/devforge:spec-check` and `/devforge:grill` mandatory
+  preconditions, so "opt-in" is false for both) and the third (plan 26 D2) inherited the
+  then-universal flag rather than arguing a `fix`-specific reason. Plan 93 D1 narrows the
+  carve-out to ONE criterion: a one-time mutation of the framework's own basis under
+  `.devforge/` with no feature scope. The 2026-08-19 and 2026-08-26 amendments above stand
+  as history; their "counts are unchanged" and "no description trim is owed" clauses are
+  false as of 2026-09-03 — OQ-1's ≈40-word budget now applies to the three and the trim was
+  done at plan 93 Phase 1. The answer recorded above to the maintainer's counter-question —
+  *"the human-first guarantee lives in the in-command gates"* (OQ-4) — is exactly the
+  argument plan 93 applied to the three. Plan 85's listing-budget argument is answered, not
+  refuted: the skill NAME never evicts and the `/devforge:plan` / `/devforge:breakdown`
+  gates name the command. What did NOT change: Path B's namespace, the reference
+  relocation, D5 (no `skillOverrides` / `disableBundledSkills`), and every gate predicate.
 - **OQ-3 — plan 26 D2 reconcile:** plan `26-REINTRODUCE-FIX-PLAN.md` D2 specifies the model PROPOSES `/fix`
   and the USER invokes it (never model-invoked). If `/fix` drops the disable flag it becomes
   model-invocable — reconcile (amend plan 26 D2, or keep `/fix` a disable-flag exception). Flag it; do not
   silently override plan 26.
   **RESOLVED 2026-08-07 (maintainer): `/fix` KEEPS the flag** (it is in the OQ-2 keep-7 set). Plan 26 D2
-  stands unamended — the model PROPOSES `/fix`, the user invokes it.
+  stands unamended — the model PROPOSES `/fix`, the user invokes it. **(AMENDED 2026-09-03
+  — plan 93: `/fix` DROPS the flag, and plan 26 D2 was amended in place the same day — the
+  model proposes, and on the user's agreement the model RUNS it; never self-initiated.)**
 - **OQ-4 — human-gate objection is weak (record the reasoning):** forge deliberately made commands
   human-invoked. Counter-point: the hard approval gates live INSIDE each command body (spec approval before
   `/plan`, plan approval before `/breakdown`, the per-task gate in `/implement`), so even a model-STARTED

@@ -66,13 +66,16 @@ checkable properties: read-performed and read-named.
 
 A false inference to pre-empt
 ------------------------------
-The 20 ``_PROMOTED`` commands also split 13 model-invocable / 7
-human-typed-only (see ``63-SKILL-COLLISION-SUPPRESSION-PLAN.md``). That
-split is 13/7 too — but it is a DIFFERENT SET from this module's 13 READS
-/ 7 N/A split. ``summarize`` and ``report-bug`` are model-invocable yet
-N/A here; ``grill`` and ``fix`` are human-typed-only yet READS here. The
-matching counts are arithmetic coincidence, not a shared structural
-cause — do not derive one split from the other.
+The 20 ``_PROMOTED`` commands also split model-invocable /
+human-typed-only (see ``63-SKILL-COLLISION-SUPPRESSION-PLAN.md``): 13/7
+under plan 63, and 16/4 since plan 93 narrowed the human-typed set to the
+four setup commands on 2026-09-03. Either way it is a DIFFERENT SET from
+this module's 13 READS / 7 N/A split: ``summarize`` and ``report-bug``
+are model-invocable yet N/A here (``spec-check`` joined them under plan
+93), and ``grill`` and ``fix`` were human-typed-only yet READS here until
+plan 93. The counts coincided
+at 13/7 by arithmetic accident, never by a shared structural cause, and
+no longer coincide at all — do not derive one split from the other.
 
 Stdlib only. Targets Python 3.8+.
 """

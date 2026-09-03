@@ -122,6 +122,11 @@ the `:NNN`.
 | 28 | `src/CLAUDE.md` carries four grill-opt-in surfaces: the bracketed `[/devforge:grill]` chain step, the bracket legend, the seven-human-typed-only sentences, and the catalog entries (the `####` entry says *"it is NOT a mandatory gate"* and *"The USER owns the final verdict at the `/devforge:breakdown` approval gate"*). **AMENDED 2026-08-23 — all six anchors re-verified and all hold, but plan 82 moved the surrounding ground:** `/devforge:spec-check` is now UNBRACKETED in the chain, so **`[/devforge:grill]` is the ONLY bracketed step left** and the legend has exactly one referent; plan 82 also ADDED a `## Enforced Quality Gates` Hard-Gates row for spec-check (`:152`) that this row's four-surface count predates. See D6's sweep list for what each of those means for Phase 4 | `src/CLAUDE.md:44`, `:47`, `:49`, `:62`, `:79`, `:99`–`:100`; the two additions `:44` (unbracketed spec-check) + `:152` |
 | 29 | **`src/commands/plan/main.md` is a sweep target the gate falsifies.** Its PHASE-4 `stakes-hint` block says the hint *"never gates `/devforge:breakdown`"* and *"`/devforge:grill` remains opt-in"* — **the first clause becomes FALSE under D3.** The hint itself (advisory, always exit 0) is untouched by this plan. **AMENDED 2026-08-23 — the stakes-hint half HOLDS and its digit moved (`:615` → `:640`, both clauses still in one sentence); the PHASE-0a.7 half is RETIRED.** Plan 83 rewrote that no-seed branch on 2026-08-20 and it no longer contains *"`/devforge:grill` is opt-in"* — the live sentence says the project-wide glob accepts a seed from any `source` and that *"`/devforge:grill`'s REVISE-PLAN arm is the only one that emits that target today"*, which **stays TRUE under this plan** (D3 changes WHEN grill runs, never which `target_stage` its arms emit). **It is no longer a sweep target; do not go looking for the retired clause.** A THIRD site in the same file is new to this row — see D6's sweep list | `src/commands/plan/main.md:640` (live, both clauses); `:115` (the rewritten no-seed branch — quote re-read 2026-08-23) |
 
+*(Facts 23 and 28 as of 2026-09-03: plan 93 moved `grill`, `spec-check` and `fix` under
+OQ-1's ≈40-word budget and cut their `src/CLAUDE.md` catalog entries to the short form, so
+the human-typed-only sentences now name FOUR commands, not seven, and those four are the
+carved-out set still carrying full entries.)*
+
 ### Re-verification pass, 2026-08-23
 
 **The eight rows `## When resuming work` names as the cost and scope argument — 8, 10, 13,
@@ -692,6 +697,20 @@ form of that decision.
 > **Wording model, ratified: plan 82's `#### /devforge:spec-check` catalog entry.** It
 > already renders D3's spine and OQ-1's hand-off in consumer-facing prose. Follow it; do not
 > invent a second phrasing for the same idea one entry away.
+>
+> **(AMENDED 2026-09-03 — plan 93.)** The flag clause is REVERSED:
+> `disable-model-invocation: true` no longer sits on `/devforge:grill`; the counts are 16/4;
+> a description trim WAS owed and was done by plan 93 Phase 1, replacing the frontmatter
+> closing sentence this plan wrote (*"Human-typed only — `/devforge:breakdown` requires that
+> it RAN, never that its disposition binds."*) with a ≈40-word description carrying the same
+> RAN-not-binds clause. The listing-budget argument recorded under "One fact plan 82 did not
+> record" is answered, not refuted: the skill NAME never evicts and the `/devforge:breakdown`
+> gate names the command, so awareness is reliable and the description is a convenience.
+> Everything else in D6 stands — the NARROWS list (the USER owns every non-clean verdict at
+> PHASE 7, all four dispositions survive, cross-pick and re-entry unchanged, grill never edits
+> `plan.md`/`spec.md`), the legend delete, the wording model — and a blocked
+> `/devforge:breakdown` now OFFERS the grill and runs it on the user's yes, one agreement per
+> command (plan 93 D2).
 
 
 

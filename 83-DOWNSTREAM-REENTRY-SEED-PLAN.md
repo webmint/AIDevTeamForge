@@ -70,6 +70,13 @@ an unrelated concept (`:267` database seed data, `:373` a pinned test seed), so 
 point, that `/devforge:breakdown` has no `ReEntrySeed` consumer, is unchanged. Re-grep
 every anchor before use, per this file's own standing rule.
 
+**(AMENDED 2026-09-03 — plan 93.)** Fact 12 is false as of 2026-09-03:
+`/devforge:fix` is model-invocable and the human-typed set is the four setup
+commands. Fact 12 was cited by D3's counter-argument ("present by construction",
+below); that clause weakens to "present by agreement" — the user agreed to the
+offer that started the run — and D3's three-arm `AskUserQuestion` is unchanged,
+because it never relied on the keystroke, only on the user being in the session.
+
 ### What the gap costs
 
 Fact 9 already produces every string the seed needs. `triage.md:18-24` requires
@@ -301,6 +308,9 @@ classification they have no independent basis to judge. `/devforge:fix` is also
 human-typed-only (fact 12), so the user is present by construction and the
 orphan risk is lower than at `/devforge:grill`, which recommends a disposition
 the user can override. An acknowledgement-shaped question may be enough.
+
+*(Amended 2026-09-03 — plan 93: "present by construction" → "present by
+agreement"; see the fact-12 amendment above. No mechanism changed.)*
 
 *Sub-question Phase 3 cannot be built without:* the option set. The mixed-list
 prose at `triage.md:26-33` already offers two paths (drop the scope item and

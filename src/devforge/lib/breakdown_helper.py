@@ -2778,9 +2778,11 @@ def cmd_verify_grill_ran(args: argparse.Namespace) -> int:
           two dispatch-outcome literals) -- the run happened but
           produced nothing usable.
       Every (b)-(e) message names /devforge:grill as the command to run
-      next (for the USER to type -- grill is human-typed only, this
-      helper never implies it will run it) and states the gate is
-      mandatory with no override.
+      next and states the gate is mandatory with no override. The helper
+      never runs it and never implies it will: since plan 93 (2026-09-03)
+      grill is model-invocable, so the ORCHESTRATOR offers it and runs it
+      on the user's agreement (before that the user typed it); the stderr
+      shape is the same either way.
     """
     plan_path_raw = args.plan
     plan_path = Path(plan_path_raw)

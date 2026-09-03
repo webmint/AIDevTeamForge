@@ -230,8 +230,10 @@ class TestDispositionTableSanity(unittest.TestCase):
         """Pins the 'false inference to pre-empt' documented in the module.
 
         summarize/report-bug are model-invocable yet N/A; grill/fix are
-        human-typed-only yet READS. The 13/7 counts coincide with the
-        model-invocable split but the SETS differ — this test proves it.
+        READS (human-typed-only under plan 63, model-invocable since plan
+        93 on 2026-09-03). The 13/7 counts coincided with plan 63's
+        model-invocable split by accident and no longer do (16/4) — the
+        SETS differ either way, and this test proves it.
         """
         reads = {c for c, (d, _r) in _mod.DISPOSITIONS.items() if d == _mod.READS}
         self.assertIn("summarize", _mod.DISPOSITIONS)

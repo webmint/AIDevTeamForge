@@ -738,6 +738,16 @@ situations, which is an argument for keeping the human in the loop, not against 
 **⚠ Standing coordination rule** (plans 82/85 precedent): if any future phase does need to
 state the counts, it **reads them LIVE at ship time** and never applies a pre-computed delta.
 
+**(AMENDED 2026-09-03 — plan 93.)** Reversed: `/devforge:fix` DROPS the flag; the counts are
+16/4 and the human-typed set is the four setup commands. The argument above — cold mode makes
+`/devforge:fix` reachable in more situations, so keep the human in the loop — is answered by
+plan 93, not dismissed: the human stays in the loop by agreeing to the offer and at the
+command's own two-stage hard gate; the flag guaranteed a keystroke, not a decision.
+Consequence for D6: its retained counter-argument (the command's PHASE-4 pointer vs the
+rubric) is now LIVE, and `/devforge:report-bug` Rule 8 — byte-unchanged — is the only bar
+against an in-command report-bug → fix chain. The standing coordination rule (read the counts
+LIVE) is unchanged and is how plan 93 read them.
+
 ### OQ-7 — Scratch-dir reuse
 
 **ANSWERED 2026-08-26:** as recommended — the two scratch literals are REUSED unchanged, **and
@@ -1217,7 +1227,9 @@ cold lane has been observed.
   extension is reachable only through a flag `/devforge:implement` never passes, exactly as the
   2026-06-19 task-less extension was. **`/devforge:implement` stays byte-identical.**
 - **`/devforge:fix` becoming model-invocable.** OQ-6 — `disable-model-invocation: true` stays,
-  the 13/7 counts are unchanged, and this plan contributes no delta.
+  the 13/7 counts are unchanged, and this plan contributes no delta. *(Amended 2026-09-03:
+  done by plan 93, not by this plan — this bullet stays true as a statement about plan 88's
+  own scope.)*
 - **Creating `bugs/` files from `/devforge:fix`.** D4 permits exactly one write to exactly one
   already-existing file. `/devforge:report-bug` and `/devforge:verify` PHASE 9 remain the only
   CREATORS (fact 14).

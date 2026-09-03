@@ -333,6 +333,16 @@ to type. *Reason:* (a-ii) preserves plan 63's ratified 13/7 carve-out and the de
 budget at zero cost, the two-turn round trip through the user is accepted, and "mandatory"
 means the check RAN — which (a-ii) satisfies.
 
+**(AMENDED 2026-09-03 — plan 93.)** (a-ii)'s FLAG clause is reversed:
+`disable-model-invocation: true` no longer sits on `/devforge:spec-check`, and the blocked
+message names the command for the orchestrator to OFFER and run on the user's agreement —
+one agreement per command, `/devforge:plan` re-run proposed as its own step (plan 93 D2).
+(a-ii)'s GATE half is untouched: the `plan_helper` preflight verb, exit 2, BLOCKED, no
+override flag, presence + freshness only, never the verdict. The "zero cost" clause below
+is superseded by the description-budget cost plan 93 D3 accepted; plan 63's carve-out WAS
+reopened, by plan 93; and Phase 5's `disable-model-invocation` grep now returns the four
+setup files, not the seven.
+
 **Auto-accept semantics: ratified as recommended.** CLEAN = quorum-stable `consistent`
 **AND** zero `unresolved_subject` **AND** zero mechanical-validation failures → **no human
 gate fires**, with the report still rendered, still written and still WIP-committed.
@@ -779,6 +789,8 @@ three forks this phase forbade deferring were each picked explicitly:**
   `/devforge:spec-check`, and `/devforge:plan`'s blocked message names the command for the
   user to type. Plan 63's carve-out is therefore **not** reopened, and Phase 5's
   `disable-model-invocation` grep must return the **same** file list it returned before.
+  **(Amended 2026-09-03 — plan 93 reversed the flag clause; the grep now returns the four
+  setup files. The gate is unchanged.)**
 - **D7 → (c)** — fail closed on an absent `z3-solver`, with (a) recorded as the named
   Phase-7 fallback and (b) still rejected.
 - **D6 → ratified WITH the narrow reading confirmed** — mandatory means the check RAN and
