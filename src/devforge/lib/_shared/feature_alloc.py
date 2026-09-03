@@ -227,7 +227,8 @@ slug (two ticketless allocations naming the same slug in the same bucket
 -- see "leaf" below).
 
 Slug collisions (OQ-4 of plan 68, extended by 91-FEATURE-DIR-IDENTITY-AND-
-PROVENANCE-PLAN.md's ticket-or-slug leaf)
+PROVENANCE-PLAN.md's D3 ticket-or-slug leaf, RESTATED AND RE-RATIFIED
+2026-08-31)
 ---------------------------------------------------------------------------
 When a ticket is supplied, allocate_feature_dir does NOT check whether the
 slug is already used by another ticket -- plan 68's OQ-4 ratified this: the
@@ -241,12 +242,14 @@ see allocate_feature_dir's own docstring), the slug itself becomes the
 leaf, so two ticketless allocations that land in the SAME YYYY/MM bucket
 with the SAME slug DO collide, loudly, per "Never overwrite" above -- this
 is a real, disclosed narrowing of OQ-4's original guarantee, scoped to the
-ticketless path only. It is not a decision this plan's D2/D3/D6 text
-states outright (they describe only the ticket-bearing leaf); it is the
-narrowest reading that keeps a ticketless allocation working (Phase 2's
-own shipped, tested contract) without inventing a second, un-ratified
-identity scheme.  See the module's test file for both the same-ticket and
-the same-slug collision cases.
+ticketless path only. D3's original wording described only the
+ticket-bearing leaf and was silent on this case; the 2026-08-31 ruling
+RATIFIED this reading as D3 restated in place (not as a carved-out
+exception), so it is the rule, not an un-ratified identity scheme. It
+remains the narrowest reading available: it keeps a ticketless allocation
+working (Phase 2's own shipped, tested contract) without inventing a
+synthetic identity nobody typed. See the module's test file for both the
+same-ticket and the same-slug collision cases.
 
 Stdlib only.  Python 3.8+.
 """
@@ -549,32 +552,43 @@ def allocate_feature_dir(devforge_dir, slug, ticket=None, require_ticket=False, 
     it is additionally REQUIRED (missing/blank refuses too) when
     require_ticket is True.
 
-    Ticket-or-slug leaf (Phase 3's item this plan's own text left open --
-    see the module's "Slug collisions" section for the full argument):
-    D2/D3 ratified the ticket AS the directory leaf, with no fallback
-    named for a ticket-LESS allocation -- yet OQ-1 ratified
-    REQUIRE_TICKET defaulting to false, and Phase 2 shipped (and tests)
-    a ticketless allocation succeeding. Those two facts do not close on
-    their own. The rule this function applies: `leaf` is the normalized
-    ticket when one was supplied and valid, else the validated slug.
-    This is the narrowest resolution available -- it invents no new
-    identity scheme (no synthetic "LOCAL-1"-shaped placeholder ticket,
-    which would fabricate an identity nobody typed and contradict this
-    plan's own D9 "a fake value is worse than no value" principle stated
-    elsewhere for a different field), reuses input this function already
-    validates for an unrelated reason (FEATURE_NAME_RE), and keeps
+    Ticket-or-slug leaf (91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md
+    D3, RESTATED AND RE-RATIFIED 2026-08-31 -- see the module's "Slug
+    collisions" section for the full argument): D3 originally read "the
+    leaf is the ticket ONLY", describing only the ticket-bearing leaf and
+    silent on a ticket-LESS allocation -- yet OQ-1 ratified REQUIRE_TICKET
+    defaulting to false, and Phase 2 shipped (and tests) a ticketless
+    allocation succeeding. Those two facts did not close on their own, so
+    Phase 3 shipped a reading of that silence: `leaf` is the normalized
+    ticket when one was supplied and valid, else the validated slug. The
+    2026-08-31 ruling RATIFIED that reading and restated D3 in place: the
+    leaf is the feature's identifier in whatever form it has, the ticket
+    being the ORDINARY form of that identifier, not the only permitted
+    one. Two alternatives were weighed and rejected at that ruling:
+    keeping a ticketless allocation under the legacy numbered
+    specs/NNN-slug/ shape (rejected -- it would make two WRITE shapes
+    permanent by design, where D6 accepts two READ shapes only), and
+    making the ticket structurally mandatory (rejected -- it silently
+    reverses OQ-1 and inflicts the lockout D4's opt-in exists to
+    prevent). The reading this function applies is the narrowest one
+    left -- it invents no new identity scheme either (no synthetic
+    "LOCAL-1"-shaped placeholder ticket, which would fabricate an
+    identity nobody typed and contradict this plan's own D9 "a fake
+    value is worse than no value" principle stated elsewhere for a
+    different field), and reuses input this function already validates
+    for an unrelated reason (FEATURE_NAME_RE). It also keeps
     REQUIRE_TICKET's ratified "opt-in, imposes nothing when off"
     semantics intact: a ticketless allocation with require_ticket=False
     still succeeds with ZERO extra input demanded of the operator. The
-    cost, stated once here and in the module docstring: two ticketless
-    allocations with the SAME slug in the SAME YYYY/MM bucket now collide
-    (loudly -- see "Never overwrite"), narrowing plan 68 OQ-4's original
-    "same slug, different identity, no collision" guarantee for that one
-    path. This reading is NOT literally written in D2/D3's ratified text
-    (which describes only the ticket-bearing leaf) and is flagged here as
-    a candidate for explicit ratification, not asserted as settled.
+    cost, stated once here and in the module docstring, survives the
+    ruling unchanged: two ticketless allocations with the SAME slug in
+    the SAME YYYY/MM bucket now collide (loudly -- see "Never
+    overwrite"), narrowing plan 68 OQ-4's original "same slug, different
+    identity, no collision" guarantee for that one path.
     decide_branch_action below applies the identical ticket-or-slug rule
-    to the branch name (D5 names only the ticket-given case too).
+    to the branch name -- that is UNCHANGED by this ruling: D5 itself
+    names only the ticket-given case and the ruling did not amend it
+    (see that function's own docstring).
 
     Returns (result, error), mirroring _shared/feature_scope.py's
     resolve_feature_scope convention:

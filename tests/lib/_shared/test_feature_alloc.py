@@ -17,8 +17,8 @@ spec/<NNN>-<slug>):
   allocate_feature_dir  — new-shape composition (year/month from an
                            injected `now`, deterministic); ticket-given ->
                            leaf is the ticket; ticketless (require_ticket
-                           False) -> leaf is the SLUG (Phase 3's own
-                           unresolved item 1 — see feature_alloc.py's
+                           False) -> leaf is the SLUG (D3, restated and
+                           re-ratified 2026-08-31 — see feature_alloc.py's
                            docstring for the full argument; pinned here);
                            `number`/`formatted_number`/`dirname` ABSENT
                            from the result; wrapper-root resolution;
@@ -256,12 +256,16 @@ class TestAllocateFeatureDir(unittest.TestCase):
     _NOW = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
 
     def test_fresh_allocation_ticketless_uses_slug_as_leaf(self):
-        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md Phase 3's own
-        unresolved item 1, pinned: REQUIRE_TICKET defaults False (OQ-1)
-        and a ticketless allocation must still succeed (Phase 2's shipped
-        contract) even though the ticket is now the leaf (D2/D3). The
-        chosen resolution: the SLUG becomes the leaf when no ticket is
-        given."""
+        """91-FEATURE-DIR-IDENTITY-AND-PROVENANCE-PLAN.md D3 (restated
+        and re-ratified 2026-08-31): the leaf is the feature's identifier
+        in whatever form it has, the ticket being the ORDINARY form of
+        that identifier -- not the only permitted one. REQUIRE_TICKET
+        defaults False (OQ-1) and a ticketless allocation must still
+        succeed (Phase 2's shipped contract), so the SLUG becomes the
+        leaf when no ticket is given. This pins the ticketless half of
+        D3's restated rule; the ticket-given half is pinned separately,
+        by test_fresh_allocation_with_ticket_uses_ticket_as_leaf and
+        test_ticket_and_slug_both_given_ticket_wins."""
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
