@@ -300,8 +300,18 @@ class TestAllocateFeatureDir(unittest.TestCase):
             self.assertNotIn("add-dark-mode", result["leaf"])
 
     def test_ticket_and_slug_both_given_ticket_wins(self):
-        """D3: the leaf is the ticket ONLY -- a supplied slug never rides
-        along even when both are available."""
+        """D3 (restated and re-ratified 2026-08-31): the leaf is the
+        feature's identifier in whatever form it has, the ticket being the
+        ORDINARY form of that identifier -- so a supplied slug never rides
+        along beside a ticket, a leaf never carrying both together.
+
+        This docstring quoted D3's earlier wording ("the leaf is the ticket
+        ONLY"), which described this same case and was SILENT on the
+        ticketless one. The restatement covers both and does not move this
+        case, so the assertions below are unchanged. The ticketless leaf
+        is pinned separately, by
+        test_fresh_allocation_ticketless_uses_slug_as_leaf.
+        """
         with tempfile.TemporaryDirectory() as td:
             devforge_dir = Path(td) / ".devforge"
             devforge_dir.mkdir()
