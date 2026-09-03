@@ -1,8 +1,7 @@
 ---
 name: fix
-description: Proposal-only gated remediation of already-written findings, in one of two lanes. The FEATURE lane is OFFERED (never auto-invoked) when `/devforge:review` surfaces findings, when `/devforge:verify` returns NEEDS WORK, or conversationally when the user raises a defect the model code-confirms in-window. The COLD lane runs on an explicit `bugs/NNN-<slug>.md` argument and remediates one already-filed bug with no feature involved. Either lane intakes the finding, triages + scopes it, then delegates to `/devforge:implement`'s back-half engine (scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → two-stage hard gate → commit). Never invents a defect, never accepts a free-text bug description; the only `bugs/` write is flipping the ONE consumed bug file to Fixed at the end of a cold run.
+description: Proposal-only gated remediation of already-written findings. Feature lane — offered after `/devforge:review` findings, a `/devforge:verify` NEEDS WORK, or a user-raised defect the model code-confirms in-window; cold lane — an explicit `bugs/NNN-<slug>.md` argument. Reuses `/devforge:implement`'s back half (verify → panel → gates → commit). Never invents a defect; offered, and run only once the user agrees.
 argument-hint: "[spec-file/feature-dir | bugs/NNN-slug.md]"
-disable-model-invocation: true
 allowed-tools:
   - Bash(.devforge/lib/fix_helper preflight *)
   - Bash(.devforge/lib/fix_helper in-fix-window *)
@@ -22,7 +21,7 @@ allowed-tools:
 
 # /devforge:fix — Gated Remediation of Written Findings
 
-`/devforge:fix` is a thin, gated **remediation** command. It is OFFERED (PROPOSED), never auto-invoked (this command sets `disable-model-invocation: true` in its own frontmatter, so the model cannot invoke it). When invoked it intakes an already-written, already-located finding, triages + scopes it, then points `/devforge:implement`'s already-shipped back-half engine at that finding instead of at a fresh task.
+`/devforge:fix` is a thin, gated **remediation** command. It is OFFERED (PROPOSED) and run only once the user agrees — never on the model's own initiative; it is model-invocable, so on agreement the orchestrator runs it rather than asking the user to type it. When invoked it intakes an already-written, already-located finding, triages + scopes it, then points `/devforge:implement`'s already-shipped back-half engine at that finding instead of at a fresh task.
 
 **Two lanes, and which one runs is decided mechanically by the argument — never by judgment.**
 
@@ -239,7 +238,7 @@ On this bounce:
 - **Leave the bug file `Open` and otherwise byte-unchanged.** Do NOT flip it, do not annotate it, do not mark it `In Progress` — the bug is not being worked, and a status the framework cannot keep true is worse than one it does not set.
 - Ask no question — the cold lane's bounce has one route, so there is nothing to choose. Clean up (`rm -rf "$WORKDIR"`) and end the turn.
 
-`/devforge:spec-check` sits inside that recommended cycle because `/devforge:plan` blocks until a `spec-check.md` exists beside the resolved spec whose recorded spec hash still matches `spec.md`, and re-entering at `/devforge:specify` rewrites `spec.md` — which stales any prior report by construction. `/devforge:grill` sits there for the same reason one stage later: `/devforge:breakdown` blocks until a `grill.md` exists beside the resolved plan whose adversary run completed. Both are human-typed only, so name them for the user rather than running them.
+`/devforge:spec-check` sits inside that recommended cycle because `/devforge:plan` blocks until a `spec-check.md` exists beside the resolved spec whose recorded spec hash still matches `spec.md`, and re-entering at `/devforge:specify` rewrites `spec.md` — which stales any prior report by construction. `/devforge:grill` sits there for the same reason one stage later: `/devforge:breakdown` blocks until a `grill.md` exists beside the resolved plan whose adversary run completed. Both run on the user's say-so, so name them as steps of that cycle rather than running them from here — `/devforge:fix` ends the turn and the user starts the cycle.
 
 **The rest of this bounce section is FEATURE-lane only** — the question, the seed and its commit. A cold bounce already ended the turn above.
 
@@ -479,7 +478,7 @@ rm -rf "$WORKDIR" "${TMPDIR:-/tmp}/forge-implement-review"
 
 ## Important rules
 
-1. **Proposal-only, never auto-invoked** — `/devforge:fix` is OFFERED (PROPOSED) as the "remediate now" arm of a two-arm fix-or-file offer; the user types `/devforge:fix`. The model never runs it autonomously (`disable-model-invocation: true`).
+1. **Proposal-only, never self-initiated** — `/devforge:fix` is OFFERED (PROPOSED) as the "remediate now" arm of a two-arm fix-or-file offer; the user types `/devforge:fix` or agrees to the offer, and on agreement the orchestrator runs it. The model never runs it unoffered or unagreed, and never for a defect it originated.
 2. **Consumes WRITTEN findings, never invents them** — `/devforge:fix` remediates findings that already exist on disk or in the transcript before the run starts: pipeline-surfaced findings (`review.md` / `verification.md` NEEDS-WORK issues), a single user-raised + code-confirmed in-window defect, or ONE `bugs/NNN-<slug>.md` file handed to it by path. It does NOT accept a free-text bug description — there is no argument form that turns typed prose into a working-list item. On the feature lane an empty working list with no case-3 defect STOPS the run; on the cold lane a bug that cannot be CONFIRMED against live code STOPS the run (0.4b step 4).
 3. **Two lanes, chosen by the argument** — the FEATURE lane runs in-window only, on a feature whose WIP commits are still open (post-`/devforge:implement`, pre-`/devforge:summarize`, gated by `in-fix-window`), and never fixes a sealed feature in place. The COLD lane runs when `$ARGUMENTS` names a `bugs/` file, has no feature and no window gate, and is the route for a bug that sits outside any feature's window. **The lane is decided by the argument's path, never by judgment**, and the cold lane is not a way to route around an in-window feature's gate — a defect in an open feature belongs on the feature lane.
 4. **Defect repairs only — the scope bounce** — a working-list item that needs a feature/architecture change (not a correctness repair) bounces; `/devforge:fix` never grows scope. The bounce names the item and the reason on both lanes. On the FEATURE lane it recommends `/devforge:specify` and the USER picks the route (PHASE 1's three-option question); only the `re-enter specify` pick writes the `fix-seed.json` re-entry seed. On the COLD lane it recommends **`/devforge:research`** (because `/devforge:specify` blocks without a handoff), asks nothing, writes NO seed, and leaves the bug `Open`.
