@@ -60,13 +60,13 @@ Usage: `/devforge:implement` — no arguments. The command resolves the first in
 
 Read `.devforge/wip.md`.
 
-- **Absent** → no interrupted task. Proceed directly to PHASE 1 (`resolve-next-task`).
+- **Absent** → no interrupted task. Proceed to the Model advisory below, then PHASE 1 (`resolve-next-task`).
 - **Present with `**Command**: /implement`** → a `/devforge:implement` task was interrupted mid-flight. Ask the user via `AskUserQuestion`:
   - Question: `"Interrupted /devforge:implement task found — how to proceed?"` — single-line text.
   - Options: `["resume", "rollback", "skip", "manual"]`.
-  - **`resume`** → re-enter the recorded task at its `**Phase**:` field (dispatch / verify / review / forcing_functions / gate). The marker carries `**Feature**`, `**Task**`, `**Title**`, `**Agent**`, `**Checkpoint**` — use them to rebuild context, then continue the loop from that phase.
-  - **`rollback`** → `git -C <source_root> reset --hard <checkpoint_sha>` (the `**Checkpoint**:` field, which is the **source** repo HEAD), then clear `wip.md` (the orchestrator removes the file), then proceed to PHASE 1 to re-resolve. Resolve `<source_root>` from `.devforge/project-config.json` `PROJECT_ROOT` (`.` → standalone, source==install) — see PHASE 2 "Workspace resolution".
-  - **`skip`** → `git -C <source_root> reset --hard <checkpoint_sha>` (the `**Checkpoint**:` field, the **source** repo HEAD) so the partial edits do not bleed into the next task, then mark the task skipped via the helper, then clear `wip.md`, then proceed to PHASE 1. PHASE 0 runs before `resolve-next-task`, so resolve the task file by globbing `<Feature>/tasks/<Task>-*.md` (the `**Feature**` and `**Task**` number from the marker — match on the number prefix, do not reconstruct the slug) and use `<Feature>/tasks/README.md` as the index, then call:
+  - **`resume`** → re-enter the recorded task at its `**Phase**:` field (dispatch / verify / review / forcing_functions / gate). The marker carries `**Feature**`, `**Task**`, `**Title**`, `**Agent**`, `**Checkpoint**` — use them to rebuild context, then proceed to the Model advisory below and continue the loop from that phase.
+  - **`rollback`** → `git -C <source_root> reset --hard <checkpoint_sha>` (the `**Checkpoint**:` field, which is the **source** repo HEAD), then clear `wip.md` (the orchestrator removes the file), then proceed to the Model advisory below, then PHASE 1 to re-resolve. Resolve `<source_root>` from `.devforge/project-config.json` `PROJECT_ROOT` (`.` → standalone, source==install) — see PHASE 2 "Workspace resolution".
+  - **`skip`** → `git -C <source_root> reset --hard <checkpoint_sha>` (the `**Checkpoint**:` field, the **source** repo HEAD) so the partial edits do not bleed into the next task, then mark the task skipped via the helper, then clear `wip.md`, then proceed to the Model advisory below, then PHASE 1. PHASE 0 runs before `resolve-next-task`, so resolve the task file by globbing `<Feature>/tasks/<Task>-*.md` (the `**Feature**` and `**Task**` number from the marker — match on the number prefix, do not reconstruct the slug) and use `<Feature>/tasks/README.md` as the index, then call:
 
     ```bash
     .devforge/lib/implement_helper mark-skipped --task-file <resolved-task-file> --index <feature>/tasks/README.md --number NNN
@@ -75,6 +75,14 @@ Read `.devforge/wip.md`.
     The helper sets `**Status**: Skipped` in the task file and rewrites the matching `tasks/README.md` index row (it does NOT touch git or `wip.md`); exit 2 means the task file or index row was not found — copy its stderr VERBATIM into a fenced code block and resolve before re-running. `resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.
   - **`manual`** → keep all state and `wip.md` in place; tell the user `"/devforge:implement paused for manual inspection. Re-run /devforge:implement when ready."` and end the turn.
 - **Present with a `**Command**:` value other than the marker literal `/implement`** → a different command was interrupted. Do NOT proceed. Tell the user `"A previous session of a different command was interrupted (see .devforge/wip.md). Resolve that session first before running /devforge:implement."` and end the turn.
+
+**Model advisory (printed, never gating).** This step prints one line and does nothing else: it asks no question, it gates nothing, and the user is free to ignore what it says. Every arm above that carries the run forward routes through it — the three that continue to PHASE 1, and the `resume` arm that re-enters the loop at its recorded phase.
+
+`/devforge:implement` does its judgment work in the `do` tier. Read `CLAUDE_TIER_DO` from `.devforge/project-config.json` for that tier's configured model. When the file is absent, or that key is absent or `null`, use the built-in `do` default `sonnet` — the same value `.devforge/lib/configure_helper apply-agent-models` writes onto a `do`-tier agent whose configured value is null; that verb is named here for provenance and is NOT invoked by this step. For the second half of the line, name the model this session runs on as your own environment states it; when your environment states none, write the literal `unknown` rather than guessing one.
+
+Tell the user `"This command's judgment work belongs to the do tier; configured do model: <value>; this session runs on: <session model, or unknown>."`
+
+What the line recommends is a tier, resolved through this install's own `/devforge:configure` answers, so it tracks the user's choice and names no model version. This is a once-per-run line at loop start, like the rest of PHASE 0 — it prints once however the run enters the loop, `resume`'s re-entry at a recorded phase included, and the per-task loop below never repeats it. Then continue on the arm that sent you here: PHASE 1, or the recorded phase on the `resume` arm.
 
 ---
 

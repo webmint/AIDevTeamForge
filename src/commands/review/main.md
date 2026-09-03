@@ -118,6 +118,16 @@ WORKDIR="${TMPDIR:-/tmp}/forge-review"
 .devforge/lib/review_helper preflight --workspace-root . > "$WORKDIR/preflight.json"
 ```
 
+### 0.4 — Model advisory (printed, never gating)
+
+This step prints one line and does nothing else: it asks no question, it gates nothing, and the user is free to ignore what it says. Every arm above that carries the run forward reaches it.
+
+`/devforge:review` does its judgment work in the `verify` tier. Read `CLAUDE_TIER_VERIFY` from `.devforge/project-config.json` for that tier's configured model. When the file is absent, or that key is absent or `null`, use the built-in `verify` default `sonnet` — the same value `.devforge/lib/configure_helper apply-agent-models` writes onto a `verify`-tier agent whose configured value is null; that verb is named here for provenance and is NOT invoked by this step. For the second half of the line, name the model this session runs on as your own environment states it; when your environment states none, write the literal `unknown` rather than guessing one.
+
+Surface one line to the user: `"This command's judgment work belongs to the verify tier; configured verify model: <value>; this session runs on: <session model, or unknown>."`
+
+What the line recommends is a tier, resolved through this install's own `/devforge:configure` answers, so it tracks the user's choice and names no model version. Then proceed to PHASE 1.
+
 ## PHASE 1 — Resolve feature scope
 
 ```bash

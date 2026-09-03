@@ -118,6 +118,16 @@ Stdout is one of five state tokens:
 
 Exit 2 means the plan is malformed (neither Date nor Status frontmatter line). Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
+## PHASE 0b.5: Model advisory (printed, never gating)
+
+This step prints one line and does nothing else: it asks no question, it gates nothing, and the user is free to ignore what it says. Every arm above that carries the run forward reaches it.
+
+`/devforge:breakdown` does its judgment work in the `think` tier. Read `CLAUDE_TIER_THINK` from `.devforge/project-config.json` for that tier's configured model. When the file is absent, or that key is absent or `null`, use the built-in `think` default `opus` — the same value `.devforge/lib/configure_helper apply-agent-models` writes onto a `think`-tier agent whose configured value is null; that verb is named here for provenance and is NOT invoked by this step. For the second half of the line, name the model this session runs on as your own environment states it; when your environment states none, write the literal `unknown` rather than guessing one.
+
+Tell the user: `"This command's judgment work belongs to the think tier; configured think model: <value>; this session runs on: <session model, or unknown>."`
+
+What the line recommends is a tier, resolved through this install's own `/devforge:configure` answers, so it tracks the user's choice and names no model version. Then proceed to PHASE 0 (Context load) with the resolved path.
+
 ## PHASE 0: Context load
 
 **This phase always runs.** Load the context the decomposition depends on.

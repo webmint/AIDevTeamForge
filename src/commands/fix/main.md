@@ -217,6 +217,16 @@ Carry the bug-file path forward as `<bug-file>` — PHASE 6 passes it to `close-
 
 **No empty-list STOP applies on this lane:** a cold run either composed exactly one item in step 5 or already stopped at step 1, 2 or 4.
 
+### 0.5 — Model advisory (printed, never gating)
+
+This step prints one line and does nothing else: it asks no question, it gates nothing, and the user is free to ignore what it says. It runs on BOTH lanes, and every arm above that carries the run forward reaches it.
+
+`/devforge:fix` does its judgment work in the `do` tier. Read `CLAUDE_TIER_DO` from `.devforge/project-config.json` for that tier's configured model. When the file is absent, or that key is absent or `null`, use the built-in `do` default `sonnet` — the same value `.devforge/lib/configure_helper apply-agent-models` writes onto a `do`-tier agent whose configured value is null; that verb is named here for provenance and is NOT invoked by this step. For the second half of the line, name the model this session runs on as your own environment states it; when your environment states none, write the literal `unknown` rather than guessing one.
+
+Surface one line to the user: `"This command's judgment work belongs to the do tier; configured do model: <value>; this session runs on: <session model, or unknown>."`
+
+What the line recommends is a tier, resolved through this install's own `/devforge:configure` answers, so it tracks the user's choice and names no model version. Then proceed to PHASE 1.
+
 ## PHASE 1 — Triage + scope-estimate (the scope bounce)
 
 Read `references/triage.md` in full now — it carries the defect-repair-vs-change classification and the bounce criteria for both lanes.
