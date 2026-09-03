@@ -47,6 +47,12 @@ _SUMMARY_GROUPS = (
             "claude_tier_think",
             "claude_tier_do",
             "claude_tier_verify",
+            # claude_effort_* (plan 92 D4) join directly after their
+            # claude_tier_* siblings above — same per-tier concern, one
+            # effort value alongside each tier's model choice.
+            "claude_effort_think",
+            "claude_effort_do",
+            "claude_effort_verify",
             # require_ticket (plan 91 D4) joins here rather than a new
             # single-field group — it is a per-install process-rigor
             # policy, the same theme as workflow_enforcement above.

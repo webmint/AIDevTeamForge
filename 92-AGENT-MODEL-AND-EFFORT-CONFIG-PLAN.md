@@ -184,7 +184,7 @@ string, never the `:NNN`.
 | 17 | **The advisory-line precedent, in full.** `plan_helper stakes-hint` *"always exits 0"*, prints nothing in the ordinary case, and its spec says *"This hint is ADVISORY and NON-BLOCKING: it never blocks the approve flow, it gates nothing on its own, and the user is free to ignore it."* | `src/commands/plan/main.md:675`–`:686` |
 | 18 | **No model version string of EITHER shape exists under `src/` today — the tripwire's baseline is CLEAN on both patterns.** The API-ID pattern `claude-[a-z]+-[0-9]` returns **zero** hits, and the display-name-with-version pattern `\b(opus\|sonnet\|haiku\|fable)\s+[0-9]` (case-insensitive) **also returns zero** — ⚠ **two patterns are required because the first catches `claude-opus-5` and misses `Opus 5` / `Haiku 4.5` / `Fable 5.1` entirely.** A bare `\b(opus\|sonnet\|haiku\|fable)\b` grep, case-insensitive, hits **8 files**, every one in a known class: the three `_configure` modules (tier comments + the non-enum rationale), `q11-tiers.md` (the question text), `agents-AUTHORING.md:19` (the tier→alias row), and three cost-estimate prose sites (`generate-docs/main.md`, `pr-review/main.md`, `_pr_review/_ensure_cbm.py`) | repo greps, 2026-09-03 |
 | 19 | **Claude Code frontmatter — see `### Claude Code authoring surface` below for the verbatim doc quotes.** `model` and `effort` are **agent-only** fields; **no command/skill frontmatter field sets the session's model**, which is why D7 is an advisory line and not a setting | fetched 2026-09-03, URLs cited below |
-| 20 | **The Agent tool exposes a `model` parameter whose enum is `sonnet \| opus \| haiku \| fable`.** ⚠ **OBSERVED in this session's tool schema, harness-injected and UNDOCUMENTED.** A Claude Code build whose enum lacks a value fails the call with a validation error — which is what makes D5's probe fail-safe rather than fail-open | session tool schema, 2026-09-03 |
+| 20 | **The Agent tool exposes a `model` parameter whose enum is `sonnet \| opus \| haiku \| fable`.** A Claude Code build whose enum lacks a value fails the call with a validation error — which is what makes D5's probe fail-safe rather than fail-open. ⚠ **UPGRADED 2026-09-03 at Phase 2's guide pass: this is DOCUMENTED**, not merely observed — `sub-agents.md` specifies the per-invocation `model` parameter as accepting those four aliases, full IDs, or `inherit`. **So D5's probe stands on documented ground**; the drafting-time "harness-injected and UNDOCUMENTED" reading is withdrawn | session tool schema 2026-09-03; `code.claude.com/docs/en/sub-agents.md`, verified 2026-09-03 |
 | 21 | **The harness states the session model in its system prompt** (*"You are powered by the model named …. The exact model ID is …"*) and lists recent model IDs. ⚠ **OBSERVED in this session, NOT documented.** Any design resting on it must degrade to `unknown` | session system prompt, 2026-09-03 |
 | 22 | **AskUserQuestion's shape constraints.** 1–4 questions per call; each question 2–4 options; **the tool injects its own `Other` free-text option**, so an authored `Other` is never written. ⚠ **OBSERVED in this session's tool schema and UNDOCUMENTED, exactly like facts 20 and 21.** ⚠ **Consequence for D4: ONE call can carry both the model question and the effort question for a tier.** ⚠ **Consequence for D5: an option list can hold at most four named aliases, and at least two.** ⚠ **Degradation: if either bound changes, D4's two-questions-per-call design and D5's option filtering must be RE-VERIFIED against the live schema before Phase 2 writes `q11-tiers.md`** | session tool schema, 2026-09-03; `src/commands/configure/main.md` bulk-confirm + `src/commands/grill/main.md` PHASE 7 as live examples |
 
@@ -218,13 +218,21 @@ rather than trusting this file.**
   `initialPrompt`, `experimental`) and says nothing about keys outside the list; it documents only
   that a file is skipped when its *"YAML doesn't parse"*. **So D1's `model_tier:` line rests on
   REPO PRECEDENT — `applies_to` has shipped as an unknown key since plan 15 (fact 16) — and not
-  on documentation.** **Phase 1's Step 0 owes a `claude-code-guide` check of exactly this point,
-  BEFORE the emitter code lands** — the keying mechanism has no fallback if the answer is "no" —
-  and the bound is named in D1.
+  on documentation.** ⚠ **ASKED AND ANSWERED 2026-09-03 at Phase 1's Step 0, and the answer is
+  still NOT a documented guarantee**: the page enumerates the conditions under which a subagent
+  file is SKIPPED and an unknown key is not among them, but nothing states that unknown keys are
+  ignored. **The STOP arm did not trigger and the bound did not close** — see the
+  `#### Phase 1 build record — Step 0` block for the two-part footing this rests on.
 - **`model` and `effort` are agent-only.** The plugins reference states plugin agents support
   *"`name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`,
   `memory`, `background`, and `isolation`"*, and no equivalent exists for skills/commands.
   **Consequence: a command cannot set its own session model, which is D7's entire premise.**
+
+⚠ **This section is the DRAFTING-TIME record (2026-09-03, two pages). It was EXTENDED the same day
+by Phase 1's Step 0**, which added a third page — `https://code.claude.com/docs/en/model-config.md`
+— and four recorded answers, including the effort silent-fallback rule and the pre-v2.1.251
+resolution-order caveat. **Read `#### Phase 1 build record — Step 0` alongside this section; neither
+supersedes the other, and the Step-0 block is the newer of the two.**
 
 ### Model facts — cached 2026-06-24, decision inputs ONLY
 
@@ -242,7 +250,11 @@ would rot on the next model release, which is the exact failure directive (a) fo
 - **The `effort` parameter errors on Haiku 4.5.** ⚠ **So an `effort:` line on a haiku-aliased
   agent may fail, which is a live collision with D4 and is why D2 declines Haiku for the verify
   tier.** A `claude-code-guide` check of what Claude Code does with `effort:` on a `haiku` agent
-  is **owed at Phase 1's Step 0** — the API's behavior and Claude Code's may differ.
+  was **owed at Phase 1's Step 0 and is ANSWERED (2026-09-03)** — the API's behavior and Claude
+  Code's **do** differ: **Claude Code falls back SILENTLY** to the highest supported level at or
+  below the one set, and Haiku is not among the effort-supporting models. ⚠ **So this row's
+  API-level claim must never be restated as Claude Code behavior** — it weakened D2 half 2's fourth
+  reason; see the `#### Phase 1 build record — Step 0` block.
 - **Prompts written for prior models are often too prescriptive for Fable** and reduce its output
   quality. **This is D8's whole reason**, and it cuts against a heavily prescriptive command
   corpus (OQ-1).
@@ -330,6 +342,12 @@ hand-written agents (no `model_tier:` line, by design); and **it does not make t
 default irrelevant** — an install that never runs `/devforge:configure` still gets the map, and a
 future change to that map can produce a merge CONFLICT on the `model:` line for every configured
 install (Trap 3). **Verify the conflict behavior at Phase 3** rather than trusting this sentence.
+✅ **VERIFIED 2026-09-03 — it DOES conflict, and the bound is LARGER than this paragraph says.** The
+conflicted file's **whole update is skipped, body included**, its snapshot goes **stale**, the
+condition **recurs on every later update**, and the post-merge apply then makes the `model:` field
+read correct **while the stale body stays invisible** — the only signal is a decoupled
+`Merge conflicts in <file>` warn. **This is an OPEN residual, not a closed question**; see
+`#### Phase 3 build record` item (c) for the two candidate repairs, neither built.
 
 **⚠ The second honest bound, and it is the larger one: a consumer environment can defeat this
 mechanism completely.** With `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` set, **every subagent runs on
@@ -354,7 +372,9 @@ import exists before choosing** — the recommendation is the duplicate-plus-tes
 precedent is a reason to revisit it, not to ignore this sentence.
 
 **Half 2 — the verify tier is `sonnet`, and `q11-tiers.md`'s Haiku recommendation is corrected.**
-Four reasons, and the last one is mechanical:
+Four reasons were offered, the last one mechanical — ⚠ **and that fourth reason was WEAKENED on
+2026-09-03 by Phase 1's Step-0 findings; THREE stand.** The bullet is kept with its correction
+attached rather than deleted, so the ratified reasoning can be re-read as it was argued:
 
 - The five verify-tier agents do **judgment** work, not mechanical work — `ac-verifier` maps ACs
   to evidence, `code-reviewer` runs a ten-item checklist, `design-auditor` reads a two-tier
@@ -365,6 +385,14 @@ Four reasons, and the last one is mechanical:
   behavior — it makes the recommendation match what has always been delivered.
 - **Haiku 4.5 errors on `effort`** (`## Model facts`), so recommending Haiku while D4 adds an
   effort question ships a recommended combination that can fail.
+  ⚠ **WEAKENED (answered 2026-09-03 — silent fallback in Claude Code, see the Phase 1 Step 0
+  record).** That sentence describes the **API**, not Claude Code. Claude Code documents a silent
+  fallback to the highest supported level at or below the one set, and Haiku is not among the
+  effort-supporting models — **so the combination degrades quietly instead of failing loudly.**
+  **This reason no longer carries weight on its own**; the three above are what hold half 2 up,
+  and they are sufficient without it. ⚠ **The pairing with D4 is NOT withdrawn** — see D4's
+  dependency paragraph, whose ground shifts from "known to fail" to "silently does less than the
+  user asked for", which is a weaker harm but not no harm.
 
 **The Q11 `(Recommended)` labels are derived from the same default literal** rather than written
 independently, so the two cannot drift again.
@@ -418,6 +446,13 @@ rationale or a `CHANGELOG` line. ⚠ **The baseline is already clean on BOTH** �
 zero hits at drafting time (fact 18) — so Phase 1 adds the STANDING test rather than discovering
 the state.
 
+⚠ **WIDENED AT BUILD, 2026-09-03 — the SHIPPED display-name pattern is
+`\b(opus|sonnet|haiku|fable)[\s-]+[0-9]`, not the `\s+` form above.** Run C1's reviewer showed that
+a HYPHENATED version (`sonnet-4-5`) slips **both** drafted patterns — the API-ID pattern wants a
+`claude-` prefix and the `\s+` form wants whitespace. **The decision is unchanged; its regex was
+too narrow to enforce it**, and the shipped form is the operative one. **Cite `[\s-]+` from here
+on** — see `#### Phase 1 build record — Deliverables 1–5`.
+
 **Recommended labels:** `think = opus` (until OQ-1's A/B), `do = sonnet`, `verify = sonnet` (D2).
 
 **Alternatives considered:**
@@ -468,24 +503,41 @@ not an appeal to an unknown harness default.
 **⚠ Honest bound, and it is the sharpest one in this plan.** The docs say *"available levels
 depend on the model"*, and **this plan builds NO compatibility validation** — building it would
 be the version-tracking maintenance directive (a) forbids. **An unsupported model × effort
-combination therefore fails at DISPATCH, not at configure**, in a run far from the choice that
-caused it. The known instance is Haiku (`## Model facts`), which D2 half 2 steers away from for
-the one tier that recommended it — **that is a mitigation for one case, not a fix for the class.**
+combination therefore degrades silently at dispatch (documented fallback), never at configure** —
+in a run far from the choice that caused it, and with **no signal that anything was dropped.** The
+known instance is Haiku (`## Model facts`), which D2 half 2 steers away from for the one tier that
+recommended it — **that is a mitigation for one case, not a fix for the class.**
 
-**⚠ Owed at build:** a `claude-code-guide` check of what Claude Code does with an `effort:` line on
-a `haiku`-aliased agent. The API errors; Claude Code's behavior is a separate question and is not
-assumed here. **It is question 3 of Phase 1's Step 0** — asked before any code lands, and CITED by
-Phase 2 rather than re-asked.
+⚠ **The class is UNCHANGED by Step 0's answer, and the failure SHAPE is now documented rather than
+guessed** (2026-09-03). Claude Code falls back to *"the highest supported level at or below the one
+you set"*, so a user who picks `xhigh` on a model that tops out lower gets the lower level and is
+told nothing. **Silent is arguably worse than loud here**: a dispatch error would at least surface
+the mismatch at the moment it mattered, whereas a silent downgrade looks exactly like success.
+**Nothing in this plan detects it.**
+
+**⚠ Owed at build — ANSWERED 2026-09-03 (silent fallback in Claude Code, see the Phase 1 Step 0
+record).** The `claude-code-guide` check of what Claude Code does with an `effort:` line on a
+`haiku`-aliased agent was question 3 of Phase 1's Step 0, asked before any code landed. **The API
+errors; Claude Code does not** — it falls back silently, and Haiku is not among the
+effort-supporting models. **Phase 2 CITES that recorded answer rather than re-asking it.**
 
 **⚠ D4 DEPENDS ON D2 half 2.** Taking D4 while recommending Haiku for the verify tier ships the
 one recommended combination that is known to fail. **Ratify them together or state explicitly
 which mitigation replaces the other.**
 
 ✅ **RATIFIED TOGETHER 2026-09-03 — the pairing held.** The blanket directive took **both** D4 and
-D2 half 2 (`verify = sonnet`), so the failing combination never arises and **no substitute
-mitigation was needed or offered.** ⚠ **The dependency does not expire with ratification**: a
-future change that moves the verify recommendation back to Haiku **re-opens D4's bound in the same
-edit**, and this paragraph is the record that says so. The matching note is at D2 half 2.
+D2 half 2 (`verify = sonnet`), so the combination never arises and **no substitute mitigation was
+needed or offered.** ⚠ **The dependency does not expire with ratification**: a future change that
+moves the verify recommendation back to Haiku **re-opens D4's bound in the same edit**, and this
+paragraph is the record that says so. The matching note is at D2 half 2.
+
+⚠ **The GROUND of this dependency shifted the same day, and the dependency survives on the weaker
+ground** (Step 0, question 3). The paragraph above says *"known to fail"* — **in Claude Code it does
+not fail; it falls back silently.** So recommending Haiku alongside an effort question would ship a
+combination that **quietly ignores the user's effort answer** rather than one that errors.
+**Weaker harm, still harm, and still invisible** — which is exactly the class D4's honest bound
+says nothing here detects. **The pairing is NOT withdrawn**, and a future ratifier re-opening it
+should argue against the silent-downgrade framing, not the error framing.
 
 ### D5 — Availability probe: four one-word dispatches before the first question *(RATIFIED 2026-09-03 — as recommended)*
 
@@ -840,13 +892,19 @@ growth:**
   still a STOP condition: if unknown frontmatter keys turn out NOT to be ignored, D1's keying
   mechanism has no fallback and **returns to Phase 0.** **Ratification did not settle that
   question — it is external to this repo and no directive can answer it.**
+  ✅ **DISCHARGED 2026-09-03 — the pass RAN before any code and its answers are recorded at
+  `#### Phase 1 build record — Step 0`.** ⚠ **The STOP arm did not trigger, and it did not close
+  either**: unknown-key handling is **not documented either way**, so D1's keying rests on the
+  enumerated skip list excluding it plus the `applies_to` precedent. **The clause above stays
+  true as written** — no directive answered it, and the docs did not either; what changed is that
+  the question was asked and its footing is now written down.
 - **Phase 6 is NOT cleared.** It is a deferred user-driven HARD GATE with six known-answer anchors,
   **anchor 1's two halves scored as a PAIR**. **Everything Phases 1–5 produce will be
   build-verified and NOT consumer-validated.**
 
 ---
 
-### Phase 1 — The Python surface *(Python)*
+### Phase 1 — The Python surface *(Python)* — **BUILT 2026-09-03** (python-reviewer clean; commit pending)
 
 **Route: claude-code-guide FIRST, then python-engineer → python-reviewer, test-first, tests written
 AND RUN in the same turn.** ⚠ **This phase DOES owe a claude-code-guide pass, and it owes it
@@ -940,6 +998,11 @@ fixtures**: `configure_helper reset` + the new setters → `configure.yaml` → 
   prerequisite, it is a rationalization** — and an unrecorded pass is indistinguishable from one
   that never ran. **If answer 1 came back "unknown keys are NOT ignored", the phase STOPS and D1
   returns to Phase 0**, because the `model_tier:` keying mechanism has no fallback in this plan.
+  ✅ **SATISFIED 2026-09-03** — the pass ran before any code and all four answers are recorded at
+  `#### Phase 1 build record — Step 0`. ⚠ **Answer 1 came back "not documented either way", which
+  is neither the pass nor the STOP this bullet anticipated** — the phase proceeds on the recorded
+  two-part footing, and **the STOP arm survives re-pointed at an OBSERVED failure** (agents that
+  stop being listed or dispatched once `model_tier:` ships).
 - python-reviewer clean; the `tests/lib/` configure suites and `tests/scripts/` emitter suites green.
 - **A test proves `apply-agent-models` is idempotent** — run twice, second run changes zero bytes.
 - **A test proves an agent file with no `model_tier:` line is untouched** (D6's mechanism).
@@ -961,9 +1024,178 @@ fixtures**: `configure_helper reset` + the new setters → `configure.yaml` → 
 - `git status` shows zero files modified under `src/commands/` — this phase is Python-only, except
   the emitter, which is `scripts/`.
 
+#### Phase 1 build record — Step 0 (2026-09-03)
+
+**The `claude-code-guide` agent was dispatched 2026-09-03 and answered from the live docs, BEFORE
+any Phase-1 code was written.** This block is the record Phase 1's first Verify bullet requires;
+**Phase 2 CITES it and does not re-ask.**
+
+**Answer 1 — unknown frontmatter keys: NOT DOCUMENTED either way. The STOP arm did NOT trigger.**
+`https://code.claude.com/docs/en/sub-agents.md` enumerates the conditions under which Claude Code
+**skips** a subagent file — no `name`; the opening `---` not on the first line; a `name` starting
+with `-` or containing `:`; a `name` present with no `description`; YAML that does not parse — and
+**an unrecognized key is not among them.** The page says nothing about ignoring, rejecting or
+warning on one. ⚠ **So the answer is neither the "yes" the plan hoped for nor the "no" that would
+have stopped the phase**, and D1's keying rests on two things, both stated plainly:
+
+- **(a) The enumerated skip list excludes it** — a closed list of skip conditions that does not
+  include unknown keys is evidence, though not a guarantee.
+- **(b) The `applies_to` precedent** — an unrecognized key emitted into every consumer install
+  since plan 15 and dispatched on without complaint (fact 16).
+
+⚠ **The STOP arm's wording is KEPT, re-pointed at an OBSERVED failure**: an install whose agents
+stop being listed or dispatched after `model_tier:` lands. **That trigger is an observation, not a
+suspicion** — and the docs cannot close it, because they do not speak to it.
+
+**Answer 2 — key ORDER: NOT DOCUMENTED as significant.** Same page; no positional rule beyond the
+opening `---` being on line 1. **Decision taken for Deliverable 4, and both positions are pinned by
+tests:**
+
+- **`model_tier:` is emitted IMMEDIATELY AFTER `model:`** — emitted order `name`, `description`,
+  optional `tools`, `model`, `model_tier`, optional `applies_to`.
+- **`apply-agent-models` inserts `effort:` IMMEDIATELY AFTER `model:`** when it writes one — so a
+  configured file reads `model`, `effort`, `model_tier`.
+
+**Answer 3 — `effort:` on a model without effort support: DOCUMENTED as a SILENT FALLBACK.**
+`https://code.claude.com/docs/en/model-config.md`: *"If you set a level the active model does not
+support, Claude Code falls back to the highest supported level at or below the one you set."* and
+*"Models not listed here do not support effort."* **Haiku is not listed**, so a `haiku` agent
+carrying an `effort:` line runs **without effort and without a dispatch error.**
+
+⚠ **Two sentences elsewhere in this plan were WEAKENED by this answer, and both were corrected in
+place rather than deleted** (2026-09-03): **D2 half 2's fourth reason** — *"Haiku 4.5 errors on
+`effort`"* describes the **API**, not Claude Code, so **three reasons hold half 2 up, not four**;
+and **D4's honest bound**, whose *"fails at DISPATCH"* became *"degrades silently at dispatch
+(documented fallback)"*. ⚠ **The CLASS is unchanged and arguably worse than assumed**: the
+framework still validates nothing, and the documented failure shape is now known to be **silent**,
+which looks exactly like success. **D4's pairing with D2 half 2 stands on the weaker ground** —
+a quietly ignored effort answer rather than an error — and that shift is recorded at D4's own
+dependency paragraph.
+
+**Answer 4 — model resolution order CONFIRMED, with a version caveat the plan did not have.**
+Current order: per-invocation `model` parameter → the subagent's `model` frontmatter (`inherit` =
+the main conversation's model) → `CLAUDE_CODE_SUBAGENT_MODEL` when set → the main conversation's
+model. ⚠ **Before v2.1.251 the environment variable came FIRST and overrode the frontmatter.**
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` confirmed: when on, Claude Code **ignores every subagent
+definition's `model` field** (the built-in Explore/Plan agents included) and Claude cannot pass a
+model at spawn; with both variables set, subagents run on `CLAUDE_CODE_SUBAGENT_MODEL`; with only
+FORCE set, on the main conversation's model. **Trap 5 carries the pre-v2.1.251 note**, because a
+consumer on an older Claude Code with that variable set **never sees the emitted `model:` line at
+all** — and this plan builds no version floor.
+
+**Step 0b — both tripwire greps, run over `src/` on 2026-09-03 before any Phase-1 code:**
+`claude-[a-z]+-[0-9]` → **0 hits**; `\b(opus|sonnet|haiku|fable)\s+[0-9]` (case-insensitive) →
+**0 hits**. **So Deliverable 5's test pins an already-clean baseline** — it does not repair a
+violation, and a future failure means that build introduced one.
+
+**Phase 1 execution split — an orchestrator decision for a dependency this plan did not spell
+out.** Deliverable 3's tests round-trip **real emitter output**, which must already carry
+`model_tier:`, so the emitter cannot come after the apply verb. **Three runs, each completing
+python-engineer → python-reviewer before the next starts:**
+
+| Run | Contents | Why here |
+|---|---|---|
+| **A** | Deliverables 1 + 2 | Independent of the emitter; in flight |
+| **C1** | Deliverable 4 (emitter) + the **version-tripwire half** of Deliverable 5 | ⚠ **Must land BEFORE Deliverable 3** — the apply verb's round-trip tests need emitted files that already carry `model_tier:` |
+| **B** | Deliverable 3 + the **default-map-equality half** of Deliverable 5 | That literal is born in the apply module, so its pin cannot precede it |
+
+⚠ **Deliverable 5 is therefore SPLIT ACROSS TWO RUNS**, which the phase text does not say. Recorded
+here so a builder reading Deliverable 5 as one unit does not block run C1 waiting for a literal
+that does not exist yet.
+
+#### Phase 1 build record — Deliverables 1–5 (2026-09-03)
+
+**BUILT and python-reviewer clean; the commit is pending.** The split above ran as planned, each run
+completing python-engineer → python-reviewer before the next started: **run A** (Deliverables 1+2)
+returned **ZERO findings**; **run C1** (Deliverable 4 + the tripwire half of 5) returned **4
+findings, all applied**; **run B** (Deliverable 3 + the equality half of 5) returned **12 findings,
+all applied and CONFIRMED on re-check, plus 1 new Low closed.** ⚠ **Run B's four MEDIUMs are the
+load-bearing part of this record** — permissions, duplicate keys, CRLF and layering — and each is
+named below rather than folded into a count.
+
+**The counts, COUNTED from the live tuples.** `FIELD_SCHEMA` **35** (was 32) · `ENUM_FIELDS` **8**
+(was 5) · `FIELD_DEFAULTS` **6** (was 3) · `_PROJECT_CONFIG_KEY_ORDER` **43** (was 40). The four
+pins were RENAMED to carry the live numbers: `test_field_schema_has_35_fields`,
+`test_default_state_has_35_keys`, `test_all_43_keys_present`, `test_renders_43_keys_with_defaults`.
+⚠ **Three PRE-EXISTING stale counts were corrected while touching those exact lines** —
+`_render.py`'s *"31 FIELD_SCHEMA entries"* docstring, `_cmds_verify.py`'s *"32/31"*, and
+`_cmds_set.py`'s *"Enum scalar setters (6)"* header, **which was already wrong at 5.** They are
+recorded as pre-existing, not claimed as this plan's defects. **`src/devforge/project-config.json`
+does not enumerate every key and was deliberately left alone.**
+
+**What landed. New:** `_configure/_agent_models.py` (pure logic + the consumer-side twin
+`CLAUDE_AGENT_DEFAULTS_BY_TIER`), `_configure/_cmds_agent_models.py` (`cmd_apply_agent_models`),
+`scripts/lib/model_version_tripwire.py`; tests `test_effort_fields.py`,
+`test_apply_agent_models.py`, `test_agent_models.py`, `test_model_version_tripwire.py`.
+**Modified:** `_schema.py` (three effort fields appended last; ⚠ **`CLAUDE_MODEL_ALIASES` lives
+HERE, not in `_cmds_set.py`** — the package DAG runs base modules → `_cmds_*` and never the
+reverse), `_cmds_set.py`, `_cli.py` (`set-claude-effort-*`, `Step 5b: apply-agent-models`,
+`--install-root` help), `_render.py`, `_summary.py`, `_cmds_verify.py` (docstring only — the
+`"default"` baseline needs no exemption, and a test proves it), `scripts/generate-agents.py`,
+`scripts/lib/install_defaults.py` (comments), `tests/lib/test_configure_helper.py`,
+`tests/lib/_configure/test_substitute_file.py`, `tests/scripts/test_generate_agents.py`.
+
+⚠ **A latent defect was found and fixed in passing, and it is NOT this plan's:** `_render.py`'s
+`_write_file_atomic` **left every rewritten file at mkstemp's `0o600`**; it now PRESERVES the
+target's mode. **The same defect is shared with `substitute-templates`** — recorded here because a
+future session meeting a permissions surprise there should know it was seen and where.
+
+**Deliverable 4 as shipped.** Emitted order `name`, `description`, [`tools`], `model`,
+`model_tier`, [`applies_to`] — Step 0's answer 2 executed. `model_tier` stays REQUIRED in every
+source. ⚠ **The `model_pin` regex was TIGHTENED to `^[a-z][a-z-]*$` (no digit)**: the reviewer
+demonstrated `sonnet-4-5` passing the drafted `[a-z0-9-]` shape **and slipping both tripwire
+patterns** — a version string entering `src/` through the one field designed to bypass the tier.
+**A pin is an alias, not a version, and the regex now says so.**
+
+**Deliverable 5 as shipped.** The display-name pattern was **WIDENED to
+`\b(opus|sonnet|haiku|fable)[\s-]+[0-9]`** for the same reason; the walker is
+`os.walk(followlinks=False)`, symlink-cycle safe on every supported Python; **both baselines
+clean.** ⚠ **Build observation worth keeping: the tripwire's live gate FAILED once mid-build, on a
+real instance** — run A's docstring example `claude-opus-4-7-bedrock` — and the example became
+`my-bedrock-route`. **That is the gate doing its job before it was ever committed**, and it is the
+only evidence this plan has that the tripwire catches anything.
+
+**Deliverable 3 as shipped — the contract `update.sh` and `/devforge:configure` print.** stdout
+`{"applied": [{agent, tier, model, effort|null, changed}], "skipped": [{agent, reason}]}`, sorted by
+agent, with `reason ∈ {no-frontmatter, unclosed-frontmatter, no-model-tier}`. Exit **0**; exit **2**
+on validation (unknown tier, effort outside the enum, a DUPLICATED `model_tier:` / `model:` /
+`effort:` key, or `model_tier:` with no sibling `model:`) — **two-pass, nothing written**; exit
+**1** on a missing or malformed config or an IO error. ⚠ **The exit-1 bound, stated because it is
+the one place the verb is not clean: a WRITE-phase IO error can leave a PARTIALLY APPLIED set** —
+each write is atomic, **the batch is not transactional.** Also shipped: alias case normalized at
+apply time too, so a legacy stored `Opus` reaches the file as `opus`; `effort:` inserted
+immediately after `model:`; `model_tier: scan` has no config knob and takes the static default with
+no effort line. ⚠ **CRLF is handled end to end, and the reason is worth keeping**: the command reads
+`read_bytes().decode()` because `Path.read_text()` **silently translates `\r\n` to `\n`** and would
+have quietly rewritten every line ending in a CRLF consumer's agent files.
+
+**Cross-phase note.** Phase 2 landed `model_pin: opus` on `security-reviewer.md` **in parallel**, so
+the real-roster emitter test became `test_every_shipped_agent_emits_model_tier_except_the_declared_pins`
+— which pins the LIVE pin set `{security-reviewer: opus}` — plus
+`test_security_reviewer_frontmatter_order_unchanged_around_the_pin`.
+
+**Verify block — every bullet satisfied, with the test that proves it.** Step 0's pass and its
+record: the block above. Idempotence, an agent with no `model_tier:` left untouched, `default`
+removing the `effort:` line, a `null` tier applying the D2 default, and post-apply body
+byte-identity: `test_apply_agent_models.py`. The equality pin proved by **mutating a copy**, not by
+reasoning: `test_agent_models.py`. The tripwire failing on **both planted shapes**:
+`test_model_version_tripwire.py`. `configure_helper verify` exiting 0 with the effort fields unset
+**and on a legacy `configure.yaml`**: `test_effort_fields.py`. ⚠ **The last bullet — "zero files
+modified under `src/commands/`" — holds for Phase 1's OWN diff only.** The working tree also carries
+Phase 2's edits and another session's unrelated edits, **so the Phase 1 commit is made BY EXPLICIT
+PATH**, never `git add -A`.
+
+**Suites.** configure + tripwire + emitter = **660 passed / 53 subtests** at the last re-check; full
+`tests/lib` green at **11492** as of run A's checkpoint, **re-run at commit time.**
+
+⚠ **One accepted overage, recorded rather than waived:** `test_apply_agent_models.py` is **727
+lines**, over the 600-line threshold. **Accepted because ONE source module backs it**, so a split
+would divide a single contract across files; **a concern-based third split is the recorded option**
+if it grows again.
+
 ---
 
-### Phase 2 — The question surface and the contract *(instruction-only)*
+### Phase 2 — The question surface and the contract *(instruction-only)* — **BUILT 2026-09-03** (instruction-reviewer clean; commit pending)
 
 **Route: instruction-author → instruction-reviewer, plus `claude-code-guide` for THIS phase's own
 surface.** `q11-tiers.md` ships to `.devforge/command-refs/configure/` and `configure/main.md`
@@ -992,6 +1224,11 @@ Scope, four files:
   **at least two** named options (fact 22). If D5's probe leaves exactly one alias available, the
   model question **falls back to a plain free-text prompt** — the house rule that a free-text-only
   question bypasses the tool. **Write that arm; do not leave it to inference.**
+  ⚠ **SUPERSEDED BY THE BUILD, 2026-09-03 — read the free-text sentence as the drafting-time
+  proposal, never as the shipped rule.** The one-alias arm **sets that alias** and says so, with a
+  reversibility clause keeping the pin route open; a **zero-alias arm** was added beside it. **The
+  constraint the drafting named was real; the resolution it guessed was ceremony.** Full reasoning
+  at `#### Phase 2 build record`, divergences 1 and 2.
 - **`src/commands/configure/main.md`** — the Q11 pointer paragraph (now two questions per call, not
   one); **Phase 5's fourth sub-step** (`apply-agent-models`) with its ordering rationale — it runs
   **after** `substitute-templates` because that step walks the post-prune file set, and applying
@@ -1021,12 +1258,18 @@ Scope, four files:
 - **The emitted text does not contradict Phase 1's recorded answers** — instruction-reviewer reads
   the Phase-1 build record before judging the `model_tier:` / `model_pin` prose.
 - **`grep -n "Haiku" src/commands/configure/references/q11-tiers.md` shows Haiku is no longer the
-  verify recommendation**, and `## Defaults rationale` states the four D2 reasons rather than the
-  old cost argument.
+  verify recommendation**, and `## Defaults rationale` states the D2 reasons rather than the old
+  cost argument. ⚠ **THREE reasons, not four** — the fourth was weakened at Step 0, and the emitted
+  text must not repeat a claim this plan corrected (Phase 2's build record, divergence 4).
 - **Each per-tier AskUserQuestion call carries exactly two questions and each question 2–4 options**
   — instruction-reviewer confirms against fact 22, and confirms **no authored `Other`** appears
   anywhere (the tool injects it).
 - **The single-available-alias fallback arm exists** and names the free-text route.
+  ⚠ **AMENDED BY THE BUILD, 2026-09-03 — what shipped is NOT the free-text route.** The arm SETS the
+  sole available alias, says so, still asks the effort question, and carries a reversibility clause
+  so the pin route stays reachable; **a zero-alias arm the plan never specified was added beside
+  it.** The criterion now reads: **both arms exist, and neither asks a free-text question for a
+  choice with fewer than two options** (build record, divergences 1 and 2).
 - **BOTH tripwire patterns return nothing against
   `src/commands/configure/references/q11-tiers.md`** — the API-ID shape and the
   display-name-with-version shape (D3). The session-known IDs are DESCRIBED as a run-time listing,
@@ -1043,9 +1286,102 @@ Scope, four files:
 - **No plan vocabulary in emitted text** — "D6", "OQ-1", "Phase 2" and this plan's number are
   maintainer vocabulary. Emitted text names only commands, files and behaviors.
 
+#### Phase 2 build record (2026-09-03)
+
+**BUILT and instruction-reviewer clean; the commit is pending.** Route as run: **claude-code-guide
+for this phase's own surface FIRST**, then instruction-author → instruction-reviewer, which returned
+**6 findings — 1 high, 2 medium, 2 low, 1 nit.** Four were in-file fixes, applied and **CONFIRMED on
+re-check**; the fifth is this record; the sixth was a cite digit.
+
+**The guide's answers (2026-09-03), and three of the four are "not documented".**
+
+- **The Agent tool's per-invocation `model` parameter IS documented** — `sonnet|opus|haiku|fable`,
+  full IDs, `inherit` (`code.claude.com/docs/en/sub-agents.md`). ⚠ **So D5's probe stands on
+  documented ground**, which fact 20 could only call an observed tool schema.
+- **AskUserQuestion's bounds are NOT documented.** The docs confirm only that a user may pick an
+  option or type custom text; the 1–4 questions, 2–4 named options and the injected `Other` row stay
+  **OBSERVED** (fact 22's degradation note is unchanged and still binds).
+- **What happens when a subagent starts on an inaccessible model is NOT documented.** The probe
+  treats **any** error as unavailable — as designed (D5), and now known to be undocumented rather
+  than merely unverified.
+- **How a running session learns its OWN model is NOT documented** — the docs state that subagents
+  do not know theirs. ⚠ **That is D7's session-model half**, it is **Phase 4's** concern, and **it
+  stays OBSERVED.** D7's honest bound (i) is unchanged and was not weakened by asking.
+
+⚠ **The HIGH finding was a product of PARALLEL EXECUTION, and the lesson generalizes.** Phase 3
+landed its `update.sh` call while this phase was being written, so `main.md`'s Phase 5.4 closing
+sentence — *"a follow-up change adds this same call … until that call lands"* — **was already false
+when it reached review.** It now describes the landed behavior in the present tense. **Write build
+records and forward-looking sentences from the TREE, not from the phase order**: phase numbers are
+a plan's sequence, not a guarantee about what is on disk when a sentence is read.
+
+**Five deliberate divergences from this plan's own Phase-2 text. None is ratified elsewhere, and
+divergence (1) AMENDS the plan's text by this record rather than silently.**
+
+1. **The exactly-one-available-alias arm.** The plan said *"a plain free-text prompt"*. What shipped
+   **SETS the sole available alias** through the setter, says so in one line, **still asks the
+   effort question**, and carries a reversibility clause (`set-claude-tier-<tier>` +
+   `render-config` — the pattern `main.md` already uses for `require_ticket` and `regression_gate`)
+   **so the pin route stays reachable.** Reason: **a free-text prompt for a one-option choice is
+   ceremony.** ⚠ **The plan's Phase-2 scope bullet still names the free-text route; THIS RECORD is
+   its amendment.**
+2. **A zero-aliases-available arm the plan never specified:** save no model, **the built-in tier
+   default stands**, still ask effort.
+3. **A new rule, first of its kind in that file:** when a tier's recommended alias is unavailable,
+   **NO option carries `(Recommended)`** — the marker is **never moved** to another alias. **This
+   sets a precedent for future additions to `q11-tiers.md`**: the recommendation belongs to a named
+   alias, not to a position in the list.
+4. **`## Defaults rationale` gives THREE reasons for `verify = sonnet`**, the fourth having been
+   weakened at Step 0 — and **the Haiku/effort fact rides the `haiku` option descriptions as the
+   DOCUMENTED SILENT FALLBACK, never as an API error.** The emitted text does not repeat a claim
+   this plan corrected.
+5. **Two docs URLs are cited inline in emitted text** (`sub-agents.md`, `model-config.md`) — **new
+   for `q11-tiers.md`**, and a precedent for that file. **No plan vocabulary reached either emitted
+   file.**
+
+**What landed.** `q11-tiers.md` rewritten end to end — intro · `## Availability probe — run before
+Q11.1` · `## Q11.1/2/3`, one call carrying two questions each · `## Pinning a model the list did not
+offer` · `## Saving the answers` · `## Defaults rationale` with the three honest bounds.
+`configure/main.md` — line 9, the Outputs bullets, the Phase 4 intro (**ten** user-only prompts,
+with Q11 named as the one-call-two-questions exception), `### Q11`, the Phase 5 intro renamed
+**`Render + prune + substitute + apply`** with four sub-steps, a new **`### Phase 5.4 — Apply agent
+models`** carrying the JSON shape and exit codes 0/1/2 **including all four validation causes**,
+plan 89's `regression_gate` note **updated IN PLACE with its guidance verbatim**, and the Closing.
+`agents-AUTHORING.md` — the `model_tier` row re-derived (**emitted TWICE**), a new `model_pin` row,
+a dated contract-extension note naming **what stayed fixed** (the field names and their
+required/optional status) and **the one emitted-form change** (`model_tier`'s companion line), the
+skeleton parenthetical, the checklist, and every cite re-derived live
+(`generate-agents.py:260→:328`, `:168→:195`, `:215→:278`; `install_defaults.py:30→:39`; plus `:84`
+for `_MODEL_PIN_RE`). `src/agents/security-reviewer.md` — meta gains `model_pin: opus`.
+
+**Counts written, COUNTED live:** schema **35**; **34** populated by the command = **24**
+detection-derived + **10** user-only prompts (Q9, Q10, Q11 × 6, Q12 mode, Q13); keys **43** = 35 + 5
++ 3.
+
+**Verify — satisfied.** The three greps clean: no stale 31/32/40, no *"Which model name"*, and no
+version string of either shape anywhere under `src/`. `python3 scripts/lib/model_version_tripwire.py
+src` → **PASS** after the edits. The emitter roster test is recorded in Phase 1's block.
+
+⚠ **Carry-forwards — Phase 5's sweep list is TOO NARROW and is widened by this record.** Four sites
+sit outside it today, and the last two are pre-existing rather than this plan's:
+
+- **`DEVELOPMENT-STATUS.md:58`** — a **SECOND** stale `MODEL_THINK` / `MODEL_DO` / `MODEL_VERIFY`
+  site beside the `:104` one Phase 5 already names. **A fix that corrects only `:104` leaves `:58`
+  looking verified.**
+- **`docs/v2/ARCHITECTURE.md`** — `:260` / `:285` / `:321` / `:328` / `:384` say 29 fields / 37
+  keys, `:398` recommends `verify=Haiku`, and `:277` / `:310` describe Q11 as a bare tier triple.
+  ⚠ **No plan's sweep has ever covered `docs/`** — an accumulating gap that is **a maintainer
+  decision, not a Phase-5 judgment call**: frozen history, or owed a sweep.
+- **`src/agents-AUTHORING.md:87`** — *"17 agents in four families"*; **the census is 19** (fact 3).
+  **Pre-existing.**
+- **`install.sh:298`'s *"35-key ALL-NULL stub"* comment and `src/devforge/project-config.json`
+  itself** — 35 keys against 43 live. **Functionally harmless for `apply-agent-models`, verified**:
+  its `.get()` reads a null and an absent key alike. **Recorded options:** regenerate the stub from
+  `_PROJECT_CONFIG_KEY_ORDER`, or pin the two equal with a maintainer test, plan-89 style.
+
 ---
 
-### Phase 3 — The `update.sh` post-merge apply call *(shell)*
+### Phase 3 — The `update.sh` post-merge apply call *(shell)* — **BUILT 2026-09-03** (python-reviewer clean; commit pending)
 
 **Route: python-engineer → python-reviewer** (the repo's shell edits ride the same review loop; no
 claude-code-guide pass is owed — `update.sh` ships nowhere inside `.claude/`).
@@ -1065,6 +1401,14 @@ configuration to apply, and the emitted static defaults are correct at that mome
 1. **The call runs AFTER the snapshot refresh, never before.** The snapshot must keep the RAW
    regen (fact 11), so an apply that ran first would poison every future three-way merge with a
    consumer-specific model line.
+   ⚠ **THE CONSTRAINT STANDS; THIS EXPLANATION WAS TRACED AND FOUND WRONG (2026-09-03).** Every
+   snapshot write sources from `$REGEN_AGENTS_DIR` / `$TEMPLATE_DIR`, **never from the live
+   target**, so an early apply **cannot** poison the baseline and the *"poison the baseline"*
+   framing is **retired from this plan's vocabulary.** **The real hazard:** an apply that ran BEFORE
+   the merge **pre-mutates the live file's *current* side before the diff is computed** — and if the
+   same release also changed a tier's static default, that manufactures a **spurious three-way
+   conflict**, whereupon the file's snapshot refresh is skipped and the snapshot goes **stale**.
+   Full trace in `#### Phase 3 build record`.
 2. **A failure is reported, not fatal.** `update.sh` warns and continues elsewhere in this same
    loop; an apply failure leaves agents on their static defaults, which is a degraded state and
    not a broken one.
@@ -1077,13 +1421,99 @@ configuration to apply, and the emitted static defaults are correct at that mome
   **never as a consumer validation.**
 - **An UNCONFIGURED install is unaffected** — `HAS_CONFIG` false means no apply, and the run's
   output is byte-comparable to a pre-change run except for the absent call.
+  ⚠ **TRUE BUT NOT THE REALISTIC CASE, found 2026-09-03.** `install.sh` ships an **ALL-NULL
+  `project-config.json` stub**, so **`HAS_CONFIG` is TRUE from the very first update** and the block
+  DOES run — as a **byte-level no-op** (every null tier resolves to its default, which matches the
+  emitted static `model:`). **The criterion that actually matters is the no-op, not the skip**, and
+  both were verified; see the build record.
 - **⚠ The static-default merge-conflict question is ANSWERED, not assumed** (Trap 3). Construct the
   case — a consumer file whose `model:` differs from both the old and the new static default — and
   **record what `git merge-file` actually does.** If it conflicts, `update.sh` leaves the whole file
   unchanged (fact 11), which means the agent's BODY update is skipped too. **Record the finding; do
   not repair it in this phase.**
+  ✅ **ANSWERED 2026-09-03 — it CONFLICTS, and the consequence is worse than the bullet anticipated.**
+  See the build record's item (c): the file's whole update is skipped **body included**, its snapshot
+  goes stale, the condition **recurs on every subsequent update**, and the post-merge apply then
+  makes the `model:` field read correct **while the stale body stays invisible.** **Recorded as an
+  OPEN residual, not repaired.**
 - `grep -n "apply-agent-models" update.sh install.sh` returns hits in `update.sh` only, and the
   `install.sh` no-op is recorded in the commit message as deliberate.
+
+#### Phase 3 build record (2026-09-03)
+
+**BUILT and python-reviewer clean; the commit is pending.** Route as run: python-engineer →
+python-reviewer, **7 findings — 3 medium, 3 low, 1 nit.** Six were applied and **CONFIRMED on
+re-check**; the seventh — `install.sh:298`'s *"35-key"* stub comment and the 35-vs-43
+`project-config.json` gap — is **pre-existing and was carried to Phase 5**, where it already sits on
+the widened sweep list. **One further Low surfaced during the re-check** (a missing `2>/dev/null` on
+the changed-agent listing `jq`) and was **closed in the same pass**. `shellcheck` — installed during
+review — reports **zero findings in both touched ranges**; `bash -n` clean.
+
+**What landed — `update.sh` ONLY, +48 lines.** An `# ── Execute: apply-agent-models (plan 92 D1)`
+block placed **after the removed-agent prune loop and the `REGEN_AGENTS_DIR` cleanup, before
+`# ── Execute: mergeFiles`**, under the **same `HAS_CONFIG` guard** `substitute_placeholders()`
+already uses. It captures the verb's stdout and exit code **without tripping `set -e`**, and on
+exit 0 prints `Applied agent models: N with model_tier (M changed), K skipped` plus one `info` line
+per changed agent (`<agent>: model=<model> effort=<effort or default>`). The `--dry-run` report
+gained a matching `APPLY agent models: …` preview line beside the agent previews. `--only <command>`
+surgical mode **exits before agents and never reaches the block** — correct, since it touches no
+agent file.
+
+⚠ **A latent WHOLE-SCRIPT ABORT was found by the reviewer and confirmed by simulation.** Every
+downstream `jq` is now guarded (`2>/dev/null` + `|| VAR="?"`, the listing `done || true`), so a
+helper regression that emits malformed stdout **degrades to a legible `?` line instead of killing
+the update**: a `{not valid json` stdout now yields `? with model_tier (? changed), ? skipped` and
+**the run continues.**
+
+⚠ **The failure warning is worded to be TRUE on all three failing paths**, which is why it is vague
+about which one happened: *"some agents' model/effort lines may be out of date or partially applied;
+re-run `/devforge:configure` to reconcile"* covers **exit 2** (nothing written), **exit 1 in pass 1**
+(nothing written) **and exit 1 in pass 2** (a partial batch — D1's recorded non-transactional bound).
+Each stderr line is then printed through its own `warn`, and the run continues.
+
+**`install.sh` needs nothing, and the check is recorded as a finding:** it runs before
+`/devforge:configure` ever has, so the emitted static defaults are correct at that moment (D1).
+**`grep -n apply-agent-models install.sh` is empty BY DESIGN.**
+
+⚠ **The ordering comment was CORRECTED during review — record the TRACED mechanism, not the drafted
+one.** The constraint (apply **after** the snapshot refresh) is unchanged; **its explanation was
+wrong.** Every snapshot write sources from `$REGEN_AGENTS_DIR` / `$TEMPLATE_DIR` and **never from
+the live target**, so an early apply **cannot** "poison the baseline" — that framing is retired. The
+real hazard is that an early apply **pre-mutates the live file's *current* side before the diff is
+computed**; combined with a release that also changed a tier's static default, it manufactures a
+**spurious conflict**, and a conflicted merge **skips that file's snapshot refresh**, leaving the
+snapshot stale. **A correct constraint resting on a wrong reason is a latent trap** — the next
+person to "simplify" it would have reasoned from the retired framing.
+
+**Verify results — LOCAL REPRODUCTION, a build observation and NOT consumer validation.** ⚠ **None
+of this is Phase 6.** Nothing below was run on a real consumer install, and a passing local
+reproduction is not an anchor.
+
+- **(a) Phase-6 anchor 3, run locally.** A scratch copy of the repo installed into a scratch target,
+  configured `think = fable` / effort `xhigh`; then an agent-**BODY** edit in the scratch template's
+  `src/agents/architect.md` and a non-interactive `update.sh`. **The body change arrived,
+  `model: fable` / `effort: xhigh` survived, and the summary line printed.** A second reproduction
+  from a **configured-but-never-applied** state showed non-zero `changed` counts and the per-agent
+  lines.
+- **(b) The unconfigured install, and the realistic case is the OTHER one.** With no config at all:
+  no apply line, agents byte-identical. ⚠ **But the real post-install state differs** — `install.sh`
+  ships an **ALL-NULL `project-config.json` stub**, so `HAS_CONFIG` is true from the first update and
+  the block runs as a **byte-level NO-OP**: every null tier resolves to its default, which matches
+  the emitted static `model:`; `changed: false` everywhere; `security-reviewer` appears under
+  `skipped` as `no-model-tier`. **Verified with md5 before and after.**
+- **(c) Trap 3 ANSWERED — it CONFLICTS, and the consequence is worse than the trap predicted.**
+  `git merge-file` on base `model: opus` / current `model: fable` / other `model: sonnet` **conflicts
+  (exit 1, conflict markers).** So a future change to a tier's **static default** would, for every
+  consumer whose configured model differs from both, leave that agent file's **WHOLE update
+  unapplied — body included** — and its **snapshot stale**, a condition that **recurs on every
+  subsequent update** until someone resolves it by hand. ⚠ **And the failure is camouflaged:** the
+  post-merge apply re-derives `model:` / `effort:` from configuration regardless, **so the model
+  field reads correct while the stale body is invisible from the `Applied agent models` line.** The
+  **only** signal is the earlier, decoupled `Merge conflicts in <file>` warn. **RECORDED, NOT
+  REPAIRED** — out of this phase by the plan's own instruction. ⚠ **OPEN RESIDUAL for a future
+  plan**, with its two candidate shapes: **change a static tier default only with a migration note**,
+  or **teach the merge to treat the `model:` line as consumer-owned.**
+- **(d) A forced malformed config:** the script **warns and completes with rc=0.**
 
 ---
 
@@ -1138,6 +1568,25 @@ Scope:
   `CLAUDE_TIER_THINK` / `CLAUDE_TIER_DO` / `CLAUDE_TIER_VERIFY`, and **the claim becomes true for
   the first time.** ⚠ **Its parenthetical enumeration of think-tier agents is incomplete** — five
   agents, not three (fact 3). **Fix it or drop the enumeration; do not leave it half-corrected.**
+  ⚠ **WIDENED 2026-09-03 by Phase 2's build: `:104` is NOT the only site.** `DEVELOPMENT-STATUS.md:58`
+  carries a **SECOND** stale `MODEL_THINK` / `MODEL_DO` / `MODEL_VERIFY` triple. **A fix that corrects
+  only `:104` leaves `:58` looking verified** — grep the file for the three key names rather than
+  going to a line number.
+- ⚠ **`docs/v2/ARCHITECTURE.md` — OUTSIDE this plan's original scope, and the decision is the
+  MAINTAINER'S, not Phase 5's** (found by Phase 2's build). It says 29 fields / 37 keys at `:260`,
+  `:285`, `:321`, `:328`, `:384`; recommends `verify=Haiku` at `:398`; and describes Q11 as a bare
+  tier triple at `:277` and `:310` — **every one of those falsified by this plan.** ⚠ **No plan's
+  sweep has ever covered `docs/`**, so this is an accumulating gap rather than a defect this build
+  introduced. **Surface it and ASK: frozen history, or owed a sweep?** Do not decide it inside a
+  docs-sweep phase.
+- ⚠ **`src/agents-AUTHORING.md:87` — PRE-EXISTING, unrelated to this plan.** It says *"17 agents in
+  four families"*; **the census is 19** (fact 3). **Record it as pre-existing** wherever it is fixed.
+- ⚠ **`install.sh:298`'s *"35-key ALL-NULL stub"* comment and `src/devforge/project-config.json`** —
+  35 keys against 43 live. **Functionally harmless for `apply-agent-models`, and that was VERIFIED,
+  not assumed**: its `.get()` reads a null and an absent key alike. **Two recorded options, neither
+  built here**: regenerate the stub from `_PROJECT_CONFIG_KEY_ORDER`, or pin the two equal with a
+  maintainer test in plan 89's style. **Phase 1 deliberately left that file alone**; if Phase 5 also
+  leaves it, **record the no-op as deliberate** rather than silent.
 - **`scripts/lib/install_defaults.py` and `scripts/generate-agents.py`** — the two unbuilt-intent
   comments (facts 1, 2). ⚠ **These are COMMENTS in Python files, so this is the one Phase-5 edit
   that touches a `.py` file** — it changes no code, and a reviewer must be able to see that from
@@ -1320,11 +1769,14 @@ Deliverable 3 and Phase 3's call both land.**
 **Trap 2 — writing a model version into `src/`, in EITHER shape.** The whole point of directive (a)
 is that the framework never needs a release to track a model release. **The tripwire test is what
 makes that falsifiable, and it asserts TWO patterns** — the API-ID shape `claude-[a-z]+-[0-9]` and
-the display-name-with-version shape `\b(opus|sonnet|haiku|fable)\s+[0-9]`, case-insensitive.
-⚠ **The second is the one that catches real prose**: a rationale sentence or a `CHANGELOG` line
-naming `Opus 5`, `Haiku 4.5` or `Fable 5.1` sails straight past the first pattern. **Both baselines
-were clean at drafting time** (fact 18) — so a failing tripwire after this build means THIS build
-broke it, not that it was always broken.
+the display-name-with-version shape **`\b(opus|sonnet|haiku|fable)[\s-]+[0-9]`** (widened at build
+from `\s+`), case-insensitive. ⚠ **The second is the one that catches real prose**: a rationale
+sentence or a `CHANGELOG` line naming `Opus 5`, `Haiku 4.5`, `Fable 5.1` — **or the hyphenated
+`sonnet-4-5`, which slipped BOTH drafted patterns until run C1's reviewer caught it** — sails
+straight past the first. **Both baselines were clean at drafting time** (fact 18) **and at build**
+— so a failing tripwire after this build means THIS build broke it, not that it was always broken.
+⚠ **The gate has already fired once on a real instance** (a docstring example in run A); see
+`#### Phase 1 build record — Deliverables 1–5`.
 
 **Trap 3 — changing the emitted static default without thinking about `git merge-file`.** The
 static default is one side of a three-way merge on every configured install (fact 11). Change it,
@@ -1332,6 +1784,13 @@ and for any consumer whose configured value differs from BOTH the old and the ne
 `model:` line may conflict — and `update.sh` responds to a conflict by leaving **the entire file
 unchanged**, so the agent's BODY update is skipped too. ⚠ **Phase 3's Verify block ANSWERS this
 rather than assuming it**; until it runs, treat the static default as something to keep stable.
+✅ **ANSWERED 2026-09-03 and the trap is CONFIRMED, not dispelled — it now binds harder.** A
+three-way merge of base `opus` / current `fable` / other `sonnet` **conflicts**. Beyond what this
+trap predicted: the file's **snapshot refresh is skipped too**, so the staleness **recurs on every
+subsequent update**, and the post-merge apply **camouflages it** — `model:` reads correct while the
+body is old, and the only signal is the earlier `Merge conflicts in <file>` warn. ⚠ **Treat a static
+tier default as effectively FROZEN**: changing one is a migration, not an edit, and the two
+candidate repairs are recorded (unbuilt) at `#### Phase 3 build record` item (c).
 
 **Trap 4 — reading D9's no-gate as a gap to fill.** It is a decision with a named trigger. **A
 session that adds `verify-agent-models` because "the other lanes have gates" has left this plan** —
@@ -1348,10 +1807,25 @@ outright**, running every subagent on `CLAUDE_CODE_SUBAGENT_MODEL` no matter wha
 is an ENVIRONMENT finding, not a D1 or D6 finding**, and the framework has no way to tell the
 difference for you.
 
+⚠ **And the order itself is VERSION-DEPENDENT — confirmed 2026-09-03 at Phase 1's Step 0.** The
+resolution order above is current behavior; **before Claude Code v2.1.251 `CLAUDE_CODE_SUBAGENT_MODEL`
+came FIRST and overrode the frontmatter outright.** So **a consumer on an older Claude Code with
+that variable set never sees the emitted `model:` line at all** — not the tier value, not the
+`security-reviewer` pin — and every agent runs on the variable. **This is a second silent-defeat
+path with no version floor anywhere in this plan**: nothing checks the consumer's Claude Code
+version, and D1 builds no such check. **Rule out both variables before diagnosing any
+"apply didn't work" report.**
+
 **Trap 6 — incrementing the configure counts instead of counting them.** `FIELD_SCHEMA` was 32 and
 `_PROJECT_CONFIG_KEY_ORDER` was 40 on 2026-09-03 (fact 14), and D4 moves both. ⚠ **FOUR assertions
 pin them, not two** — two for each tuple. Count the live tuples; adding three to a remembered
 number produces a differently wrong number.
+⚠ **Phase 1 MOVED them on 2026-09-03: `FIELD_SCHEMA` → 35, `_PROJECT_CONFIG_KEY_ORDER` → 43, and
+the four pins were renamed to carry the live numbers.** **Those figures are themselves a dated
+observation and this trap still binds** — count the tuples, never quote 35/43 from here. ⚠ **The
+build also found THREE pre-existing stale counts** in `_render.py`, `_cmds_verify.py` and
+`_cmds_set.py` (the last already wrong before this plan existed), which is what this trap predicts
+happens when numbers are carried rather than counted.
 
 **Trap 7 — treating the probe as an entitlement check.** D5 observes what **this session's build**
 can dispatch (fact 20). It sees no billing plan, no retention policy and no tomorrow. **A green
@@ -1383,6 +1857,10 @@ released. Re-check each from the code rather than from a Status line.
    states it as fact. **D1's `model_tier:` line inherits a working precedent, not a documented
    guarantee**, and **Phase 1's Step 0 is where that gets asked directly** — before the emitter
    code depends on the answer, not after.
+   ✅ **ASKED 2026-09-03 and the finding STANDS UNCHANGED** — the docs still do not document it
+   either way. What Step 0 added is the **enumerated skip list**, which lists the conditions under
+   which a subagent file is skipped and **does not include an unknown key**. ⚠ **That is evidence,
+   not a guarantee**, and this finding remains open exactly as written.
 
 ---
 
@@ -1411,12 +1889,16 @@ released. Re-check each from the code rather than from a Status line.
    WHERE that lands: at Phase 1's Step 0, BEFORE the emitter code.** ⚠ **Phase 1 is a Python phase
    that still owes the pass**, because Deliverable 4 changes `emit_claude()` and therefore the
    frontmatter shipped into every consumer's `.claude/agents/*.md`; a phase that skips it on
-   "this is Python" has read the file extension instead of the artifact. Put these three questions
-   explicitly: **(i)** are unknown frontmatter keys ignored — the docs did not say so on 2026-09-03
-   and `applies_to` is the only evidence; **(ii)** is the frontmatter key ORDER significant;
-   **(iii)** what does Claude Code do with an `effort:` line on a `haiku`-aliased agent. **Phase 2
-   CITES those recorded answers and does not re-ask them.** **The pages this plan read on
-   2026-09-03 are `https://code.claude.com/docs/en/sub-agents.md` and
+   "this is Python" has read the file extension instead of the artifact.
+   ✅ **RAN 2026-09-03 — all four answers are at `#### Phase 1 build record — Step 0`, and that
+   block is what to READ before re-asking anything.** The three questions put were: **(i)** are
+   unknown frontmatter keys ignored — **answered NOT DOCUMENTED either way**; **(ii)** is the
+   frontmatter key ORDER significant — **answered no, and positions were then chosen and pinned**;
+   **(iii)** what does Claude Code do with an `effort:` line on a `haiku`-aliased agent —
+   **answered SILENT FALLBACK, which weakened two sentences elsewhere in this plan.** **Phase 2
+   CITES those recorded answers and does not re-ask them.** **The pages read are
+   `https://code.claude.com/docs/en/sub-agents.md`,
+   `https://code.claude.com/docs/en/model-config.md` and
    `https://code.claude.com/docs/en/plugins-reference.md`.** If any answer has changed, D1's
    `model_tier:` route, D4's sentinel and D7's whole premise must be **re-derived, not extended.**
 7. **Route every edit through the house loops:** **python-engineer → python-reviewer, test-first**

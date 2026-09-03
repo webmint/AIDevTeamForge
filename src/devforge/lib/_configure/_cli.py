@@ -5,6 +5,7 @@ Dispatcher-only. All cmd_* handler bodies live in sibling modules:
                  + cmd_set_package_stacks
   _cmds_read   — read-init / read-docs / read-manifests / read-configs
   _cmds_render — render-config / substitute-templates / substitute-file / prune-agents
+  _cmds_agent_models — apply-agent-models
   _cmds_verify — verify / summary
 """
 
@@ -16,6 +17,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from ._cmds_agent_models import cmd_apply_agent_models
 from ._cmds_read import (
     cmd_read_configs,
     cmd_read_docs,
@@ -43,6 +45,9 @@ from ._cmds_set import (
     cmd_set_architectures,
     cmd_set_build_commands,
     cmd_set_build_tools,
+    cmd_set_claude_effort_do,
+    cmd_set_claude_effort_think,
+    cmd_set_claude_effort_verify,
     cmd_set_claude_tier_do,
     cmd_set_claude_tier_think,
     cmd_set_claude_tier_verify,
@@ -90,7 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Install root (parent of devforge-dir). "
-            "Default: parent of --devforge-dir. Used by read-docs + read-configs."
+            "Default: parent of --devforge-dir. Used by read-docs + read-configs "
+            "+ apply-agent-models."
         ),
     )
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -278,24 +284,57 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = subparsers.add_parser(
         "set-claude-tier-think",
-        help="Set claude_tier_think enum (Opus | Sonnet | Haiku | Other).",
+        help=(
+            "Set claude_tier_think (opus | sonnet | haiku | fable, normalized "
+            "to lowercase case-insensitively; any other value is stored as a "
+            "pinned model ID)."
+        ),
     )
     sp.add_argument("value", help="Thinking tier.")
     sp.set_defaults(func=cmd_set_claude_tier_think)
 
     sp = subparsers.add_parser(
         "set-claude-tier-do",
-        help="Set claude_tier_do enum (Opus | Sonnet | Haiku | Other).",
+        help=(
+            "Set claude_tier_do (opus | sonnet | haiku | fable, normalized "
+            "to lowercase case-insensitively; any other value is stored as a "
+            "pinned model ID)."
+        ),
     )
     sp.add_argument("value", help="Doing tier.")
     sp.set_defaults(func=cmd_set_claude_tier_do)
 
     sp = subparsers.add_parser(
         "set-claude-tier-verify",
-        help="Set claude_tier_verify enum (Opus | Sonnet | Haiku | Other).",
+        help=(
+            "Set claude_tier_verify (opus | sonnet | haiku | fable, normalized "
+            "to lowercase case-insensitively; any other value is stored as a "
+            "pinned model ID)."
+        ),
     )
     sp.add_argument("value", help="Verifying tier.")
     sp.set_defaults(func=cmd_set_claude_tier_verify)
+
+    sp = subparsers.add_parser(
+        "set-claude-effort-think",
+        help="Set claude_effort_think enum (default | low | medium | high | xhigh | max). Default: default.",
+    )
+    sp.add_argument("value", help="Thinking tier effort.")
+    sp.set_defaults(func=cmd_set_claude_effort_think)
+
+    sp = subparsers.add_parser(
+        "set-claude-effort-do",
+        help="Set claude_effort_do enum (default | low | medium | high | xhigh | max). Default: default.",
+    )
+    sp.add_argument("value", help="Doing tier effort.")
+    sp.set_defaults(func=cmd_set_claude_effort_do)
+
+    sp = subparsers.add_parser(
+        "set-claude-effort-verify",
+        help="Set claude_effort_verify enum (default | low | medium | high | xhigh | max). Default: default.",
+    )
+    sp.add_argument("value", help="Verifying tier effort.")
+    sp.set_defaults(func=cmd_set_claude_effort_verify)
 
     sp = subparsers.add_parser(
         "set-ac-verification-mode",
@@ -425,6 +464,24 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_prune_agents)
 
     # ------------------------------------------------------------------
+    # Step 5b: apply-agent-models.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "apply-agent-models",
+        help=(
+            "Rewrite model:/effort: frontmatter on every .claude/agents/*.md "
+            "from .devforge/project-config.json, keyed on each file's "
+            "model_tier: line. A file without model_tier: (a model_pin "
+            "agent, or a consumer's own hand-written agent) is left "
+            "untouched. Idempotent; JSON decision report to stdout. "
+            "Exit 0 = success; exit 1 = config missing/malformed or IO "
+            "error; exit 2 = validation error, nothing written."
+        ),
+    )
+    sp.set_defaults(func=cmd_apply_agent_models)
+
+    # ------------------------------------------------------------------
     # Step 6: lint-ignore — exclude framework folders from consumer linters.
     # ------------------------------------------------------------------
 
@@ -455,7 +512,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.print_help(sys.stderr)
         return 2
 
-    # Resolve --install-root default (top-level flag, used by read-docs + read-configs).
+    # Resolve --install-root default (top-level flag, used by read-docs +
+    # read-configs + apply-agent-models).
     if args.install_root is None:
         args.install_root = str(Path(args.devforge_dir).resolve().parent)
 

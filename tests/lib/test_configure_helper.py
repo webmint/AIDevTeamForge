@@ -60,6 +60,31 @@ group placement, and configure_helper verify's exit-0 behavior with
 e2e_command unset AND against a legacy configure.yaml written before
 this field existed (the upgrade-path regression the plan calls out).
 
+Plan 92 Phase 1 coverage (Deliverables 1+2 — the older counts above are
+now three fields / three keys further behind, hence the FOUR count-pin
+tests renamed to 35/35/43/43 in this pass): Deliverable 1 (D4) is
+covered mostly in tests/lib/_configure/test_effort_fields.py (the three
+claude_effort_{think,do,verify} enum scalar fields — FIELD_SCHEMA
+appended last, ENUM_FIELDS six-member set, FIELD_DEFAULTS "default",
+the three set-claude-effort-* setters, their position as the last three
+keys of _PROJECT_CONFIG_KEY_ORDER, their "Preferences" summary-group
+placement directly after claude_tier_verify, and configure_helper
+verify's exit-0 behavior with the trio unset AND against a legacy
+configure.yaml written before it existed); this file carries only what
+a new field addition mechanically touches here — the four count pins,
+FIELD_SCHEMA's locked-order list, ENUM_FIELDS' size/keys/values, and the
+all-fields-set round-trip fixture. Deliverable 2 (D3, alias
+normalization in _cmd_set_claude_tier — a value case-insensitively
+matching opus/sonnet/haiku/fable is now stored in lowercase; any other
+non-empty scalar still passes through unchanged as a pin) is covered
+here only where it broke an existing assertion (SetClaudeTierTests.
+test_opus_accepted_for_think, updated to expect "opus" not "Opus"); the
+full alias-normalization surface (case folding, whitespace, the pin
+route, the empty-rejection floor) lives in
+tests/lib/_configure/test_effort_fields.py's AliasNormalizationTests,
+alongside Deliverable 1's tests, per this repo's real-producer-round-
+trip rule and to keep this already-large file from growing further.
+
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
 
@@ -167,13 +192,13 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_32_fields(self):
-        # 31 + require_ticket (plan 91 Phase 2).
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 32)
+    def test_field_schema_has_35_fields(self):
+        # 32 + claude_effort_think/do/verify (plan 92 Phase 1).
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 35)
 
-    def test_default_state_has_32_keys(self):
+    def test_default_state_has_35_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 32)
+        self.assertEqual(len(state), 35)
 
     def test_default_state_scalars_are_none(self):
         # Fields listed in FIELD_DEFAULTS have non-None defaults and are
@@ -246,13 +271,18 @@ class SchemaTests(unittest.TestCase):
             "regression_gate",
             "e2e_command",
             "require_ticket",
+            "claude_effort_think",
+            "claude_effort_do",
+            "claude_effort_verify",
         ]
         self.assertEqual(names, expected)
 
-    def test_enum_fields_has_5_entries(self):
+    def test_enum_fields_has_8_entries(self):
         # claude_tier_* deliberately omitted to allow custom model aliases
-        # via Q11 Other branch.
-        self.assertEqual(len(configure_helper.ENUM_FIELDS), 5)
+        # via Q11 Other branch. Their claude_effort_* siblings (plan 92
+        # D4) ARE enum-restricted — effort is a closed vendor enum, a
+        # model name is not — so all 3 join here: 5 + 3 = 8.
+        self.assertEqual(len(configure_helper.ENUM_FIELDS), 8)
 
     def test_enum_fields_correct_keys(self):
         expected_keys = {
@@ -261,6 +291,9 @@ class SchemaTests(unittest.TestCase):
             "ac_verification_mode",
             "regression_gate",
             "require_ticket",
+            "claude_effort_think",
+            "claude_effort_do",
+            "claude_effort_verify",
         }
         self.assertEqual(set(configure_helper.ENUM_FIELDS.keys()), expected_keys)
 
@@ -285,6 +318,11 @@ class SchemaTests(unittest.TestCase):
             configure_helper.ENUM_FIELDS["require_ticket"],
             {"true", "false"},
         )
+        for tier in ("think", "do", "verify"):
+            self.assertEqual(
+                configure_helper.ENUM_FIELDS["claude_effort_{0}".format(tier)],
+                {"default", "low", "medium", "high", "xhigh", "max"},
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +565,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 32 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket)."""
+        """All 35 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket, claude_effort_*)."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -572,6 +610,9 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "regression_gate": "full",
             "e2e_command": "npx playwright test",
             "require_ticket": "true",
+            "claude_effort_think": "high",
+            "claude_effort_do": "medium",
+            "claude_effort_verify": "xhigh",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -2714,10 +2755,12 @@ class SetAiAttributionTests(_EnvIsolationMixin, unittest.TestCase):
 class SetClaudeTierTests(_EnvIsolationMixin, unittest.TestCase):
 
     def test_opus_accepted_for_think(self):
+        # Plan 92 D3: "Opus" case-insensitively matches the "opus" alias
+        # and is normalized to its lowercase canonical form at set-time.
         proc = _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
         self.assertEqual(proc.returncode, 0)
         state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
-        self.assertEqual(state["claude_tier_think"], "Opus")
+        self.assertEqual(state["claude_tier_think"], "opus")
 
     def test_sonnet_accepted_for_do(self):
         proc = _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
@@ -3368,12 +3411,12 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_40_keys_present(self):
-        # 39 + REQUIRE_TICKET (plan 91 Phase 2).
+    def test_all_43_keys_present(self):
+        # 40 + CLAUDE_EFFORT_THINK/DO/VERIFY (plan 92 Phase 1).
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 40)
+        self.assertEqual(len(result), 43)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3525,14 +3568,14 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_40_keys_with_defaults(self):
-        # 39 + REQUIRE_TICKET (plan 91 Phase 2).
+    def test_renders_43_keys_with_defaults(self):
+        # 40 + CLAUDE_EFFORT_THINK/DO/VERIFY (plan 92 Phase 1).
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 40)
+        self.assertEqual(len(data), 43)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 

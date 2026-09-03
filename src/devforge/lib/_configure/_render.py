@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
 # Ordered list of keys in project-config.json.
-# 32 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 35 from configure.yaml (FIELD_SCHEMA, uppercased) +
 # 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
 #                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
 # 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
-# Total: 40 keys.
+# Total: 43 keys.
 _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (identity)
     "PROJECT_NAME",
@@ -70,6 +71,10 @@ _PROJECT_CONFIG_KEY_ORDER = (
     "E2E_COMMAND",
     # From configure.yaml (ticket identity — plan 91 D4)
     "REQUIRE_TICKET",
+    # From configure.yaml (agent effort — plan 92 D4)
+    "CLAUDE_EFFORT_THINK",
+    "CLAUDE_EFFORT_DO",
+    "CLAUDE_EFFORT_VERIFY",
 )
 
 # Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".
@@ -129,7 +134,7 @@ def _build_project_config(
     uppercase project-config.json keys). Computes the 3 derived fields.
     Returns an ordered dict whose keys follow _PROJECT_CONFIG_KEY_ORDER.
 
-    configure.yaml fields: all 31 FIELD_SCHEMA entries.
+    configure.yaml fields: all 35 FIELD_SCHEMA entries.
     init.yaml fields: workspace_mode, project_root, project_state,
                       default_branch, packages_detected.
     Derived: WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST.
@@ -354,6 +359,15 @@ def _write_file_atomic(path: Path, content: str) -> None:
     rename semantics (cross-directory rename is not atomic on most kernels).
     flush + fsync before os.replace. On failure, unlinks the temp file and
     re-raises so the original file is never corrupted.
+
+    Preserves the target's existing permission bits when it already
+    exists: mkstemp always creates its temp file 0o600, and os.replace
+    does NOT copy permissions from the file it overwrites, so without
+    this a rewrite of any 0o644 file would silently narrow it to 0o600
+    (python-reviewer run B finding 1) -- surfacing, among other places,
+    on every configure_helper apply-agent-models run over a normally
+    0o644 `.claude/agents/*.md` tree. When `path` does not exist yet,
+    mkstemp's 0o600 is left as-is; there is no prior mode to preserve.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(
@@ -366,6 +380,8 @@ def _write_file_atomic(path: Path, content: str) -> None:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
+        if path.exists():
+            os.chmod(tmp_path, stat.S_IMODE(os.stat(str(path)).st_mode))
         os.replace(tmp_path, str(path))
     except Exception:
         try:

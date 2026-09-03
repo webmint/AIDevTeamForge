@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 
+from ._schema import CLAUDE_MODEL_ALIASES
 from ._schema import _PACKAGE_STACK_FIELDS as _SCHEMA_PACKAGE_STACK_FIELDS
 from ._state import _state_transaction, _write_state, _output_file_path, default_state
 from ._validators import (
@@ -456,7 +457,7 @@ def cmd_set_architecture_details(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Enum scalar setters (6).
+# Enum scalar setters (8).
 # ---------------------------------------------------------------------------
 
 
@@ -487,14 +488,30 @@ def cmd_set_ai_attribution(args: argparse.Namespace) -> int:
 def _cmd_set_claude_tier(args: argparse.Namespace, field_name: str) -> int:
     """Shared implementation for claude_tier_* setters.
 
-    These fields are NOT enum-restricted (see ENUM_FIELDS comment) — they
-    accept any non-empty scalar so users can name custom Claude routes
-    via Q11's `Other` branch.
+    These fields are NOT enum-restricted (see the ENUM_FIELDS comment in
+    _schema.py) — they accept any non-empty scalar, split into two
+    behaviors (plan 92 D3):
+
+    1. Normalized alias: a value that case-insensitively matches one of
+       CLAUDE_MODEL_ALIASES ("opus" / "sonnet" / "haiku" / "fable") is
+       stored in its LOWERCASE canonical form, regardless of the case the
+       caller submitted (e.g. "Opus", " sonnet ", "FABLE" all fold).
+       Q11's per-tier options are these four aliases; this is what a
+       reader picking one of the recommended options actually stores.
+    2. Pass-through pin: any other non-empty scalar (e.g. a Bedrock
+       route, a self-hosted endpoint, or a pinned full model ID such as
+       "my-bedrock-route") is stored VERBATIM, unchanged — the existing
+       Q11 `Other` branch's behavior, preserved exactly. Deliberately no
+       versioned example here — see CLAUDE_MODEL_ALIASES's own comment
+       and plan 92 D3: this framework does not write model VERSION
+       strings into its own source.
     """
     try:
         value = _validate_scalar(args.value, field_name)
     except ValueError as err:
         return _die(str(err), code=2)
+    if value.lower() in CLAUDE_MODEL_ALIASES:
+        value = value.lower()
     try:
         with _state_transaction(args.devforge_dir) as state:
             state[field_name] = value
@@ -504,17 +521,32 @@ def _cmd_set_claude_tier(args: argparse.Namespace, field_name: str) -> int:
 
 
 def cmd_set_claude_tier_think(args: argparse.Namespace) -> int:
-    """Set claude_tier_think (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    """Set claude_tier_think (free-text scalar).
+
+    A value matching opus/sonnet/haiku/fable (case-insensitive) is
+    normalized to lowercase; any other non-empty scalar is stored
+    verbatim as a pinned model ID (plan 92 D3).
+    """
     return _cmd_set_claude_tier(args, "claude_tier_think")
 
 
 def cmd_set_claude_tier_do(args: argparse.Namespace) -> int:
-    """Set claude_tier_do (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    """Set claude_tier_do (free-text scalar).
+
+    A value matching opus/sonnet/haiku/fable (case-insensitive) is
+    normalized to lowercase; any other non-empty scalar is stored
+    verbatim as a pinned model ID (plan 92 D3).
+    """
     return _cmd_set_claude_tier(args, "claude_tier_do")
 
 
 def cmd_set_claude_tier_verify(args: argparse.Namespace) -> int:
-    """Set claude_tier_verify (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    """Set claude_tier_verify (free-text scalar).
+
+    A value matching opus/sonnet/haiku/fable (case-insensitive) is
+    normalized to lowercase; any other non-empty scalar is stored
+    verbatim as a pinned model ID (plan 92 D3).
+    """
     return _cmd_set_claude_tier(args, "claude_tier_verify")
 
 
@@ -531,6 +563,21 @@ def cmd_set_regression_gate(args: argparse.Namespace) -> int:
 def cmd_set_require_ticket(args: argparse.Namespace) -> int:
     """Set require_ticket enum scalar (true | false). Default: false (plan 91 D4/OQ-1)."""
     return _cmd_set_enum(args, "require_ticket")
+
+
+def cmd_set_claude_effort_think(args: argparse.Namespace) -> int:
+    """Set claude_effort_think enum scalar (default | low | medium | high | xhigh | max). Default: default (plan 92 D4)."""
+    return _cmd_set_enum(args, "claude_effort_think")
+
+
+def cmd_set_claude_effort_do(args: argparse.Namespace) -> int:
+    """Set claude_effort_do enum scalar (default | low | medium | high | xhigh | max). Default: default (plan 92 D4)."""
+    return _cmd_set_enum(args, "claude_effort_do")
+
+
+def cmd_set_claude_effort_verify(args: argparse.Namespace) -> int:
+    """Set claude_effort_verify enum scalar (default | low | medium | high | xhigh | max). Default: default (plan 92 D4)."""
+    return _cmd_set_enum(args, "claude_effort_verify")
 
 
 # ---------------------------------------------------------------------------

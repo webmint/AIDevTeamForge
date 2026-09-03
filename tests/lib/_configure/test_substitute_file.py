@@ -553,6 +553,9 @@ class TestSubstituteFileInitYamlAbsent(_SubstituteFileFixture, unittest.TestCase
             "REGRESSION_GATE": "full",
             "E2E_COMMAND": "",
             "REQUIRE_TICKET": "false",
+            "CLAUDE_EFFORT_THINK": "default",
+            "CLAUDE_EFFORT_DO": "default",
+            "CLAUDE_EFFORT_VERIFY": "default",
         }
         # Schema-drift guard: fails loudly if _PROJECT_CONFIG_KEY_ORDER grows
         # or shrinks so a maintainer knows to update this hand-authored dict.

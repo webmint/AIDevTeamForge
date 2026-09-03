@@ -83,6 +83,18 @@ FIELD_SCHEMA = (
     # `--internal-extension-followed` flag, which already uses the same
     # ("true", "false") string-literal convention.
     ("require_ticket",         "scalar"),
+
+    # Agent effort per tier (92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md D4):
+    # one enum-restricted sibling per claude_tier_* field above, ∈
+    # {default, low, medium, high, xhigh, max} — see ENUM_FIELDS below.
+    # "default" (FIELD_DEFAULTS baseline, see below) means "apply removes
+    # the effort: line", which Claude Code defines as inheriting the
+    # session's own effort level — a real, documented behavior, not an
+    # unset/null sentinel. Appended last (house precedent from plans
+    # 89/90/91: byte-stable diffs, no invented grouping).
+    ("claude_effort_think",    "scalar"),
+    ("claude_effort_do",       "scalar"),
+    ("claude_effort_verify",   "scalar"),
 )
 
 # Enum-restricted scalars; key = field name, value = allowed set.
@@ -93,12 +105,40 @@ FIELD_SCHEMA = (
 # pick the recommended Claude tiers (Opus/Sonnet/Haiku) OR a custom model
 # alias (Bedrock route, self-hosted, or future model name) via the Q11
 # `Other` branch. The setter validates these as plain non-empty scalars.
+# Their claude_effort_* siblings below ARE enum-restricted, and the
+# asymmetry is deliberate (92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md D4):
+# effort is a closed, vendor-documented enum (default/low/medium/high/
+# xhigh/max), while a model name is not and never will be one. The tier
+# setters (_cmd_set_claude_tier in _cmds_set.py) now additionally
+# normalize the four Claude Code subagent `model:` aliases (opus/sonnet/
+# haiku/fable, matched case-insensitively) to their lowercase canonical
+# form before storing; any other non-empty scalar still passes through
+# unchanged as a pinned model ID (plan 92 D3) — see that function's
+# docstring for the full normalized-alias-vs-pin behavior split.
+#
+# Claude Code's documented subagent `model:` frontmatter aliases (verified
+# 2026-09-03 against code.claude.com/docs/en/sub-agents.md). Lives here,
+# a base schema module, rather than in `_cmds_set.py` (a `_cmds_*` command
+# module) so `_agent_models.py` -- itself a base module, never a command
+# module -- can import it without reversing this package's DAG (base
+# modules -> `_cmds_*`, never the other direction; python-reviewer run B
+# finding 4). `_cmds_set.py`'s tier setters import it from here too. A
+# single module-level tuple, not duplicated per importer, so the alias
+# vocabulary has one place to change. The framework stores no model
+# VERSION here -- an alias floats with whatever Claude Code maps it to on
+# a given day (plan 92 D3); a consumer who needs a pinned version uses
+# the `Other`/pin route below instead.
+CLAUDE_MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")
+
 ENUM_FIELDS = {
     "workflow_enforcement":  {"Strict", "Moderate", "Light"},
     "ai_attribution":        {"Yes", "No"},
     "ac_verification_mode":  {"code-only", "tests", "runtime-assisted", "off"},
     "regression_gate":       {"off", "full"},
     "require_ticket":        {"true", "false"},
+    "claude_effort_think":   {"default", "low", "medium", "high", "xhigh", "max"},
+    "claude_effort_do":      {"default", "low", "medium", "high", "xhigh", "max"},
+    "claude_effort_verify":  {"default", "low", "medium", "high", "xhigh", "max"},
 }
 
 # Non-None defaults for specific scalar fields (applied by default_state() and
@@ -119,6 +159,14 @@ FIELD_DEFAULTS = {
     # null-scalar check with no exemption needed, on a fresh install AND
     # on an existing configure.yaml written before this field existed.
     "require_ticket": "false",
+    # "default" (plan 92 D4): a real ENUM_FIELDS member, not a null
+    # sentinel — chosen deliberately so this field needs no
+    # _cmds_verify.py exemption, on a fresh install AND on an existing
+    # configure.yaml written before these fields existed, same mechanism
+    # as regression_gate/e2e_command/require_ticket above.
+    "claude_effort_think": "default",
+    "claude_effort_do": "default",
+    "claude_effort_verify": "default",
 }
 
 # package_stack_array record field order — locked so emit is deterministic.
