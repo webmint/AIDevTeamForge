@@ -84,7 +84,7 @@ N+2. {grounding rule — verbatim, see below}.
 
 ## The four role-families
 
-The **target** roster is **17** agents in four families (16 exist today; `qa-reviewer` is authored in Phase 1 of `15-AGENT-STANDARDIZATION-PLAN.md`). Membership and how each family's body differs:
+The roster is **19** agents, counted from `src/agents/*.md` on 2026-09-03. The four families below name **17** of them: `qa-reviewer` (authored in Phase 1 of `15-AGENT-STANDARDIZATION-PLAN.md`) completed the reviewer family, and two later arrivals — **`devils-advocate`** (`15-AGENT-STANDARDIZATION-PLAN.md`'s roster of 17 predates it; added by `23-ADVERSARIAL-GRILLING-PLAN.md`) and **`spec-formalizer`** (added by `62-SMT-REQUIREMENTS-CONSISTENCY-PLAN.md`) — are **named by no family list below**. Both are `model_tier: think` and both carry read-only `tools:` allowlists, so they satisfy the tools-locked family's constraints; **which family they belong to has never been decided, and this note records the gap rather than deciding it.** Membership and how each family's body differs:
 
 ### Pure read-only reviewers (6) — tools-locked
 

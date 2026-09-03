@@ -1,6 +1,6 @@
 # 92 — Agent model & effort configuration: a live tier knob, version-free model choice, and a per-command session-model advisory
 
-**Status:** **Phase 0 CLOSED 2026-09-03 — every item (D1–D9 + OQ-1–OQ-4) ratified AS RECOMMENDED by a single blanket maintainer directive; Phases 1–5 CLEARED to build; Phase 6 is the user-driven HARD GATE and is NOT part of the build.**
+**Status:** **✅ DONE (build) 2026-09-03 — Phase 0 CLOSED (every item ratified AS RECOMMENDED by a single blanket maintainer directive) and Phases 1–5 BUILT. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run, and BATCHED behind plan 85's wall-clock baseline per OQ-4.** Commits: `2f6e409` Phase 1 · `7dea6a3` Phase 2 · `c05e5e7` Phase 3 · Phases 4 and 5 built in the same pass, **Phase 4 reviewed CLEAN and Phase 5's docs sweep corrected after review**. **Everything is build-verified and NOT consumer-validated.**
 
 - **Every decision below keeps its alternatives and its honest bound, and ratification changed
   neither.** ⚠ **The closure came as ONE blanket directive and no per-item deliberation was
@@ -96,7 +96,9 @@ findings):**
 frontmatter from configuration), keep the choice VERSION-FREE (aliases, never a pinned ID,
 enforced by a tripwire test), add EFFORT as a sibling of the model question, PROBE availability
 before offering an alias, and print a one-line ADVISORY at the commands where the choice
-matters — because a command cannot set its own session model (fact 19).
+matters. ⚠ **The advisory was drafted because a command was believed unable to set its own session
+model; fact 19 was CORRECTED on 2026-09-03 and it can.** The advisory ships anyway, by maintainer
+decision — the override is deferred to its own decision at OQ-5.
 
 ### The rejected alternative, with its reasoning (recorded so it is not re-proposed)
 
@@ -142,9 +144,12 @@ depending on the others** — except D2/D4, whose dependency is named at D4's ow
 
 **⚠ Four honest bounds that must survive into every emitted sentence:**
 
-- **The framework cannot choose the orchestrator's model.** `model` and `effort` are agent-only
-  frontmatter fields (fact 19). D7 prints a recommendation and can enforce nothing. A summary
-  claiming the framework "sets the model per command" has over-claimed by a full layer.
+- **This build does not choose the orchestrator's model.** D7 prints a recommendation and enforces
+  nothing, so a summary claiming the framework "sets the model per command" has over-claimed by a
+  full layer. ⚠ **CORRECTED 2026-09-03 — the reason is a DECISION, not a limitation.** The drafted
+  clause read *"the framework cannot … `model` and `effort` are agent-only frontmatter fields"*;
+  fact 19 now says commands share the skill frontmatter and **can** carry both. **The bound stands
+  for what this build does; the impossibility claim does not** (OQ-5).
 - **Nothing validates model × effort compatibility.** The docs say *"available levels depend on
   the model"* (fact 18) and this plan builds no compatibility table — building one would be
   exactly the version maintenance directive (a) exists to avoid. **An unsupported combination
@@ -183,7 +188,7 @@ string, never the `:NNN`.
 | 16 | **The meta-block contract, and its own fixity clause.** `agents-AUTHORING.md`'s table is `name` / `description` / `model_tier` / `tools` / `applies_to`, introduced by *"The contract is **fixed** — author to it, never change it."* Its `model_tier` row reads *"Emitted as `model:` — `think→opus`, `do→sonnet`, `verify→sonnet`, `scan→haiku` (`install_defaults.py:30`). **Not a placeholder.**"* and its `applies_to` row asserts *"Claude Code ignores the unknown key"* | `src/agents-AUTHORING.md:13`, `:15`–`:21` |
 | 17 | **The advisory-line precedent, in full.** `plan_helper stakes-hint` *"always exits 0"*, prints nothing in the ordinary case, and its spec says *"This hint is ADVISORY and NON-BLOCKING: it never blocks the approve flow, it gates nothing on its own, and the user is free to ignore it."* | `src/commands/plan/main.md:675`–`:686` |
 | 18 | **No model version string of EITHER shape exists under `src/` today — the tripwire's baseline is CLEAN on both patterns.** The API-ID pattern `claude-[a-z]+-[0-9]` returns **zero** hits, and the display-name-with-version pattern `\b(opus\|sonnet\|haiku\|fable)\s+[0-9]` (case-insensitive) **also returns zero** — ⚠ **two patterns are required because the first catches `claude-opus-5` and misses `Opus 5` / `Haiku 4.5` / `Fable 5.1` entirely.** A bare `\b(opus\|sonnet\|haiku\|fable)\b` grep, case-insensitive, hits **8 files**, every one in a known class: the three `_configure` modules (tier comments + the non-enum rationale), `q11-tiers.md` (the question text), `agents-AUTHORING.md:19` (the tier→alias row), and three cost-estimate prose sites (`generate-docs/main.md`, `pr-review/main.md`, `_pr_review/_ensure_cbm.py`) | repo greps, 2026-09-03 |
-| 19 | **Claude Code frontmatter — see `### Claude Code authoring surface` below for the verbatim doc quotes.** `model` and `effort` are **agent-only** fields; **no command/skill frontmatter field sets the session's model**, which is why D7 is an advisory line and not a setting | fetched 2026-09-03, URLs cited below |
+| 19 | ⚠ **CORRECTED 2026-09-03 — the drafting-time reading was WRONG, and this row now states the opposite.** **Commands SHARE the skill frontmatter, `model` and `effort` INCLUDED**: `slash-commands` states *"Files in `.claude/commands/` support the same frontmatter, except `name` and `paths`, which Claude Code ignores in a command file"*, and that frontmatter table carries both fields. **So a command CAN set the model for its own turn** — see `### Claude Code authoring surface` for the verbatim quotes. The earlier *"agent-only"* sentence, attributed to `plugins-reference.md`, is **not on that page today** (re-fetched 2026-09-03). ⚠ **D7's advisory line is therefore a CHOICE, not the only available mechanism** — the override is possible, documented, and **deliberately not taken** (D7's alternatives; OQ-5) | `code.claude.com/docs/en/slash-commands`, re-fetched 2026-09-03 |
 | 20 | **The Agent tool exposes a `model` parameter whose enum is `sonnet \| opus \| haiku \| fable`.** A Claude Code build whose enum lacks a value fails the call with a validation error — which is what makes D5's probe fail-safe rather than fail-open. ⚠ **UPGRADED 2026-09-03 at Phase 2's guide pass: this is DOCUMENTED**, not merely observed — `sub-agents.md` specifies the per-invocation `model` parameter as accepting those four aliases, full IDs, or `inherit`. **So D5's probe stands on documented ground**; the drafting-time "harness-injected and UNDOCUMENTED" reading is withdrawn | session tool schema 2026-09-03; `code.claude.com/docs/en/sub-agents.md`, verified 2026-09-03 |
 | 21 | **The harness states the session model in its system prompt** (*"You are powered by the model named …. The exact model ID is …"*) and lists recent model IDs. ⚠ **OBSERVED in this session, NOT documented.** Any design resting on it must degrade to `unknown` | session system prompt, 2026-09-03 |
 | 22 | **AskUserQuestion's shape constraints.** 1–4 questions per call; each question 2–4 options; **the tool injects its own `Other` free-text option**, so an authored `Other` is never written. ⚠ **OBSERVED in this session's tool schema and UNDOCUMENTED, exactly like facts 20 and 21.** ⚠ **Consequence for D4: ONE call can carry both the model question and the effort question for a tier.** ⚠ **Consequence for D5: an option list can hold at most four named aliases, and at least two.** ⚠ **Degradation: if either bound changes, D4's two-questions-per-call design and D5's option filtering must be RE-VERIFIED against the live schema before Phase 2 writes `q11-tiers.md`** | session tool schema, 2026-09-03; `src/commands/configure/main.md` bulk-confirm + `src/commands/grill/main.md` PHASE 7 as live examples |
@@ -223,10 +228,24 @@ rather than trusting this file.**
   file is SKIPPED and an unknown key is not among them, but nothing states that unknown keys are
   ignored. **The STOP arm did not trigger and the bound did not close** — see the
   `#### Phase 1 build record — Step 0` block for the two-part footing this rests on.
-- **`model` and `effort` are agent-only.** The plugins reference states plugin agents support
-  *"`name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`,
-  `memory`, `background`, and `isolation`"*, and no equivalent exists for skills/commands.
-  **Consequence: a command cannot set its own session model, which is D7's entire premise.**
+- ⚠ **REFUTED 2026-09-03, and the correction is the important one on this page.** The drafting-time
+  bullet read *"`model` and `effort` are agent-only … a command cannot set its own session model,
+  which is D7's entire premise"*, citing a plugins-reference sentence. **That sentence is not on
+  that page today** (re-fetched), and `slash-commands` says the opposite: *"Files in
+  `.claude/commands/` support the same frontmatter, except `name` and `paths`, which Claude Code
+  ignores in a command file."* **A command may therefore carry `model:` and `effort:`.**
+- **`model` in a command/skill, verbatim:** *"Model to use when this skill is active. The override
+  applies for the rest of the current turn and is not saved to settings; the session model resumes
+  on your next prompt. Accepts the same values as `/model`, or `inherit` to keep the active model. A
+  value excluded by your organization's `availableModels` allowlist is not used and the session
+  keeps its current model. With `context: fork`, the value sets the forked subagent's model
+  instead."* ⚠ **Two properties matter for OQ-5**: the override is **turn-scoped**, and an
+  org-excluded value **degrades silently to the current model** rather than failing.
+- **`effort` in a command/skill, verbatim:** *"Effort level when this skill is active. Overrides the
+  session effort level."*
+- ⚠ **What this does NOT change: the ratified mechanism.** D7 ships the advisory line as ratified.
+  **What changes is its standing** — it is a chosen option beside a documented stronger one, not the
+  only thing available. **OQ-5 records the fork and the maintainer's pick.**
 
 ⚠ **This section is the DRAFTING-TIME record (2026-09-03, two pages). It was EXTENDED the same day
 by Phase 1's Step 0**, which added a third page — `https://code.claude.com/docs/en/model-config.md`
@@ -616,8 +635,18 @@ is not a claim that Opus reviews security better.
 
 ### D7 — The per-command session-model advisory: one line, printed always, gating nothing *(RATIFIED 2026-09-03 — as recommended)*
 
-**RECOMMENDED RULE.** The framework **cannot** set the orchestrator's model — `model` and `effort`
-are agent-only frontmatter fields (fact 19) — so directive (c) is satisfied by **ONE advisory line
+⚠ **THE PREMISE BELOW WAS WRONG, corrected 2026-09-03 — and the ratified mechanism survives it.**
+This decision was drafted, argued and ratified on the reading that a command *cannot* set its own
+model. **It can** (fact 19, corrected): commands share the skill frontmatter and `model` / `effort`
+are in it. **The advisory line ships as ratified and is unchanged** — what changes is its standing:
+it is a CHOSEN option beside a documented stronger one, **not the only thing available.** The
+maintainer's 2026-09-03 pick is to keep the advisory and treat the override as a separate decision;
+**OQ-5 records the fork, the analysis and the pick.** Everything below is preserved as it was
+argued, with the false clause struck at its own site.
+
+**RECOMMENDED RULE.** ~~The framework **cannot** set the orchestrator's model — `model` and `effort`
+are agent-only frontmatter fields~~ **(STRUCK 2026-09-03 — fact 19 now says the opposite; the
+framework CAN, and this plan declines to)**, so directive (c) is satisfied by **ONE advisory line
 at PHASE 0** of a small command set (OQ-2):
 
 > This command's judgment work belongs to the `<tier>` tier; configured `<tier>` model:
@@ -638,8 +667,15 @@ edit that touched one and not the other would make them disagree.
 
 **Alternatives considered:**
 
-- *A `model:` line in the command's own frontmatter.* **IMPOSSIBLE, not rejected** — verified
-  2026-09-03 against `plugins-reference.md` (fact 19). Recorded so nobody re-checks it hopefully.
+- *A `model:` line in the command's own frontmatter.* ⚠ **CORRECTED 2026-09-03: POSSIBLE and
+  DOCUMENTED — NOT CHOSEN for this plan (maintainer decision, same day).** The drafting-time text
+  read *"IMPOSSIBLE, not rejected — verified against `plugins-reference.md`"*; **that verification
+  was wrong**, the sentence it rested on is not on that page today, and `slash-commands` documents
+  commands as sharing the skill frontmatter including `model` and `effort`. **It would satisfy
+  directive (c) more literally than the advisory line does** — the command would actually RUN on
+  the tier's model for that turn. **It is declined here and deferred to its own decision: OQ-5**,
+  which records the three options offered, the pick, and the four costs that make it a separate
+  plan rather than a line in this one.
 - *A helper verb that composes the line (a `stakes-hint` twin).* **REJECTED for v1**: it is a
   config read and a string, and the tier is a per-command constant. Python here buys a shared
   format and costs a verb, its tests, and a second place the tier lives. **Recorded as the
@@ -647,11 +683,17 @@ edit that touched one and not the other would make them disagree.
 - *Print it in every command.* **REJECTED**: a line printed 20 times a feature is a line nobody
   reads, and most commands do no tier-sensitive judgment work. OQ-2 scopes the set.
 
-**⚠ Honest bound, two parts.** **(i)** The session-model half rests on an **OBSERVED, undocumented**
+**⚠ Honest bound, THREE parts.** **(i)** The session-model half rests on an **OBSERVED, undocumented**
 harness statement (fact 21) and **prints `unknown` without it** — a harness change silently
-degrades half the line, and no test can pin it. **(ii) Nothing measures whether the line changes
-any behavior at all.** It is information placed where a decision is being made; that is the whole
-claim.
+degrades half the line, and no test can pin it. ⚠ **Phase 4's guide pass HARDENED this bound: there
+is no documented way for a command to learn the session model at all** (`ANTHROPIC_MODEL` is a
+startup setting, and the skill substitution variables carry no model), **so `unknown` is the
+documented-correct fallback rather than a gap to close.** **(ii) Nothing measures whether the line
+changes any behavior at all.** It is information placed where a decision is being made; that is the
+whole claim. **(iii) ADDED 2026-09-03 — the line now sits beside a documented STRONGER mechanism
+this plan declined** (the command-scoped `model:` override, fact 19 corrected). **A reader must not
+take "advisory" to mean "the only option available"**: it means the option chosen, with the
+alternative recorded at OQ-5 and deferred rather than refuted.
 
 ### D8 — Fable prompt tuning is OUT of scope *(RATIFIED 2026-09-03 — as recommended)*
 
@@ -683,7 +725,7 @@ Fable is a drop-in.**
 ### D9 — Scope tripwire: zero gates, and Python confined to a named list *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** **Zero gates, zero new `verify-*` gate numbers, zero hard-fail validators**
-— plan 75's tripwire in both halves. **No plan-63 13/7 delta**: `/devforge:configure` stays
+— plan 75's tripwire in both halves. **No plan-63 13/7 delta** *(⚠ the LIVE counts are **16/4** as of 2026-09-03 — plan 93 removed the flag from `/devforge:grill`, `/devforge:spec-check` and `/devforge:fix`; this plan still contributes NO delta, and the numeral here is the pre-93 figure the decision was written against)*: `/devforge:configure` stays
 human-typed (`disable-model-invocation: true`), no command is added, no `description` is widened.
 
 **Python is confined to this list, and a phase that needs more has crossed its boundary:**
@@ -716,7 +758,11 @@ runs, other than apply's own idempotence and its tests. **A consumer who hand-ed
 
 ---
 
-## Open questions (OQ-1–OQ-4) — ALL RESOLVED 2026-09-03
+## Open questions (OQ-1–OQ-5) — ALL RESOLVED 2026-09-03
+
+⚠ **OQ-5 was ADDED after Phase 0 closed**, by Phase 4's `claude-code-guide` pass, and resolved the
+same day. **Phase 0's own Verify criterion says "four lines" and is superseded by this**; the count
+is five.
 
 ### OQ-1 — The think-tier defaults: model and effort *(RESOLVED 2026-09-03 — `opus` and `default`, until Phase 6's A/B)*
 
@@ -791,6 +837,48 @@ model**, so it interacts with every other deferred run in the batch.
   2026-09-03. **That is plan 81's confound to record when its Phase 7 runs**; this plan does not
   edit plan 81 and does not resolve it.
 
+### OQ-5 — Command-scoped model override via frontmatter *(RESOLVED 2026-09-03 — deferred to a follow-on decision, by the maintainer)*
+
+⚠ **This question did not exist when Phase 0 closed.** It was opened by Phase 4's
+`claude-code-guide` pass, which found that **fact 19 — and therefore D7's entire premise — was
+wrong**: commands share the skill frontmatter, `model` and `effort` included. **It is numbered as
+an OQ and resolved the same day rather than being folded into D7 silently**, because the decision
+it records is a real fork, not a correction.
+
+**What the override would do, stated at full strength before the costs.** A `model:` line in a
+command's own frontmatter would make `/devforge:plan` and its peers **actually RUN on the
+configured tier's model for that turn** — not print a recommendation about it. The documented
+semantics are unusually well-suited: the override is **turn-scoped** (*"applies for the rest of the
+current turn … the session model resumes on your next prompt"*), and a value the organization's
+`availableModels` allowlist excludes is **silently not used, the session keeping its current
+model** — a graceful degradation this plan would otherwise have had to build. **This is what
+directive (c) literally asked for, and more than the advisory line delivers.**
+
+**RESOLVED — the maintainer picked, from three options offered on 2026-09-03: KEEP THE ADVISORY,
+and treat the override as a SEPARATE DECISION.** The two options not taken are recorded: replace
+Phase 4 with the override now, or ship the advisory now and add the override as a Phase 7 of this
+plan.
+
+**The four costs that make it a separate plan rather than a line in this one:**
+
+- **(a) It needs a twin of `apply-agent-models`, over commands.** The value must come from the
+  consumer's own Q11 answer, so something must write it into
+  `.claude/commands/devforge/*.md` — a new Python verb keyed on a marker line. ⚠ **Substitution is
+  not available: commands are NOT in `substitute-templates`' walk**, and a placeholder would
+  reproduce D1's rejected alternative (a) exactly.
+- **(b) It overrides the user's own `/model` on every command turn.** ⚠ **A sovereignty question
+  D7 never had to answer** — the advisory line informs, an override decides for them.
+- **(c) It interacts with plan 93's model-invocable commands.** A model-invoked `/devforge:review`
+  would **switch the session's model mid-conversation**, which is a different act from a user
+  typing a command and expecting it to run on its tier.
+- **(d) `effort` in command frontmatter overrides the session effort the same way** — so the same
+  sovereignty question arrives twice, and D4's no-validation bound would apply to a surface the
+  user did not configure per command.
+
+**Recommendation recorded for the follow-on: a separate small plan with its own Phase 0**, which
+can weigh (b) and (c) properly instead of inheriting them. **The advisory line stays until then**,
+and D7's third honest bound is what stops a reader mistaking it for the only option.
+
 ---
 
 ## Phases
@@ -824,6 +912,9 @@ lead to different builds:
   one carries a ratification marker with a date.**
 - `grep -n "^### OQ-[1-4] " 92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md` returns four lines, each with
   a recorded answer.
+  ⚠ **AMENDED 2026-09-03 — the count is now FIVE.** Phase 4's `claude-code-guide` pass refuted
+  fact 19 and opened **OQ-5**, resolved the same day. **Use `^### OQ-[1-5] `** — a criterion that
+  still expects four would read a legitimately answered question as an intruder.
 - **A grep for the drafting-time unratified marker — the bracketed, italicised word this file used
   on every D- and OQ-header before this close — returns ZERO hits.** ⚠ **This bullet deliberately
   does NOT write that token out, and the reason is mechanical**: a Verify criterion that quotes the
@@ -885,7 +976,7 @@ growth:**
   finding**, and no summary of this plan may imply a consumer failure. The directive half remains a
   **predicted-gap** feature in plan 87's class.
 - **Plan 75's tripwire still holds, both halves** (D9): zero gates, zero new `verify-*` numbers,
-  zero hard-fail validators, and **no plan-63 13/7 delta.**
+  zero hard-fail validators, and **no plan-63 13/7 delta** *(⚠ LIVE: **16/4** as of 2026-09-03 via plan 93; this plan's delta is still zero)*.
 - **Python stays confined to D9's five-item list.** A phase that needs more has crossed its own
   boundary.
 - **Phase 1 still owes its Step-0 `claude-code-guide` pass BEFORE any code**, and its answer 1 is
@@ -1517,7 +1608,7 @@ reproduction is not an anchor.
 
 ---
 
-### Phase 4 — The D7 advisory lines *(instruction-only)*
+### Phase 4 — The D7 advisory lines *(instruction-only)* — **BUILT 2026-09-03 — reviewed CLEAN** (instruction-reviewer re-check, zero new findings)
 
 **Route: instruction-author → instruction-reviewer → claude-code-guide** (every command-spec edit
 owes the pass; plan 90's Phase-0 ruling).
@@ -1550,9 +1641,92 @@ nothing.
 - **Each edited command's PHASE 0 has the same number of exit paths before and after** — capture
   the pre-change structure first.
 
+#### Phase 4 build record (2026-09-03)
+
+**BUILT and instruction-reviewer CLEAN** — the re-check returned **zero new findings**. One step per
+command across OQ-2's eight, **title identical
+in all eight** — `Model advisory (printed, never gating)` — with the **heading shape following each
+file's own convention** rather than a single imposed level: `### Phase 0.6` (specify),
+`## PHASE 0b.5` (plan, breakdown), `### 0.4` (grill, review, verify), `### 0.5` (fix), and a bold
+lead-in (implement). **The printed line is byte-identical modulo the tier word.**
+
+**The configured value is read in PROSE from `project-config.json`, not by a helper call.** ⚠ **`jq`
+appears in none of the eight target files** — a prose read is the house idiom there — and a `null`
+tier resolves to the D2 default, matching what `apply-agent-models` would have written. Each step
+**names `apply-agent-models` for provenance with an explicit "NOT invoked by this step" clause**, so
+a reader cannot mistake the advisory for the apply. `verify/main.md`'s helper-interaction invariant
+is untouched **because the step makes no Bash call at all.**
+
+⚠ **One deliberate divergence from the brief's wording, and it is a correctness fix.** The brief
+said to place the step *before* each chain's trailing exit arm; the build placed it **AFTER** them,
+so the line prints **only when the chain continues.** **Printing a model advisory on a failure path
+would be wrong** — the command is not about to do the judgment work the line describes.
+
+**Constraint checks, all three met.** The `unknown` arm is written explicitly. The `null` arm reads
+the D2 default. **Exit-path counts are identical before and after in all eight** — specify 10, plan
+12, grill 6, breakdown 11, implement 2, fix 22, review 8, verify 8. **`judgment work belongs to the`
+occurs exactly EIGHT times under `src/`**, matching OQ-2's set with nothing outside it; both
+tripwire greps return zero; and no added line contains *must*, *block*, *abort* or a question mark.
+
+**One pre-existing sentence amended, and it was necessary rather than incidental:**
+`specify/main.md` Phase 0.5's *"proceed directly to Phase 1"* became *"Phase 0.6"* — **without it
+the common path would have skipped the new step entirely.** ⚠ **Deliberately NOT amended:**
+`specify/main.md:29`'s *"Four preflight steps"* sentence **counts gates, not headings**, so the new
+non-gating step does not move it.
+
+**The `claude-code-guide` pass for this phase returned four things, and the fourth was the big one.**
+(i) **There is no documented way for a command to learn the session model** — `env-vars` lists
+`ANTHROPIC_MODEL` as a *startup* setting only, and the skill substitution variables are
+`CLAUDE_SESSION_ID`, `CLAUDE_EFFORT`, `CLAUDE_SKILL_DIR`, `CLAUDE_PROJECT_DIR`,
+`CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`, **none of which carries a model** — so **the `unknown`
+arm is the documented-correct fallback**, not a gap left open. (ii) Command bodies are unconstrained
+(*"Skill files can contain any instructions"*). (iii) `disable-model-invocation` governs **who may
+invoke** a command, never **what it prints**. (iv) ⚠ **Commands DO support `model:` and `effort:`
+in their own frontmatter** — which **refuted fact 19 and D7's stated premise**, and is recorded at
+fact 19, at D7's alternative and honest bound (iii), and as **OQ-5**. **The advisory line ships as
+ratified; what changed is that it is now known to be a choice rather than the only option.**
+
+**Instruction-reviewer, first pass — TWO HIGH findings, both the same shape: the step was
+BYPASSABLE on a live path.** A line placed after the trailing exit arms prints only when the chain
+continues (the divergence above), **but a chain can continue through an arm that is not the
+trailing one** — and in two commands it did:
+
+- **`/devforge:implement`** — its **four continuing arms** (`Absent`, resume, rollback, skip) each
+  resumed the chain past the advisory. All four now route through it. **Exit arms still 2**, so the
+  fix moved control flow into the step without adding an exit.
+- **`/devforge:specify`** — the **matched-seed arm at Phase 0.5** continued without reaching the
+  step; it now routes to Phase 0.6, and the **multi-seed sub-case deliberately names no downstream
+  phase**, so it cannot go stale when a phase is renumbered.
+
+⚠ **The lesson is narrower than "check the arms": placement after the trailing exit is necessary and
+not sufficient**, because "the chain continues" is a property of every arm, not of the last one.
+
+**Reviewer finding 1 was D7's premise, and it was NOT closed inside this phase** — it is a plan-level
+correction, closed at **fact 19, D7 and OQ-5**. Recorded here so the phase's clean re-check is not
+read as having settled it.
+
+**One LOW, and the ruling that came with it.** `verify/main.md`'s step gained the clause *"via the
+Read tool and not a Bash call"*, because that file carries a helper-interaction invariant a silent
+new step could appear to violate. ⚠ **The reviewer ruled that `grill`, `review` and `fix` need NO
+such clause** — their helper-interaction paragraphs make **no completeness promise**, so adding one
+there would assert a constraint those files do not carry. **Four files, one clause, by their own
+text — not a uniformity edit.**
+
+**One nit declined on the file's own evidence:** the colon stays **off** in `implement`, that file's
+idiom being unanimous.
+
+⚠ **A PRE-EXISTING BUG was repaired BEYOND this phase's brief, and the reviewer accepted it as
+in-scope.** `specify/main.md` Phase 0.4's **three pick arms** (`:127`–`:129`) and its **warning
+path** (`:135`) all said *"Continue to Phase 1"* — **textually skipping the "unconditional" seed
+check at Phase 0.5**, and therefore 0.6 as well. All four now say *"Continue to Phase 0.5"*.
+**Semantics preserved, exit arms unchanged at 10.** ⚠ **This is the second time in this plan that a
+step described as unconditional was reachable only on some paths** (the first being the two HIGHs
+above) — **"unconditional" in prose is a claim about the writer's intent, not about the control
+flow**, and only reading every arm distinguishes them.
+
 ---
 
-### Phase 5 — Docs sweep
+### Phase 5 — Docs sweep — **BUILT 2026-09-03** (instruction-reviewer route; commit pending)
 
 **Route: instruction-author → instruction-reviewer** for every `src/` and plan-document edit; **plus
 claude-code-guide for `src/CLAUDE.md`** if it is touched (it ships as the consumer's root
@@ -1611,9 +1785,19 @@ Scope:
 - **`63-SKILL-COLLISION-SUPPRESSION-PLAN.md`** — **check only, and record the no-op as deliberate**:
   the 13/7 counts take no delta (D9). **Read them LIVE rather than quoting a remembered number** —
   that is plan 63's own standing coordination rule.
+  ✅ **READ LIVE 2026-09-03 and they HAD MOVED: the counts are now 16/4**, because **plan 93**
+  removed `disable-model-invocation: true` from `/devforge:grill`, `/devforge:spec-check` and
+  `/devforge:fix`. ⚠ **This plan's delta is still ZERO** — it changed no flag and added no command;
+  a `disable-model-invocation` grep over `src/commands/` returns the four setup commands.
+  **This is exactly what plan 63's coordination rule exists to catch**: the remembered number was
+  stale within a day, and quoting it would have written a false count into four files.
 
-**Commits: one per phase, no AI-attribution trailer** (this repo's commits carry none — match the
-trailer-free convention), lowercase terse subject with a scope prefix matching `git log --oneline`.
+**Commits: one per phase**, lowercase terse subject with a scope prefix matching `git log --oneline`.
+⚠ **CORRECTED 2026-09-03 — the drafting-time clause *"no AI-attribution trailer (this repo's commits
+carry none)"* was FALSE at build time.** The repo's last eleven commits, across two sessions, all
+carry the harness `Co-Authored-By` + `Claude-Session` trailers, and **this plan's three commits
+followed that observed convention.** The clause is retired rather than reasserted: **read the live
+`git log` for the trailer convention, never this sentence.**
 
 **Verify:**
 
@@ -1628,8 +1812,141 @@ trailer-free convention), lowercase terse subject with a scope prefix matching `
 - **The repo-root one-liner names the evidence split** — one grep-verified defect plus four
   maintainer directives; no consumer incident.
 - **Plan 63's counts were read LIVE and did not move**, and the check is recorded.
+  ⚠ **FALSIFIED 2026-09-03 — they DID move.** The criterion's *"and did not move"* clause was an
+  assumption, not a requirement; **what the rule demands is the LIVE READ, not a particular
+  result.** The counts are **16/4** via plan 93. **This plan's delta is still zero**, which is the
+  thing the criterion actually tests.
 - `scripts/verify-agent-reachability.py` and `scripts/verify-memory-lane.py` pass — a failure here
   means something unintended moved in the agent roster.
+
+#### Phase 5 build record (2026-09-03)
+
+**BUILT; commit pending.** Executed against the LIVE tree, with the scope list as widened by Phase
+2's build record. ⚠ **Phase 4 was written IN PARALLEL by another author** into the eight OQ-2
+command specs; **this phase touched none of those eight and none of `src/commands/configure/*`**,
+and Phase 4's text is verified against the tree by the orchestrator before commit. **This is the
+second time parallel execution shaped a phase in this plan** — the first produced Phase 2's HIGH
+finding — so the rule stands: **write from the tree, not from the phase order.**
+
+**Edited — nine files.** `DEVELOPMENT-STATUS.md` (**both** stale sites: `:58`'s key list, which now
+also states that the tier/effort keys are **not** placeholder-substituted but read by
+`apply-agent-models`, and `:104`'s three errors — key names, the configurability claim now **true
+for the first time**, and the think-tier enumeration corrected to all five agents, with a sub-bullet
+recording that the knob was write-only until this build); `CHANGELOG.md` (one `### Added` entry in
+the house's dense single-bullet style, carrying the evidence split, what shipped, and every honest
+bound — **it never says "runs on Fable"**); repo-root `CLAUDE.md` (the plan-92 index line, between
+the `91-` and `93-` lines); `PLAN-STATUS-ARCHIVE.md` (the mirrored full entry, same position);
+`15-AGENT-STANDARDIZATION-PLAN.md` (a dated note under its *"build contract (fixed …)"* section —
+**its reasoning is untouched**); `src/agents-AUTHORING.md` (`:87`); `docs/v2/ARCHITECTURE.md`
+(narrowly — see below, **thirteen sites after the reviewer's correction, not the five this record
+first claimed**); and this plan file.
+
+⚠ **`docs/v2/ARCHITECTURE.md` changed from DO-NOT-EDIT to a NARROW edit on the maintainer's
+2026-09-03 pick, recorded verbatim: *"fix only the falsified sites"*.** The full-sweep option was
+**explicitly NOT chosen.** First pass corrected: the setter table's user-prefs row (5 → 8, naming
+the three effort setters and the enum asymmetry), a new `apply-agent-models` row, `render-config`'s
+key count (37 → **43**), the schema line (29 → **35** fields, ENUM_FIELDS 3 → **8** with all eight
+named, the *"claude_tier_* deliberately NOT in ENUM_FIELDS"* clause KEPT and extended with the alias
+normalization), the Q11 description in the phase diagram (a bare tier triple → three calls each
+carrying a model and an effort question, preceded by the probe), and the recommended defaults
+(`think=Opus, do=Sonnet, verify=Haiku` → `think=opus, do=sonnet, verify=sonnet`, effort `default`,
+**lowercase as Claude Code spells the aliases**).
+
+⚠ **THE FIRST PASS WAS INCOMPLETE, and this record reports the corrected state rather than the
+earlier claim.** instruction-reviewer found **five more sites of the SAME falsified class** that the
+sweep had missed — the overview line (*"fills 29 configuration fields … 37-key substitution map"*),
+the Phase-7 line in the phase diagram, **§4.3's own heading formula** (recomputed **35 + 5 + 3 =
+43**), the *"canonical 29-field state"* tree comment and the *"37-key render artifact"* one — plus a
+**sixth the reviewer did not name and this pass found while re-grepping**: the field-classification
+table's *"Verbatim from the 37-key map"*. **A narrow fix is only narrow if it is complete over its
+own class**, and `\b(29|37)\b` now returns **zero** across that file.
+
+⚠ **A MEDIUM the reviewer raised separately, and it was already wrong before this plan touched it:**
+§4.3's *"User-only (6 fields via Phase 4 sequential prompts)"* omitted the three `CLAUDE_EFFORT_*`
+fields **and `REQUIRE_TICKET`**. Re-derived LIVE from `configure/main.md`'s Phase 4 — Q9, Q10,
+Q11 × 6 (three calls, each a tier's model plus its effort), Q12's mode, Q13 — it is **10**, and the
+list now names each field with its question number. **The AC runtime triple stays counted with the
+detection-derived group**, as that section already had it.
+
+⚠ **One further arithmetic repair, and it is a SCOPE CALL made explicitly rather than silently.**
+Correcting the user-only count to 10 left §4.3 self-contradicting, because its detection-derived
+count still read **23** while `configure/main.md` composes **24** — a falsification owned by
+**plan 90's `E2E_COMMAND`**, not by this plan. Fixing it required adding one enumeration line
+(`E2E (1)`). **Done, because a section whose own numbers do not add up is worse than either number
+alone**, and because both figures are mechanically derivable from the live tree; **recorded here as
+crossing into another plan's field so the next reader knows it was deliberate.**
+
+⚠ **Still deliberately NOT touched: that file's genuinely unrelated stale counts** — *"~32
+subcommands"* at `:266` and `:568` — **left as an accumulated gap for a separate maintainer item**,
+per the pick. **All counts were COUNTED from `_schema.py`, `_render.py` and `configure/main.md`,
+never carried.**
+
+**Verified no-ops, each recorded as a finding rather than a silence.** `README.md` and
+`src/CLAUDE.md`: **checked, nothing to amend** — a case-insensitive grep for `model_tier` and the
+four aliases returns nothing in either, and plan 08's trim discipline binds the latter, so adding a
+sentence a session does not need would have been the wrong outcome. `scripts/lib/install_defaults.py`
+and `scripts/generate-agents.py`: **already done at Phase 1, verified** —
+`grep -n "Q10a\|may OVERWRITE" scripts/` returns nothing, so **this phase edited no `.py` file at
+all** and the plan's *"one Phase-5 edit that touches a `.py` file"* sentence describes work Phase 1
+absorbed. `install.sh:298` and `src/devforge/project-config.json`: **left alone deliberately**, the
+35-key stub against 43 live keys being **functionally harmless and VERIFIED so** (`apply-agent-models`
+reads a null and an absent key alike); the two recorded options — regenerate the stub from
+`_PROJECT_CONFIG_KEY_ORDER`, or pin the two equal with a maintainer test in plan 89's style —
+**stay unbuilt.** `63-SKILL-COLLISION-SUPPRESSION-PLAN.md`: **check only, no-op deliberate.**
+
+⚠ **Plan 63's coordination rule EARNED ITSELF on this run.** The counts were read live and **had
+moved: 13/7 → 16/4**, because plan 93 removed `disable-model-invocation: true` from
+`/devforge:grill`, `/devforge:spec-check` and `/devforge:fix` on the same day. **This plan changed
+no flag and added no command, so its delta is still ZERO** — the live grep over `src/commands/`
+returns the four setup commands. **Quoting the remembered figure would have written a false count
+into four ledger files.** The five in-plan `13/7` mentions now each carry a dated note; the repo-root
+router row was already updated by plan 93 and was **left alone**.
+
+⚠ **`src/agents-AUTHORING.md:87` — a PRE-EXISTING correction, unrelated to this plan's mechanism.**
+*"17 agents in four families"* became the live **19**, counted from `src/agents/*.md`. **The four
+family lists name only 17**: `devils-advocate` (added by plan 23) and `spec-formalizer` (plan 62)
+are named by **no** family. Both are `model_tier: think` with read-only `tools:` allowlists, so they
+satisfy the tools-locked family's constraints — **but which family they belong to has never been
+decided, and this edit RECORDS the gap rather than deciding it.** Filing them would have been an
+editorial call this plan has no mandate to make.
+
+⚠ **One claim in this plan's own text was falsified and corrected here**: the Phase-5 commit
+instruction said *"no AI-attribution trailer (this repo's commits carry none)"*. **The repo's last
+eleven commits across two sessions all carry the harness `Co-Authored-By` + `Claude-Session`
+trailers**, and this plan's three commits followed that observed convention. The clause is retired
+in favour of reading `git log`.
+
+**Verify — results, reported as they actually came back rather than as the phase predicted.**
+
+`grep -rn "MODEL_THINK\|MODEL_DO\|MODEL_VERIFY" *.md src/ scripts/` → **ZERO hits in `src/` and
+`scripts/`**, which is the criterion. The surviving `.md` hits are all deliberate: the released
+`CHANGELOG.md` entry describing the **v1 `{{MODEL_THINK}}` placeholders** (history, correctly left —
+**grep the string, not a line number; this phase's own insertion shifted it**), this plan's
+quotations of the defect at fact 10 and in `## Origin`, the Phase-5 scope bullet naming the two
+sites, and the new `PLAN-STATUS-ARCHIVE.md` entry quoting the same defect.
+
+⚠ **`grep -n "13/7" CLAUDE.md DEVELOPMENT-STATUS.md README.md src/CLAUDE.md` does NOT return zero —
+it returns SIX, all in repo-root `CLAUDE.md`, and none is a live claim about today's counts.**
+Reported rather than "fixed", because five belong to other plans' records and one is not about
+commands at all:
+
+- **Plan 74's line — a FALSE POSITIVE on the string.** Its *"13/7 disposition table"* is the
+  memory-lane disposition table, unrelated to model-invocable commands.
+- **Plans 82, 85, 88, 89 and 90's lines — HISTORICAL, and correct as dated.** Each records what its
+  own plan decided while the counts *were* 13/7 (*"plan 63's 13/7 carve-out is NOT reopened"*,
+  *"Plan 63's 13/7 counts UNCHANGED"*, and two non-goal statements). **Rewriting them would falsify
+  the record of what those plans decided.** Plan 93 already appended dated corrections to the two
+  entries where a reader could most easily mistake the historical figure for a live one (plans 63
+  and 82), which is the right shape; **extending that to the other three is a decision for whoever
+  owns those entries, not a side effect of this sweep.**
+
+**The criterion this phase actually owed is met**: no file it wrote carries a live 13/7 claim, and
+the five in-plan mentions each gained a dated 16/4 note.
+
+`grep -n "Q10a\|may OVERWRITE" scripts/` → **ZERO**. `python3 scripts/lib/model_version_tripwire.py
+src` → **PASS**. ⚠ **`docs/` is outside the tripwire's scope**, so the no-version-string rule was
+applied to `docs/v2/ARCHITECTURE.md` **by authorship, not by the gate** — the edited lines name
+aliases only.
 
 ---
 
@@ -1691,7 +2008,10 @@ this has been observed on a real install.
   through `Other`; the framework may not.
 - **Validating model × effort compatibility.** D4's bound — that table is the version maintenance
   directive (a) forbids. An unsupported combination fails at dispatch.
-- **Setting the orchestrator's model.** Impossible via frontmatter (fact 19), not merely declined.
+- **Setting the orchestrator's model.** ⚠ **CORRECTED 2026-09-03 — this non-goal now rests on a
+  DECISION, not on impossibility.** The drafted line read *"Impossible via frontmatter (fact 19),
+  not merely declined"*; that verification was wrong, a command CAN carry `model:` / `effort:`, and
+  the override is **declined for this plan and deferred to its own decision (OQ-5).**
 - **Fable prompt de-prescription.** D8, with a named observed trigger.
 - **Per-task or per-agent model routing beyond the single `security-reviewer` pin.** D6. A second
   pin needs its own reason, recorded beside its own agent.
@@ -1703,8 +2023,10 @@ this has been observed on a real install.
   stays in this plan.
 - **Changing which agents exist, or which tier any agent belongs to.** The census (fact 3) is input,
   not subject.
-- **Any change to plan 63's 13/7 model-invocable counts.** D9 — no frontmatter invocation route
-  changes; this plan contributes NO delta and owes no description trim.
+- **Any change to plan 63's model-invocable counts.** D9 — no frontmatter invocation route changes;
+  this plan contributes NO delta and owes no description trim. ⚠ **The counts themselves MOVED on
+  2026-09-03 — 13/7 → 16/4 — by plan 93, not by this plan.** The non-goal is unchanged; only the
+  number a reader would otherwise carry away is.
 - **Repairing `_probe_tier.py`, `init_helper`'s unreachable detector, or any other lane this sweep
   did not touch.** Out of scope by construction.
 
@@ -1716,9 +2038,13 @@ this has been observed on a real install.
   the meta-block contract **D6 extends** (fact 16). ⚠ **The contract's own text says it is
   *"fixed — author to it, never change it"***, so the extension is a real decision that Phase 0
   ratifies and Phase 2 records with a dated note. **Plan 15's reasoning is not edited.**
-- **`63-SKILL-COLLISION-SUPPRESSION-PLAN.md`** — the 13/7 carve-out. **Untouched and unaffected**
-  (D9). ⚠ **Its standing coordination rule binds: read the counts LIVE at Phase 5, never from a
-  remembered delta.**
+- **`63-SKILL-COLLISION-SUPPRESSION-PLAN.md`** — the model-invocable carve-out. **Untouched and
+  unaffected** (D9). ⚠ **Its standing coordination rule binds: read the counts LIVE at Phase 5,
+  never from a remembered delta.** ✅ **Read live 2026-09-03 — and the rule EARNED ITSELF: the
+  counts had moved from 13/7 to 16/4 within a day**, via plan 93's removal of the flag from
+  `/devforge:grill`, `/devforge:spec-check` and `/devforge:fix`. **This plan's delta is still zero**
+  (a `disable-model-invocation` grep over `src/commands/` returns the four setup commands), and
+  quoting the remembered figure would have written a false count into four ledger files.
 - **`75-INVESTIGATION-SEARCH-HARNESS-PLAN.md`** — the no-new-check-number / no-new-validator
   tripwire. **Both halves hold** (D9).
 - **`89-TEST-FOUNDATION-HARDENING-PLAN.md`** and **`90-E2E-TEST-LANE-PLAN.md`** — the live-count
