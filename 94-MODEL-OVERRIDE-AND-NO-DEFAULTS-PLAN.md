@@ -1,6 +1,6 @@
 # 94 — Commands run on the tier's model, and the framework ships no model of its own — the override plan 92 deferred, and the defaults it should not have had
 
-**Status:** **NOT STARTED — awaiting Phase-0 ratification (D1–D8 + OQ-1–OQ-5 unanswered).** Nothing below is built. Every decision carries its recommendation, its alternatives with the reason each is rejected, and its honest bound; **Phase 0 answers them and nothing else may start before it does.**
+**Status:** **Phase 0 CLOSED 2026-09-03 — every item ratified AS RECOMMENDED by a single blanket maintainer directive; Phases 1–3 CLEARED to build; Phase 4 is the user-driven HARD GATE and NOT part of the build.** Nothing below is built yet. Every decision keeps its recommendation, its alternatives with the reason each is rejected, and its honest bound — **and ratification changed none of them.** ⚠ **The closure came as ONE directive and no per-item deliberation was supplied** — see `## Phase 0 close record`, which says so plainly rather than implying thirteen separate arguments were had. **Ratifying a recommendation does not strengthen it**, and a build that reads a ratified bound as discharged has left this plan.
 
 - **This plan is the direct sibling of `92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md`, and it AMENDS that plan in place.** Plan 92 stays **DONE (build)** — no phase of it is re-opened, no build record of it is edited. What changes there are dated amendment notes at the four sites this plan falsifies (D6), on the house precedent that plan 85 used to amend plan 23 and plan 82 used to amend plan 62.
 - **The evidence is TWO maintainer directives and ONE inherited, locally-reproduced mechanical finding. There is no consumer incident and none is claimed.** The directive half is a predicted-gap feature in plan 87's class. **Say both halves wherever this plan is summarized** — see `## Evidence constraint`.
@@ -120,11 +120,11 @@ Run alongside the drafting fetches above; its five answers are folded into the d
 
 ---
 
-## Decisions (D1–D8) *(unratified)*
+## Decisions (D1–D8) — ALL RATIFIED 2026-09-03
 
 Each carries the recommendation, the alternatives with the reason each is rejected, and the **honest bound — what the decision does NOT achieve.** **The bounds are load-bearing: a decision ratified with its bound deleted cannot be re-opened honestly later.**
 
-### D1 — The override mechanism: extend the apply verb over commands, keyed on a helper-owned map *(unratified)*
+### D1 — The override mechanism: extend the apply verb over commands, keyed on a helper-owned map *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** Plan 92's verb is **EXTENDED** to `.claude/commands/devforge/*.md` and **RENAMED `apply-models`**, with `apply-agent-models` kept as an argparse alias for one release (OQ-1). For each command in a helper-owned `COMMAND_TIERS` map it writes, into that file's existing frontmatter block:
 
@@ -151,7 +151,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, FIVE parts.** **(i)** The override is **turn-scoped and unsaved** — it changes what a command's turn runs on, never the session. **(ii)** An org-excluded value is **silently not used** and the session keeps its model, with no signal anywhere. **(iii) A model-invoked command switches the session's model mid-conversation for that turn** — plan 92 OQ-5's cost (c), now live because plan 93 made 16 commands model-invocable; **it is accepted, and it is a behavior a user did not type.** **(iv)** Whether a subagent carrying `inherit` follows the override is **NOT DOCUMENTED** and is observed only at Phase 4's anchor 6 — **no sentence in `src/` may assert either answer.** **(v)** A re-run of `install.sh` re-emits commands and drops every `model:` line until `/devforge:configure` (or the verb) runs again; **nothing detects that state**, and unlike the agent path there is no merge to preserve it (fact 13).
 
-### D2 — No framework defaults: `inherit` on agents, nothing on commands, and the map deleted *(unratified)*
+### D2 — No framework defaults: `inherit` on agents, nothing on commands, and the map deleted *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE, four parts.**
 
@@ -174,7 +174,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, THREE parts.** **(i) The transition is not free, and it is the sharpest cost in this plan**: the very release that removes the static default IS a change to the static default, so every configured install whose value differs from both meets plan 92's Trap 3 once. **D1's snapshot-normalization mitigation is a recommendation, not a proof** — Phase 1's local reproduction is the only build-time evidence, and **Phase 4's anchor 4 is the only place it is observed on a real install.** **(ii)** `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` still overrides every agent's frontmatter, `inherit` included, and **the framework cannot detect it** (plan 92's Trap 5, inherited unchanged). **(iii) Nothing here measures that the session model is a better choice than a tier default** — it is the choice the maintainer directed, and a consumer who wanted the old behavior now has to answer four questions to get it.
 
-### D3 — `security-reviewer` becomes a QUESTION: a fourth tier, not a pin *(unratified)*
+### D3 — `security-reviewer` becomes a QUESTION: a fourth tier, not a pin *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** A fourth tier **`security`** with exactly one member. `src/agents/security-reviewer.md` becomes `model_tier: security`, and **`model_pin` is REMOVED from the authoring contract** — it existed to express a framework-chosen model, which directive (2) forbids. Q11 gains **Q11.4 — "Which model reviews security?"** carrying that tier's model and effort questions in one call, like its three siblings. New fields `claude_tier_security` + `claude_effort_security`, new setters, new render keys `CLAUDE_TIER_SECURITY` / `CLAUDE_EFFORT_SECURITY`, and the apply verb resolves the fourth tier exactly like the other three.
 
@@ -191,7 +191,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **A user who picks the refusal-prone alias here anyway gets exactly what plan 92 D6 warned about**, and this plan builds no validation, no warning at dispatch and no detection of a missing panel verdict. **The question replaces a guarantee with an informed choice** — that is the whole trade, and it is a real loss of protection, accepted rather than answered. ⚠ **It also touches the authoring contract a second time in two days**: plan 92 added `model_pin` on 2026-09-03 and this plan removes it, so `agents-AUTHORING.md`'s fixity clause needs a second dated note **stating the field's whole life**, not a silent deletion.
 
-### D4 — The eight advisory lines stay, and become the override's readback *(unratified)*
+### D4 — The eight advisory lines stay, and become the override's readback *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** The eight lines are **not deleted** and their printed sentence is **unchanged**. Two things change around them:
 
@@ -205,7 +205,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **The readback is an observation, not a check.** Nothing compares the two halves, nothing fails when they differ, and **the session-model half still rests on an OBSERVED, undocumented harness statement** with `unknown` as the documented-correct fallback (plan 92 D7's bound (i), unchanged — there is still no documented way for a command to learn the session model, and `${CLAUDE_EFFORT}` has no model counterpart).
 
-### D5 — Effort on commands: the tier's level, `default` removes the line *(unratified)*
+### D5 — Effort on commands: the tier's level, `default` removes the line *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** Each mapped command's `effort:` comes from its tier's `CLAUDE_EFFORT_<TIER>`; the `default` sentinel means **no `effort:` line**, which the docs define as inheriting the session's effort level. Same sentinel, same six-member enum and same setters as plan 92 D4 — **no new field, no new question beyond D3's pair.**
 
@@ -216,7 +216,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Nothing validates model × effort** (plan 92 D4, inherited). ⚠ **And the documented silent fallback is documented for the SESSION-level effort setting, not explicitly for the frontmatter field** (guide answer 3) — so the most this plan may say is that an unsupported level is expected to degrade rather than fail, **and that no phase of it observes which.**
 
-### D6 — Plan 92 is amended in place, dated, at four sites *(unratified)*
+### D6 — Plan 92 is amended in place, dated, at four sites *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** Phase 3 writes dated amendment notes into `92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md` **without editing any build record and without re-opening any phase**:
 
@@ -234,7 +234,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Amendment notes are read by whoever opens the file, and nothing enforces that.** Plan 92 is cited from `CLAUDE.md`, `PLAN-STATUS-ARCHIVE.md`, `DEVELOPMENT-STATUS.md`, `CHANGELOG.md` and `docs/v2/ARCHITECTURE.md`; **Phase 3 sweeps the ones this plan falsifies and claims nothing about the rest.**
 
-### D7 — Scope tripwire: zero gates, and Python confined to a named list *(unratified)*
+### D7 — Scope tripwire: zero gates, and Python confined to a named list *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** **Zero gates, zero new `verify-*` gate numbers, zero hard-fail validators** — plan 75's tripwire in both halves. **No plan-63/93 count delta**: the 16/4 split is untouched, no command is added or removed, no `disable-model-invocation` flag moves, and **no `description` is widened** (a `model:` line is not a description and does not enter the always-on skill-listing budget). ⚠ **Read the counts LIVE at Phase 3 anyway** — plan 63's standing coordination rule, which earned itself twice in three days.
 
@@ -255,7 +255,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Nothing verifies the applied model after apply runs**, other than idempotence and its tests — and for commands there is not even a merge to preserve a hand-edit: **the next re-emit silently discards it** (D1 bound (v)).
 
-### D8 — The consumer e2e is the ONLY place the override is observed working *(unratified)*
+### D8 — The consumer e2e is the ONLY place the override is observed working *(RATIFIED 2026-09-03 — as recommended)*
 
 **RECOMMENDED RULE.** State it plainly wherever this plan is summarized: **no build-time check can see a turn-scoped model override take effect.** Tests prove the bytes were written; the docs describe what the bytes mean; **only a real run shows the turn running on the model the line names.**
 
@@ -270,31 +270,31 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 ---
 
-## Open questions (OQ-1–OQ-5) *(unratified)*
+## Open questions (OQ-1–OQ-5) — ALL RESOLVED 2026-09-03
 
-### OQ-1 — The verb's name *(unratified)*
+### OQ-1 — The verb's name *(RESOLVED 2026-09-03 — rename to `apply-models`, with `apply-agent-models` kept as an alias for one release)*
 
 **RECOMMENDATION: rename to `apply-models`, keeping `apply-agent-models` as an argparse alias for one release.** ⚠ **Count the blast radius before choosing: a `grep -rl apply-agent-models` over the repo returns 28 files on 2026-09-03** — the ten command-surface files (`configure/main.md`, `q11-tiers.md` and the eight advisory steps' provenance clauses), `update.sh`, `agents-AUTHORING.md`, **five `src/` + `scripts/` Python modules** (`_cli.py`, `_cmds_agent_models.py`, `_render.py`, `install_defaults.py`, `generate-agents.py`), **three test modules**, and the ledger/doc set. **An alias makes the rename a documentation sweep rather than a flag day**; the alternative — keep the old name — leaves a name that describes half the verb, and the next reader trusts the name over the docstring.
 
 ⚠ **The alias is a deprecation with no removal date, which is its own small debt.** Phase 3 records the removal as owed at the next release that touches this verb.
 
-### OQ-2 — Widen the override set beyond the eight? *(unratified)*
+### OQ-2 — Widen the override set beyond the eight? *(RESOLVED 2026-09-03 — NO widening in v1; the eight stand)*
 
 **RECOMMENDATION: NO for v1.** Candidates recorded rather than built: `research` and `discover` (intake judgment, arguably `think`), `audit` and `spec-check` (adversarial, arguably `think`), `summarize` and `finalize` (drafting, arguably `do`). **Three reasons to wait:** the eight are the set plan 92 already argued and ratified; each addition costs a real per-turn model switch on a command that may be model-invoked (D1 bound (iii)); and **the consistency test binds the map to the advisory lines**, so widening the map means widening the printed advice too — a bigger edit than it looks.
 
-### OQ-3 — Should `/devforge:configure` refuse to complete with an unanswered tier? *(unratified)*
+### OQ-3 — Should `/devforge:configure` refuse to complete with an unanswered tier? *(RESOLVED 2026-09-03 — NO refusal; an unanswered tier inherits the session model)*
 
 **RECOMMENDATION: NO.** Phase 4 always asks all four tiers, so the unanswered state arises only for a legacy install that never re-ran the command — and **that install now runs on `inherit`, which is precisely what directive (2) says should happen when the user has not chosen.** A refusal would turn the no-defaults stance into a blocker on a state the stance itself endorses, and it would be the first hard-fail in this lane (D7).
 
 **The counter-argument, recorded:** a user who skips Q11.4 gets a security reviewer on the session model, which may be the refusal-prone one (D3's bound). **That is a real hole and it stays open** — the question's own description is the only mitigation.
 
-### OQ-4 — The `update.sh` summary line *(unratified)*
+### OQ-4 — The `update.sh` summary line *(RESOLVED 2026-09-03 — the line names BOTH classes, and `configure/main.md`'s quote of it is reconciled in the same phase)*
 
 **RECOMMENDATION: extend it to name both classes** — `agents N (M changed), commands K (L changed), skipped S`. Today's line says *"Applied agent models: N with model_tier (M changed), K skipped"* (fact 15), which would silently under-report after D1. ⚠ **The line is composed by `jq` over the verb's stdout, so the report shape is a contract**: if `applied[]` gains a discriminator (e.g. a `kind` field), the shell must read it, and **plan 92's jq-hardening (`2>/dev/null || VAR="?"`) must be preserved on every new expression.**
 
 ⚠ **Found while drafting, and it makes this OQ slightly larger than it looks: the two sites already disagree.** `configure/main.md`'s Phase 5.4 tells the reader `update.sh` prints *"Applied agent models: N agents (M changed, K skipped)"*, while the shell actually prints *"Applied agent models: N with model_tier (M changed), K skipped"*. **Pre-existing, harmless today, and this decision must not carry it forward** — whichever wording is chosen goes into BOTH sites in the same phase.
 
-### OQ-5 — Explicit `model: inherit` on agents, or omit the line? *(unratified — but the evidence is now documented)*
+### OQ-5 — Explicit `model: inherit` on agents, or omit the line? *(RESOLVED 2026-09-03 — explicit `inherit`, on documented ground)*
 
 **RECOMMENDATION: explicit `inherit`.** ⚠ **This is no longer a judgment call: the documented resolution order settles it.** `inherit` is step 2 and beats `CLAUDE_CODE_SUBAGENT_MODEL`; an absent line falls through to step 3, handing the choice to an environment variable the framework does not set and cannot see (guide answer 1; `### Claude Code authoring surface`). **Omitting the line would replace a framework default with an environment default, which is not what directive (2) asked for.**
 
@@ -304,9 +304,11 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)*
+### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-09-03**
 
 **Objective:** ratify or amend D1–D8 and answer OQ-1–OQ-5, recording each answer in this file with its reasoning. **Nothing else may start.**
+
+**✅ CLOSED 2026-09-03 — see `## Phase 0 close record` below. Phases 1, 2 and 3 are cleared to build; Phase 4 stays a deferred user-driven HARD GATE.** The pick-list below is retained as the record of what needed an explicit answer, **and every item on it was answered by the blanket directive rather than by a separate deliberation** — which the close record states plainly.
 
 **Four items need an explicit pick rather than a nod**, because each has a named fork whose arms lead to different builds:
 
@@ -327,6 +329,35 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 - **D1's transition sub-part and D2 are answered in the same breath**, and if they diverge the ratifier states which mitigation replaces the other.
 - **The evidence split survives ratification.** Two directives plus one locally-reproduced merge finding. **A Phase 0 that upgrades a directive into a finding has changed the evidence base and must say where the finding came from.**
 - **The five recorded guide answers are still the live doc behavior** — re-check the two fetched pages if more than a few days have passed; **answers 1 and 2 are load-bearing for OQ-5 and D1 respectively.**
+
+---
+
+## Phase 0 close record
+
+**Ratified 2026-09-03 by the maintainer, in-session, with a SINGLE BLANKET DIRECTIVE** — verbatim, in Ukrainian, **with its typo kept as written**: *"ратифікую все як пекомендовано"* (*"I ratify everything as recommended"*). **Every item — D1–D8 and OQ-1–OQ-5 — is ratified AS RECOMMENDED.** No item was amended, deferred or declined except where a decision's own recommendation was to decline (D1's alternatives (a), (a′), (b), (c) and (d); D2's four rejected arms; D3's four; D4's two; D5's two; D6's two; D7's gate and drift-check arms; OQ-2's widening; OQ-3's refusal) — **those declines ARE the recommendation, not a departure from it.**
+
+⚠ **What this closure is, stated plainly rather than dressed up: ONE directive, not thirteen deliberations.** The maintainer supplied no per-item reasoning, and **this record does not manufacture any.** The arguments standing behind each answer are the ones already written in the decision bodies above — they were ratified, not re-derived, and **nothing in this closure adds evidence to any of them.** *(Precedent: plan 91's Phase 0, closed 2026-08-28, and plan 92's, closed 2026-09-03, both by a single blanket directive and both recording the blanket form rather than implying per-item argument.)*
+
+**The four explicit picks, as answered by that directive:**
+
+| Pick | Answer |
+|---|---|
+| **D1's transition sub-part with D2** | **BOTH, in the same breath.** The pre-merge snapshot-normalization call is TAKEN, at the anchor D1 names, **and** D2 ships with its bound (i) intact — the mitigation is a recommendation whose only real-install observation is Phase 4's anchor 4 |
+| **D3's contract change** | **ACCEPTED.** `agents-AUTHORING.md`'s *"fixed — author to it, never change it"* clause is touched a SECOND time in one week — plan 92 added `model_pin` on 2026-09-03, this plan removes it — and **Phase 2 records the field's WHOLE LIFE in one dated note**, because a field that appears and vanishes without a record is indistinguishable from drift |
+| **D2 part 4 — retiring `scan`** | **RETIRED**, reversing plan 92's OQ-3 answer on the stated ground that the map which gave the tier meaning is gone. **Phase 3 states that reason where plan 92's OQ-3 is amended**, never as a silent divergence |
+| **OQ-2's set width** | **The eight, unchanged.** No widening in v1; the candidates stay recorded, and a later widening is a two-file edit per command because the consistency test binds the map to the printed advice |
+
+**What ratification did NOT change — recorded so a future session does not read closure as scope growth:**
+
+- **Every alternative and every honest bound survives verbatim.** D1's five bounds (turn-scoped, silent org exclusion, mid-conversation model switch on a model-invoked command, undocumented subagent inheritance, no survival across a re-emit), D2's three (the one-time transition conflict, `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, nothing measured), D3's loss of a guarantee in exchange for an informed choice, D5's unvalidated model × effort, D6's unenforced amendment notes, D7's un-verified post-apply state and D8's one-session bound are **accepted costs, not answered ones.** **Phase 0's own Verify requires this**, and none was deleted.
+- ⚠ **Two costs were ratified WITH their bounds and must not be re-read as discharged.** **(a) The transition cost (D2 bound (i))**: the release that removes the static default IS a change to the static default, so a configured install whose value differs from both meets plan 92's Trap 3 once; the mitigation is recommended, **not proven**, and Phase 1's local reproduction is a build observation while Phase 4's anchor 4 is the only real-install evidence. **(b) The four-questions cost (D2 bound (iii))**: a consumer who wants the old per-tier behavior must now answer four questions to get it, and **nothing here measures that the session model is a better starting point** — it is the choice the maintainer directed.
+- **The evidence split is unchanged.** Two maintainer directives dated 2026-09-03 plus one inherited, locally-reproduced merge finding. ⚠ **Ratifying a directive does not upgrade it into a finding**, and no summary of this plan may imply a consumer failure.
+- **The five `claude-code-guide` answers were folded into the decisions BEFORE ratification**, not after — `### The parallel claude-code-guide pass` is drafting-time evidence, so the maintainer ratified decisions that already carried it. **No "verify at Phase 0" placeholder survived into the ratified text**, and Phase 1's Step 0 re-asks only the two questions whose answers can move.
+- ⚠ **The one question this closure could NOT answer stays open by construction: whether a subagent carrying `model: inherit` follows a command's turn-scoped override.** It is undocumented, external to this repo, and **no directive can settle it** — it remains an OBSERVATION at **Phase 4's anchor 6**, which carries no MUST, and **no sentence in `src/` may assert either answer.**
+- **Python and shell stay confined to D7's five-item list.** A phase that needs more has crossed its own boundary.
+- **Phase 4 is NOT cleared.** It is a deferred user-driven HARD GATE with seven known-answer anchors, **anchors 1 and 2 scored as a PAIR**. **Everything Phases 1–3 produce will be build-verified and NOT consumer-validated.**
+
+---
 
 ### Phase 1 — The Python surface and the `update.sh` move *(Python + shell)*
 
@@ -373,6 +404,31 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 - `git status` shows zero files modified under `src/commands/` — this phase touches Python, the emitter and `update.sh` only.
 
 **This phase appends a `#### Phase 1 build record` block** carrying the Step-0 answers, the counted numbers, what landed, every divergence from the text above with its reason, and the reviewer findings by severity.
+
+#### Phase 1 build record — Step 0 (2026-09-03)
+
+**The `claude-code-guide` agent was dispatched 2026-09-03 and answered from the live docs, BEFORE any Phase-1 code was written.** This block is the record Phase 1's first Verify bullet requires; **Phase 2 CITES it and does not re-ask.** ⚠ **Nothing below is a build result — no code has landed. This block records the two prerequisite steps only.**
+
+**Answer 1 — the resolution order and the command `model` field are UNCHANGED from the drafting-time fetch, so OQ-5's basis STANDS.** `code.claude.com/docs/en/sub-agents.md` (*Model Resolution Order*) reads exactly as fact-checked at drafting: **per-invocation `model` parameter → the subagent's own `model` frontmatter, where `inherit` selects the main conversation's model → `CLAUDE_CODE_SUBAGENT_MODEL` → the main conversation's model**, with the page's own note that **from v2.1.251 the environment variable no longer overrides the parameter or the frontmatter.** And `code.claude.com/docs/en/slash-commands.md`'s frontmatter reference still carries the `model` field in full: *"The override applies for the rest of the current turn and is not saved to settings; the session model resumes on your next prompt. Accepts the same values as `/model`, or `inherit` to keep the active model. A value excluded by your organization's `availableModels` allowlist is not used and the session keeps its current model."*
+
+⚠ **So D2 part 1, OQ-5 and D1's bounds (i) and (ii) rest on live documented text, re-read on the day of the build** — not on a cached reading. ⚠ **The two Claude Code version numerals in this plan are still two DIFFERENT claims and are still not reconciled**: this answer's **v2.1.251** is when the environment variable stopped overriding the parameter and the frontmatter; `### Claude Code authoring surface`'s **v2.1.257** is the availability floor the page states for `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`. **Neither is a model version, neither reaches `src/`, and the Non-goals entry that declines to reconcile them is unchanged.**
+
+**Answer 2 — subagent inheritance under a command override is STILL NOT DOCUMENTED.** None of the three pages says what model a subagent carrying `model: inherit` — **or no `model` line at all** — runs on when it is started during a turn already under a command/skill `model:` override. ⚠ **The gap is exactly where the plan predicted it, so D1's bound (iv) is unchanged and Phase 4's anchor 6 keeps its purpose**: an OBSERVATION with no MUST, recorded whichever way it comes back. **No sentence in `src/` may assert either answer.**
+
+**Plan 92's three settled questions were CITED, not re-asked** — unknown-key tolerance for `model_tier:`, frontmatter key ORDER, and `effort:` on a model without effort support are answered at that plan's `#### Phase 1 build record — Step 0`, and asking again would produce a second answer that can disagree with code already shipped.
+
+**Step 0b — both tripwire greps and the live gate, run 2026-09-03 before any edit.** `claude-[a-z]+-[0-9]` over `src/` → **0 hits**; `\b(opus|sonnet|haiku|fable)[\s-]+[0-9]` (case-insensitive) over `src/` → **0 hits**; `python3 scripts/lib/model_version_tripwire.py src` → **PASS**. **So this phase starts from a clean baseline** — a failure on either pattern after this build means THIS build introduced it, not that it was always there.
+
+**Phase 1 execution split — an orchestrator decision, recorded because the deliverable list does not imply it.** Deliverable 5's resolver re-basing needs both the emitter's new tier set (deliverable 3) and the configuration keys the fourth tier reads (deliverable 6), and deliverable 7's `update.sh` calls the verb deliverable 2 renames — **so the order is a dependency, not a preference. Four runs, each completing python-engineer → python-reviewer before the next starts:**
+
+| Run | Contents | Why here |
+|---|---|---|
+| **A** | Deliverable 6 (the `security` tier's configuration surface) | Independent of the verb and the emitter; **runs in PARALLEL with C** |
+| **C** | Deliverables 3 + 4 (emitter `inherit` / tiers / pin removal, and the deletions) | Independent of A; **must land before B**, whose resolver replaces what these two remove |
+| **B** | Deliverables 1, 2, 5 (`COMMAND_TIERS` + the consistency test, the verb extension and rename, the resolver) | Needs **both** A's config keys and C's tier set |
+| **D** | Deliverable 7 (`update.sh` move + transition call) | Calls the verb B renames; last by construction |
+
+⚠ **A and C run in parallel and both touch the counts' neighbourhood**, so the count pins are re-COUNTED in whichever run lands second — **never incremented from the other run's numbers** (plan 92's Trap 6, inherited).
 
 ### Phase 2 — The question surface and the contract *(instruction-only)*
 
