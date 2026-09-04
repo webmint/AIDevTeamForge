@@ -439,10 +439,49 @@ Scope:
 - **Every sentence about the helper uses setter/getter language** — the helper owns the structure, numbering, validation and atomic write; the orchestrator composes values and supplies the date. **No sentence tells the orchestrator to compose a number, a slug or a file path.**
 - **The emitted text says the lifecycle is manual and names no mechanical writer** (D5's bound).
 - **The emitted text carries the discipline-not-verification statement** for the `**Ticket**` field, in plan 91's voice.
-- **`git grep -n "tickets/" src/` shows exactly three groups and nothing else**: Phase 1's two library files (`src/devforge/lib/_shared/ticket_file.py` and `src/devforge/lib/_report_ticket/_cli.py`, which already carried the literal before this phase began), this phase's `src/commands/report-ticket/main.md`, and this phase's `src/devforge/storage-rules.md` sites — **and no hit under `src/commands/research/`**, because Phase 3's edits have not started.
+- **`git grep -n "tickets/" src/` shows exactly three groups and nothing else**: **Phase 1's FOUR library files**, which already carried the literal before this phase began — `src/devforge/lib/_shared/ticket_file.py`, `src/devforge/lib/_report_ticket/_cli.py`, `src/devforge/lib/report_ticket_helper.py` (its module docstring) and ⚠ **`src/devforge/lib/_shared/bug_file.py`, the one an enumeration keeps missing** (the promote-arm provenance note plus `scan_highest_number`'s own docstring, both naming `tickets/` as the sibling directory); this phase's `src/commands/report-ticket/main.md`; and this phase's `src/devforge/storage-rules.md` sites — **and no hit under `src/commands/research/`**, because Phase 3's edits have not started.
 - **No plan vocabulary in emitted text** — "D3", "OQ-6" and this plan's number are maintainer vocabulary. Emitted text names only commands, files and behaviors.
 - **The `description` is counted in words and the count is stated in the commit message.**
 - **The frontmatter contains no key outside the four named**, and the `name:` line's inertness (fetched docs) is not contradicted by any sentence.
+
+#### Phase 2 build record — 2026-09-04
+
+**Route as specified: instruction-author → instruction-reviewer, plus `claude-code-guide`.** ⚠ **Instruction-only — no Python, no test, and nothing here has been observed on a real install.**
+
+**What landed:**
+
+1. **`src/commands/report-ticket/main.md`** — 133 lines, mirroring `/devforge:report-bug` section for section: frontmatter, overview, `## Maintainer note`, a two-senses-of-"ticket" section, `## Outputs of this command`, `## Helper interaction model`, four phases (PHASE 3 split into 3.1 staging and 3.2 writing), and `## Important rules`. **Frontmatter carries exactly four keys** — `name`, `description`, `argument-hint`, `allowed-tools` — with **no `disable-model-invocation` line**, which is what makes the command model-invocable. **`allowed-tools` is a YAML list of four entries**: `Read`, the two `Bash(.devforge/lib/report_ticket_helper <verb> *)` globs, and `Write`. **The `description` is 37 words, counted**, inside the ≈40-word budget.
+2. **`src/devforge/storage-rules.md`** — three insertions and nothing else: a `tickets/` entry in the `## Directory Structure` tree beside `bugs/`, one `## File Lifecycle` line (`report-ticket → creates tickets/NNN-description.md`), and a `## Ticket Capture Rules` section before `## Cleanup Rules` carrying **the disambiguation rule** (ticket ID vs ticket file, stated first and prominently), Directory / Naming / Status Lifecycle / Ticket File Format / Field notes / How Ticket Files Are Created / How Ticket Files Are Resolved. **The format block mirrors `_format_ticket`'s field order byte-for-byte** — H1, blank, `**Status**` / `**Type**` / `**Source**` / `**Ticket**` / `**Reported**`, blank, bare body — with no `Fixed` line, no severity, and no `## Description` wrapper, because the writer renders none.
+
+**The `claude-code-guide` pass is RECORDED, as this phase's Verify requires.** Its answers **confirmed the surface this plan had already fetched** and changed no decision: the combined `description` + `when_to_use` listing text is truncated at **1,536 characters**; a YAML-list `allowed-tools` carrying `Bash(...)` glob patterns is current; **`disable-model-invocation` has no positive form**, so omitting it is the only way to be model-invocable; `name` is **ignored** in a command file; and `$ARGUMENTS` expands to the full multi-line argument string as typed. **Separately, the reviewer ran its own live permissions-doc fetch on the `Write` grant and confirmed bare `Write` is the correct form** — a scoped `Write(path)` rule is documented as **accepted but never consulted**, so scoping the grant would have produced a rule that reads as a restriction and enforces nothing. **Bare `Write` is therefore the honest form, not the lazy one.**
+
+**Divergences, each with its reason:**
+
+1. **`## Important rules` carries TEN rules, not `/devforge:report-bug`'s eight.** The two extra exist because this command has two concerns its sibling does not: **shell-safety of the body** (rule 6 — the body never crosses a shell argument) and **the two-senses vocabulary** (rule 9 — say "ticket ID" or "ticket file", never a bare "ticket"). **Mirroring the sibling's count would have meant dropping one of them**, and both are load-bearing.
+2. **`Write` was added to `allowed-tools` mid-phase**, on the author's recommendation and the orchestrator's acceptance, after the file was first written with the three-entry list. **The reasoning is recorded because the alternative was tempting and wrong:** a quoted heredoc (`<<'EOF'`) would have avoided the grant entirely, but its correctness depends on the model choosing the quoted form over the unquoted one for arbitrary pasted text — **the unfalsifiable-compliance shape the body-file decision exists to refuse.** Without the grant, staging the body prompts for permission on every capture, which pushes a future session toward exactly that heredoc. `PHASE 3.1` now states the grant, so the frontmatter and the instruction agree in writing.
+3. **A scratch-diagnostic limitation is disclosed rather than engineered away** (reviewer finding 2). Cleanup fires on success only, so a failed run's staged body survives — **but the scratch path is fixed, so the next invocation overwrites it.** Both sentences say so; making the path unique per run was considered and declined as scope this phase does not own.
+
+**Reviewer findings — 0 high, 0 medium, 2 low, 2 nit — with dispositions:**
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | Low | `"pasted tracker text"` at one site drifted from the established `"pasted tracker-ticket text"` compound | **FIXED** |
+| 2 | Low | The scratch file's diagnostic value is bounded by a fixed path and success-only cleanup, and the spec did not say so | **FIXED** — one sentence in PHASE 3.2 and one beside the removal instruction |
+| 3 | Nit | The new `## File Lifecycle` line's arrow sits one column off the block's 13-character padding | **SKIPPED — accepted cosmetic.** Re-padding the whole block would put diff noise across a shared file for an alignment nobody reads mechanically |
+| 4 | Nit | `"tracker ticket"` appears as a qualified third compound beside "ticket ID" and "ticket file" | **SKIPPED — no ambiguity.** The qualifier names the tracker's own object, and the two-senses framing is about the framework's two uses; a third rule would over-specify prose that already reads correctly |
+
+**Verify-grep results, as run:**
+
+- **`git grep -n "tickets/" src/` → six files**, matching the (corrected) Verify enumeration: Phase 1's four library files, this phase's `report-ticket/main.md`, and this phase's `storage-rules.md`. ⚠ **The enumeration in that Verify bullet was WRONG when this phase started** — it named two Phase 1 files where there are four — and was corrected during this phase rather than scored as a pass against a false expectation.
+- **No hit under `src/commands/research/`** — Phase 3 has not started.
+- **`## Bug Report Rules` is byte-intact**, and the `declared memory disposition` sentence was not touched.
+- **No plan vocabulary in either file this phase wrote.** (`storage-rules.md`'s four pre-existing plan citations sit in the `.devforge/` disposition section, untouched.)
+
+**Residuals recorded, none fixed here:**
+
+1. **Five pre-existing bare-"ticket" sentences from the feature-directory work** live elsewhere in `storage-rules.md` and are now technically at odds with the disambiguation rule this phase added. **Out of scope** — the rule is prescriptive for new writing and makes no claim about the existing file. A future pass may reconcile them.
+2. **The `## File Lifecycle` one-column misalignment** (finding 3), accepted above.
+3. ⚠ **The standing Phase-4 transient**: `storage-rules.md`'s `declared memory disposition` sentence still reads **20 emitted commands / 13 `READS` / 7 `N/A`**, which Phase 2b's registrations will falsify and Phase 4 corrects. **Recorded here so a reader between those phases does not treat it as a fresh defect.**
 
 ### Phase 2b — Roster registrations *(Python)*
 

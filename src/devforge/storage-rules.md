@@ -8,6 +8,9 @@ These rules define how all development artifacts are organized. All commands MUS
 bugs/
   NNN-short-description.md           # Bug reports (report-bug or verify triage)
 
+tickets/
+  NNN-short-description.md           # Ticket files — captured non-bug work items (report-ticket)
+
 audits/
   YYYY-MM-DD-audit.md                  # Adversarial codebase audits (audit) — periodic, dated, not auto-committed
   .gitignore                           # Auto-created on first audit run (excludes .tmp-* files)
@@ -264,6 +267,7 @@ verify       → updates specs/<feature>/spec.md status to Complete; Phase 9 tri
 summarize    → creates specs/<feature>/summary.md (PR-ready feature summary)
 finalize     → squashes WIP commits + surgical docs/ updates via tech-writer
 report-bug   → creates bugs/NNN-description.md
+report-ticket → creates tickets/NNN-description.md
 fix          → FEATURE lane: writes a [WIP] commit in the source repo, or on a scope-change bounce creates specs/<feature>/fix-seed.json ONLY on a MATCHING re-enter-specify pick (user picks "re-enter specify" AND the bounce recommends it; any other pick writes no seed — the verdict gate) (backward re-entry seed → /devforge:specify), WIP-committed as [WIP] fix-seed:; a run produces at most one of the two. COLD lane (typed with a bugs/NNN-*.md argument): writes a clean fix(scope): commit AND flips that ONE bug file to Fixed; its bounce recommends /devforge:research, writes no seed, and leaves the bug Open. Creates no bugs/ file in either lane
 audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
@@ -435,6 +439,65 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 - Manual: the user edits `**Status**: Fixed` after resolving the issue — the ordinary path, and the only one for a bug nobody routes through a command
 - `/devforge:fix` cold lane: `/devforge:fix bugs/NNN-<slug>.md` flips that ONE file to `Fixed` itself — filling the `**Fixed**:` date and the `## Fix Notes` body — once its remediation passes the gates. It never creates a bug file and never touches a bug file it was not handed; hand-written `## Fix Notes` are never overwritten (it refuses the close instead)
 - Re-running `/devforge:verify` re-proves the ACs against the remediated diff
+
+## Ticket Capture Rules
+
+### Two senses of "ticket" — always say which
+
+This framework uses the word "ticket" for two different things, and every rule below names one of them explicitly:
+
+- **ticket ID** — the identifier an external tracker assigns, shape `LETTERS-NUMBER` (e.g. `PROJ-123`). It is what `/devforge:research` and `/devforge:discover` ask for when allocating a feature directory, what becomes the directory leaf `specs/<YYYY>/<MM>/<ticket>/` and the branch `spec/<ticket>`, and what a ticket file records in its `**Ticket**:` field.
+- **ticket file** — `tickets/NNN-<slug>.md`, the local capture document `/devforge:report-ticket` writes. Its `NNN` is local to `tickets/` and has nothing to do with any tracker.
+
+A ticket file may carry a ticket ID or none; a feature directory may be named after a ticket ID without any ticket file ever existing. **Never write a bare "ticket" in a doc, a command spec, or a user-facing message — say which one.**
+
+### Directory
+- Location: `tickets/` at project root (parallel to `bugs/`, `specs/` and `docs/`)
+- Each captured work item is a single file: `NNN-short-description.md`
+- Ticket files hold NON-BUG work — a feature idea, an enhancement, a task, or the pasted text of an external tracker ticket. A defect goes to `bugs/` instead (see Bug Report Rules above); the two directories never share a drawer, and a ticket file is never an input to `/devforge:fix`
+
+### Naming
+- **Format**: `NNN-short-description.md` where NNN is a zero-padded sequential number
+- Scan existing `tickets/` files to determine the next number — **its own sequence**, never shared with `bugs/`. Both directories independently start at `001`, so `tickets/001-*.md` and `bugs/001-*.md` can coexist and every reference names the directory rather than a bare number
+- Description part: lowercase kebab-case, derived from the title by the helper
+- Examples: `001-csv-export-reports.md`, `002-split-settings-tabs.md`, `003-proj-123-bulk-import.md`
+
+### Status Lifecycle
+- `Open` — captured, not yet being worked
+- `In Progress` — someone is working the item
+- `Done` — the work shipped
+
+### Ticket File Format
+
+```markdown
+# Ticket NNN: [Short Title]
+
+**Status**: Open | In Progress | Done
+**Type**: enhancement | task | imported
+**Source**: manual | paste
+**Ticket**: [tracker ticket ID, e.g. PROJ-123 — or (none)]
+**Reported**: [YYYY-MM-DD]
+
+[The body: the work item in the reporter's own words, or the pasted
+tracker-ticket text, VERBATIM. No heading, no wrapper section — the body
+follows the field block directly.]
+```
+
+**Field notes:**
+- `Type` records what the input IS: `imported` for pasted tracker-ticket text, `enhancement` for something that adds or changes observable behavior, `task` for chore or maintenance work. It is a label for a human reading the drawer — **nothing validates it against the body**.
+- `Source` is `paste` when the body was pasted from a tracker, `manual` when the reporter wrote it themselves. In practice `imported` and `paste` travel together.
+- `Ticket` is shape-validated only (`LETTERS-NUMBER`). **Nothing checks that the ticket ID exists** — there is no tracker integration, so `PROJ-0000` satisfies the rule exactly as a real ticket ID does. Recording one is a project's own discipline, never evidence the tracker agrees. `(none)` is a normal, complete value.
+- The `Title` in the H1 is the reporter's short title when given, and otherwise the first non-empty line of the body — which is usually the summary line of a pasted tracker ticket.
+- The body is kept VERBATIM: never paraphrased, summarized, re-wrapped, or translated. Preserving the original wording is the point of capturing it as a file.
+- A ticket file carries no `Fixed` date, no severity, and no `File(s)` table — those are bug-file fields, and a captured work item has no defect to locate.
+
+### How Ticket Files Are Created
+- report-ticket — the only creator; writes one fresh `Open` record per run and nothing else
+
+### How Ticket Files Are Resolved
+- Manual, and manual only: whoever works the item edits `**Status**` to `In Progress` and then to `Done`. **No command in this framework flips, fills, or deletes a ticket file** — unlike a bug file, which a `/devforge:fix` cold run can close, a ticket file has no automatic closer of any kind
+- A ticket file left `Open` after its work shipped is a stale record for a human to update, and nothing detects it
+- To act on a captured item, run `/devforge:research tickets/NNN-<slug>.md`; the pipeline then proceeds normally from `/devforge:specify`. Working an item writes nothing back into its ticket file
 
 ## Cleanup Rules
 
