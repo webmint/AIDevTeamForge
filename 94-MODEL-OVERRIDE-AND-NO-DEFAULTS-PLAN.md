@@ -1,19 +1,19 @@
 # 94 — Commands run on the tier's model, and the framework ships no model of its own — the override plan 92 deferred, and the defaults it should not have had
 
-**Status:** **Phase 0 CLOSED 2026-09-03 — every item ratified AS RECOMMENDED by a single blanket maintainer directive; Phases 1–3 CLEARED to build; Phase 4 is the user-driven HARD GATE and NOT part of the build.** Nothing below is built yet. Every decision keeps its recommendation, its alternatives with the reason each is rejected, and its honest bound — **and ratification changed none of them.** ⚠ **The closure came as ONE directive and no per-item deliberation was supplied** — see `## Phase 0 close record`, which says so plainly rather than implying thirteen separate arguments were had. **Ratifying a recommendation does not strengthen it**, and a build that reads a ratified bound as discharged has left this plan.
+**Status:** **✅ DONE (build) 2026-09-04 — Phases 0–3; Phase 4 consumer e2e DEFERRED (user-driven HARD GATE, NOT run; build-verified, NOT consumer-validated).** Phase 0 closed by a single blanket maintainer directive, every item ratified AS RECOMMENDED; commits `c950d7b` (draft) / `36e05b7` (Phase 0 close) / `5d3e134` (Phase 1 code) / `db6088f` (Phase 2 instructions), with the Phase-3 docs commit carrying the three build records. Every decision keeps its recommendation, its alternatives with the reason each is rejected, and its honest bound — **and ratification changed none of them.** ⚠ **The closure came as ONE directive and no per-item deliberation was supplied** — see `## Phase 0 close record`, which says so plainly rather than implying thirteen separate arguments were had. **Ratifying a recommendation does not strengthen it**, and a build that reads a ratified bound as discharged has left this plan.
 
 - **This plan is the direct sibling of `92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md`, and it AMENDS that plan in place.** Plan 92 stays **DONE (build)** — no phase of it is re-opened, no build record of it is edited. What changes there are dated amendment notes at the four sites this plan falsifies (D6), on the house precedent that plan 85 used to amend plan 23 and plan 82 used to amend plan 62.
 - **The evidence is TWO maintainer directives and ONE inherited, locally-reproduced mechanical finding. There is no consumer incident and none is claimed.** The directive half is a predicted-gap feature in plan 87's class. **Say both halves wherever this plan is summarized** — see `## Evidence constraint`.
 - **Phase 4 is a user-driven consumer e2e HARD GATE and it is the ONLY place the override is ever observed working.** Nothing in the build can see a turn-scoped model override take effect; a green suite proves the files were written, never that the turn ran on the model they name.
 
 **Branch:** `develop-2.0-init`
-**Created:** 2026-09-03.
+**Created:** 2026-09-04.
 
 This plan document contains no private-client identifiers and is intended to be **committed normally**, unlike the deliberately-untracked plans 73/74/75.
 
 ## Evidence constraint
 
-**Two maintainer directives, dated 2026-09-03, given in one line after reading plan 92's closing report** (`## Origin` carries them verbatim). **No consumer run failed, nobody reported a wrong model on a wrong tier, and nothing here has been measured.**
+**Two maintainer directives, dated 2026-09-04, given in one line after reading plan 92's closing report** (`## Origin` carries them verbatim). **No consumer run failed, nobody reported a wrong model on a wrong tier, and nothing here has been measured.**
 
 Beside them sits **one inherited mechanical finding that IS verified**: plan 92's Phase-3 build record item (c) reproduced, locally, that a three-way merge of base `opus` / current `fable` / other `sonnet` **conflicts**, that `update.sh` then leaves the whole agent file unchanged **body included**, that its snapshot goes stale, and that the condition **recurs on every later update** while the post-merge apply makes the `model:` line read correct. **That is a local reproduction, not a consumer observation** — and it is the reason directive (2) is a repair rather than a preference. **D2's transition sub-part is the one part of this plan standing on reproduced mechanics; everything else stands on a directive.**
 
@@ -21,9 +21,9 @@ Beside them sits **one inherited mechanical finding that IS verified**: plan 92'
 
 ---
 
-## Origin — two directives in one line, 2026-09-03
+## Origin — two directives in one line, 2026-09-04
 
-After reading plan 92's closing report the maintainer wrote, verbatim, in Ukrainian:
+**The day after plan 92's build landed** (its five build commits are dated 2026-09-03), after reading its closing report, the maintainer wrote, verbatim, in Ukrainian:
 
 > *"оу оце треба правити! так і задумавалося з початку! це про оверайт моделі. Про ресідуал - дефолтів не має бути це має обирати користувач"*
 
@@ -68,7 +68,7 @@ Six things. **Phase 0 ratifies each independently**, except D1's transition sub-
 
 ---
 
-## Verified mechanics (2026-09-03)
+## Verified mechanics (2026-09-04)
 
 Every row was confirmed by opening the named file or by the named fetch. **The quoted token is the anchor; the digit is a dated hint** — this repo has documented anchor rot, so grep the string, never the `:NNN`.
 
@@ -95,7 +95,7 @@ Every row was confirmed by opening the named file or by the named fetch. **The q
 
 ### Claude Code authoring surface, verified against current docs
 
-Fetched **2026-09-03** from `https://code.claude.com/docs/en/slash-commands` and `https://code.claude.com/docs/en/sub-agents.md`. **Cited so a future author re-verifies rather than trusting this file.**
+Fetched **2026-09-04** from `https://code.claude.com/docs/en/slash-commands` and `https://code.claude.com/docs/en/sub-agents.md`. **Cited so a future author re-verifies rather than trusting this file.**
 
 - **Command files ARE skill files.** *"Custom commands have been merged into skills. A file at `.claude/commands/deploy.md` and a skill at `.claude/skills/deploy/SKILL.md` both create `/deploy` and work the same way."* And: *"Files in `.claude/commands/` support the same frontmatter, except `name` and `paths`, which Claude Code ignores in a command file."*
 - **`model`, verbatim from the frontmatter reference:** *"Model to use when this skill is active. The override applies for the rest of the current turn and is not saved to settings; the session model resumes on your next prompt. Accepts the same values as `/model`, or `inherit` to keep the active model. A value excluded by your organization's `availableModels` allowlist is not used and the session keeps its current model. With `context: fork`, the value sets the forked subagent's model instead …"*
@@ -106,9 +106,9 @@ Fetched **2026-09-03** from `https://code.claude.com/docs/en/slash-commands` and
 - **`${CLAUDE_EFFORT}` is a documented substitution variable** carrying *"The current effort level: `low`, `medium`, `high`, `xhigh`, or `max`."* ⚠ **There is no model counterpart** — the model half of the advisory line still has no documented source, exactly as plan 92's Phase-4 pass found.
 - **Subagent model resolution, verbatim order:** *"1. The per-invocation `model` parameter · 2. The subagent definition's `model` frontmatter, where `inherit` selects the main conversation's model · 3. The `CLAUDE_CODE_SUBAGENT_MODEL` environment variable, when you set it to a model alias or model ID · 4. The main conversation's model."* And: *"When you set `model: inherit` in a subagent's frontmatter, the subagent uses the same model as the main conversation."*
 - **`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` still defeats everything, and the page now names a version floor:** *"While `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is on, Claude Code ignores the `model` field of every subagent definition … and Claude can't pass a model when starting a subagent"*, and the surrounding note says the FORCE variable *"Requires Claude Code v2.1.257 or later."* ⚠ **That numeral differs from the pre-v2.1.251 resolution-order note plan 92's Step 0 recorded; the two claims are about different things (when FORCE became available vs when the ordering changed) and this plan reconciles neither.** Neither is a model version, and neither reaches `src/`.
-- **⚠ The subagent page says NOTHING about whether a subagent carrying `inherit` follows a command's turn-scoped override.** Confirmed by direct fetch, 2026-09-03. **This is the one load-bearing unknown in the plan.**
+- **⚠ The subagent page says NOTHING about whether a subagent carrying `inherit` follows a command's turn-scoped override.** Confirmed by direct fetch, 2026-09-04. **This is the one load-bearing unknown in the plan.**
 
-### The parallel `claude-code-guide` pass (2026-09-03)
+### The parallel `claude-code-guide` pass (2026-09-04)
 
 Run alongside the drafting fetches above; its five answers are folded into the decisions that cite them, and **no decision in this file still says "verify at Phase 0" about any of them.**
 
@@ -120,11 +120,11 @@ Run alongside the drafting fetches above; its five answers are folded into the d
 
 ---
 
-## Decisions (D1–D8) — ALL RATIFIED 2026-09-03
+## Decisions (D1–D8) — ALL RATIFIED 2026-09-04
 
 Each carries the recommendation, the alternatives with the reason each is rejected, and the **honest bound — what the decision does NOT achieve.** **The bounds are load-bearing: a decision ratified with its bound deleted cannot be re-opened honestly later.**
 
-### D1 — The override mechanism: extend the apply verb over commands, keyed on a helper-owned map *(RATIFIED 2026-09-03 — as recommended)*
+### D1 — The override mechanism: extend the apply verb over commands, keyed on a helper-owned map *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** Plan 92's verb is **EXTENDED** to `.claude/commands/devforge/*.md` and **RENAMED `apply-models`**, with `apply-agent-models` kept as an argparse alias for one release (OQ-1). For each command in a helper-owned `COMMAND_TIERS` map it writes, into that file's existing frontmatter block:
 
@@ -151,7 +151,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, FIVE parts.** **(i)** The override is **turn-scoped and unsaved** — it changes what a command's turn runs on, never the session. **(ii)** An org-excluded value is **silently not used** and the session keeps its model, with no signal anywhere. **(iii) A model-invoked command switches the session's model mid-conversation for that turn** — plan 92 OQ-5's cost (c), now live because plan 93 made 16 commands model-invocable; **it is accepted, and it is a behavior a user did not type.** **(iv)** Whether a subagent carrying `inherit` follows the override is **NOT DOCUMENTED** and is observed only at Phase 4's anchor 6 — **no sentence in `src/` may assert either answer.** **(v)** A re-run of `install.sh` re-emits commands and drops every `model:` line until `/devforge:configure` (or the verb) runs again; **nothing detects that state**, and unlike the agent path there is no merge to preserve it (fact 13).
 
-### D2 — No framework defaults: `inherit` on agents, nothing on commands, and the map deleted *(RATIFIED 2026-09-03 — as recommended)*
+### D2 — No framework defaults: `inherit` on agents, nothing on commands, and the map deleted *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE, four parts.**
 
@@ -167,14 +167,14 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **Alternatives considered:**
 
-- *Keep a map but make it user-overridable.* **REJECTED**: that is what shipped yesterday. **A default is a default whoever can change it**, and directive (2)'s words are *"there must be no defaults, the user chooses"*.
+- *Keep a map but make it user-overridable.* **REJECTED**: that is what plan 92 shipped on 2026-09-03, the day before this plan was drafted. **A default is a default whoever can change it**, and directive (2)'s words are *"there must be no defaults, the user chooses"*.
 - *Omit the `model:` line on agents instead of writing `inherit`.* **REJECTED on the documented order** — omission hands the choice to `CLAUDE_CODE_SUBAGENT_MODEL`, an environment variable the framework does not set and cannot see, which is a default with a different owner rather than no default (OQ-5).
 - *Keep the map only as the Q11 `(Recommended)` labels' source.* **REJECTED as a rename**: a value the framework writes into an agent file is a default; a value it prints beside an option is a recommendation. **The labels stay** — they are plan 92's D2 and D3, whose `## Defaults rationale` argues each one — and they become plain text in `q11-tiers.md`, derived from nothing. ⚠ **Attribution matters here**: plan 92's directive (c) is the origin of the per-command ADVISORY LINE (its D7), not of these labels, and a note that conflates the two would send a future reader to the wrong decision.
 - *Retire `scan` in a separate plan.* **REJECTED**: it is one member of the tuple this decision deletes, and leaving it would strand an enum value whose only remaining consumer is a validation error message.
 
-**⚠ Honest bound, THREE parts.** **(i) The transition is not free, and it is the sharpest cost in this plan**: the very release that removes the static default IS a change to the static default, so every configured install whose value differs from both meets plan 92's Trap 3 once. **D1's snapshot-normalization mitigation is a recommendation, not a proof** — Phase 1's local reproduction is the only build-time evidence, and **Phase 4's anchor 4 is the only place it is observed on a real install.** **(ii)** `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` still overrides every agent's frontmatter, `inherit` included, and **the framework cannot detect it** (plan 92's Trap 5, inherited unchanged). **(iii) Nothing here measures that the session model is a better choice than a tier default** — it is the choice the maintainer directed, and a consumer who wanted the old behavior now has to answer four questions to get it.
+**⚠ Honest bound, THREE parts.** **(i) The transition is not free, and it is the sharpest cost in this plan**: the very release that removes the static default IS a change to the static default, so every configured install whose value differs from both meets plan 92's Trap 3 once. **D1's snapshot-normalization mitigation is a recommendation, not a proof** — Phase 1's local reproduction is the only build-time evidence, and **Phase 4's anchor 4 is the only place it is observed on a real install.** ⚠ **WIDENED BY PHASE 1's BUILD (2026-09-04), and the earlier narrower wording is withdrawn: the residual conflict class is NOT limited to a hand-edited file.** Normalization writes the **NEW** configuration into the baseline, so **any live agent whose `model:` / `effort:` is STALE relative to `project-config.json` at merge time still conflicts** — a setter run without a following apply, or an update landing between a configuration edit and the next apply, produces exactly that state without anyone editing an agent by hand. **The mitigation narrows the class; it does not close it.** **(ii)** `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` still overrides every agent's frontmatter, `inherit` included, and **the framework cannot detect it** (plan 92's Trap 5, inherited unchanged). **(iii) Nothing here measures that the session model is a better choice than a tier default** — it is the choice the maintainer directed, and a consumer who wanted the old behavior now has to answer four questions to get it.
 
-### D3 — `security-reviewer` becomes a QUESTION: a fourth tier, not a pin *(RATIFIED 2026-09-03 — as recommended)*
+### D3 — `security-reviewer` becomes a QUESTION: a fourth tier, not a pin *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** A fourth tier **`security`** with exactly one member. `src/agents/security-reviewer.md` becomes `model_tier: security`, and **`model_pin` is REMOVED from the authoring contract** — it existed to express a framework-chosen model, which directive (2) forbids. Q11 gains **Q11.4 — "Which model reviews security?"** carrying that tier's model and effort questions in one call, like its three siblings. New fields `claude_tier_security` + `claude_effort_security`, new setters, new render keys `CLAUDE_TIER_SECURITY` / `CLAUDE_EFFORT_SECURITY`, and the apply verb resolves the fourth tier exactly like the other three.
 
@@ -189,9 +189,9 @@ Each carries the recommendation, the alternatives with the reason each is reject
 - *A per-agent question.* **REJECTED**: nineteen questions to express one fact about one agent; the tier is the unit the rest of the system already speaks in.
 - *Drop the concern entirely and let the think tier apply.* **REJECTED** on the documented refusal behavior, which is a vendor behavior and not a speculation.
 
-**⚠ Honest bound.** **A user who picks the refusal-prone alias here anyway gets exactly what plan 92 D6 warned about**, and this plan builds no validation, no warning at dispatch and no detection of a missing panel verdict. **The question replaces a guarantee with an informed choice** — that is the whole trade, and it is a real loss of protection, accepted rather than answered. ⚠ **It also touches the authoring contract a second time in two days**: plan 92 added `model_pin` on 2026-09-03 and this plan removes it, so `agents-AUTHORING.md`'s fixity clause needs a second dated note **stating the field's whole life**, not a silent deletion.
+**⚠ Honest bound.** **A user who picks the refusal-prone alias here anyway gets exactly what plan 92 D6 warned about**, and this plan builds no validation, no warning at dispatch and no detection of a missing panel verdict. **The question replaces a guarantee with an informed choice** — that is the whole trade, and it is a real loss of protection, accepted rather than answered. ⚠ **It also touches the authoring contract a second time on consecutive days**: plan 92 added `model_pin` on 2026-09-03 and this plan removes it on 2026-09-04, so `agents-AUTHORING.md`'s fixity clause needs a second dated note **stating the field's whole life**, not a silent deletion.
 
-### D4 — The eight advisory lines stay, and become the override's readback *(RATIFIED 2026-09-03 — as recommended)*
+### D4 — The eight advisory lines stay, and become the override's readback *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** The eight lines are **not deleted** and their printed sentence is **unchanged**. Two things change around them:
 
@@ -205,7 +205,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **The readback is an observation, not a check.** Nothing compares the two halves, nothing fails when they differ, and **the session-model half still rests on an OBSERVED, undocumented harness statement** with `unknown` as the documented-correct fallback (plan 92 D7's bound (i), unchanged — there is still no documented way for a command to learn the session model, and `${CLAUDE_EFFORT}` has no model counterpart).
 
-### D5 — Effort on commands: the tier's level, `default` removes the line *(RATIFIED 2026-09-03 — as recommended)*
+### D5 — Effort on commands: the tier's level, `default` removes the line *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** Each mapped command's `effort:` comes from its tier's `CLAUDE_EFFORT_<TIER>`; the `default` sentinel means **no `effort:` line**, which the docs define as inheriting the session's effort level. Same sentinel, same six-member enum and same setters as plan 92 D4 — **no new field, no new question beyond D3's pair.**
 
@@ -216,7 +216,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Nothing validates model × effort** (plan 92 D4, inherited). ⚠ **And the documented silent fallback is documented for the SESSION-level effort setting, not explicitly for the frontmatter field** (guide answer 3) — so the most this plan may say is that an unsupported level is expected to degrade rather than fail, **and that no phase of it observes which.**
 
-### D6 — Plan 92 is amended in place, dated, at four sites *(RATIFIED 2026-09-03 — as recommended)*
+### D6 — Plan 92 is amended in place, dated, at four sites *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** Phase 3 writes dated amendment notes into `92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md` **without editing any build record and without re-opening any phase**:
 
@@ -234,9 +234,9 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Amendment notes are read by whoever opens the file, and nothing enforces that.** Plan 92 is cited from `CLAUDE.md`, `PLAN-STATUS-ARCHIVE.md`, `DEVELOPMENT-STATUS.md`, `CHANGELOG.md` and `docs/v2/ARCHITECTURE.md`; **Phase 3 sweeps the ones this plan falsifies and claims nothing about the rest.**
 
-### D7 — Scope tripwire: zero gates, and Python confined to a named list *(RATIFIED 2026-09-03 — as recommended)*
+### D7 — Scope tripwire: zero gates, and Python confined to a named list *(RATIFIED 2026-09-04 — as recommended)*
 
-**RECOMMENDED RULE.** **Zero gates, zero new `verify-*` gate numbers, zero hard-fail validators** — plan 75's tripwire in both halves. **No plan-63/93 count delta**: the 16/4 split is untouched, no command is added or removed, no `disable-model-invocation` flag moves, and **no `description` is widened** (a `model:` line is not a description and does not enter the always-on skill-listing budget). ⚠ **Read the counts LIVE at Phase 3 anyway** — plan 63's standing coordination rule, which earned itself twice in three days.
+**RECOMMENDED RULE.** **Zero gates, zero new `verify-*` gate numbers, zero hard-fail validators** — plan 75's tripwire in both halves. **No plan-63/93 count delta**: the 16/4 split is untouched, no command is added or removed, no `disable-model-invocation` flag moves, and **no `description` is widened** (a `model:` line is not a description and does not enter the always-on skill-listing budget). ⚠ **Read the counts LIVE at Phase 3 anyway** — plan 63's standing coordination rule, which earned itself on plan 92's Phase-5 sweep (2026-09-03), when the counts had moved 13/7 → 16/4 inside a day.
 
 **Python (and shell) is confined to this list, and a phase that needs more has crossed its boundary:**
 
@@ -255,7 +255,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **Nothing verifies the applied model after apply runs**, other than idempotence and its tests — and for commands there is not even a merge to preserve a hand-edit: **the next re-emit silently discards it** (D1 bound (v)).
 
-### D8 — The consumer e2e is the ONLY place the override is observed working *(RATIFIED 2026-09-03 — as recommended)*
+### D8 — The consumer e2e is the ONLY place the override is observed working *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** State it plainly wherever this plan is summarized: **no build-time check can see a turn-scoped model override take effect.** Tests prove the bytes were written; the docs describe what the bytes mean; **only a real run shows the turn running on the model the line names.**
 
@@ -270,31 +270,31 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 ---
 
-## Open questions (OQ-1–OQ-5) — ALL RESOLVED 2026-09-03
+## Open questions (OQ-1–OQ-5) — ALL RESOLVED 2026-09-04
 
-### OQ-1 — The verb's name *(RESOLVED 2026-09-03 — rename to `apply-models`, with `apply-agent-models` kept as an alias for one release)*
+### OQ-1 — The verb's name *(RESOLVED 2026-09-04 — rename to `apply-models`, with `apply-agent-models` kept as an alias for one release)*
 
-**RECOMMENDATION: rename to `apply-models`, keeping `apply-agent-models` as an argparse alias for one release.** ⚠ **Count the blast radius before choosing: a `grep -rl apply-agent-models` over the repo returns 28 files on 2026-09-03** — the ten command-surface files (`configure/main.md`, `q11-tiers.md` and the eight advisory steps' provenance clauses), `update.sh`, `agents-AUTHORING.md`, **five `src/` + `scripts/` Python modules** (`_cli.py`, `_cmds_agent_models.py`, `_render.py`, `install_defaults.py`, `generate-agents.py`), **three test modules**, and the ledger/doc set. **An alias makes the rename a documentation sweep rather than a flag day**; the alternative — keep the old name — leaves a name that describes half the verb, and the next reader trusts the name over the docstring.
+**RECOMMENDATION: rename to `apply-models`, keeping `apply-agent-models` as an argparse alias for one release.** ⚠ **Count the blast radius before choosing: a `grep -rl apply-agent-models` over the repo returns 28 files on 2026-09-04** — the ten command-surface files (`configure/main.md`, `q11-tiers.md` and the eight advisory steps' provenance clauses), `update.sh`, `agents-AUTHORING.md`, **five `src/` + `scripts/` Python modules** (`_cli.py`, `_cmds_agent_models.py`, `_render.py`, `install_defaults.py`, `generate-agents.py`), **three test modules**, and the ledger/doc set. **An alias makes the rename a documentation sweep rather than a flag day**; the alternative — keep the old name — leaves a name that describes half the verb, and the next reader trusts the name over the docstring.
 
 ⚠ **The alias is a deprecation with no removal date, which is its own small debt.** Phase 3 records the removal as owed at the next release that touches this verb.
 
-### OQ-2 — Widen the override set beyond the eight? *(RESOLVED 2026-09-03 — NO widening in v1; the eight stand)*
+### OQ-2 — Widen the override set beyond the eight? *(RESOLVED 2026-09-04 — NO widening in v1; the eight stand)*
 
 **RECOMMENDATION: NO for v1.** Candidates recorded rather than built: `research` and `discover` (intake judgment, arguably `think`), `audit` and `spec-check` (adversarial, arguably `think`), `summarize` and `finalize` (drafting, arguably `do`). **Three reasons to wait:** the eight are the set plan 92 already argued and ratified; each addition costs a real per-turn model switch on a command that may be model-invoked (D1 bound (iii)); and **the consistency test binds the map to the advisory lines**, so widening the map means widening the printed advice too — a bigger edit than it looks.
 
-### OQ-3 — Should `/devforge:configure` refuse to complete with an unanswered tier? *(RESOLVED 2026-09-03 — NO refusal; an unanswered tier inherits the session model)*
+### OQ-3 — Should `/devforge:configure` refuse to complete with an unanswered tier? *(RESOLVED 2026-09-04 — NO refusal; an unanswered tier inherits the session model)*
 
 **RECOMMENDATION: NO.** Phase 4 always asks all four tiers, so the unanswered state arises only for a legacy install that never re-ran the command — and **that install now runs on `inherit`, which is precisely what directive (2) says should happen when the user has not chosen.** A refusal would turn the no-defaults stance into a blocker on a state the stance itself endorses, and it would be the first hard-fail in this lane (D7).
 
 **The counter-argument, recorded:** a user who skips Q11.4 gets a security reviewer on the session model, which may be the refusal-prone one (D3's bound). **That is a real hole and it stays open** — the question's own description is the only mitigation.
 
-### OQ-4 — The `update.sh` summary line *(RESOLVED 2026-09-03 — the line names BOTH classes, and `configure/main.md`'s quote of it is reconciled in the same phase)*
+### OQ-4 — The `update.sh` summary line *(RESOLVED 2026-09-04 — the line names BOTH classes, and `configure/main.md`'s quote of it is reconciled in the same phase)*
 
 **RECOMMENDATION: extend it to name both classes** — `agents N (M changed), commands K (L changed), skipped S`. Today's line says *"Applied agent models: N with model_tier (M changed), K skipped"* (fact 15), which would silently under-report after D1. ⚠ **The line is composed by `jq` over the verb's stdout, so the report shape is a contract**: if `applied[]` gains a discriminator (e.g. a `kind` field), the shell must read it, and **plan 92's jq-hardening (`2>/dev/null || VAR="?"`) must be preserved on every new expression.**
 
 ⚠ **Found while drafting, and it makes this OQ slightly larger than it looks: the two sites already disagree.** `configure/main.md`'s Phase 5.4 tells the reader `update.sh` prints *"Applied agent models: N agents (M changed, K skipped)"*, while the shell actually prints *"Applied agent models: N with model_tier (M changed), K skipped"*. **Pre-existing, harmless today, and this decision must not carry it forward** — whichever wording is chosen goes into BOTH sites in the same phase.
 
-### OQ-5 — Explicit `model: inherit` on agents, or omit the line? *(RESOLVED 2026-09-03 — explicit `inherit`, on documented ground)*
+### OQ-5 — Explicit `model: inherit` on agents, or omit the line? *(RESOLVED 2026-09-04 — explicit `inherit`, on documented ground)*
 
 **RECOMMENDATION: explicit `inherit`.** ⚠ **This is no longer a judgment call: the documented resolution order settles it.** `inherit` is step 2 and beats `CLAUDE_CODE_SUBAGENT_MODEL`; an absent line falls through to step 3, handing the choice to an environment variable the framework does not set and cannot see (guide answer 1; `### Claude Code authoring surface`). **Omitting the line would replace a framework default with an environment default, which is not what directive (2) asked for.**
 
@@ -304,16 +304,16 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-09-03**
+### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-09-04**
 
 **Objective:** ratify or amend D1–D8 and answer OQ-1–OQ-5, recording each answer in this file with its reasoning. **Nothing else may start.**
 
-**✅ CLOSED 2026-09-03 — see `## Phase 0 close record` below. Phases 1, 2 and 3 are cleared to build; Phase 4 stays a deferred user-driven HARD GATE.** The pick-list below is retained as the record of what needed an explicit answer, **and every item on it was answered by the blanket directive rather than by a separate deliberation** — which the close record states plainly.
+**✅ CLOSED 2026-09-04 — see `## Phase 0 close record` below. Phases 1, 2 and 3 are cleared to build; Phase 4 stays a deferred user-driven HARD GATE.** The pick-list below is retained as the record of what needed an explicit answer, **and every item on it was answered by the blanket directive rather than by a separate deliberation** — which the close record states plainly.
 
 **Four items need an explicit pick rather than a nod**, because each has a named fork whose arms lead to different builds:
 
 - **D1's transition sub-part with D2.** The snapshot-normalization call is either taken or the merge conflict is accepted with its recurrence. **These must be answered together** — D2 without the mitigation ships a one-time conflict for every configured install whose value differs from both, and the plan must say which was chosen.
-- **D3's contract change.** `model_pin` was added to a table whose own text calls the contract *"fixed"* on 2026-09-03 and would be removed from it days later. **That is a second conscious extension, not a formality**, and the note must record the field's whole life.
+- **D3's contract change.** `model_pin` was added to a table whose own text calls the contract *"fixed"* on 2026-09-03 and would be removed from it the very next day. **That is a second conscious extension, not a formality**, and the note must record the field's whole life.
 - **D2 part 4 — retiring `scan`.** Plan 92 OQ-3 decided to keep it. **Reversing another plan's answered OQ is a decision**, and its reason (the map that gave it meaning is gone) must be stated where plan 92's answer is amended.
 - **OQ-2's set width.** Eight commands is inherited, not re-derived. **A ratifier who wants more should say so now**, because the consistency test makes a later widening a two-file edit per command.
 
@@ -334,7 +334,7 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 ## Phase 0 close record
 
-**Ratified 2026-09-03 by the maintainer, in-session, with a SINGLE BLANKET DIRECTIVE** — verbatim, in Ukrainian, **with its typo kept as written**: *"ратифікую все як пекомендовано"* (*"I ratify everything as recommended"*). **Every item — D1–D8 and OQ-1–OQ-5 — is ratified AS RECOMMENDED.** No item was amended, deferred or declined except where a decision's own recommendation was to decline (D1's alternatives (a), (a′), (b), (c) and (d); D2's four rejected arms; D3's four; D4's two; D5's two; D6's two; D7's gate and drift-check arms; OQ-2's widening; OQ-3's refusal) — **those declines ARE the recommendation, not a departure from it.**
+**Ratified 2026-09-04 by the maintainer, in-session, with a SINGLE BLANKET DIRECTIVE** — verbatim, in Ukrainian, **with its typo kept as written**: *"ратифікую все як пекомендовано"* (*"I ratify everything as recommended"*). **Every item — D1–D8 and OQ-1–OQ-5 — is ratified AS RECOMMENDED.** No item was amended, deferred or declined except where a decision's own recommendation was to decline (D1's alternatives (a), (a′), (b), (c) and (d); D2's four rejected arms; D3's four; D4's two; D5's two; D6's two; D7's gate and drift-check arms; OQ-2's widening; OQ-3's refusal) — **those declines ARE the recommendation, not a departure from it.**
 
 ⚠ **What this closure is, stated plainly rather than dressed up: ONE directive, not thirteen deliberations.** The maintainer supplied no per-item reasoning, and **this record does not manufacture any.** The arguments standing behind each answer are the ones already written in the decision bodies above — they were ratified, not re-derived, and **nothing in this closure adds evidence to any of them.** *(Precedent: plan 91's Phase 0, closed 2026-08-28, and plan 92's, closed 2026-09-03, both by a single blanket directive and both recording the blanket form rather than implying per-item argument.)*
 
@@ -343,7 +343,7 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 | Pick | Answer |
 |---|---|
 | **D1's transition sub-part with D2** | **BOTH, in the same breath.** The pre-merge snapshot-normalization call is TAKEN, at the anchor D1 names, **and** D2 ships with its bound (i) intact — the mitigation is a recommendation whose only real-install observation is Phase 4's anchor 4 |
-| **D3's contract change** | **ACCEPTED.** `agents-AUTHORING.md`'s *"fixed — author to it, never change it"* clause is touched a SECOND time in one week — plan 92 added `model_pin` on 2026-09-03, this plan removes it — and **Phase 2 records the field's WHOLE LIFE in one dated note**, because a field that appears and vanishes without a record is indistinguishable from drift |
+| **D3's contract change** | **ACCEPTED.** `agents-AUTHORING.md`'s *"fixed — author to it, never change it"* clause is touched a SECOND time on consecutive days — plan 92 added `model_pin` on 2026-09-03, this plan removes it on 2026-09-04 — and **Phase 2 records the field's WHOLE LIFE in one dated note**, because a field that appears and vanishes without a record is indistinguishable from drift |
 | **D2 part 4 — retiring `scan`** | **RETIRED**, reversing plan 92's OQ-3 answer on the stated ground that the map which gave the tier meaning is gone. **Phase 3 states that reason where plan 92's OQ-3 is amended**, never as a silent divergence |
 | **OQ-2's set width** | **The eight, unchanged.** No widening in v1; the candidates stay recorded, and a later widening is a two-file edit per command because the consistency test binds the map to the printed advice |
 
@@ -351,7 +351,7 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 - **Every alternative and every honest bound survives verbatim.** D1's five bounds (turn-scoped, silent org exclusion, mid-conversation model switch on a model-invoked command, undocumented subagent inheritance, no survival across a re-emit), D2's three (the one-time transition conflict, `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, nothing measured), D3's loss of a guarantee in exchange for an informed choice, D5's unvalidated model × effort, D6's unenforced amendment notes, D7's un-verified post-apply state and D8's one-session bound are **accepted costs, not answered ones.** **Phase 0's own Verify requires this**, and none was deleted.
 - ⚠ **Two costs were ratified WITH their bounds and must not be re-read as discharged.** **(a) The transition cost (D2 bound (i))**: the release that removes the static default IS a change to the static default, so a configured install whose value differs from both meets plan 92's Trap 3 once; the mitigation is recommended, **not proven**, and Phase 1's local reproduction is a build observation while Phase 4's anchor 4 is the only real-install evidence. **(b) The four-questions cost (D2 bound (iii))**: a consumer who wants the old per-tier behavior must now answer four questions to get it, and **nothing here measures that the session model is a better starting point** — it is the choice the maintainer directed.
-- **The evidence split is unchanged.** Two maintainer directives dated 2026-09-03 plus one inherited, locally-reproduced merge finding. ⚠ **Ratifying a directive does not upgrade it into a finding**, and no summary of this plan may imply a consumer failure.
+- **The evidence split is unchanged.** Two maintainer directives dated 2026-09-04 plus one inherited, locally-reproduced merge finding. ⚠ **Ratifying a directive does not upgrade it into a finding**, and no summary of this plan may imply a consumer failure.
 - **The five `claude-code-guide` answers were folded into the decisions BEFORE ratification**, not after — `### The parallel claude-code-guide pass` is drafting-time evidence, so the maintainer ratified decisions that already carried it. **No "verify at Phase 0" placeholder survived into the ratified text**, and Phase 1's Step 0 re-asks only the two questions whose answers can move.
 - ⚠ **The one question this closure could NOT answer stays open by construction: whether a subagent carrying `model: inherit` follows a command's turn-scoped override.** It is undocumented, external to this repo, and **no directive can settle it** — it remains an OBSERVATION at **Phase 4's anchor 6**, which carries no MUST, and **no sentence in `src/` may assert either answer.**
 - **Python and shell stay confined to D7's five-item list.** A phase that needs more has crossed its own boundary.
@@ -359,11 +359,11 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 ---
 
-### Phase 1 — The Python surface and the `update.sh` move *(Python + shell)*
+### Phase 1 — The Python surface and the `update.sh` move *(Python + shell)* — **BUILT 2026-09-04** (python-reviewer clean on all four runs; commit pending)
 
 **Route: `claude-code-guide` FIRST, then python-engineer → python-reviewer, test-first, tests written AND RUN in the same turn.** ⚠ **The guide pass is owed BEFORE any code**, because this phase changes the frontmatter shipped into every consumer's `.claude/agents/*.md` **and** `.claude/commands/devforge/*.md` — two Claude-Code-integration surfaces. **A phase that reasons "this is Python, so no pass is owed" has read the file extension instead of the artifact.**
 
-**Step 0 — the guide pass.** **Re-put the two questions this plan's design hangs on and RECORD both answers in this phase's build record before any code lands:** (i) has anything changed about the resolution order or `inherit`'s meaning since 2026-09-03 (OQ-5's whole basis); (ii) is subagent inheritance under a command's turn-scoped override documented yet (D1's bound (iv) — **a "yes, and it does NOT inherit" answer changes what Phase 4's anchor 6 is for, not whether the phase builds**). ⚠ **Do not re-ask the three questions plan 92's Step 0 settled** (unknown-key tolerance, key order, effort on a model without effort support) — **cite that build record.**
+**Step 0 — the guide pass.** **Re-put the two questions this plan's design hangs on and RECORD both answers in this phase's build record before any code lands:** (i) has anything changed about the resolution order or `inherit`'s meaning since this plan's drafting fetch of 2026-09-04 (OQ-5's whole basis); (ii) is subagent inheritance under a command's turn-scoped override documented yet (D1's bound (iv) — **a "yes, and it does NOT inherit" answer changes what Phase 4's anchor 6 is for, not whether the phase builds**). ⚠ **Do not re-ask the three questions plan 92's Step 0 settled** (unknown-key tolerance, key order, effort on a model without effort support) — **cite that build record.**
 
 **Step 0b — run BOTH tripwire greps over `src/` and RECORD the results** (fact 18). Both returned zero at plan 92's build; a non-zero result now means something landed in between, and the premise must be re-derived before any edit.
 
@@ -405,9 +405,9 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 **This phase appends a `#### Phase 1 build record` block** carrying the Step-0 answers, the counted numbers, what landed, every divergence from the text above with its reason, and the reviewer findings by severity.
 
-#### Phase 1 build record — Step 0 (2026-09-03)
+#### Phase 1 build record — Step 0 (2026-09-04)
 
-**The `claude-code-guide` agent was dispatched 2026-09-03 and answered from the live docs, BEFORE any Phase-1 code was written.** This block is the record Phase 1's first Verify bullet requires; **Phase 2 CITES it and does not re-ask.** ⚠ **Nothing below is a build result — no code has landed. This block records the two prerequisite steps only.**
+**The `claude-code-guide` agent was dispatched 2026-09-04 and answered from the live docs, BEFORE any Phase-1 code was written.** This block is the record Phase 1's first Verify bullet requires; **Phase 2 CITES it and does not re-ask.** ⚠ **Nothing below is a build result — no code has landed. This block records the two prerequisite steps only.**
 
 **Answer 1 — the resolution order and the command `model` field are UNCHANGED from the drafting-time fetch, so OQ-5's basis STANDS.** `code.claude.com/docs/en/sub-agents.md` (*Model Resolution Order*) reads exactly as fact-checked at drafting: **per-invocation `model` parameter → the subagent's own `model` frontmatter, where `inherit` selects the main conversation's model → `CLAUDE_CODE_SUBAGENT_MODEL` → the main conversation's model**, with the page's own note that **from v2.1.251 the environment variable no longer overrides the parameter or the frontmatter.** And `code.claude.com/docs/en/slash-commands.md`'s frontmatter reference still carries the `model` field in full: *"The override applies for the rest of the current turn and is not saved to settings; the session model resumes on your next prompt. Accepts the same values as `/model`, or `inherit` to keep the active model. A value excluded by your organization's `availableModels` allowlist is not used and the session keeps its current model."*
 
@@ -417,7 +417,7 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 **Plan 92's three settled questions were CITED, not re-asked** — unknown-key tolerance for `model_tier:`, frontmatter key ORDER, and `effort:` on a model without effort support are answered at that plan's `#### Phase 1 build record — Step 0`, and asking again would produce a second answer that can disagree with code already shipped.
 
-**Step 0b — both tripwire greps and the live gate, run 2026-09-03 before any edit.** `claude-[a-z]+-[0-9]` over `src/` → **0 hits**; `\b(opus|sonnet|haiku|fable)[\s-]+[0-9]` (case-insensitive) over `src/` → **0 hits**; `python3 scripts/lib/model_version_tripwire.py src` → **PASS**. **So this phase starts from a clean baseline** — a failure on either pattern after this build means THIS build introduced it, not that it was always there.
+**Step 0b — both tripwire greps and the live gate, run 2026-09-04 before any edit.** `claude-[a-z]+-[0-9]` over `src/` → **0 hits**; `\b(opus|sonnet|haiku|fable)[\s-]+[0-9]` (case-insensitive) over `src/` → **0 hits**; `python3 scripts/lib/model_version_tripwire.py src` → **PASS**. **So this phase starts from a clean baseline** — a failure on either pattern after this build means THIS build introduced it, not that it was always there.
 
 **Phase 1 execution split — an orchestrator decision, recorded because the deliverable list does not imply it.** Deliverable 5's resolver re-basing needs both the emitter's new tier set (deliverable 3) and the configuration keys the fourth tier reads (deliverable 6), and deliverable 7's `update.sh` calls the verb deliverable 2 renames — **so the order is a dependency, not a preference. Four runs, each completing python-engineer → python-reviewer before the next starts:**
 
@@ -430,7 +430,46 @@ The remaining judgment is cosmetic and is recorded: an explicit `inherit` is one
 
 ⚠ **A and C run in parallel and both touch the counts' neighbourhood**, so the count pins are re-COUNTED in whichever run lands second — **never incremented from the other run's numbers** (plan 92's Trap 6, inherited).
 
-### Phase 2 — The question surface and the contract *(instruction-only)*
+#### Phase 1 build record — Deliverables 1–7 (2026-09-04)
+
+**BUILT and python-reviewer clean on all four runs; the commit is pending.** The split above ran as planned — **A ∥ C, then B, then D**, each completing python-engineer → python-reviewer before the next started. **Findings: A → 0. C → 1 low. B → 6 (3 medium, 2 low, 1 nit). D → 3 (1 medium, 1 low, 1 nit).** ⚠ **Everything below is build-verified and NOT consumer-validated.**
+
+**The counts, COUNTED from the live tuples.** `FIELD_SCHEMA` **37** · `ENUM_FIELDS` **9** · `FIELD_DEFAULTS` **7** · `_PROJECT_CONFIG_KEY_ORDER` **45**. The four pins were RENAMED to carry the live numbers (`…_has_37_fields`, `…_has_37_keys`, `…_45_keys_present`, `…_45_keys_with_defaults`), and `test_enum_fields_has_9_entries` joins them. ⚠ **Quote none of these from here — count the tuples** (plan 92's Trap 6).
+
+⚠ **A build finding about D3 that no decision anticipated, recorded because it looks like a defect and is not one.** `configure_helper verify` **already FAILS (exit 2) on a null `claude_tier_*`** — pre-existing behavior for the three tiers, mirrored for `security`. It is harmless because **`verify` is invoked only from `/devforge:configure`'s own Phase 7**, so an updated-but-not-reconfigured install is never auto-failed. ⚠ **But the INTERMEDIATE tree between run A and Phase 2 would have failed a full `/devforge:configure` at Phase 7, because Q11.4 did not exist yet to answer the field run A had just made required** — a **staged-build artefact**, resolved the same day by Phase 2, and **a reason never to ship run A alone.**
+
+**What landed.**
+
+- **Emitter (`scripts/generate-agents.py`)** — `model: inherit` for every agent plus its `model_tier:`; `VALID_TIERS = {think, do, verify, security}`; **`model_pin` is now IGNORED with ONE stderr warning naming the file and the key** (no shipped source declares it since Phase 2, and the real-roster test asserts **zero** warnings); `_MODEL_PIN_RE` and the `re` import are gone.
+- **Deletions** — `scripts/lib/install_defaults.py` (`git rm`), its import and the `sys.path.insert` that served it, the by-path loaders in `tests/scripts/test_generate_agents.py` **and** `tests/lib/_configure/test_agent_models.py`, `DefaultMapEqualityTests`, and `CLAUDE_AGENT_DEFAULTS_BY_TIER` in `_agent_models.py`. ⚠ **Fact 3's four-site blast radius was real and all four were touched.**
+- **Resolver (`_agent_models.py`)** — a `VALID_TIERS` tuple; `_TIER_CONFIG_KEYS` at four entries, **indexed directly**; `_resolve_tier` and `plan_rewrite` now take `kind` (`agent` | `command`): a null tier yields **`inherit` on an agent** and **NO `model:` line on a command** (a stale line is REMOVED), effort `default`/null removes the line; `_rewrite_command_field` inserts `model:` immediately after `description:` (or replaces it in place) and `effort:` after `model:` — **after `description:` when only effort is configured**; a missing `description:` or any duplicated key is a validation error.
+- **`COMMAND_TIERS`** — the eight, beside the logic, pinned to the eight advisory lines by `tests/lib/_configure/test_command_tiers.py` **in both directions, with mutation proofs both ways**, plus `COMMAND_TIERS ⊆ VALID_TIERS`.
+- **Verb (`_cmds_agent_models.py`, `_cli.py`)** — `apply-models` with `aliases=["apply-agent-models"]` (OQ-1); walks agents **and** `.claude/commands/devforge/*.md`; an unmapped command is `skipped` with reason **`not-in-command-tiers`** and left byte-identical; the report is `{"applied":[{kind, name, tier, model|null, effort|null, changed}], "skipped":[{kind, name, reason}]}` sorted by `(kind, name)` — **plan 92's `agent` key is GONE**, and `update.sh`'s jq moved to `.kind` / `.name`; exit codes unchanged; two-pass across both classes; atomic; **CRLF preserved for both classes**.
+- **Config surface (run A)** — `claude_tier_security` mirrors `claude_tier_verify` (scalar, non-enum, alias-normalized, no default) and `claude_effort_security` mirrors `claude_effort_verify`, both appended last; setters `set-claude-tier-security` / `set-claude-effort-security`; keys `CLAUDE_TIER_SECURITY` / `CLAUDE_EFFORT_SECURITY` last; the summary group; **and five fixture fixes where "fully populated" tests lacked the new required tier field.**
+- **`update.sh` (+110 / −44)** — the apply block **MOVED** after `# ── Execute: prune stale top-level commands (FIX B)` and before `# ── Write version marker`, now calling `apply-models`, its **ordering comment re-derived with TWO independent reasons** (the wholesale command re-emit; the raw snapshot refresh), every `jq` guarded, one `info` line per changed file of either class (`<kind> <name>: model=<model|none> effort=<effort|default>`); the **pre-merge snapshot normalization ADDED** inside `templateDerived`, after the `REGEN_AGENTS_DIR` block and immediately before `echo "$DERIVED_UPDATE" | while …`, under `HAS_CONFIG`, with `--install-root "$TARGET_DIR/.devforge/template"`, non-fatal; the dry-run preview names both classes.
+
+**Run B's six findings, and three of them are worth carrying.** ⚠ **The two hand-kept literals `VALID_TIERS` and `_TIER_CONFIG_KEYS` were UNPINNED, and a dead `.get` fallback would have turned a desync between them into a silent "not configured"** — fixed by indexing directly plus a **set-equality test**, so a tier added to one and not the other now fails loudly instead of resolving to nothing. **No CRLF test covered the command path** (added). **The test file had reached 1118 lines carrying a SELF-GRANTED size exception** — **SPLIT by concern into three files (429 / 457 / 555 lines) and the exception paragraph DELETED**, with **27 = 27 tests conserved across the split**. Also added: the command-side last-line insertion test and the `COMMAND_TIERS ⊆ VALID_TIERS` assertion. **Re-check clean.** ⚠ **Process note, recorded because it shaped the work: a SECOND engineer performed the split after the first stalled twice on long pytest runs competing with the background full suite.**
+
+**Run D's three findings, and the MEDIUM is a wording fix, not a logic fix.** ⚠ **The command "changed" count is structurally NON-ZERO on every run**: the re-emit strips every mapped command's `model:` / `effort:` lines and the apply then restores them, and the snapshot block re-pins the raw-refreshed `inherit` every run. **Nothing is wrong; the old wording implied drift where there is none.** The lines now read **`Applied models: agents N (M changed), commands K (L re-applied after re-emit), skipped S`** and **`Normalized snapshot models: agents N (M re-pinned to configuration)`**, with a comment at each site. **The LOW widened D2's bound (i)** — the residual conflict class is **not** limited to a hand-edited file (the amended bound says so at its own site). **The NIT — the `AGENT_MODELS_*` shell variable prefix now covering both classes — is recorded and NOT fixed.**
+
+**Verify — results as they came back. ⚠ Build observations, NOT consumer validation; none of this is Phase 4.**
+
+- **The transition reproduction, run to the recipe.** A scratch template at plan 92's last commit `8cfd7d9` (whose emitter still writes static defaults) installed into a scratch target and configured `think = fable` / `xhigh`, so the live `architect.md` read `model: fable` while the snapshot read `model: opus`; a body marker added to the CURRENT tree's `src/agents/architect.md`; then the NEW `update.sh --force`. **Result: `grep -c "Merge conflicts in"` = 0 across the whole transcript, the body marker present, `model: fable` still on its line**, the transcript showing `Normalized snapshot models: agents 18 (18 …)` and `Applied models: agents 19 (18 changed), commands 8 (4 …), skipped 12`, with `agent architect: model=fable effort=xhigh` and `command plan: model=fable effort=xhigh`; `plan.md` carries `model: fable` / `effort: xhigh` and `research.md` carries no `model:` line.
+- **Idempotence at the file level, with a report that legitimately differs.** A second update changed **zero files** (`git status --porcelain` empty) while the report still showed commands re-applied and snapshot agents re-pinned — **which is run D's MEDIUM, stated as designed behavior rather than discovered drift.**
+- **Failure paths.** A malformed config produced **both warnings and rc=0**; `--dry-run --force` printed the preview and wrote nothing; `bash -n` and `shellcheck` are clean over every touched range.
+- **The merge mechanism itself, proved both ways.** A three-file `git merge-file` experiment reproduced **the pre-mitigation conflict** (`opus` / `fable` / `inherit` → exit 1) **and the post-normalization clean merge** (`fable` / `fable` / `inherit` plus a body change → exit 0, yielding `inherit` and the body).
+- **Suites.** `tests/lib` + `tests/scripts` **11585 passed / 16 skipped** (run while B's fixes were mid-flight); after the split `tests/lib/_configure` **279 passed** (HEAD collected 251); emitter + tripwire + memory-lane + reachability **108 passed**; `verify-agent-reachability.py` **0**; `verify-memory-lane.py` **0**; the version tripwire **PASS**; and `grep -rn "install_defaults\|CLAUDE_AGENT_DEFAULTS_BY_TIER" src scripts tests` returns **only** `agents-AUTHORING.md`'s history note and one test docstring describing the deletion.
+
+**Four deliberate divergences from this phase's own text.**
+
+1. **The test surface is THREE files, not one per source module** — recorded with the reviewer's own reading that concern-based splits have precedent here.
+2. **An unmapped command goes under `skipped`**, not into a third top-level array.
+3. **`cmd_apply_agent_models`'s Python function name is UNCHANGED** — the verb was renamed, the function was not; OQ-1's alias covers the CLI surface and the internal name is not a consumer contract.
+4. **The D8 readback and the anchor-6 subagent observation remain Phase 4's** — nothing in this phase attempted either, and no build result may be read as evidence for them.
+
+**Two residuals recorded, neither this plan's to fix.** `_cli.py`'s module docstring claims *"all 29 `cmd_set_*`"* — **stale before this plan existed**, and the live count differs. And **`_agent_models.py` is now 476 lines, past the 400-line "plan a split" signal** — **the recorded option is moving the command-rewrite helper into a sibling module; it is NOT built.**
+
+### Phase 2 — The question surface and the contract *(instruction-only)* — **BUILT 2026-09-04** (instruction-reviewer clean; commit pending)
 
 **Route: instruction-author → instruction-reviewer, plus `claude-code-guide` for this phase's own surface.** `q11-tiers.md` ships to `.devforge/command-refs/configure/` and `configure/main.md` ships into `.claude/commands/devforge/` — **plan 90's Phase-0 orchestrator ruling binds: every command-spec edit owes the pass, with no frontmatter carve-out.**
 
@@ -458,13 +497,46 @@ Scope:
 
 **This phase appends a `#### Phase 2 build record` block**, including every deliberate divergence from the scope above.
 
-### Phase 3 — Docs, ledgers, and the plan-92 amendments *(instruction-only)*
+#### Phase 2 build record (2026-09-04)
+
+**BUILT and instruction-reviewer clean; the commit is pending.** Route as run: **`claude-code-guide` for this phase's own surface FIRST**, then instruction-author → instruction-reviewer, which returned **5 findings — 1 high, 2 medium, 1 low, 1 nit.** Three were in-file fixes, applied and **CONFIRMED on re-check**; the nit was applied; **the low was DECLINED by decision** (below). The re-check returned **one cosmetic nit, recorded and NOT fixed.**
+
+**The guide's answers (2026-09-04), and one of them changed emitted wording.**
+
+- ⚠ **`effort` has NO `inherit` value.** The frontmatter reference reads *"Default: inherits from session. Options: `low`, `medium`, `high`, `xhigh`, `max`; available levels depend on the model"* (`code.claude.com/docs/en/skills.md`). **So the `default` pick REMOVES the line and never sets a value** — the emitted text says exactly that, and a symmetry with `model: inherit` would have shipped a value Claude Code does not accept.
+- **`model: inherit` IS documented for commands** — same page, *"or `inherit` to keep the active model"*. D2 part 1 and OQ-5 stand on it.
+- **AskUserQuestion's `Other` free-text row IS documented** (`code.claude.com/docs/en/tools.md`); **its option-count bounds are NOT** — so fact 22's OBSERVED status (inherited from plan 92) is unchanged and still binds the four-option lists.
+- ⚠ **Whether a command's `model:` override is visible ANYWHERE during the turn is NOT documented.** **D8's readback stays the only observation**, which is why Phase 4 anchor 5 admits no `unknown`.
+
+**⚠ THE HIGH FINDING WAS A PARALLEL-EXECUTION ARTEFACT, AND THE LESSON REPEATS PLAN 92's.** `configure/main.md`'s Phase 5.4 described the report's name key as `agent` or `command` **per kind**, because that is what this plan's own text implied — while **run B, landing in parallel, ships a single `name` key beside `kind`.** Corrected to the SHIPPED shape: `applied[]` entries are `{kind, name, tier, model, effort, changed}` with **`model` null only for an unconfigured command**, `skipped[]` entries are `{kind, name, reason}`, both **sorted by kind then name**. **Write from the TREE, not from the brief** — plan 92 recorded this same failure twice, and this is its third instance across the two plans.
+
+**The two MEDIUMs, both applied.** **(a) A fifth exit-2 cause was missing** — **commands only**: a file with no `description:` line to anchor an inserted line. **(b) The `update.sh` sentence** (*"followed by one line per changed file, agents and commands alike"*) **is a claim about run D**, not about landed text; **the orchestrator verifies it against `update.sh` before commit** rather than the spec asserting it on faith.
+
+**The LOW, DECLINED by decision.** `verify/main.md`'s *"via the Read tool and not a Bash call"* clause STAYS. **That file alone carries a helper-interaction completeness claim** a silent new read could appear to violate (plan 92's Phase-4 record ruled the same way for the same reason, and ruled that `grill`, `review` and `fix` need no such clause). **Four files, one clause, by their own text — not a uniformity edit.**
+
+**The NIT, applied, and its cosmetic residual recorded.** The value printed for an absent or null tier is **`not configured`**, never `inherit` — **`inherit` is an AGENT-file literal and printing it in a command's advisory line would name a mechanism that does not apply there.** ⚠ **The re-check notes the sentence then composes to *"configured think model: not configured"*, which reads awkwardly; accepted as cosmetic and NOT fixed**, because every alternative wording either drops the tier word or stops being byte-identical across the eight.
+
+**What landed.** **`q11-tiers.md`** — intro re-derived (eight fields, four tiers, **both file classes**, `apply-models`, and the turn-scoped-override sentence); **`## Q11.4 — Security tier`** in the Q11.2/3 shape (one call, two questions, `opus (Recommended)`, the refusal-risk description **number- and version-free**); the zero-alias arm now says the tier **stays unconfigured with no default**; **`## Defaults rationale` → `## Recommendations`** with five one-sentence reasons and **six** honest bounds; `## Saving the answers` gains `security`. **`configure/main.md`** — Phase 4 intro: **twelve** user-only prompts (Q9, Q10, Q11 × 8, Q12 mode, Q13) across **four** Q11 calls; Phase 5 sub-step **5.4 renamed `Apply models`**, both classes, the per-class null split (**agent `inherit` / command no line**), the JSON with `kind`/`name`, exit codes 0/1/2 with **five** validation causes, and the `update.sh` paragraph (after the command re-emit; the pre-merge snapshot normalization; `agents N (M changed), commands K (L changed), skipped S`; one line per changed file of either class); **counts COUNTED live: schema 37, populated 36 = 24 + 12, keys 45 = 37 + 5 + 3**; plan 89's `regression_gate` note **updated in place with its guidance verbatim**; a new `.claude/commands/devforge/*.md` Outputs bullet; the Closing. **`agents-AUTHORING.md`** — the `model_tier` row (four tiers; `model: inherit` + `model_tier:`; `apply-models`; **no default anywhere**); the **`model_pin` row DELETED**; **plan 92's contract note KEPT VERBATIM with a `SUPERSEDED` prefix**; a new dated (2026-09-04) contract-change note recording the field's whole life — *removed the day after it was added*; the reviewer-family clause now naming `security-reviewer`'s tier (**family ≠ tier**, with `api-designer` as the counter-example); the checklist; and every cite re-derived live (`generate-agents.py` `:328`→`:307`, `:195`→`:187`, `:278`→`:251`, plus `:219`–`:220` and `:264`; **the `install_defaults.py:39` cite removed with the module**). **`security-reviewer.md`** — `model_tier: security`, the `model_pin` line deleted, **zero body bytes**. **The eight advisory steps** — ONE sentence each, **byte-identical across the eight modulo the tier word** (`verify` keeps its one decided extra clause): print `not configured` for an absent or null tier, state that the tier has no configured model so the command carries no override and runs on the session's model, and name `apply-models` as what writes `inherit` onto that tier's agents (**provenance only, NOT invoked**). **`storage-rules.md` checked: it names none of the affected terms — a verified no-op.**
+
+**Three deliberate divergences from this plan's Phase-2 text.**
+
+1. **The eight advisory sentences also took the verb RENAME**, which the scope bullet assigned to the provenance clause only — **the no-primary-name grep demanded it**: leaving `apply-agent-models` in eight command specs would have left the alias, not the verb, as the name a consumer reads.
+2. **Two Q11.1 effort-option descriptions were widened**, because effort now reaches **commands** as well as agents and the original wording described agents alone.
+3. **Plan 92's contract note gained a `SUPERSEDED` prefix** rather than being left untouched, **so a reader of that paragraph ALONE cannot believe the pin is live.** ⚠ **The note's own text is byte-unchanged** — this is a prefix, not an edit to plan 92's reasoning.
+
+**Verify — results as they came back.** `judgment work belongs to the` → **8 files**; `print \`not configured\`` → **8**; **both tripwires 0 over `src/`**; `apply-agent-models` survives in `src/` markdown **exactly once**, as the alias mention in `configure/main.md`; `model_pin` under `src/` appears **only** in `agents-AUTHORING.md`'s history and its removal note; **`src/CLAUDE.md` needs nothing** — checked, recorded as a finding rather than a silence.
+
+⚠ **Carry-forwards handed to Phase 3, and its scope is widened by this record.** `CHANGELOG.md`, repo-root `CLAUDE.md`, `PLAN-STATUS-ARCHIVE.md`, `DEVELOPMENT-STATUS.md` and `docs/v2/ARCHITECTURE.md` still name `apply-agent-models`, the deleted default map and/or the `security-reviewer` pin. **And one finding that is NOT this plan's to fix:** the documented `${CLAUDE_EFFORT}` substitution variable **falsifies the premise of plan 92's OQ-2** (*the advisory line stays silent about effort because the session's level is invisible*). **RECORDED, NOT REOPENED** — plan 92's decision stands until a plan takes it up deliberately.
+
+### Phase 3 — Docs, ledgers, and the plan-92 amendments *(instruction-only)* — **BUILT 2026-09-04** (commit pending)
 
 **Route: instruction-author → instruction-reviewer**, plus `claude-code-guide` for `src/CLAUDE.md` if it is touched (it ships as the consumer's root `CLAUDE.md`; plan 08's always-on-trim discipline binds, and **"checked, nothing to amend" is a finding to record**, not a phase that failed).
 
 Open with `grep -rn "apply-agent-models\|model_pin\|CLAUDE_AGENT_DEFAULTS_BY_TIER\|scan\b" src/ scripts/ *.md docs/` and reconcile every hit. **This sweep list is NOT certified exhaustive** — treat a hit not named below as an omission in this plan, not as a new defect.
 
 Scope: **`CHANGELOG.md`** (one `## [Unreleased]` entry stating the honest bounds — the override is turn-scoped, the framework now ships no model, an org allowlist silently wins, and the security pin became a question); **repo-root `CLAUDE.md`** (this plan's index line, **and the plan-92 line amended** with a dated pointer); **`PLAN-STATUS-ARCHIVE.md`** (the mirrored full entry, plus the same amendment on plan 92's); **`DEVELOPMENT-STATUS.md`** (both tier sites plan 92 corrected — they now describe a default map that no longer exists); **`docs/v2/ARCHITECTURE.md`** (⚠ **narrowly — only the sites THIS plan falsifies**, per the maintainer's 2026-09-03 pick on plan 92; its unrelated stale counts stay a separate item); and **`92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md`** itself, per D6.
+
+⚠ **WIDENED BY PHASE 2's BUILD (2026-09-04) — the five files above are now carry-forwards with a named reason, not a precaution.** Each still names **`apply-agent-models`** (renamed at Phase 1), **`CLAUDE_AGENT_DEFAULTS_BY_TIER`** (deleted) and/or **the `security-reviewer` pin** (now a question), so **each carries at least one sentence this build has already falsified.** ⚠ **`src/` is DONE and `docs/` + the ledgers are NOT** — a sweep that greps only `src/` will report clean over the half Phase 2 already fixed. **One further item is recorded and explicitly NOT actioned here:** the documented `${CLAUDE_EFFORT}` substitution variable falsifies the premise of plan 92's OQ-2 (*the advisory line stays silent about effort because the session's level is invisible*). **Phase 3 records it where it lands and reopens nothing** — plan 92's decision stands until a plan takes it up deliberately, and this plan's D4 leaves the printed sentence unchanged.
 
 **Verify:**
 
@@ -477,6 +549,26 @@ Scope: **`CHANGELOG.md`** (one `## [Unreleased]` entry stating the honest bounds
 - **Commit style read from the live `git log`** — subject lowercase and terse with a scope prefix; **read the trailer convention from the log, never from a remembered sentence** (plan 92's Phase-5 record retired its own clause on exactly this).
 
 **This phase appends a `#### Phase 3 build record` block.**
+
+#### Phase 3 build record (2026-09-04)
+
+**BUILT; the commit is pending.** Executed against the LIVE tree with Phases 1 and 2 already committed (`5d3e134`, `db6088f`), and with the maintainer's confirmation that no other session held uncommitted edits. **EIGHT target files edited plus this plan's own file — NINE in total — and `src/` deliberately untouched**, Phase 2 owning that half and this phase not re-opening it. **The eight:** `92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md`, `15-AGENT-STANDARDIZATION-PLAN.md`, `70-PIPELINE-WALLCLOCK-PROFILING-PLAN.md`, `DEVELOPMENT-STATUS.md`, `CHANGELOG.md`, repo-root `CLAUDE.md`, `PLAN-STATUS-ARCHIVE.md`, `docs/v2/ARCHITECTURE.md`. ⚠ **Plan 70 was the LAST of the eight and was added mid-phase**, from this phase's own sweep rather than from its scope list — see its entry below.
+
+**The plan-92 amendments (D6) — SIX dated blocks in the body plus ONE clause on the Status line, seven sites in all — with no build record edited and no phase re-opened.** The Status-line clause names this plan and its four reversals; **D1**'s null-tier bullet gained the `inherit` / no-line rule plus the rename and the moved `update.sh` seat; **D2 half 1** is REVERSED at its own site, with **half 2 explicitly surviving as a LABEL** (`verify = sonnet` is a `(Recommended)` marker, no longer a written value); **D6** is REPLACED, and the note says plainly that the *"fifth `security` tier"* alternative D6 rejected is what shipped — **not because its surface got cheaper but because the framework may no longer make the choice at all**; **OQ-5** is RESOLVED AFFIRMATIVELY with its four costs mapped rather than dissolved, and records that D7's advisory line **survives and gains a job**; **Trap 3** is CLOSED BY CONSTRUCTION in three clauses that must travel together (cannot recur · fires once, mitigated · the residual is wider than a hand-edited file). ⚠ **Phase 6's anchors were RESTATED as a dated block BELOW the anchor list rather than rewritten in place**, so the original 1b and 3 stay readable and the change is visible — 1b now expects whatever Q11.4 chose, and 3 additionally checks a mapped command after the re-emit.
+
+**The other seven target files.** `15-AGENT-STANDARDIZATION-PLAN.md` — one dated note under plan 92's, recording that `model_pin` was **removed the day after it was added**, that `model_tier` is now `think | do | verify | security`, and that every agent emits `model: inherit`; **plan 15's reasoning is untouched**. `DEVELOPMENT-STATUS.md` — both sites plan 92 had corrected (`:58`'s key list, now naming `CLAUDE_TIER_SECURITY` and both file classes; item 14, rewritten around four tiers, no framework default, the eight mapped commands, the two `update.sh` seats and the turn-scoped override) with a **second dated sub-bullet** beside plan 92's, ending *"build-verified, NOT consumer-validated"*. `CHANGELOG.md` — one `### Added` entry at the top of `## [Unreleased]` in the house's dense single-bullet style, carrying the evidence split, what shipped, and every honest bound; ⚠ **it never says "runs on Fable" and carries no version string**, and plan 92's own entry gained a bracketed amendment clause **in the shape plan 93 used on plan 85's entry**, because both entries describe the same unreleased cycle and would otherwise contradict each other. Repo-root `CLAUDE.md` — the plan-92 line amended and a plan-94 line added; ⚠ **the new line was first placed between 92 and 93 and then MOVED**, because that index is ascending and 93 is its last entry. `PLAN-STATUS-ARCHIVE.md` — the same amendment on plan 92's entry plus the mirrored full plan-94 entry in position. `docs/v2/ARCHITECTURE.md` — **narrow, per the maintainer's standing pick on plan 92** (*"fix only the falsified sites"*): the overview counts, the setter table's user-prefs row (8 → 10 with the two `-security` setters), the Apply row (verb name, both classes, both `update.sh` seats, the no-default rule), the schema line (35 → 37 fields, `ENUM_FIELDS` 8 → 9 with `claude_effort_security` named), §4.3's heading formula and its user-only list (10 → 12, four Q11 calls), the phase diagram's Q11 line and its Phase-7 counts, the two tree comments, the `(A)` row, and **the design-decision bullet on the non-enum `claude_tier_*` fields — rewritten from "Recommended defaults" to "Recommendations, not defaults — the framework writes no model of its own", with `security=opus` added to the list** (that bullet is the one site in the file where the old defaults read as a framework choice rather than as a count). **The `~32 subcommands` staleness recorded by plan 92 stays untouched**, as its pick directs. **`70-PIPELINE-WALLCLOCK-PROFILING-PLAN.md`** — a dated note appended under the paragraph whose two citations this build killed (`scripts/lib/install_defaults.py:30` and the tier→model map): the module and the map are deleted, agents emit `model: inherit`, the models come from the install's own Q11 answers via `apply-models`, and the tier names moved (`scan` out, `security` in). ⚠ **The note also states the consequence for that plan's OWN work — the tier→model assignment is now a property of the INSTALL being profiled, not of the framework, so a Phase-2 measurement must record the profiled install's configured models rather than assume the old mapping.** **Plan 70's reasoning is untouched**, and its observation that the cost is turn volume rather than tier misassignment is explicitly left standing.
+
+**Verify — results as they came back, and two of them are findings rather than passes.**
+
+- **`grep -rn "apply-agent-models"` over the repo (excluding `done-plans/`) — every survivor classified, none a live primary name.** In `src/` markdown it appears **exactly once**, as the alias sentence in `configure/main.md`; in `docs/` once, as the alias parenthetical in the Apply row; in code as the argparse `aliases=[…]` registration and its docstrings (`_cli.py`, `generate-agents.py`) plus two test sites that exercise the alias; everywhere else it is a plan record, a ledger entry or a dated history quote.
+- ⚠ **TWO STALE CODE COMMENTS FOUND AND NOT FIXED — outside this phase's file list, handed to the orchestrator.** `src/devforge/lib/_configure/_render.py:371` still says *"on every `configure_helper apply-agent-models` run"* and `_cli.py:543` still names the old verb in a comment. **Both are shipped-tree comments the Phase-1 rename did not reach**; neither changes behavior, and **a Phase-3 that edited them would have crossed into a Python phase**.
+- **`grep -rn "CLAUDE_AGENT_DEFAULTS_BY_TIER\|install_defaults"` — zero live references.** The only `src/` hit is `agents-AUTHORING.md`'s history note; the only `tests/` hits are a docstring describing the deletion. ⚠ **ONE DANGLING REFERENCE FOUND — and FIXED after the orchestrator widened this phase's file list:** `70-PIPELINE-WALLCLOCK-PROFILING-PLAN.md:35` cited `scripts/lib/install_defaults.py:30` and the four-tier default map **as live**, and that module no longer exists; it now carries a dated note (above). ⚠ **It was found by the sweep, not by the scope list** — which is what the scope list's own *"treat a hit not named below as an omission in this plan"* clause exists for.
+- **`grep -rn "model_pin"` — history and removal machinery only.** `src/agents-AUTHORING.md` (the `SUPERSEDED`-prefixed note and the new one), the emitter's removal guard and its warning string, the transition tests that assert the warning and assert **zero** warnings over the real roster, and plan/ledger records.
+- **Both tripwire patterns over the eight edited files: ZERO hits in anything this phase wrote.** ⚠ **Pre-existing hits exist and are correctly left alone** — plan 92's `## Model facts` and its own discussion of the two patterns, `CHANGELOG.md`'s plan-92 entry quoting them as examples, `CLAUDE.md:74` and two `PLAN-STATUS-ARCHIVE.md` entries. **All are outside `src/`, so the live gate's scope is unaffected**; `docs/v2/ARCHITECTURE.md` returns zero.
+- **Plan 63's counts read LIVE: `^disable-model-invocation:` over `src/commands/` returns exactly FOUR** (`constitute`, `generate-docs`, `init-forge`, `configure`) — **16/4, and this plan's delta is ZERO.** ⚠ **The rule demands the live read, not a particular result**, and the read is recorded here whether or not it moved.
+- ⚠ **NOT RUN BY THIS PHASE, and named rather than implied: the `tests/` suite, `scripts/verify-agent-reachability.py`, `scripts/verify-memory-lane.py` and `model_version_tripwire.py`.** Phase 1's record carries their results from the code phase (full suite green, both verifiers 0, tripwire PASS); **this phase edited no `src/`, `scripts/` or `tests/` file, so it re-ran none of them** — the orchestrator re-runs them at commit time.
+
+**One deliberate divergence from this phase's own scope text.** The scope named `docs/v2/ARCHITECTURE.md` for *"only the sites THIS plan falsifies"*; the sweep also found the phase diagram **missing a `Phase 5.4` line entirely** — a plan-92 omission, not a falsified statement — and **left it**, recording it here instead. **A narrow fix stays narrow only if it also refuses the adjacent gap.**
 
 ### Phase 4 — Consumer e2e *(user-driven HARD GATE)*
 
@@ -525,7 +617,7 @@ Scope: **`CHANGELOG.md`** (one `## [Unreleased]` entry stating the honest bounds
 
 - **`92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md`** — the direct parent. **D2 half 1 reversed, D6 replaced, OQ-5 resolved affirmatively, Trap 3 closed-with-a-caveat, D1's null-tier sentence corrected, Phase-6 anchors 1b and 3 restated** (D6). ⚠ **Its build records are NOT edited and its Phase 0 close is NOT re-opened.** Its Phase-3 record item (c) is this plan's only reproduced mechanical evidence.
 - **`93-MODEL-INVOCATION-CARVE-OUT-NARROWING-PLAN.md`** — makes 16 commands model-invocable, which is what turns D1's bound (iii) from theoretical into live: **a model-invoked command switches the session's model for that turn.** No count moves here.
-- **`63-SKILL-COLLISION-SUPPRESSION-PLAN.md`** — the emitted layout (`.claude/commands/devforge/<name>.md`) D1 writes into, and the standing coordination rule to read the counts LIVE. ⚠ **That rule earned itself twice in three days** — never quote a remembered figure.
+- **`63-SKILL-COLLISION-SUPPRESSION-PLAN.md`** — the emitted layout (`.claude/commands/devforge/<name>.md`) D1 writes into, and the standing coordination rule to read the counts LIVE. ⚠ **That rule earned itself on plan 92's Phase-5 sweep (2026-09-03), when the counts had moved 13/7 → 16/4 inside a day** — never quote a remembered figure.
 - **`15-AGENT-STANDARDIZATION-PLAN.md`** and `src/agents-AUTHORING.md` — the meta-block contract D3 edits for the second time in days. **Plan 15's reasoning is not edited.**
 - **`89-TEST-FOUNDATION-HARDENING-PLAN.md`** — the byte-consistency test precedent D1's map↔advisory pin copies, and the D6 `regression_gate` note living inside a file Phase 2 edits (**updated in place, never removed**).
 - **`90-E2E-TEST-LANE-PLAN.md`** — the `FIELD_DEFAULTS`-baseline route that avoided a `_cmds_verify.py` exemption; D3's new effort field takes the same shape (`"default"` is a real enum member).
@@ -564,7 +656,7 @@ Scope: **`CHANGELOG.md`** (one `## [Unreleased]` entry stating the honest bounds
 1. **`${CLAUDE_EFFORT}` is a DOCUMENTED substitution variable** carrying the session's current effort level (`### Claude Code authoring surface`). **Plan 92's OQ-2 decided the advisory line stays silent about effort** because the session's level was invisible — **that premise is now false for effort, though it remains true for the model.** ⚠ **This plan does NOT reopen that decision**; it records the variable so a future plan does not re-derive it, and D4 leaves the printed sentence unchanged.
 2. **`install_defaults.py` has exactly one symbol** (fact 3), so D2's deletion is a module deletion with a three-file blast radius including a test-side by-path loader that exists to dodge a `lib/` shadowing problem. **A build that deletes only the dict leaves an importable empty module and a loader with nothing to load.**
 3. **The docs name two different Claude Code versions** for two different claims about subagent model resolution (`### Claude Code authoring surface`). **Neither is reconciled here**, and no `src/` sentence depends on either.
-4. **`agents-AUTHORING.md`'s fixity clause has now been extended twice in one week** — once to add `model_pin`, once (D3) to remove it. **Nothing in that file counts its extensions**, and a third would be indistinguishable from the second unless each note names its plan and date.
+4. **`agents-AUTHORING.md`'s fixity clause has now been extended twice on consecutive days** — once to add `model_pin` (2026-09-03), once (D3) to remove it (2026-09-04). **Nothing in that file counts its extensions**, and a third would be indistinguishable from the second unless each note names its plan and date.
 5. **`configure/main.md`'s Phase 5.4 mis-quotes `update.sh`'s summary line** (OQ-4's own note). The spec says *"Applied agent models: N agents (M changed, K skipped)"*; the script prints *"Applied agent models: N with model_tier (M changed), K skipped"*. **Pre-existing, introduced when plan 92's Phases 2 and 3 were written in parallel** — the same parallel-execution hazard that plan's build records name twice. **Recorded here; OQ-4 is where it gets fixed, in both sites at once.**
 
 ---
@@ -579,4 +671,4 @@ Scope: **`CHANGELOG.md`** (one `## [Unreleased]` entry stating the honest bounds
 6. **Invoke the `claude-code-guide` agent before writing or amending any frontmatter — and note WHERE that lands: at Phase 1's Step 0, BEFORE any code.** This plan writes into **two** Claude-Code-integration surfaces, agent files and command files, and the command surface is new. ⚠ **Cite plan 92's Step-0 record for the three questions it already answered; ask only the two this plan's design added.**
 7. **Route every edit through the house loops:** python-engineer → python-reviewer, test-first, for Phase 1 (**with `claude-code-guide` FIRST**); instruction-author → instruction-reviewer for Phases 2 and 3, with `claude-code-guide` added for every command-spec, agent-frontmatter and `src/CLAUDE.md` edit. **Phases 2 and 3 dispatch no python-engineer** — a phase that finds itself needing one has crossed its own boundary and must stop.
 8. **Every file byte stays English** (plan 87), including this plan, every emitted question, every option label and every advisory line — regardless of any operator response-language setting. **The Ukrainian directive in `## Origin` is a verbatim quote of a user-reported sentence, which that rule permits.**
-9. **Do not let Phase 1's momentum answer Phase 0's forks.** The transition mitigation, the contract change, the `scan` retirement and OQ-2's width are four separate picks, and **three of them reverse or narrow a decision another plan ratified.** A build that discovers them mid-flight will resolve them by whichever is cheapest to code.
+9. **Read `## Phase 0 close record` before re-deciding anything.** The four forks it names — the transition mitigation with D2, the contract change, the `scan` retirement, OQ-2's width — are **answered**, and **three of them reverse or narrow a decision another plan ratified**, which is why each is amended at plan 92's own site rather than only here. ⚠ **The closure was ONE blanket directive, so a ratified item carries exactly the argument written in its decision body and no more** — re-opening one means arguing against that text, not against the ratification.

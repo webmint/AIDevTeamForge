@@ -1,6 +1,6 @@
 # 92 — Agent model & effort configuration: a live tier knob, version-free model choice, and a per-command session-model advisory
 
-**Status:** **✅ DONE (build) 2026-09-03 — Phase 0 CLOSED (every item ratified AS RECOMMENDED by a single blanket maintainer directive) and Phases 1–5 BUILT. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run, and BATCHED behind plan 85's wall-clock baseline per OQ-4.** Commits: `2f6e409` Phase 1 · `7dea6a3` Phase 2 · `c05e5e7` Phase 3 · Phases 4 and 5 built in the same pass, **Phase 4 reviewed CLEAN and Phase 5's docs sweep corrected after review**. **Everything is build-verified and NOT consumer-validated.**
+**Status:** **✅ DONE (build) 2026-09-03 — Phase 0 CLOSED (every item ratified AS RECOMMENDED by a single blanket maintainer directive) and Phases 1–5 BUILT. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run, and BATCHED behind plan 85's wall-clock baseline per OQ-4.** Commits: `2f6e409` Phase 1 · `7dea6a3` Phase 2 · `c05e5e7` Phase 3 · Phases 4 and 5 built in the same pass, **Phase 4 reviewed CLEAN and Phase 5's docs sweep corrected after review**. **Everything is build-verified and NOT consumer-validated.** ⚠ **AMENDED IN PLACE 2026-09-04 by `94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md`, which reverses D2 half 1, replaces D6, resolves OQ-5 affirmatively and closes Trap 3 by construction — every amendment is a DATED BLOCK at its own decision; no phase is re-opened, no build record is edited, and this plan stays DONE (build).**
 
 - **Every decision below keeps its alternatives and its honest bound, and ratification changed
   neither.** ⚠ **The closure came as ONE blanket directive and no per-item deliberation was
@@ -304,6 +304,12 @@ per house layout), rewrites the YAML frontmatter of every `.claude/agents/*.md` 
 - **Idempotent.** Running it twice changes nothing the second time.
 - **A `null` tier value applies that tier's DEFAULT** (D2), so an install that never answered Q11
   lands exactly where it lands today.
+  ⚠ **AMENDED 2026-09-04 (plan 94 D1/D2): a null tier now writes `model: inherit` on an AGENT and
+  NO `model:` line on a COMMAND** — there is no tier default left to apply. **The verb is also
+  RENAMED `apply-models`** (it writes both file classes now), with `apply-agent-models` kept as an
+  argparse alias for one release, and **its second seat moved**: in `update.sh` it runs after the
+  promoted-command re-emit rather than before `mergeFiles`, because that re-emit overwrites every
+  command file. **Everything else in this decision stands as built.**
 
 **Where it runs — two seats, both existing:** `/devforge:configure` Phase 5 as a **fourth
 sub-step** (`render-config` → `prune-agents` → `substitute-templates` → `apply-agent-models`),
@@ -389,6 +395,19 @@ maintainer tree into the shipped tree**, and `src/devforge/lib/` is what gets co
 consumer where `scripts/` does not exist. ⚠ **Phase 1 must check whether any precedent for such an
 import exists before choosing** — the recommendation is the duplicate-plus-test, and a found
 precedent is a reason to revisit it, not to ignore this sentence.
+
+⚠ **REVERSED 2026-09-04 by plan 94 D2, on a maintainer directive: *"there must be no defaults, the
+user chooses."*** **The tier default map is GONE from both trees** — `CLAUDE_AGENT_DEFAULTS_BY_TIER`
+was deleted from `scripts/lib/install_defaults.py` (the module itself was `git rm`'d, that literal
+having been its only symbol) and from `src/devforge/lib/_configure/_agent_models.py`, and the
+`DefaultMapEqualityTests` pin that half 1 designed went with them. **Every emitted agent now carries
+the constant `model: inherit`**, which the vendor documents as selecting the main conversation's
+model and which — unlike an omitted line — sits ABOVE `CLAUDE_CODE_SUBAGENT_MODEL` in the resolution
+order. **The question surface is unchanged and half 2 survives in the only form it can**: the Q11
+`(Recommended)` labels stay, `verify = sonnet` among them, **as recommendations printed beside an
+option — no longer as a value the framework writes into any file.** ⚠ **What that costs is stated
+at plan 94's D2: a never-configured install now runs every agent on the session model, which is the
+directive working as asked and a real behavior change from what this plan shipped.**
 
 **Half 2 — the verify tier is `sonnet`, and `q11-tiers.md`'s Haiku recommendation is corrected.**
 Four reasons were offered, the last one mechanical — ⚠ **and that fourth reason was WEAKENED on
@@ -632,6 +651,20 @@ fixity clause was consciously extended and by which plan.
 ceiling against an informed consumer** who has reason to want Fable on security review. **The
 cost is accepted, not answered.** It also protects against exactly one documented behavior — it
 is not a claim that Opus reviews security better.
+
+⚠ **REPLACED 2026-09-04 by plan 94 D3, under the same no-defaults directive that reversed D2 half 1:
+a pin is a default with one member.** **`model_pin` is REMOVED from the `agents-AUTHORING.md`
+contract** (its row deleted, this plan's contract-extension note KEPT VERBATIM under a `SUPERSEDED`
+prefix and a second dated note recording the field's whole life — added 2026-09-03, removed
+2026-09-04), the emitter now **ignores a `model_pin` declaration with one stderr warning** instead of
+honouring it, and **`security-reviewer` moved onto a fourth tier `model_tier: security`** with its
+own configuration fields (`CLAUDE_TIER_SECURITY` / `CLAUDE_EFFORT_SECURITY`) and its own question
+**Q11.4**. ⚠ **The alternative this decision REJECTED — *"a fifth `security` tier … a one-member tier
+is a pin with more surface"* — is exactly what shipped**, and the reason it now wins is not that the
+surface got cheaper but that the framework may no longer make the choice at all. **The refusal
+reasoning is not withdrawn: it is what Q11.4's description tells the user**, number- and
+version-free. ⚠ **What is lost is stated at plan 94's D3: a guarantee became an informed choice, and
+nothing validates the answer.**
 
 ### D7 — The per-command session-model advisory: one line, printed always, gating nothing *(RATIFIED 2026-09-03 — as recommended)*
 
@@ -878,6 +911,19 @@ plan.
 **Recommendation recorded for the follow-on: a separate small plan with its own Phase 0**, which
 can weigh (b) and (c) properly instead of inheriting them. **The advisory line stays until then**,
 and D7's third honest bound is what stops a reader mistaking it for the only option.
+
+⚠ **RESOLVED AFFIRMATIVELY 2026-09-04 — the follow-on this OQ asked for is
+`94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md`, and it TAKES the override.** This plan's own pick
+(*keep the advisory, treat the override as a separate decision*) is **not overwritten** — it was
+answered by the separate decision it asked for, on a maintainer directive dated the next day: the
+override *"is what was intended from the start."* **What shipped:** the eight commands of OQ-2 now
+carry `model:` / `effort:` frontmatter written from `.devforge/project-config.json` by
+`apply-models` (plan 94 D1, D5), keyed on a helper-owned `COMMAND_TIERS` map pinned to those same
+eight advisory lines by a maintainer test. **The four costs were answered, not dissolved:** (a) is
+the verb extension itself; (b) and (c) are plan 94's D1 bounds (i)–(iii), where a **model-invoked**
+command now switches the session's model for its own turn; (d) is plan 94 D5, inheriting this
+plan's no-validation bound unchanged. ⚠ **D7's advisory line SURVIVES and gains a job** — its second
+half is the override's only readback, and it prints `not configured` for a tier nobody answered.
 
 ---
 
@@ -1983,6 +2029,20 @@ this has been observed on a real install.
    available in that feature. ⚠ **This is the ONLY evidence that may flip OQ-1's default**, and one
    run of each attributes nothing to any single change.
 
+⚠ **TWO ANCHORS RESTATED 2026-09-04 (plan 94 D2/D3/D6) — score the restated form, not the original,
+and the original is kept above so the change is visible.**
+
+- **Anchor 1b** — *"`security-reviewer.md` carrying `model: opus`"* is **no longer the expected
+  result**, because the pin is gone (D6 replaced). **It now reads: `security-reviewer.md` carries
+  whatever Q11.4 chose**, and on an install where Q11.4 was never answered it carries
+  `model: inherit` like any other agent. **Anchors 1a and 1b are still scored as a PAIR** — 1a is
+  unchanged.
+- **Anchor 3** — the update anchor now also checks the **mapped commands**: after `update.sh`, a
+  command in `COMMAND_TIERS` (e.g. `.claude/commands/devforge/plan.md`) must still carry its
+  `model:` line **after** the promoted-command re-emit, and the summary line names both classes.
+  ⚠ **Its "record whether any agent reported a merge conflict" clause is now the observation of the
+  Trap-3 transition and its residual** — see that trap's own dated note.
+
 **Verify:**
 
 - All six anchors are scored **explicitly** — stated, not summarized.
@@ -2117,6 +2177,22 @@ subsequent update**, and the post-merge apply **camouflages it** — `model:` re
 body is old, and the only signal is the earlier `Merge conflicts in <file>` warn. ⚠ **Treat a static
 tier default as effectively FROZEN**: changing one is a migration, not an edit, and the two
 candidate repairs are recorded (unbuilt) at `#### Phase 3 build record` item (c).
+
+⚠ **CLOSED BY CONSTRUCTION 2026-09-04 (plan 94 D2), with ONE transition and ONE residual — read all
+three clauses or do not cite this note.** **(1) The trap cannot recur**: with the default map gone,
+the emitted `model:` line is the constant `inherit` forever, so base and other are always identical
+on that line and `git merge-file` keeps the consumer's value. **(2) It fires ONCE, on the release
+that removes the default** — base `<old tier default>` / current `<configured>` / other `inherit`
+conflicts exactly as this trap predicts — and that transition is mitigated, not endured: plan 94's
+second `update.sh` seat runs `apply-models --install-root .devforge/template` **before** the agent
+merge loop, so the baseline carries the consumer's own configured value and the merge is clean. **A
+three-file `git merge-file` experiment reproduced BOTH sides at plan 94's Phase 1** (the conflict
+before, the clean merge after), and a full local `update.sh` reproduction reported zero merge
+conflicts. **(3) The residual is WIDER than a hand-edited file**: normalization writes the CURRENT
+configuration into the baseline, so **any live agent whose `model:` / `effort:` is stale relative to
+`project-config.json` at merge time still conflicts** — a setter run without a following apply, or
+an update landing between a configuration edit and the next apply. **The class is narrowed, not
+closed**, and the two candidate repairs above stay unbuilt.
 
 **Trap 4 — reading D9's no-gate as a gap to fill.** It is a decision with a named trigger. **A
 session that adds `verify-agent-models` because "the other lanes have gates" has left this plan** —
