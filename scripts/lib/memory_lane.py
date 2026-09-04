@@ -66,11 +66,11 @@ checkable properties: read-performed and read-named.
 
 A false inference to pre-empt
 ------------------------------
-The 20 ``_PROMOTED`` commands also split model-invocable /
+The 21 ``_PROMOTED`` commands also split model-invocable /
 human-typed-only (see ``63-SKILL-COLLISION-SUPPRESSION-PLAN.md``): 13/7
 under plan 63, and 16/4 since plan 93 narrowed the human-typed set to the
 four setup commands on 2026-09-03. Either way it is a DIFFERENT SET from
-this module's 13 READS / 7 N/A split: ``summarize`` and ``report-bug``
+this module's 13 READS / 8 N/A split: ``summarize`` and ``report-bug``
 are model-invocable yet N/A here (``spec-check`` joined them under plan
 93), and ``grill`` and ``fix`` were human-typed-only yet READS here until
 plan 93. The counts coincided
@@ -187,7 +187,7 @@ DISPOSITIONS = {
         "resurface — the same per-task memory read /implement performs "
         "applies here.",
     ),
-    # ---- N/A (7) -------------------------------------------------------------
+    # ---- N/A (8) -------------------------------------------------------------
     "init-forge": (
         NOT_APPLICABLE,
         "First command in the 4-command setup chain — captures five "
@@ -230,6 +230,12 @@ DISPOSITIONS = {
     "report-bug": (
         NOT_APPLICABLE,
         "Pure capture — writes one bugs/NNN-slug.md and stops; "
+        "dispatches no agent and renders no judgment for memory to "
+        "inform.",
+    ),
+    "report-ticket": (
+        NOT_APPLICABLE,
+        "Pure capture — writes one tickets/NNN-slug.md and stops; "
         "dispatches no agent and renders no judgment for memory to "
         "inform.",
     ),

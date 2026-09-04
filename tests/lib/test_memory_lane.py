@@ -215,7 +215,7 @@ class TestDispositionTableSanity(unittest.TestCase):
     def test_reads_and_na_counts_match_the_ratified_split(self):
         reads = [c for c, (d, _r) in _mod.DISPOSITIONS.items() if d == _mod.READS]
         na = [c for c, (d, _r) in _mod.DISPOSITIONS.items() if d == _mod.NOT_APPLICABLE]
-        self.assertEqual(len(_mod.DISPOSITIONS), 20)
+        self.assertEqual(len(_mod.DISPOSITIONS), 21)
         self.assertEqual(sorted(reads), sorted([
             "research", "discover", "specify", "plan", "breakdown",
             "implement", "pr-review", "audit", "review", "verify",
@@ -223,7 +223,7 @@ class TestDispositionTableSanity(unittest.TestCase):
         ]))
         self.assertEqual(sorted(na), sorted([
             "init-forge", "generate-docs", "configure", "constitute",
-            "spec-check", "summarize", "report-bug",
+            "spec-check", "summarize", "report-bug", "report-ticket",
         ]))
 
     def test_reads_and_na_are_different_sets_from_the_invocability_split(self):
@@ -545,9 +545,9 @@ class TestPromotedExtraction(unittest.TestCase):
             result = _mod._extract_promoted(tmp_path)
             self.assertEqual(result, ())
 
-    def test_live_repo_matches_the_20_known_names(self):
+    def test_live_repo_matches_the_21_known_names(self):
         result = _mod._extract_promoted(_REPO_ROOT)
-        self.assertEqual(len(result), 20)
+        self.assertEqual(len(result), 21)
         self.assertEqual(set(result), set(_mod.DISPOSITIONS.keys()))
 
 

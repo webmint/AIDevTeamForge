@@ -9,7 +9,7 @@ Coverage:
                               disambiguation (word-boundary, no cross-match);
                               init-forge's irregular init_helper stem;
                               no match on unrelated text.
-  KNOWN_COMMANDS / HELPER_STEMS -- all 20 names present, no duplicates.
+  KNOWN_COMMANDS / HELPER_STEMS -- all 21 names present, no duplicates.
 """
 
 from __future__ import annotations
@@ -118,9 +118,9 @@ def test_fallback_empty_string_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def test_known_commands_has_20_unique_entries():
-    assert len(KNOWN_COMMANDS) == 20
-    assert len(set(KNOWN_COMMANDS)) == 20
+def test_known_commands_has_21_unique_entries():
+    assert len(KNOWN_COMMANDS) == 21
+    assert len(set(KNOWN_COMMANDS)) == 21
 
 
 def test_known_commands_matches_helper_stems_keys():

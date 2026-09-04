@@ -23,7 +23,7 @@ stream (both documented at plan 70's OQ3 + Phase 0 RESULTS):
      characters, so `\\breview_helper\\b` does not match inside
      "pr_review_helper" (no boundary at the "_" before "review").
 
-KNOWN_COMMANDS / HELPER_STEMS are the 20 pipeline + setup command names
+KNOWN_COMMANDS / HELPER_STEMS are the 21 pipeline + setup command names
 from the plan's Analyzer semantics section; "init-forge" maps to the
 irregular `init_helper` binary name (all others are a straightforward
 hyphen-to-underscore + "_helper" transform) -- verified against the actual
@@ -82,6 +82,7 @@ HELPER_STEMS = {
     "summarize": "summarize_helper",
     "finalize": "finalize_helper",
     "report-bug": "report_bug_helper",
+    "report-ticket": "report_ticket_helper",
     "grill": "grill_helper",
     "spec-check": "spec_check_helper",
     "fix": "fix_helper",
