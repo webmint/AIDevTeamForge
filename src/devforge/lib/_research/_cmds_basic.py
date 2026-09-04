@@ -192,9 +192,43 @@ def cmd_set_verbatim_prompt(args: argparse.Namespace) -> int:
     trailing whitespace stripped). This is a DISTINCT field from the one-sentence
     topic set by set-topic: the full prompt may carry a 'Suspected cause:' tail
     or other context that the paraphrased topic loses.
+
+    Two mutually exclusive argument routes supply the text -- the parser
+    enforces exactly one is given (95-TICKET-CAPTURE-LANE-PLAN.md Phase 3a):
+      --value       inline text (original route, unchanged).
+      --value-file  path to a file containing the text, or "-" to read from
+                    stdin. This is the OQ-6/Trap-7 route: a pasted
+                    ticket-file body must never cross a shell argument
+                    boundary -- backticks and $(...) are command
+                    substitution inside a double-quoted argument. The file
+                    is read with encoding="utf-8", newline="" -- NO
+                    universal-newline translation, so an embedded \\r\\n
+                    survives intact (mirrors _report_ticket/_cli.py's
+                    --body-file route and its Phase-1 CRLF lesson).
+
+    Both routes funnel through the SAME _validate_scalar call below, so the
+    stored value and the empty/whitespace-only rejection are identical
+    regardless of which route supplied the text.
     """
+    value_file = getattr(args, "value_file", None)
+    if value_file is not None:
+        if not value_file:
+            return _die("set-verbatim-prompt: --value-file cannot be empty", code=2)
+        if value_file == "-":
+            raw = sys.stdin.read()
+        else:
+            try:
+                with open(value_file, "r", encoding="utf-8", newline="") as fh:
+                    raw = fh.read()
+            except OSError as err:
+                return _die(
+                    "set-verbatim-prompt: cannot read --value-file: {0}".format(err)
+                )
+    else:
+        raw = args.value
+
     try:
-        value = _validate_scalar(args.value, "verbatim_prompt")
+        value = _validate_scalar(raw, "verbatim_prompt")
     except ValueError as err:
         return _die(str(err), code=2)
     try:

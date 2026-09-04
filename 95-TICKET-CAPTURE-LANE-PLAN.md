@@ -544,13 +544,89 @@ exit 1. With the disposition added it exits 0 — a **non-vacuous** pass, unlike
 
 **Reviewer verdict: SHIP-READY, ZERO findings (0 high / 0 medium / 0 low / 0 nit).** ⚠ **And the Phase 1 review's finding 1 — the missing registrations, deferred as High — is explicitly CLOSED by this phase.** **`report_ticket_helper` is no longer orphaned**; the orphan sentences in the Phase 1 build record and in this phase's rationale are kept, dated and marked closed, because they record why the orphan was allowed rather than describing the tree.
 
+### Phase 3a — The verbatim-prompt file route *(Python)*
+
+**Route: python-engineer → python-reviewer, test-first, tests written AND RUN in the same turn.**
+
+**Why this section exists, and why it is lettered rather than numbered:** it is a prerequisite Phase 3 discovered it needed, and lettering it keeps every downstream phase's cited number intact. **It runs BEFORE Phase 3**, despite sorting after Phase 2b.
+
+**The mechanical discovery, verified live 2026-09-04.** `research_helper set-verbatim-prompt` accepts **only** an inline `--value`, and that option is `required=True` — there is no file route and no stdin route (grep the verb name in `src/devforge/lib/_research/_cli.py`; do not trust a line number). **So the consumer arm's "the file's body becomes the value passed to `set-verbatim-prompt`" collides head-on with its own bound (iii) and with Trap 7**: a pasted tracker-ticket body carrying a backtick or `$(` would cross a shell argument boundary, where both are command substitution.
+
+**Why an instruction-only Phase 3 CANNOT close this — three routes, all closed:**
+
+- **Pass the body inline anyway and instruct careful quoting.** ⚠ **Refused by the zero-escape-hatch policy**: a rule whose compliance depends on a model correctly escaping arbitrary user-pasted text is unfalsifiable, and it is the same shape the body-file decision already rejected once for `write-ticket`. Shipping it here would reverse that decision through the back door.
+- **Skip `set-verbatim-prompt` for the ticket-file arm.** **Refused on consequence**: that field is what the downstream handoff carries as the user's actual words, and the suspected-cause scan reads it. An arm that silently leaves it unset makes a ticket-file run behave differently from every other run in a way nothing announces.
+- **Add a new verb, or a new state key, for file-sourced prompts.** **Refused by Phase 3's own Verify**, which requires that no new helper verb and no new state key appear — and rightly: the value being stored is the same value, arriving by a different door.
+
+**The resolution, which leaves all three constraints intact:** an **additive option on the EXISTING verb**.
+
+**Deliverables:**
+
+1. **`--value-file <path>` on `set-verbatim-prompt`**, with `-` reading stdin. **Mutually exclusive with `--value`, and exactly one of the two is required** — so a call that passes both, or neither, exits 2 rather than guessing.
+2. **The read uses `newline=""`**, carrying Phase 1's CRLF lesson forward: a body must not be silently line-ending-translated on one route and not the other. **Empty or whitespace-only content exits 2**, matching `write-ticket`'s own empty-body refusal.
+3. **Round-trip tests** proving a body carrying a backtick, a `$(` sequence and CRLF line endings is stored **byte-identical** through both the file path and stdin, plus a regression test that the existing `--value` path is unchanged.
+
+**⚠ Three things this deliberately does NOT change, because existing callers depend on all of them:**
+
+- **The verb name is byte-unchanged** — `set-verbatim-prompt`, as every existing call site spells it.
+- **The state key is byte-unchanged** — the same `verbatim_prompt` field, written by the same code path.
+- **Inline `--value` behavior is byte-unchanged** — it stays available and stays correct for callers that already use it. **This is an addition, not a migration**, and no existing caller is touched.
+
+**Plan 75's tripwire holds, both halves:** an argparse option is neither a `verify-*` gate number nor a hard-fail validator. **Nothing new blocks anything.**
+
+**⚠ One residual, recorded and deliberately NOT closed here.** The **pre-existing** hazard at Phase 0.3's ordinary path is untouched: an ordinary `/devforge:research "<pasted text>"` invocation still routes `$ARGUMENTS` to `--value` inline, exactly as it does today. **This phase does not widen into that flow** — the ordinary arm keeps `--value`, and only the ticket-file arm uses the file route. **That hazard predates this plan, is not caused by it, and closing it is a different change with a different blast radius**; a summary that reports this phase as having fixed the inline hazard generally has over-claimed.
+
+**Verify:**
+
+- python-reviewer clean; **`tests/lib/_research` green**, and the full `tests/lib` suite green.
+- **A test proves a body carrying a backtick and a `$(` sequence round-trips BYTE-IDENTICAL** through `--value-file`, and a second proves it does so through `-` on stdin.
+- **A CRLF body round-trips byte-identical on both routes** — the Phase-1 lesson, re-asserted where it can recur.
+- **The existing `--value` path is regression-green**, with a test that asserts its stored result is unchanged.
+- **Passing both flags exits 2, and passing neither exits 2** — argument-shape errors, nothing written.
+- **`git diff --stat` shows `_research/_cli.py` and its tests only** — no command spec, no other helper.
+- **The verb name and the state key appear in the diff only as context**, never as changed lines.
+
+**This phase appends a `#### Phase 3a build record` block** carrying what landed, every divergence with its reason, and the reviewer findings by severity.
+
+#### Phase 3a build record — 2026-09-04
+
+**Route as specified: python-engineer → python-reviewer, test-first.** ⚠ **Build-verified, NOT consumer-validated.**
+
+**What landed:**
+
+1. **`_research/_cli.py`** — `set-verbatim-prompt`'s `--value` and the new `--value-file` sit in one **mutually-exclusive group declared `required=True`**, so argparse itself enforces exactly-one rather than the handler re-deriving it. The verb's help names both routes.
+2. **`_research/_cmds_basic.py`** — `cmd_set_verbatim_prompt` reads `--value-file`, with `-` reading stdin and a real path opened `encoding="utf-8", newline=""` — **Phase 1's CRLF lesson carried forward to the second place it could recur.** An I/O error on the read is exit 1. ⚠ **Both routes funnel through the same `_validate_scalar`**, so the stored shape and the empty/whitespace-only exit-2 contract are **route-independent by construction** rather than by two parallel checks that could drift.
+3. **Nothing else moved.** The **verb name**, the **state key** and **inline `--value` behavior** are byte-unchanged, exactly as this phase's "does NOT change" block required; `set-topic` was deliberately left alone.
+4. **`tests/lib/_research/test_set_verbatim_prompt_value_file.py` — 11 tests, every one a real-producer subprocess round-trip** rather than a hand-authored fixture: a body carrying a backtick, a `$(` sequence and embedded CRLF stored **byte-identical via file AND stdin**, with `stored_file == stored_stdin` asserted directly so the two routes cannot diverge silently; the inline `--value` regression; both-flags and neither-flag exit 2; empty and whitespace-only content exit 2; a nonexistent path exit 1; and the explicit `--value-file ""` guard pinned to its LITERAL message.
+
+**Verified:**
+
+- **`tests/lib/_research` — 30 passed** (19 pre-existing + 11 new).
+- **A wider sweep across every module referencing the verb — 1242 passed / 0 failed** — including the 13,660-line research monolith (572 passed).
+- ⚠ **`/devforge:discover` has a SEPARATE verb of the same name**, and it is an independent implementation in `_discover/_cmds_core.py`. **It was not touched and is green** (its own 9 tests plus the discover monolith's 166). **The reviewer confirmed the independence rather than inferring it from the shared name.**
+
+**Divergences, each with its reason:**
+
+1. **The engineer traced every ambiguous call site individually instead of grepping the verb name.** ⚠ **The reason generalizes past this phase: `discover_helper` shares the verb NAME with a distinct implementation, so a file-level grep over `set-verbatim-prompt` MISCOUNTS** — it returns two commands' call sites as though they were one command's. **Anyone re-deriving this blast radius must trace, not grep.**
+2. **An explicit `--value-file ""` became its own exit-2 message** rather than falling through to the `OSError` branch. ⚠ **Recorded precisely, because it would be easy to over-claim: this is a CATEGORIZATION improvement, not a crash guard.** `open("")` raises `FileNotFoundError`, which the existing handler already catches as exit 1 — so the empty string was always handled; it was merely reported as an I/O failure when it is an argument error. **The reviewer established that independently rather than accepting the engineer's framing.**
+
+**Reviewer findings — 1 Medium, dispositioned:**
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | **Medium** | The `--value-file ""` guard had **zero dedicated coverage**, while an adjacent test exercised a DIFFERENT code path whose stderr text overlaps — so the guard looked covered and was not | **FIXED** — a test pinned to the guard's LITERAL message. ⚠ **Worth keeping: overlapping stderr text is exactly what makes an uncovered branch read as covered**, and only reading the assertion against the branch it names catches it |
+
+Everything else was confirmed clean and the verdict was then discharged.
+
+**Residual, restated so it is not lost between phases:** ⚠ **the PRE-EXISTING inline hazard on the ordinary intake path is untouched.** An ordinary `/devforge:research "<pasted text>"` invocation still routes `$ARGUMENTS` through inline `--value`. **Only the ticket-file arm uses the file route**, and closing the general case is a different change with a different blast radius. **A summary reporting this phase as having fixed the inline hazard generally has over-claimed.**
+
 ### Phase 3 — The `/devforge:research` consumer arm *(instruction-only)*
 
 **Route: instruction-author → instruction-reviewer, plus `claude-code-guide`** — `research/main.md` is emitted into `.claude/commands/devforge/`.
 
 Scope, all inside `src/commands/research/main.md`:
 
-- **Phase 0.3** — the ticket-file arm: detection by path shape, `set-topic` from the title, `set-verbatim-prompt` from the body, and the OQ-6-ratified route for the body. **The unconditional reset stays unconditional** and no new state is introduced.
+- **Phase 0.3** — the ticket-file arm: detection by path shape, `set-topic` from the title, and `set-verbatim-prompt` from the body **by the concrete route Phase 3a builds — the orchestrator writes the extracted body to a scratch file with the Write tool and passes `--value-file <path>` (or `-` on stdin), never an inline `--value`**, because a pasted tracker-ticket body inside a shell argument is exposed to command substitution. **The unconditional reset stays unconditional** and no new state is introduced.
 - **The rubric sentences** — `:169` EXTENDED with a ticket-file clause; `:171`'s never-fabricate-a-user-mode rule extended so "the ticket file already answers everything" is named as a fabrication.
 - **Step 4.1 question 2** — the conditional third authored option. ⚠ **Exactly three authored options when the ticket file carries an ID and exactly two when it does not; no authored "Other" in either case; the tool's own free-text row is untouched; the `(Recommended)` marker stays off every option** (fact 8).
 - **`## Outputs of this phase`** — one sentence stating that a consumed ticket file is **read and never written** (D5).
@@ -562,6 +638,7 @@ Scope, all inside `src/commands/research/main.md`:
 - **The AskUserQuestion contract holds**: authored options counted (3 with a ticket ID present, 2 without), no authored "Other", `(Recommended)` on neither.
 - **The discipline-not-verification statement is unchanged**, byte for byte.
 - **No new helper verb and no new state key appear** — the arm uses `set-topic` and `set-verbatim-prompt` only.
+- ⚠ **This phase DEPENDS on Phase 3a having landed**: the arm passes `--value-file` to `set-verbatim-prompt`, and that option does not exist until Phase 3a ships it. **An instruction written against the inline `--value` would put a pasted body inside a shell argument** — the failure Phase 3a exists to prevent — so a Phase 3 that runs first has written a spec its helper cannot honour safely.
 - **`git diff --stat` shows `research/main.md` and nothing else.**
 
 ### Phase 4 — Docs, ledgers, and the plan-88 amendment *(instruction-only)*

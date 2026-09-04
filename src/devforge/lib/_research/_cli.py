@@ -152,13 +152,29 @@ def _register_subcommands(subparsers) -> None:
             "Persist the full raw prompt text to memo.verbatim_prompt. "
             "Called at Phase 0.3 right after set-topic, before the rubric. "
             "Distinct from set-topic: carries the full $ARGUMENTS including any "
-            "'Suspected cause:' tail or other context the one-sentence topic loses."
+            "'Suspected cause:' tail or other context the one-sentence topic loses. "
+            "Supply the text via exactly one of --value or --value-file."
         ),
     )
-    sp.add_argument(
+    value_group = sp.add_mutually_exclusive_group(required=True)
+    value_group.add_argument(
         "--value",
-        required=True,
-        help="Full raw prompt text (verbatim, multi-sentence ok).",
+        help=(
+            "Full raw prompt text, inline (verbatim, multi-sentence ok). "
+            "Mutually exclusive with --value-file."
+        ),
+    )
+    value_group.add_argument(
+        "--value-file",
+        dest="value_file",
+        metavar="PATH",
+        help=(
+            "Path to a file containing the full raw prompt text. Pass - to "
+            "read from stdin. Use this route for a pasted ticket-file body "
+            "or any text that must never cross a shell argument boundary "
+            "(backticks and $(...) are command substitution inside a "
+            "double-quoted argument). Mutually exclusive with --value."
+        ),
     )
     sp.set_defaults(func=cmd_set_verbatim_prompt)
 
