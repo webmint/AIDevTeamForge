@@ -540,7 +540,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     # Resolve --install-root default (top-level flag, used by read-docs +
-    # read-configs + apply-agent-models).
+    # read-configs + apply-models).
     if args.install_root is None:
         args.install_root = str(Path(args.devforge_dir).resolve().parent)
 

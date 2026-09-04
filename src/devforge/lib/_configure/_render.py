@@ -368,7 +368,7 @@ def _write_file_atomic(path: Path, content: str) -> None:
     does NOT copy permissions from the file it overwrites, so without
     this a rewrite of any 0o644 file would silently narrow it to 0o600
     (python-reviewer run B finding 1) -- surfacing, among other places,
-    on every configure_helper apply-agent-models run over a normally
+    on every configure_helper apply-models run over a normally
     0o644 `.claude/agents/*.md` tree. When `path` does not exist yet,
     mkstemp's 0o600 is left as-is; there is no prior mode to preserve.
     """
