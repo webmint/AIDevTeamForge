@@ -481,7 +481,7 @@ Scope:
 
 1. **Five pre-existing bare-"ticket" sentences from the feature-directory work** live elsewhere in `storage-rules.md` and are now technically at odds with the disambiguation rule this phase added. **Out of scope** — the rule is prescriptive for new writing and makes no claim about the existing file. A future pass may reconcile them.
 2. **The `## File Lifecycle` one-column misalignment** (finding 3), accepted above.
-3. ⚠ **The standing Phase-4 transient**: `storage-rules.md`'s `declared memory disposition` sentence still reads **20 emitted commands / 13 `READS` / 7 `N/A`**, which Phase 2b's registrations will falsify and Phase 4 corrects. **Recorded here so a reader between those phases does not treat it as a fresh defect.**
+3. ⚠ **The standing Phase-4 transient**: `storage-rules.md`'s `declared memory disposition` sentence still reads **20 emitted commands / 13 `READS` / 7 `N/A`**, which Phase 2b's registrations will falsify and Phase 4 corrects. **Recorded here so a reader between those phases does not treat it as a fresh defect.** ✅ **CLOSED 2026-09-04 by Phase 4 — the sentence now reads 21 / 13 `READS` / 8 `N/A`, checked against the live dict. The wording above is kept as the record of the window, not as a description of the tree.**
 
 ### Phase 2b — Roster registrations *(Python)*
 
@@ -705,6 +705,54 @@ Scope:
 - **`src/CLAUDE.md`'s human-typed sentence is byte-unchanged**, and the no-op is recorded.
 - **The `CHANGELOG.md` entry states the bounds.** An entry claiming the framework "tracks tickets" has over-claimed by the whole plan.
 - **Commit style read from the live `git log`** — subject lowercase and terse with a scope prefix; **read the trailer convention from the log, never from a remembered sentence.**
+
+#### Phase 4 build record — 2026-09-04
+
+**Route as specified: instruction-author → instruction-reviewer.** ⚠ **Instruction-only.** ⚠ **A concurrent session had committed plan 94's own ledger sweep earlier the same day, so every shared file was re-read LIVE and nothing was carried from an earlier read.**
+
+**Live counts — read from the tree, independently re-derived by the reviewer, never incremented from this document: 21 promoted / 17 model-invocable / 4 human-typed-only, and 13 `READS` / 8 `N/A`.** The human-typed SET is unchanged and no `disable-model-invocation` flag moved.
+
+**The nine-file sweep, as executed:**
+
+1. **`src/devforge/storage-rules.md` — FIRST, because it is the recorded transient.** `20 emitted commands` → **21**, `7 N/A` → **8**, `READS 13` unmoved (the new command is `N/A`). **Written from `scripts/lib/memory_lane.py`'s live dict — eight `NOT_APPLICABLE` entries out of twenty-one — never from this plan.**
+2. **`src/CLAUDE.md`** — one `Standalone` bullet, one terse `### Command Details` entry, and D6's one clause on the conversational offer's third arm.
+3. **`README.md`** — the spelled-out figures, the `Standalone` line, the command list, the artifact-directory list and the layout diagram.
+4. **`CHANGELOG.md`** — one `## [Unreleased]` → `### Added` entry, first in the list.
+5. **`88-COLD-FIX-BUGS-LANE-PLAN.md`** — a dated blockquote at D6. **No build record edited, no phase re-opened.**
+6. **Repo-root `CLAUDE.md`** — this plan's index entry plus dated pointers on plans 63 and 88.
+7. **`PLAN-STATUS-ARCHIVE.md`** — the mirrored full entry plus the same two pointers.
+8. **`DEVELOPMENT-STATUS.md`** — the command-list entry and the model-invocable count.
+9. **`scripts/lib/memory_lane.py`** — a prose-only docstring closure of the split narrative (`…16/4 since plan 93…, and 17/4 since plan 95…`). **No logic, no dict, no test touched.**
+
+**Two transients CLOSED, both verified against the tree by the reviewer rather than taken from the record:** the `storage-rules.md` numeral (Phase 2's build record now carries a dated CLOSED marker beside the original wording), and the `report_ticket_helper` orphan (closed at Phase 2b, marked in two places). **In both cases the original sentence is KEPT** — it records the state a phase shipped and why it was acceptable, which a reader needs more than a tidy file.
+
+**Checked no-ops, recorded because "nothing to amend" is a finding:**
+
+- **`src/CLAUDE.md`'s two count-adjacent sentences** — *"Four are **human-typed only**"* and *"Every other forge command is model-invocable"* — are **both still true at 21** and were **NOT edited**. Verified by reading them live.
+- **`claude-code-guide` was CITED, not re-run**, with the reason stated: **this phase changed no frontmatter** — no key, no `allowed-tools` entry, no `description`.
+
+**The sweep grep, and its result classified rather than declared clean:** every surviving hit of the stale strings is a **self-dating historical record**, not a live claim — plan 92's CHANGELOG parenthetical (*"the LIVE counts are 16/4 **as of 2026-09-03**"*), plan 94's fact table, plans 63 and 74's own dated amendment notes, and this plan's own scope, Verify and trap lines, which name the string they instructed changing. **That last group is the self-referential-grep artifact plan 94 avoided by deliberately not writing the token its own Verify forbade.**
+
+⚠ **The lesson this phase actually produced, and it is the one worth carrying: the plan's own Verify pattern MISSED a site.** The Verify said *"`grep -rn "Sixteen of the twenty" .` returns nothing"* — an exact-phrase pattern — and `DEVELOPMENT-STATUS.md` carried the variant **"Sixteen commands are model-invocable"**, which that pattern cannot match. **This is the words-spelled-count trap recurring one level deeper**: the plan already knew a digit grep misses a spelled count and wrote a phrase grep to catch it, and the phrase grep then missed a *different spelling of the same count*. **The durable form of the check is a spelled-number-token sweep** (`sixteen` / `seventeen` / `twenty` / `teen `), not an exact phrase — and the reviewer, not the author, found it.
+
+**Post-fix verification of that lesson, run across the sweep's files:** `README.md` returns **exactly one** spelled-count hit (the corrected `"Seventeen of the twenty-one"`) and `DEVELOPMENT-STATUS.md` **exactly one** (the corrected `"Seventeen commands"`). Every other hit anywhere is either an **`### Always` Key-Rule ordinal** (`a sixteenth Key Rule`, `the list stayed at sixteen` — items, not commands) or a **dated historical verification** (*"verified 2026-08-17 that seven of twenty command files carry the flag"*). **No stale spelled command count survives.**
+
+**Reviewer findings — 0 high / 3 medium / 2 low / 1 nit — ALL SIX FIXED:**
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | **Medium** | `DEVELOPMENT-STATUS.md` still read *"Sixteen commands are model-invocable"* — **the site the plan's own exact-phrase Verify could not match** | **FIXED** → "Seventeen"; the *"narrowed from seven"* clause is untouched, being a dated historical statement |
+| 2 | **Medium** | `README.md`'s artifact-directory list omitted `tickets/`, so the install section named the drawers a project gets and left the new one out | **FIXED** |
+| 3 | **Medium** | `README.md`'s layout diagram showed `bugs/` and not `tickets/` — the same omission where a reader looks for the tree | **FIXED** |
+| 4 | Low | `src/CLAUDE.md`'s new catalog entry ran longer than its siblings and restated the lifecycle the Standalone bullet already carries | **FIXED** — trimmed to sibling length; `--type` reworded to "is required — compose it", which is also what the helper actually enforces |
+| 5 | Low | `memory_lane.py`'s docstring narrative stopped at plan 93 while its dict had moved on | **FIXED** — one dated clause appended; **prose only** |
+| 6 | Nit | The archive entry said "ticket question" where the emitted text now says "ticket-ID question" | **FIXED** |
+
+**Divergences, each with its reason:**
+
+1. **The archive's plan-63 and plan-88 entries were amended too**, beyond the literal instruction to pointer the repo-root ledger. ⚠ **`PLAN-STATUS-ARCHIVE.md`'s own head-matter requires its entries and the `CLAUDE.md` one-liners to stay in sync**, so pointering one and not the other would have created precisely the drift that file exists to prevent.
+2. **Plan 63's own FILE was deliberately NOT touched.** Its `(AMENDED 2026-09-03 …)` note is dated and self-scoping, and the file is outside this phase's scope list. **Recorded rather than decided.**
+3. **`DEVELOPMENT-STATUS.md`'s `bugs/` / `.gitkeep` claim is left as-is**, per instruction — `install.sh` contains no `bugs` string and the directory is created lazily on first write. **It is now recorded as a residual in three surfaces** (this plan, the repo-root index entry, and the archive entry) so it is not rediscovered as new.
 
 ### Phase 5 — Consumer e2e *(user-driven HARD GATE)*
 

@@ -68,8 +68,9 @@ A false inference to pre-empt
 ------------------------------
 The 21 ``_PROMOTED`` commands also split model-invocable /
 human-typed-only (see ``63-SKILL-COLLISION-SUPPRESSION-PLAN.md``): 13/7
-under plan 63, and 16/4 since plan 93 narrowed the human-typed set to the
-four setup commands on 2026-09-03. Either way it is a DIFFERENT SET from
+under plan 63, 16/4 since plan 93 narrowed the human-typed set to the
+four setup commands on 2026-09-03, and 17/4 since plan 95 added
+``report-ticket`` on 2026-09-04. Either way it is a DIFFERENT SET from
 this module's 13 READS / 8 N/A split: ``summarize`` and ``report-bug``
 are model-invocable yet N/A here (``spec-check`` joined them under plan
 93), and ``grill`` and ``fix`` were human-typed-only yet READS here until

@@ -71,6 +71,7 @@ Forge commands are namespaced — invoke them as `/devforge:<name>` (e.g. `/devf
 Standalone (no pipeline connection — runs outside the spec pipeline):
 - `/devforge:audit` — Adversarial whole-codebase quality + system-design + best-practices review
 - `/devforge:report-bug` — Pure-capture bug report: writes one `bugs/NNN-<slug>.md` (Status Open, Source manual) and stops; dispatches no agent
+- `/devforge:report-ticket` — Pure-capture work item: writes one `tickets/NNN-<slug>.md` (Status Open) from a free-text idea or pasted tracker-ticket text and stops; dispatches no agent. Non-bug work only — a defect goes to `/devforge:report-bug`, and a ticket file is never an input to `/devforge:fix`
 
 ### Command Details
 
@@ -133,13 +134,16 @@ One-time deep codebase analysis (or interview for greenfield projects) that gene
 #### `/devforge:report-bug "<bug description>" [--file <path>] [--severity Critical|Warning|Info]`
 **NOT part of any workflow chain.** Severity defaults to `Warning`; the `NNN` prefix is assigned by the helper.
 
+#### `/devforge:report-ticket "<work item, or pasted tracker-ticket text>" [--type enhancement|task|imported] [--ticket <ID>]`
+**NOT part of any workflow chain.** `--type` is required — compose it; `--source` defaults to `manual`; the `NNN` prefix is assigned by the helper.
+
 ### Conversational fix-or-file offer
 
 When the user points out a defect AND you confirm it is real by reading the actual code, offer the route that fits. Choose between the routes by asking whether the fix REPAIRS existing behavior or CHANGES what the system does — never by counting files.
 
 - **In-window defect repair** — the active feature is implemented-but-not-yet-summarized (verify with `.devforge/lib/fix_helper in-fix-window --feature <feature>` — exit 0 = in-window; any other result, whether out-of-window or the helper is unavailable/errors, → treat as not in-window). All three conditions are required (user-raised AND code-confirmed AND in-window): offer a two-arm choice — run `/devforge:fix` to remediate now (a gated remediation loop), or run `/devforge:report-bug` to file a bug and defer.
 - **Cold defect repair** — a confirmed repair with no feature in that window (none active, or it is already sealed): offer `/devforge:report-bug` to file it, then `/devforge:fix bugs/NNN-<slug>.md` to remediate it under the same gates.
-- **A change, not a repair** — the fix would add behavior, change a data model or contract, or restructure a layer: recommend the full chain from `/devforge:research`, in or out of window.
+- **A change, not a repair** — the fix would add behavior, change a data model or contract, or restructure a layer: recommend the full chain from `/devforge:research`, in or out of window. When the user would rather file it than start now, offer `/devforge:report-ticket` as the file-it-for-later variant of this same arm; the item is picked up later with `/devforge:research tickets/NNN-<slug>.md`.
 
 If the defect is unconfirmed or you originated it, offer only `/devforge:report-bug` — never `/devforge:fix`. Never run `/devforge:fix` unoffered: propose it, and run it only once the user agrees.
 

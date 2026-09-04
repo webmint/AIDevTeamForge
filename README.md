@@ -29,7 +29,7 @@ It self-registers on PATH; restart Claude Code afterward. **Context7** and **Chr
 /path/to/AIDevTeamForge/install.sh /path/to/your-project
 ```
 
-Copies `.claude/`, `.devforge/`, `docs/`, `CLAUDE.md`, `constitution.md`, and `.mcp.json` into the project. Artifact directories (`specs/`, `bugs/`, `audits/`) are created by the commands that write them. Then open the project in Claude Code and run the one-time setup chain.
+Copies `.claude/`, `.devforge/`, `docs/`, `CLAUDE.md`, `constitution.md`, and `.mcp.json` into the project. Artifact directories (`specs/`, `bugs/`, `tickets/`, `audits/`) are created by the commands that write them. Then open the project in Claude Code and run the one-time setup chain.
 
 Non-English operators can have Claude reply in another language: set the `language` key in `~/.claude/settings.json` (every project on your machine) or in `.claude/settings.local.json` (this project only — Claude Code "keeps it out of git when it creates the file; if you create it by hand, add it to `.gitignore` yourself"). Do not use `.claude/settings.json`, which `install.sh` overwrites. The installed `CLAUDE.md` keeps every file artifact and commit message in English regardless; the setting applies to conversation only.
 
@@ -48,10 +48,11 @@ Per feature:      /devforge:research OR /devforge:discover → /devforge:specify
                     → /devforge:plan → /devforge:grill → /devforge:breakdown → /devforge:implement
                     → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 
-Standalone:       /devforge:audit   /devforge:report-bug   /devforge:fix   /devforge:pr-review
+Standalone:       /devforge:audit   /devforge:report-bug   /devforge:report-ticket
+                  /devforge:fix   /devforge:pr-review
 ```
 
-Every command is namespaced under `devforge:` so it never collides with a bundled or plugin skill of the same name; the `/` menu is fuzzy-searched, so typing `verify` still surfaces `/devforge:verify`. Sixteen of the twenty are model-invocable — propose one and Claude runs it once you agree, one agreement per command. Four are human-typed only: the setup commands `/devforge:init-forge`, `/devforge:generate-docs`, `/devforge:configure` and `/devforge:constitute`.
+Every command is namespaced under `devforge:` so it never collides with a bundled or plugin skill of the same name; the `/` menu is fuzzy-searched, so typing `verify` still surfaces `/devforge:verify`. Seventeen of the twenty-one are model-invocable — propose one and Claude runs it once you agree, one agreement per command. Four are human-typed only: the setup commands `/devforge:init-forge`, `/devforge:generate-docs`, `/devforge:configure` and `/devforge:constitute`.
 
 Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/devforge:plan` — when `/devforge:plan` blocks on it, Claude offers to run it and runs it once you agree (nothing runs it on its own initiative), and `/devforge:plan` blocks until a fresh report for that spec exists; that check is on the report's presence and freshness only, never on its verdict, so you still own every call it raises. `/devforge:grill` is required before `/devforge:breakdown` — offered and run the same way, one agreement per command, and `/devforge:breakdown` blocks until a grill report exists for that plan; that check is on the report's presence and its recorded adversary run only, never on its freshness and never on its disposition, so a KILL report unblocks `/devforge:breakdown` exactly as a PROCEED one does and you still own every call it raises. `/devforge:fix` is not a linear step — it's a proposal-only remediation loop the model offers off `/devforge:review`/`/devforge:verify`.
 
@@ -83,6 +84,7 @@ Each arrow is a user-approved gate. `/devforge:spec-check` is required before `/
 
 - **`/devforge:audit`** — Adversarial whole-codebase quality review (mislogic + system design + best practices + duplication + constitution). Refutation-gated, grounded in verbatim code quotes.
 - **`/devforge:report-bug "desc"`** — Log a bug to `bugs/NNN-*.md` (Open → In Progress → Fixed lifecycle). Pure capture, no agent.
+- **`/devforge:report-ticket "desc"`** — Capture a non-bug work item — an idea, an enhancement, or pasted tracker-ticket text — to `tickets/NNN-*.md` (Open → In Progress → Done, maintained by hand). Pure capture, no agent. Pick it up later with `/devforge:research tickets/NNN-*.md`.
 - **`/devforge:fix`** — Proposal-only remediation loop off `/devforge:review`/`/devforge:verify` findings, run through `/devforge:implement`'s gates. The model offers it and runs it once you agree.
 - **`/devforge:pr-review <PR#>`** — Personal-overlay review of a foreign GitHub PR (AI-slop + blast-radius + scope-drift).
 
@@ -94,6 +96,7 @@ specs/2026/08/PROJ-123/                bugs/NNN-slug.md
   discovery-report.md discover-handoff.json    (/devforge:discover lane)
   spec.md plan.md tasks/ review.md verification.md summary.md
 specs/NNN-feature/                     (allocated before the YYYY/MM layout — same contents, still read)
+tickets/NNN-slug.md                    (captured work items — /devforge:report-ticket)
 audits/  YYYY-MM-DD-audit.md
 ```
 

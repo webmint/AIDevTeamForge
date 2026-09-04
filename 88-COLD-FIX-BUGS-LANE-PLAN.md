@@ -497,6 +497,8 @@ keep true is worse than one it does not set.**
 
 ### D6 — A three-arm routing rubric in `src/CLAUDE.md` *(RATIFIED 2026-08-26 — reading (i); counter-argument retained UNRESOLVED)*
 
+> **AMENDED 2026-09-04 by `95-TICKET-CAPTURE-LANE-PLAN.md` (its D6), narrowly.** Arm 3 gained ONE clause: when the user would rather file the change than start the chain now, the model may offer `/devforge:report-ticket` as the **file-it-for-later variant of that same arm**, the item being picked up later with `/devforge:research tickets/NNN-<slug>.md`. **Nothing else in this rubric moved** — the discriminator sentence (repair vs change, never file count) is byte-unchanged, arms 1 and 2 are byte-unchanged, the rubric still has THREE arms on ONE axis, and it is still ADVISORY with nothing checking it. ⚠ **This plan's own reading (i) on `/devforge:report-bug` Rule 8 is NOT reopened**: that plan added no forward pointer there and took no position on the fork. **No build record of this plan is edited and no phase is re-opened.**
+
 **RECOMMENDED RULE.** Extend the existing `### Conversational fix-or-file offer` (fact 28) from
 two arms to three:
 
