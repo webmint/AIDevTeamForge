@@ -21,29 +21,40 @@ Claude file but authoring data.
 Fields in the meta block:
   - name         : agent identifier (required)
   - description  : when-to-use hint (required)
-  - model_tier   : think | do | verify | scan (required; semantic, not a runtime placeholder;
-                    also emitted verbatim as a `model_tier:` frontmatter line — see below)
-  - model_pin    : optional; a lowercase alias (matching `^[a-z][a-z-]*$` — no
-                    digits; a pin names an alias, never a version) pinned for this agent
-                    regardless of its tier. When
-                    present, the emitter writes `model: <pin>` and OMITS the `model_tier:`
-                    line entirely. `model_tier` is still required in the source even when
-                    `model_pin` is set (plan 92 D6) — a pinned agent still belongs to a tier
-                    for documentation, it just isn't keyed on for the apply mechanism
-                    below.
+  - model_tier   : think | do | verify | security (required; semantic, not
+                    a runtime placeholder; also emitted verbatim as a
+                    `model_tier:` frontmatter line — see below)
 
-Model tier is translated into Claude boot-safe defaults (NOT placeholders)
-so Claude Code can parse these files at launch without error:
-  opus | sonnet | sonnet | haiku (per tier)
+The emitter ships NO model choice of its own (plan 94 D2 — "there must be
+no defaults, the user chooses"). Every emitted agent carries an explicit
+`model: inherit` line. Explicit, not omitted: `inherit` is step 2 of
+Claude Code's documented subagent model-resolution order and beats the
+`CLAUDE_CODE_SUBAGENT_MODEL` environment variable at step 3 — an absent
+`model:` line would fall through to that variable first, handing the
+choice to an environment the framework does not set and cannot see (plan
+94 OQ-5).
 
-Defaults live in `scripts/lib/install_defaults.py`. The emitted `model_tier:`
-frontmatter line is what the consumer-side `configure_helper
-apply-agent-models` verb (plan 92 D1, built as Phase 1 Deliverable 3 of
-that plan) keys on: at `/devforge:configure` Phase 5 and on `update.sh`,
-that verb rewrites `model:` and `effort:` on every `.claude/agents/*.md`
-from `.devforge/project-config.json`. A file with no `model_tier:` line —
-an agent pinned via `model_pin`, or a consumer's own hand-written agent —
-is left untouched by that verb.
+The `model_tier:` line that follows `model:` is what the consumer-side
+`configure_helper apply-models` verb (plan 94 D1, built as plan 94 Phase 1
+Deliverable 2 — `apply-agent-models` kept as an argparse alias for one
+release, OQ-1) keys on: at `/devforge:configure` Phase 5.4 and on
+`update.sh`, that verb rewrites `model:` and `effort:` on every
+`.claude/agents/*.md` from `.devforge/project-config.json`, using the
+value the user configured for that tier. An unconfigured tier leaves
+`model: inherit` untouched — inheriting the session model is what "no
+defaults" means for an agent that nobody has configured yet. A file with
+no `model_tier:` line — a consumer's own hand-written agent — is left
+untouched by that verb.
+
+`model_pin` support was REMOVED from this emitter by plan 94 D3 — a
+framework-chosen model for one agent was itself a one-member default,
+which D2 forbids (`src/agents/security-reviewer.md` moved onto
+`model_tier: security` at plan 94 Phase 2, 2026-09-04 — the security tier
+became its own Q11.4 question instead). GUARD: a source that still
+declares the removed `model_pin` key (none in the shipped roster since
+that date) is emitted normally — `model: inherit` plus `model_tier:` —
+and this emitter prints one warning to stderr, naming the source file and
+the key, saying the field is no longer honored.
 
 {{UPPERCASE}} placeholders in body prose pass through untouched — wizard
 substitutes them post-install with project-specific answers (FRAMEWORK,
@@ -57,31 +68,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.install_defaults import CLAUDE_AGENT_DEFAULTS_BY_TIER  # noqa: E402
 
 # We intentionally don't use lib.frontmatter here — agent sources use a
 # ```yaml fenced meta block, not ---/--- frontmatter, to avoid mimicking
 # Claude's native agent file format. See _parse_source() below.
 
 
-VALID_TIERS = {"think", "do", "verify", "scan"}
+VALID_TIERS = {"think", "do", "verify", "security"}
 
 TARGET_SUBDIR = ".claude/agents"
-
-# `model_pin` (plan 92 D6): a lowercase ALIAS shape, no digits — a pin
-# names an alias by contract (D6), never a version. Excluding digits here
-# means a hyphen-joined pseudo-version like `sonnet-4-5` is rejected at
-# emit time with a ValueError, rather than merely relying on the separate
-# maintainer-side version-string tripwire (scripts/lib/model_version_
-# tripwire.py) to catch it after the fact. The emitter does NOT enforce
-# Claude Code's actual alias set here — that's version-freedom, not this
-# emitter's job.
-_MODEL_PIN_RE = re.compile(r"^[a-z][a-z-]*$")
 
 
 # ── Source parser ────────────────────────────────────────────────────────
@@ -180,16 +177,11 @@ def _yaml_escape_double(s: str) -> str:
 
 # ── Emitter ──────────────────────────────────────────────────────────────
 #
-# Emit boot-safe defaults (not placeholder tokens). Values come from
-# `scripts/lib/install_defaults.py` — the single source of truth. The
-# emitted `model_tier:` line is what the consumer-side `configure_helper
-# apply-agent-models` verb (plan 92 D1, built as Phase 1 Deliverable 3 of
-# that plan) keys on to rewrite `model:`/`effort:` post-install; see the
-# module docstring above.
-
-
-def _claude_tier_model(tier: str) -> str:
-    return CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
+# No model default is emitted (plan 94 D2). Every agent carries an
+# explicit `model: inherit` — see the module docstring for why that line
+# is explicit rather than omitted. The `model_tier:` line that follows it
+# is what the consumer-side `configure_helper apply-models` verb (plan 94
+# D1) keys on to rewrite `model:`/`effort:` post-install.
 
 
 def emit_claude(
@@ -199,7 +191,6 @@ def emit_claude(
     body: str,
     tools: str = "",
     applies_to: str = "",
-    model_pin: str = "",
 ) -> str:
     """Build a Claude-native agent file from scratch (YAML + markdown).
 
@@ -216,28 +207,17 @@ def emit_claude(
     frontmatter line — Claude Code ignores unknown keys; configure_helper
     parses it. Empty/absent omits the line.
 
-    `model_pin` (plan 92 D6) is an optional per-agent pin that overrides the
-    tier default regardless of `model_tier`. When non-empty after `.strip()`,
-    the emitted `model:` line carries the pin verbatim and the `model_tier:`
-    line is OMITTED entirely — that omission is what makes the consumer-side
-    `configure_helper apply-agent-models` verb (plan 92 D1, built as Phase 1
-    Deliverable 3 of that plan) skip the file, since that verb keys on the
-    presence of `model_tier:`. When empty/absent,
-    `model:` comes from the tier's static default
-    (`CLAUDE_AGENT_DEFAULTS_BY_TIER`) and a `model_tier: <tier>` line follows
-    it. Emitted frontmatter order: `name`, `description`, optional `tools`,
-    `model`, optional `model_tier`, optional `applies_to`.
+    `model:` is always the literal `inherit` (plan 94 D2 — the framework
+    ships no model of its own) and `model_tier: <model_tier>` always
+    follows it; there is no per-agent override at this layer (plan 94 D3
+    removed `model_pin`). Emitted frontmatter order: `name`, `description`,
+    optional `tools`, `model`, `model_tier`, optional `applies_to`.
     """
     body = body.lstrip("\n")
     tools_line = f"tools: {tools.strip()}\n" if tools.strip() else ""
     applies_to_line = f"applies_to: {applies_to.strip()}\n" if applies_to.strip() else ""
-    pin = model_pin.strip()
-    if pin:
-        model_line = f"model: {pin}\n"
-        model_tier_line = ""
-    else:
-        model_line = f"model: {_claude_tier_model(model_tier)}\n"
-        model_tier_line = f"model_tier: {model_tier}\n"
+    model_line = "model: inherit\n"
+    model_tier_line = f"model_tier: {model_tier}\n"
     return (
         "---\n"
         f"name: {name}\n"
@@ -266,13 +246,6 @@ def _render_one(src_file: Path, target: Path) -> str:
     model_tier = meta.get("model_tier", "").strip().lower()
     tools = meta.get("tools", "")
     applies_to = meta.get("applies_to", "")
-    # `model_pin` is distinguished from "absent" by dict membership, not by
-    # truthiness — an explicitly empty `model_pin:` value is still a
-    # declared (and invalid) pin, not the "no pin" default. `_parse_source`
-    # always sets `meta[key]` once a `key:` line is seen, even with an empty
-    # value, so `"model_pin" in meta` is the correct absence test.
-    model_pin_raw = meta.get("model_pin")
-    model_pin = model_pin_raw.strip() if model_pin_raw is not None else ""
 
     if not description:
         raise ValueError(f"{src_file}: missing required 'description'")
@@ -281,13 +254,20 @@ def _render_one(src_file: Path, target: Path) -> str:
             f"{src_file}: 'model_tier' must be one of {sorted(VALID_TIERS)}, "
             f"got {model_tier!r}"
         )
-    if model_pin_raw is not None and not _MODEL_PIN_RE.match(model_pin):
-        raise ValueError(
-            f"{src_file}: 'model_pin' must match a lowercase alias/id shape "
-            f"({_MODEL_PIN_RE.pattern!r}), got {model_pin!r}"
-        )
     if not body.strip():
         raise ValueError(f"{src_file}: empty body — agent has no instructions")
+
+    # GUARD (plan 94 D3): `model_pin` was removed from the authoring
+    # contract (none in the shipped roster since Phase 2, 2026-09-04).
+    # A source that still declares it isn't failed — warn once and ignore
+    # it, so the source keeps rendering like any other agent.
+    if "model_pin" in meta:
+        print(
+            f"warning: {src_file}: 'model_pin' has been removed from the "
+            "authoring contract (plan 94 D3) and is no longer honored — "
+            "ignoring it",
+            file=sys.stderr,
+        )
 
     rendered = emit_claude(
         name=name,
@@ -296,7 +276,6 @@ def _render_one(src_file: Path, target: Path) -> str:
         body=body,
         tools=tools,
         applies_to=applies_to,
-        model_pin=model_pin,
     )
 
     out_dir = target / TARGET_SUBDIR

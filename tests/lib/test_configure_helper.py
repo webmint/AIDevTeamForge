@@ -85,6 +85,36 @@ tests/lib/_configure/test_effort_fields.py's AliasNormalizationTests,
 alongside Deliverable 1's tests, per this repo's real-producer-round-
 trip rule and to keep this already-large file from growing further.
 
+Plan 94 Phase 1 Deliverable 6 coverage (94-MODEL-OVERRIDE-AND-NO-
+DEFAULTS-PLAN.md D3 — the fourth tier, security-reviewer's one member —
+the counts above are now two fields / two keys further behind, hence
+the FOUR count-pin tests renamed to 37/37/45/45 in this pass, and
+ENUM_FIELDS' size renamed 8 -> 9): claude_tier_security mirrors
+claude_tier_think/do/verify exactly (FIELD_SCHEMA scalar, NOT in
+ENUM_FIELDS, no FIELD_DEFAULTS entry, set-claude-tier-security through
+the shared _cmd_set_claude_tier alias-normalization path);
+claude_effort_security mirrors claude_effort_think/do/verify exactly
+(ENUM_FIELDS six-member set, FIELD_DEFAULTS "default", set-claude-
+effort-security through the shared _cmd_set_enum path). Both fields are
+APPENDED LAST in FIELD_SCHEMA and in _PROJECT_CONFIG_KEY_ORDER, after
+the existing effort trio rather than clustered beside their claude_*_
+verify siblings — this deliverable is scoped independently of the
+shared apply-verb machinery another Phase 1 run owns for the other
+three tiers (it does not touch _agent_models.py / _cmds_agent_models.py
+/ generate-agents.py). This file carries only what the new field pair
+mechanically touches here — the four count pins, FIELD_SCHEMA's
+locked-order list, ENUM_FIELDS' size/keys/values, the all-fields-set
+round-trip fixture, and the pre-existing VerifyTests /
+SetE2eCommandTests fixtures that populate every configure.yaml field
+(claude_tier_security has no FIELD_DEFAULTS baseline, so — exactly
+like its claude_tier_think/do/verify siblings — configure_helper verify
+now requires it to be set; every "populate all fields, expect exit 0"
+fixture in this file gained a set-claude-tier-security call for this
+reason). The full setter/round-trip/verify/summary surface for both new
+fields lives in tests/lib/_configure/test_effort_fields.py, which this
+deliverable extended in place, per this repo's real-producer-round-trip
+rule and to keep this already-large file from growing further.
+
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
 
@@ -192,13 +222,14 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_35_fields(self):
-        # 32 + claude_effort_think/do/verify (plan 92 Phase 1).
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 35)
+    def test_field_schema_has_37_fields(self):
+        # 35 + claude_tier_security/claude_effort_security (plan 94 Phase 1
+        # Deliverable 6).
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 37)
 
-    def test_default_state_has_35_keys(self):
+    def test_default_state_has_37_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 35)
+        self.assertEqual(len(state), 37)
 
     def test_default_state_scalars_are_none(self):
         # Fields listed in FIELD_DEFAULTS have non-None defaults and are
@@ -274,15 +305,19 @@ class SchemaTests(unittest.TestCase):
             "claude_effort_think",
             "claude_effort_do",
             "claude_effort_verify",
+            "claude_tier_security",
+            "claude_effort_security",
         ]
         self.assertEqual(names, expected)
 
-    def test_enum_fields_has_8_entries(self):
+    def test_enum_fields_has_9_entries(self):
         # claude_tier_* deliberately omitted to allow custom model aliases
-        # via Q11 Other branch. Their claude_effort_* siblings (plan 92
-        # D4) ARE enum-restricted — effort is a closed vendor enum, a
-        # model name is not — so all 3 join here: 5 + 3 = 8.
-        self.assertEqual(len(configure_helper.ENUM_FIELDS), 8)
+        # via Q11 Other branch (including the fourth tier, claude_tier_
+        # security — plan 94 D3). Their claude_effort_* siblings (plan 92
+        # D4; plan 94 D3 adds the fourth) ARE enum-restricted — effort is
+        # a closed vendor enum, a model name is not — so all 4 join here:
+        # 5 + 4 = 9.
+        self.assertEqual(len(configure_helper.ENUM_FIELDS), 9)
 
     def test_enum_fields_correct_keys(self):
         expected_keys = {
@@ -294,6 +329,7 @@ class SchemaTests(unittest.TestCase):
             "claude_effort_think",
             "claude_effort_do",
             "claude_effort_verify",
+            "claude_effort_security",
         }
         self.assertEqual(set(configure_helper.ENUM_FIELDS.keys()), expected_keys)
 
@@ -318,7 +354,7 @@ class SchemaTests(unittest.TestCase):
             configure_helper.ENUM_FIELDS["require_ticket"],
             {"true", "false"},
         )
-        for tier in ("think", "do", "verify"):
+        for tier in ("think", "do", "verify", "security"):
             self.assertEqual(
                 configure_helper.ENUM_FIELDS["claude_effort_{0}".format(tier)],
                 {"default", "low", "medium", "high", "xhigh", "max"},
@@ -565,7 +601,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 35 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket, claude_effort_*)."""
+        """All 37 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket, claude_effort_*, claude_tier_security, claude_effort_security)."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -613,6 +649,8 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "claude_effort_think": "high",
             "claude_effort_do": "medium",
             "claude_effort_verify": "xhigh",
+            "claude_tier_security": "Opus",
+            "claude_effort_security": "low",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -3078,6 +3116,7 @@ class SetE2eCommandTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
         _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
         _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-claude-tier-security", "Opus")
         _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
         # e2e_command intentionally left unset — stays at FIELD_DEFAULTS "".
 
@@ -3146,6 +3185,7 @@ class SetE2eCommandTests(_EnvIsolationMixin, unittest.TestCase):
             "claude_tier_think": "Opus",
             "claude_tier_do": "Sonnet",
             "claude_tier_verify": "Haiku",
+            "claude_tier_security": "Opus",
             "ac_verification_mode": "code-only",
         })
         text = configure_helper.emit_yaml(state)
@@ -3411,12 +3451,13 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_43_keys_present(self):
-        # 40 + CLAUDE_EFFORT_THINK/DO/VERIFY (plan 92 Phase 1).
+    def test_all_45_keys_present(self):
+        # 43 + CLAUDE_TIER_SECURITY/CLAUDE_EFFORT_SECURITY (plan 94 Phase 1
+        # Deliverable 6).
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 43)
+        self.assertEqual(len(result), 45)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3568,14 +3609,15 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_43_keys_with_defaults(self):
-        # 40 + CLAUDE_EFFORT_THINK/DO/VERIFY (plan 92 Phase 1).
+    def test_renders_45_keys_with_defaults(self):
+        # 43 + CLAUDE_TIER_SECURITY/CLAUDE_EFFORT_SECURITY (plan 94 Phase 1
+        # Deliverable 6).
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 43)
+        self.assertEqual(len(data), 45)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -3715,7 +3757,10 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_init(self.devforge_dir, "set-default-branch", "main")
 
     def _populate_all_configure_fields(self):
-        """Set all 30 configure.yaml fields to valid values."""
+        """Set every configure.yaml field with no FIELD_DEFAULTS baseline
+        (claude_tier_* incl. claude_tier_security — plan 94 D3 — has none
+        and is therefore REQUIRED for verify to pass, exactly like its
+        claude_tier_think/do/verify siblings) to valid values."""
         _run_configure(self.devforge_dir, "reset")
         _run_configure(self.devforge_dir, "set-project-name", "test-project")
         _run_configure(self.devforge_dir, "set-project-description", "A test project")
@@ -3745,6 +3790,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
         _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
         _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-claude-tier-security", "Opus")
         _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
         # ac_runtime_* left null — allowed when mode != runtime-assisted
 

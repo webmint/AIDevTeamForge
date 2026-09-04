@@ -457,7 +457,7 @@ def cmd_set_architecture_details(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Enum scalar setters (8).
+# Enum scalar setters (9).
 # ---------------------------------------------------------------------------
 
 
@@ -550,6 +550,19 @@ def cmd_set_claude_tier_verify(args: argparse.Namespace) -> int:
     return _cmd_set_claude_tier(args, "claude_tier_verify")
 
 
+def cmd_set_claude_tier_security(args: argparse.Namespace) -> int:
+    """Set claude_tier_security (free-text scalar).
+
+    A value matching opus/sonnet/haiku/fable (case-insensitive) is
+    normalized to lowercase; any other non-empty scalar is stored
+    verbatim as a pinned model ID (plan 92 D3). The fourth tier
+    (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md D3) — security-reviewer
+    is its one member, so the model that reviews security is the user's
+    answer, not a framework pin.
+    """
+    return _cmd_set_claude_tier(args, "claude_tier_security")
+
+
 def cmd_set_ac_verification_mode(args: argparse.Namespace) -> int:
     """Set ac_verification_mode enum scalar (code-only | tests | runtime-assisted | off)."""
     return _cmd_set_enum(args, "ac_verification_mode")
@@ -578,6 +591,11 @@ def cmd_set_claude_effort_do(args: argparse.Namespace) -> int:
 def cmd_set_claude_effort_verify(args: argparse.Namespace) -> int:
     """Set claude_effort_verify enum scalar (default | low | medium | high | xhigh | max). Default: default (plan 92 D4)."""
     return _cmd_set_enum(args, "claude_effort_verify")
+
+
+def cmd_set_claude_effort_security(args: argparse.Namespace) -> int:
+    """Set claude_effort_security enum scalar (default | low | medium | high | xhigh | max). Default: default (plan 94 D3)."""
+    return _cmd_set_enum(args, "claude_effort_security")
 
 
 # ---------------------------------------------------------------------------

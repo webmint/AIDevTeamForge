@@ -292,6 +292,11 @@ class RealProducerRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
         _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
         _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        # claude_tier_security (plan 94 D3) has no FIELD_DEFAULTS baseline,
+        # mirroring claude_tier_think/do/verify exactly, so it must be set
+        # here or this test's own exit-0 expectation would fail on IT
+        # instead of proving what this test is actually about.
+        _run_configure(self.devforge_dir, "set-claude-tier-security", "Opus")
         _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
         # require_ticket deliberately left unset -- FIELD_DEFAULTS "false"
         # baseline must keep it out of the null-scalar check.

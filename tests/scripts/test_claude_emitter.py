@@ -38,8 +38,9 @@ def _load_claude_emitter():
     It inserts SCRIPTS_DIR into sys.path itself (line 39-40), so as long
     as we don't shadow `lib` beforehand we get the right module.  We
     pre-register the scripts/lib/ package in sys.modules under the bare
-    name `lib` the same way test_generate_agents.py handles it, to avoid
-    the `tests/lib/` namespace-package shadow on sys.path.
+    name `lib` to avoid the `tests/lib/` namespace-package shadow on
+    sys.path; `generate-agents.py`'s loader no longer needs this since
+    plan 94 removed its only `lib.*` import.
     """
     # Ensure the scripts/lib/ package is visible under the bare name `lib`
     # before the emitter's import runs.

@@ -25,7 +25,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     """Cross-check configure.yaml + project-config.json for correctness.
 
     Checks:
-    1. All 35 configure.yaml fields populated (non-null scalars, non-empty
+    1. All 37 configure.yaml fields populated (non-null scalars, non-empty
        arrays). AC runtime fields (3) are exempt when ac_verification_mode
        != "runtime-assisted". project_natures is required (empty → violation).
        e2e_command needs no exemption: its FIELD_DEFAULTS baseline is ""
@@ -33,12 +33,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
        `value is None` check never fires for it on a fresh install or on
        an existing configure.yaml written before this field existed.
        require_ticket needs no exemption either, for the identical reason:
-       its FIELD_DEFAULTS baseline is "false" (not None). The three
-       claude_effort_* fields (plan 92 D4) need no exemption either, for
-       the same reason again: their FIELD_DEFAULTS baseline is "default"
-       (a real ENUM_FIELDS member, not None), so this loop never fires
-       for them on a fresh install or on an existing configure.yaml
-       written before these fields existed.
+       its FIELD_DEFAULTS baseline is "false" (not None). The four
+       claude_effort_* fields (plan 92 D4; plan 94 D3 adds the fourth,
+       claude_effort_security) need no exemption either, for the same
+       reason again: their FIELD_DEFAULTS baseline is "default" (a real
+       ENUM_FIELDS member, not None), so this loop never fires for them
+       on a fresh install or on an existing configure.yaml written
+       before these fields existed. claude_tier_security carries NO such
+       exemption, mirroring claude_tier_think/do/verify exactly: it has
+       no FIELD_DEFAULTS entry, so this loop DOES fire — a null
+       claude_tier_security is a violation, same as a null
+       claude_tier_verify today (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-
+       PLAN.md D3; see test_effort_fields.py's TierSecurityVerifyTests
+       for the pinned behavior).
     2. project-config.json exists and is valid JSON.
     3. Round-trip identity: configure.yaml fields appear in project-config.json
        with matching values; init.yaml fields appear with matching values.
@@ -62,7 +69,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     ac_mode = cfg_state.get("ac_verification_mode")
     ac_runtime_required = (ac_mode == "runtime-assisted")
 
-    # Check all 35 configure.yaml fields.
+    # Check all 37 configure.yaml fields.
     for name, kind in FIELD_SCHEMA:
         value = cfg_state.get(name)
         if name in _AC_RUNTIME_FIELDS and not ac_runtime_required:

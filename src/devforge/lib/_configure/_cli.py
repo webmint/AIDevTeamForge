@@ -5,7 +5,7 @@ Dispatcher-only. All cmd_* handler bodies live in sibling modules:
                  + cmd_set_package_stacks
   _cmds_read   — read-init / read-docs / read-manifests / read-configs
   _cmds_render — render-config / substitute-templates / substitute-file / prune-agents
-  _cmds_agent_models — apply-agent-models
+  _cmds_agent_models — apply-models (alias: apply-agent-models, plan 94 OQ-1)
   _cmds_verify — verify / summary
 """
 
@@ -46,9 +46,11 @@ from ._cmds_set import (
     cmd_set_build_commands,
     cmd_set_build_tools,
     cmd_set_claude_effort_do,
+    cmd_set_claude_effort_security,
     cmd_set_claude_effort_think,
     cmd_set_claude_effort_verify,
     cmd_set_claude_tier_do,
+    cmd_set_claude_tier_security,
     cmd_set_claude_tier_think,
     cmd_set_claude_tier_verify,
     cmd_set_dev_commands,
@@ -96,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Install root (parent of devforge-dir). "
             "Default: parent of --devforge-dir. Used by read-docs + read-configs "
-            "+ apply-agent-models."
+            "+ apply-models (formerly apply-agent-models)."
         ),
     )
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -316,6 +318,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_set_claude_tier_verify)
 
     sp = subparsers.add_parser(
+        "set-claude-tier-security",
+        help=(
+            "Set claude_tier_security (opus | sonnet | haiku | fable, normalized "
+            "to lowercase case-insensitively; any other value is stored as a "
+            "pinned model ID)."
+        ),
+    )
+    sp.add_argument("value", help="Security tier.")
+    sp.set_defaults(func=cmd_set_claude_tier_security)
+
+    sp = subparsers.add_parser(
         "set-claude-effort-think",
         help="Set claude_effort_think enum (default | low | medium | high | xhigh | max). Default: default.",
     )
@@ -335,6 +348,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("value", help="Verifying tier effort.")
     sp.set_defaults(func=cmd_set_claude_effort_verify)
+
+    sp = subparsers.add_parser(
+        "set-claude-effort-security",
+        help="Set claude_effort_security enum (default | low | medium | high | xhigh | max). Default: default.",
+    )
+    sp.add_argument("value", help="Security tier effort.")
+    sp.set_defaults(func=cmd_set_claude_effort_security)
 
     sp = subparsers.add_parser(
         "set-ac-verification-mode",
@@ -464,19 +484,26 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_prune_agents)
 
     # ------------------------------------------------------------------
-    # Step 5b: apply-agent-models.
+    # Step 5b: apply-models (renamed from apply-agent-models, kept as an
+    # argparse alias for one release -- 94-MODEL-OVERRIDE-AND-NO-DEFAULTS
+    # -PLAN.md D1, OQ-1).
     # ------------------------------------------------------------------
 
     sp = subparsers.add_parser(
-        "apply-agent-models",
+        "apply-models",
+        aliases=["apply-agent-models"],
         help=(
             "Rewrite model:/effort: frontmatter on every .claude/agents/*.md "
-            "from .devforge/project-config.json, keyed on each file's "
-            "model_tier: line. A file without model_tier: (a model_pin "
-            "agent, or a consumer's own hand-written agent) is left "
-            "untouched. Idempotent; JSON decision report to stdout. "
-            "Exit 0 = success; exit 1 = config missing/malformed or IO "
-            "error; exit 2 = validation error, nothing written."
+            "and every mapped .claude/commands/devforge/*.md from "
+            ".devforge/project-config.json -- agents keyed on each file's "
+            "model_tier: line, commands keyed on the helper-owned "
+            "COMMAND_TIERS map by file stem. A file without model_tier: "
+            "(a consumer's own hand-written agent), or a command outside "
+            "COMMAND_TIERS, is left untouched. Idempotent; JSON decision "
+            "report to stdout. Exit 0 = success; exit 1 = config "
+            "missing/malformed or IO error; exit 2 = validation error, "
+            "nothing written. 'apply-agent-models' is kept as an alias "
+            "for one release."
         ),
     )
     sp.set_defaults(func=cmd_apply_agent_models)

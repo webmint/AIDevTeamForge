@@ -95,6 +95,22 @@ FIELD_SCHEMA = (
     ("claude_effort_think",    "scalar"),
     ("claude_effort_do",       "scalar"),
     ("claude_effort_verify",   "scalar"),
+
+    # Fourth tier — security (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md
+    # D3): security-reviewer is this tier's one member, so the model that
+    # reviews security is the user's answer, not a framework pin.
+    # claude_tier_security mirrors claude_tier_verify exactly (free-text
+    # scalar, NOT enum-restricted — see the ENUM_FIELDS comment below);
+    # claude_effort_security mirrors claude_effort_verify exactly (an
+    # ENUM_FIELDS member with a FIELD_DEFAULTS "default" baseline below).
+    # Appended last, after the existing tier/effort fields above, rather
+    # than clustered beside claude_tier_verify / claude_effort_verify —
+    # this pair was built as its own deliverable, independent of the
+    # other three tiers' shared apply-verb machinery, and appending last
+    # keeps its diff byte-stable regardless of what that other work does
+    # to the earlier fields.
+    ("claude_tier_security",   "scalar"),
+    ("claude_effort_security", "scalar"),
 )
 
 # Enum-restricted scalars; key = field name, value = allowed set.
@@ -105,7 +121,11 @@ FIELD_SCHEMA = (
 # pick the recommended Claude tiers (Opus/Sonnet/Haiku) OR a custom model
 # alias (Bedrock route, self-hosted, or future model name) via the Q11
 # `Other` branch. The setter validates these as plain non-empty scalars.
-# Their claude_effort_* siblings below ARE enum-restricted, and the
+# This rule applies identically to the fourth tier, claude_tier_security
+# (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md D3) — it is exempt from
+# ENUM_FIELDS for the same reason as its three siblings, not a special
+# case of its own. Their claude_effort_* siblings below (all four,
+# including claude_effort_security) ARE enum-restricted, and the
 # asymmetry is deliberate (92-AGENT-MODEL-AND-EFFORT-CONFIG-PLAN.md D4):
 # effort is a closed, vendor-documented enum (default/low/medium/high/
 # xhigh/max), while a model name is not and never will be one. The tier
@@ -139,6 +159,7 @@ ENUM_FIELDS = {
     "claude_effort_think":   {"default", "low", "medium", "high", "xhigh", "max"},
     "claude_effort_do":      {"default", "low", "medium", "high", "xhigh", "max"},
     "claude_effort_verify":  {"default", "low", "medium", "high", "xhigh", "max"},
+    "claude_effort_security": {"default", "low", "medium", "high", "xhigh", "max"},
 }
 
 # Non-None defaults for specific scalar fields (applied by default_state() and
@@ -167,6 +188,15 @@ FIELD_DEFAULTS = {
     "claude_effort_think": "default",
     "claude_effort_do": "default",
     "claude_effort_verify": "default",
+    # "default" (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md D3): the
+    # fourth tier's effort field mirrors its three siblings above exactly
+    # — same real ENUM_FIELDS member, same reason (no _cmds_verify.py
+    # exemption needed, on a fresh install AND on an existing
+    # configure.yaml written before this field existed). claude_tier_
+    # security deliberately has NO entry here, mirroring claude_tier_
+    # verify's own absence above — see that field's own FIELD_SCHEMA
+    # comment.
+    "claude_effort_security": "default",
 }
 
 # package_stack_array record field order — locked so emit is deterministic.

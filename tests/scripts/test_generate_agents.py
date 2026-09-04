@@ -6,9 +6,16 @@ emitted Claude `.claude/agents/<name>.md`. Per Claude Code subagent docs
 `tools:` field constrains which tools the subagent can invoke; omitted →
 inherits all tools.
 
+Also covers the model surface (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md
+Phase 1, Deliverables 3-4): every emitted agent carries an explicit
+`model: inherit` line, `VALID_TIERS` is `think | do | verify | security`
+(`scan` retired, `security` added), and the removed `model_pin` field is
+tolerated on a source that still declares it (a transition-only stderr
+warning, never a failure).
+
 Tests 1-4 use inline source fixtures + `tmp_path` to keep them hermetic.
-Test 5 (regression) reads a real `src/agents/*.md` file to catch accidental
-tools-field injection on existing agents that don't specify `tools`.
+The real-roster tests read real `src/agents/*.md` files to catch
+accidental drift on existing agents.
 
 The emitter does NOT canonicalize the `tools` value — Claude Code's parser
 handles both comma-separated (`Read, Bash`) and YAML-list (`[Read, Bash]`)
@@ -19,8 +26,9 @@ Stdlib only.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
-import sys
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,46 +44,12 @@ def _load_generate_agents():
     """Load `scripts/generate-agents.py` as a module despite the hyphen.
 
     The hyphen blocks `import generate-agents`, so we go through
-    `importlib.util.spec_from_file_location`.
-
-    Subtlety: `generate-agents.py` does `from lib.install_defaults import ...`
-    at import time. Under `unittest discover -s tests`, `tests/lib/` (an
-    empty namespace package used by the lib-helper tests) is on sys.path
-    first and SHADOWS `scripts/lib/`, so the bare `lib.install_defaults`
-    import fails. We pre-load the real `lib.install_defaults` by absolute
-    path and inject it into `sys.modules` so the bare-name import in
-    `generate-agents.py` hits the cache instead of resolving via sys.path.
+    `importlib.util.spec_from_file_location`. `generate-agents.py` no
+    longer imports anything from `scripts/lib/` at all (plan 94 D2
+    deleted its one such import, the sibling default-map module), so no
+    sys.path shadowing dance is needed here any more — a plain by-path
+    load suffices.
     """
-    install_defaults_path = _SCRIPTS_DIR / "lib" / "install_defaults.py"
-    if "lib.install_defaults" not in sys.modules:
-        # Make sure parent `lib` exists in sys.modules first — Python
-        # requires the parent package to be present before a submodule
-        # entry is honored.
-        if "lib" not in sys.modules:
-            lib_spec = importlib.util.spec_from_file_location(
-                "lib", _SCRIPTS_DIR / "lib" / "__init__.py",
-                submodule_search_locations=[str(_SCRIPTS_DIR / "lib")],
-            ) if (_SCRIPTS_DIR / "lib" / "__init__.py").exists() else None
-            if lib_spec is None:
-                # No __init__.py — synthesize a minimal package object.
-                import types
-                lib_pkg = types.ModuleType("lib")
-                lib_pkg.__path__ = [str(_SCRIPTS_DIR / "lib")]
-                sys.modules["lib"] = lib_pkg
-            else:
-                lib_pkg = importlib.util.module_from_spec(lib_spec)
-                sys.modules["lib"] = lib_pkg
-                lib_spec.loader.exec_module(lib_pkg)
-
-        id_spec = importlib.util.spec_from_file_location(
-            "lib.install_defaults", install_defaults_path
-        )
-        id_mod = importlib.util.module_from_spec(id_spec)
-        sys.modules["lib.install_defaults"] = id_mod
-        id_spec.loader.exec_module(id_mod)
-
-    if str(_SCRIPTS_DIR) not in sys.path:
-        sys.path.insert(0, str(_SCRIPTS_DIR))
     spec = importlib.util.spec_from_file_location(
         "generate_agents", _GENERATE_AGENTS_PY
     )
@@ -227,11 +201,12 @@ class ToolsPropagationTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# ScanTierTests — scan → haiku tier mapping.
+# TierValidationTests — `scan` retired, `security` added (plan 94 D2 part 4,
+# D3). `VALID_TIERS` is now think | do | verify | security.
 # ---------------------------------------------------------------------------
 
 
-class ScanTierTests(unittest.TestCase):
+class TierValidationTests(unittest.TestCase):
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -240,33 +215,61 @@ class ScanTierTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    # scan tier emits `model: haiku` in frontmatter
-    def test_scan_tier_emits_haiku_model(self):
+    # scan is retired (plan 94 D2 part 4) — a source still declaring it
+    # must fail, naming all four surviving valid tiers.
+    def test_scan_tier_is_rejected_naming_the_four_valid_tiers(self):
         src = (
             "```yaml\n"
-            "name: tree-annotator\n"
-            'description: "Cheap per-tree-entry annotation calls for generate-docs Phase 3."\n'
+            "name: agent-retired-tier\n"
+            'description: "An agent still declaring the retired scan tier."\n'
             "model_tier: scan\n"
             "```\n"
             "\n"
-            "Body content for scan-tier agent.\n"
+            "Body content.\n"
         )
-        _write_source(self.tmp_path, "tree-annotator", src)
+        _write_source(self.tmp_path, "agent-retired-tier", src)
+        src_file = self.tmp_path / "src" / "agents" / "agent-retired-tier.md"
+        with self.assertRaises(ValueError) as ctx:
+            generate_agents._render_one(src_file, self.tmp_path)
+        message = str(ctx.exception)
+        for tier in ("think", "do", "verify", "security"):
+            self.assertIn(
+                tier, message,
+                f"valid tier {tier!r} missing from error message: {message!r}",
+            )
+
+    # security is the new fourth tier (plan 94 D3) — accepted and rendered
+    # like any other tier.
+    def test_security_tier_is_accepted(self):
+        src = (
+            "```yaml\n"
+            "name: agent-security-tier\n"
+            'description: "An agent on the security tier."\n'
+            "model_tier: security\n"
+            "```\n"
+            "\n"
+            "Body content.\n"
+        )
+        _write_source(self.tmp_path, "agent-security-tier", src)
         generate_agents._render_one(
-            self.tmp_path / "src" / "agents" / "tree-annotator.md",
+            self.tmp_path / "src" / "agents" / "agent-security-tier.md",
             self.tmp_path,
         )
-        rendered = _read_emitted(self.tmp_path, "tree-annotator")
+        rendered = _read_emitted(self.tmp_path, "agent-security-tier")
         fm = _frontmatter_block(rendered)
-        self.assertIn("model: haiku", fm)
+        lines = fm.splitlines()
+        self.assertIn("model: inherit", lines)
+        self.assertIn("model_tier: security", lines)
 
 
 # ---------------------------------------------------------------------------
 # ExistingAgentRegressionTests — change 5 of the task spec.
 #
 # Real shipped agents must continue to render with EXACTLY name / description /
-# model in the frontmatter (no spurious `tools:` line). This catches accidental
-# injection if the emitter starts adding `tools:` for agents that don't define it.
+# model / model_tier in the frontmatter (no spurious `tools:` line), and
+# `model:` must be the literal `inherit` (plan 94 D2). This catches
+# accidental injection if the emitter starts adding `tools:` for agents
+# that don't define it, or drifts off `inherit`.
 # ---------------------------------------------------------------------------
 
 
@@ -299,12 +302,13 @@ class ExistingAgentRegressionTests(unittest.TestCase):
         generate_agents._render_one(src_file, self.tmp_path)
         rendered = _read_emitted(self.tmp_path, "tech-writer")
         fm = _frontmatter_block(rendered)
+        lines = fm.splitlines()
         keys = []
-        for line in fm.splitlines():
+        for line in lines:
             if ":" in line and not line.startswith(" "):
                 keys.append(line.split(":", 1)[0])
-        # Expected keys: name + description + model + model_tier (plan 92 D1 —
-        # every non-pinned agent now carries model_tier) + applies_to (added
+        # Expected keys: name + description + model + model_tier (every
+        # agent carries both now — plan 94 D2) + applies_to (added
         # 2026-05-10 for configure_helper prune-agents). The regression guard is
         # on the ABSENCE of `tools` (canary's whole point) — not on the exact key
         # set, which legitimately grows as new emit-time fields ship.
@@ -313,15 +317,20 @@ class ExistingAgentRegressionTests(unittest.TestCase):
             f"tools: line spuriously injected into tech-writer frontmatter: {keys!r}",
         )
         # Required-keys subset check: name + description + model + model_tier
-        # must always appear (tech-writer declares no model_pin); applies_to
-        # may or may not (depends on whether source has it).
+        # must always appear.
         for required in ("name", "description", "model", "model_tier"):
             self.assertIn(required, keys, f"required key {required!r} missing: {keys!r}")
+        # And `model:` must be the literal `inherit` — no framework default
+        # (plan 94 D2, OQ-5).
+        self.assertIn(
+            "model: inherit", lines,
+            f"expected 'model: inherit' in tech-writer frontmatter: {lines!r}",
+        )
 
 
 # ---------------------------------------------------------------------------
-# ModelTierFrontmatterTests — plan 92 Deliverable 4: `model_tier:` line
-# emitted immediately after `model:`, for every tier.
+# ModelTierFrontmatterTests — plan 94 D2: `model: inherit` immediately
+# followed by `model_tier:` for every valid tier.
 # ---------------------------------------------------------------------------
 
 
@@ -334,7 +343,7 @@ class ModelTierFrontmatterTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_model_tier_line_immediately_follows_model_line_for_each_tier(self):
+    def test_model_tier_line_immediately_follows_model_inherit_for_each_tier(self):
         for tier in sorted(generate_agents.VALID_TIERS):
             with self.subTest(tier=tier):
                 name = f"agent-tier-{tier}"
@@ -355,9 +364,8 @@ class ModelTierFrontmatterTests(unittest.TestCase):
                 rendered = _read_emitted(self.tmp_path, name)
                 fm = _frontmatter_block(rendered)
                 lines = fm.splitlines()
-                expected_default = generate_agents.CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
-                self.assertIn(f"model: {expected_default}", lines)
-                model_idx = lines.index(f"model: {expected_default}")
+                self.assertIn("model: inherit", lines)
+                model_idx = lines.index("model: inherit")
                 self.assertEqual(
                     lines[model_idx + 1],
                     f"model_tier: {tier}",
@@ -398,206 +406,157 @@ class FrontmatterOrderTests(unittest.TestCase):
         )
         rendered = _read_emitted(self.tmp_path, "agent-full-order")
         fm = _frontmatter_block(rendered)
+        lines = fm.splitlines()
+        keys = [line.split(":", 1)[0] for line in lines]
+        self.assertEqual(
+            keys,
+            ["name", "description", "tools", "model", "model_tier", "applies_to"],
+        )
+        self.assertIn("model: inherit", lines)
+
+
+# ---------------------------------------------------------------------------
+# ModelPinTransitionTests — plan 94 D3: `model_pin` support removed from
+# the emitter. A source that still declares the removed `model_pin` key
+# (none in the shipped roster since plan 94 Phase 2, 2026-09-04) is
+# emitted normally — `model: inherit` plus `model_tier:` — and the
+# emitter prints ONE stderr warning naming the file and the key.
+# ---------------------------------------------------------------------------
+
+
+class ModelPinTransitionTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_model_pin_present_emits_one_stderr_warning_naming_file_and_key(self):
+        src = (
+            "```yaml\n"
+            "name: agent-still-pinned\n"
+            'description: "An agent still declaring the removed model_pin key."\n'
+            "model_tier: do\n"
+            "model_pin: opus\n"
+            "```\n"
+            "\n"
+            "Body content.\n"
+        )
+        src_file = _write_source(self.tmp_path, "agent-still-pinned", src)
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            generate_agents._render_one(src_file, self.tmp_path)
+        stderr_text = captured.getvalue()
+        self.assertEqual(
+            len(stderr_text.strip().splitlines()), 1,
+            f"expected exactly one warning line on stderr, got: {stderr_text!r}",
+        )
+        self.assertIn(str(src_file), stderr_text)
+        self.assertIn("model_pin", stderr_text)
+
+    def test_model_pin_present_renders_identical_output_to_a_source_without_it(self):
+        common = (
+            "name: agent-pin-comparison\n"
+            'description: "Comparison agent for the model_pin transition."\n'
+            "model_tier: verify\n"
+        )
+        pinned_src = "```yaml\n" + common + "model_pin: opus\n```\n\nBody content.\n"
+        unpinned_src = "```yaml\n" + common + "```\n\nBody content.\n"
+
+        pinned_root = self.tmp_path / "pinned"
+        unpinned_root = self.tmp_path / "unpinned"
+        pinned_root.mkdir()
+        unpinned_root.mkdir()
+        pinned_file = _write_source(pinned_root, "agent-pin-comparison", pinned_src)
+        unpinned_file = _write_source(unpinned_root, "agent-pin-comparison", unpinned_src)
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            generate_agents._render_one(pinned_file, pinned_root)
+            generate_agents._render_one(unpinned_file, unpinned_root)
+
+        pinned_rendered = _read_emitted(pinned_root, "agent-pin-comparison")
+        unpinned_rendered = _read_emitted(unpinned_root, "agent-pin-comparison")
+        self.assertEqual(pinned_rendered, unpinned_rendered)
+
+
+# ---------------------------------------------------------------------------
+# RealAgentRosterModelTests — every shipped src/agents/*.md source renders
+# `model: inherit` plus a `model_tier:` line, and nothing else on the
+# `model:` line (plan 94 D2, D3). A source that still declares the removed
+# `model_pin` key (none in the shipped roster since plan 94 Phase 2,
+# 2026-09-04) is emitted normally with one stderr warning — the render
+# below asserts NO warning fires, since none of today's sources declare it.
+# ---------------------------------------------------------------------------
+
+
+class RealAgentRosterModelTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_every_shipped_agent_emits_inherit_and_a_model_tier_line(self):
+        sources = sorted(_AGENTS_SRC.glob("*.md"))
+        self.assertTrue(sources, f"no agent sources found under {_AGENTS_SRC}")
+
+        for src_file in sources:
+            with self.subTest(agent=src_file.stem):
+                captured = io.StringIO()
+                with contextlib.redirect_stderr(captured):
+                    out_path = generate_agents._render_one(src_file, self.tmp_path)
+                self.assertEqual(
+                    captured.getvalue(), "",
+                    f"{src_file.name}: unexpected stderr output — no source "
+                    f"in the shipped roster declares the removed model_pin "
+                    f"key any more (plan 94 Phase 2, 2026-09-04), so no "
+                    f"warning should fire: {captured.getvalue()!r}",
+                )
+                rendered = Path(out_path).read_text(encoding="utf-8")
+                fm = _frontmatter_block(rendered)
+                lines = fm.splitlines()
+
+                model_lines = [line for line in lines if line.startswith("model:")]
+                self.assertEqual(
+                    model_lines, ["model: inherit"],
+                    f"{src_file.name}: expected exactly one 'model: inherit' "
+                    f"line, got {model_lines!r}",
+                )
+                self.assertTrue(
+                    any(line.startswith("model_tier: ") for line in lines),
+                    f"{src_file.name}: no model_tier: line in emitted "
+                    f"frontmatter: {lines!r}",
+                )
+
+    def test_security_reviewer_frontmatter_order_is_the_standard_shape(self):
+        # A source that still declares the removed `model_pin` key (none
+        # in the shipped roster since plan 94 Phase 2, 2026-09-04, incl.
+        # security-reviewer.md itself) is emitted normally with one
+        # stderr warning and must not perturb the standard field order —
+        # confirmed here with no warning firing at all, since this source
+        # no longer declares the key.
+        src_file = _AGENTS_SRC / "security-reviewer.md"
+        self.assertTrue(src_file.exists(), f"missing source: {src_file}")
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            out_path = generate_agents._render_one(src_file, self.tmp_path)
+        self.assertEqual(
+            captured.getvalue(), "",
+            f"security-reviewer.md no longer declares model_pin (plan 94 "
+            f"Phase 2, 2026-09-04) so no warning should fire: "
+            f"{captured.getvalue()!r}",
+        )
+        rendered = Path(out_path).read_text(encoding="utf-8")
+        fm = _frontmatter_block(rendered)
         keys = [line.split(":", 1)[0] for line in fm.splitlines()]
         self.assertEqual(
             keys,
             ["name", "description", "tools", "model", "model_tier", "applies_to"],
         )
-
-
-# ---------------------------------------------------------------------------
-# ModelPinTests — plan 92 D6: `model_pin` overrides `model:` and omits
-# `model_tier:` (which is what makes `apply-agent-models` skip the file).
-# ---------------------------------------------------------------------------
-
-
-class ModelPinTests(unittest.TestCase):
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp_path = Path(self._tmp.name)
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_model_pin_overrides_model_and_omits_model_tier(self):
-        src = (
-            "```yaml\n"
-            "name: agent-pinned\n"
-            'description: "An agent pinned to a specific model."\n'
-            "model_tier: think\n"
-            "model_pin: opus\n"
-            "tools: Read\n"
-            'applies_to: ["all"]\n'
-            "```\n"
-            "\n"
-            "Body content.\n"
-        )
-        _write_source(self.tmp_path, "agent-pinned", src)
-        generate_agents._render_one(
-            self.tmp_path / "src" / "agents" / "agent-pinned.md",
-            self.tmp_path,
-        )
-        rendered = _read_emitted(self.tmp_path, "agent-pinned")
-        fm = _frontmatter_block(rendered)
-        lines = fm.splitlines()
-        # Order otherwise unchanged: tools before model, applies_to after —
-        # only the model_tier slot is skipped.
-        keys = [line.split(":", 1)[0] for line in lines]
-        self.assertEqual(keys, ["name", "description", "tools", "model", "applies_to"])
-        self.assertIn("model: opus", lines)
-        for line in lines:
-            self.assertFalse(
-                line.startswith("model_tier:"),
-                f"unexpected model_tier line with model_pin set: {line!r}",
-            )
-
-    def test_model_pin_still_requires_valid_model_tier(self):
-        # model_pin present and valid, but model_tier absent entirely — the
-        # authoring contract keeps model_tier required (plan 92 D6): a pinned
-        # agent still belongs to a tier for documentation.
-        src = (
-            "```yaml\n"
-            "name: agent-pin-no-tier\n"
-            'description: "An agent with a valid pin but no tier."\n'
-            "model_pin: opus\n"
-            "```\n"
-            "\n"
-            "Body content.\n"
-        )
-        _write_source(self.tmp_path, "agent-pin-no-tier", src)
-        with self.assertRaises(ValueError) as ctx:
-            generate_agents._render_one(
-                self.tmp_path / "src" / "agents" / "agent-pin-no-tier.md",
-                self.tmp_path,
-            )
-        self.assertIn("model_tier", str(ctx.exception))
-
-    def test_invalid_model_pin_values_raise_naming_the_file(self):
-        invalid_values = {
-            "uppercase": "Opus",
-            "embedded-space": "claude opus",
-            "empty": "",
-            "leading-hyphen": "-x",
-            # A pin is an ALIAS by contract (plan 92 D6) — no digits, ever.
-            # These two are exactly the hyphen-joined and bare-digit
-            # pseudo-version shapes python-reviewer flagged as slipping
-            # both the tripwire patterns AND the pre-tightening regex.
-            "hyphen-joined-pseudo-version": "sonnet-4-5",
-            "trailing-digit": "opus5",
-        }
-        for label, pin_value in invalid_values.items():
-            with self.subTest(label=label, pin_value=pin_value):
-                name = f"agent-bad-pin-{label}"
-                src = (
-                    "```yaml\n"
-                    f"name: {name}\n"
-                    'description: "An agent with an invalid model_pin."\n'
-                    "model_tier: do\n"
-                    f"model_pin: {pin_value}\n"
-                    "```\n"
-                    "\n"
-                    "Body content.\n"
-                )
-                _write_source(self.tmp_path, name, src)
-                src_file = self.tmp_path / "src" / "agents" / f"{name}.md"
-                with self.assertRaises(ValueError) as ctx:
-                    generate_agents._render_one(src_file, self.tmp_path)
-                message = str(ctx.exception)
-                self.assertIn(str(src_file), message)
-                self.assertIn("model_pin", message)
-
-
-# ---------------------------------------------------------------------------
-# RealAgentRosterModelTierTests — every shipped src/agents/*.md source
-# renders with a model_tier: line, and none pins today (so the day one does,
-# this test names it rather than silently passing).
-# ---------------------------------------------------------------------------
-
-
-class RealAgentRosterModelTierTests(unittest.TestCase):
-    """Live-roster coverage of the model_tier: / model_pin: split (plan 92 D6).
-
-    As of Phase 2, exactly ONE source in src/agents/ declares model_pin —
-    security-reviewer, pinned to opus. This is the set this test's failure
-    message names; the day a second agent gains model_pin, that message is
-    what a reader needs to update it correctly.
-    """
-
-    # The live-roster pin set. Update this alongside the corresponding
-    # source file(s) — this is the single place a second pin's expected
-    # value belongs.
-    _PINNED_AGENTS = {"security-reviewer": "opus"}
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp_path = Path(self._tmp.name)
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_every_shipped_agent_emits_model_tier_except_the_declared_pins(self):
-        sources = sorted(_AGENTS_SRC.glob("*.md"))
-        self.assertTrue(sources, f"no agent sources found under {_AGENTS_SRC}")
-
-        # Sanity-check the pin set itself first: every name in
-        # _PINNED_AGENTS must actually declare model_pin in its source,
-        # with the expected value — a stale entry here would silently
-        # under-test the split below.
-        declared_pins = {}
-        for src_file in sources:
-            text = src_file.read_text(encoding="utf-8")
-            meta, _ = generate_agents._parse_source(text)
-            if "model_pin" in meta:
-                declared_pins[src_file.stem] = meta["model_pin"].strip()
-        self.assertEqual(
-            declared_pins, self._PINNED_AGENTS,
-            "the live model_pin roster no longer matches _PINNED_AGENTS — "
-            f"found {declared_pins!r}, expected {self._PINNED_AGENTS!r}. "
-            "Update _PINNED_AGENTS (and this test's per-agent assertions "
-            "below) to match the live source(s).",
-        )
-
-        for src_file in sources:
-            with self.subTest(agent=src_file.stem):
-                out_path = generate_agents._render_one(src_file, self.tmp_path)
-                rendered = Path(out_path).read_text(encoding="utf-8")
-                fm = _frontmatter_block(rendered)
-                lines = fm.splitlines()
-
-                if src_file.stem in self._PINNED_AGENTS:
-                    expected_model = self._PINNED_AGENTS[src_file.stem]
-                    self.assertIn(
-                        f"model: {expected_model}", lines,
-                        f"{src_file.name}: pinned agent missing its expected "
-                        f"model: {expected_model!r} line: {lines!r}",
-                    )
-                    self.assertFalse(
-                        any(line.startswith("model_tier:") for line in lines),
-                        f"{src_file.name}: pinned agent (in "
-                        f"{sorted(self._PINNED_AGENTS)!r}) still carries a "
-                        f"model_tier: line, which apply-agent-models would "
-                        f"key on and rewrite past the pin: {lines!r}",
-                    )
-                else:
-                    self.assertTrue(
-                        any(line.startswith("model_tier: ") for line in lines),
-                        f"{src_file.name}: no model_tier: line in emitted "
-                        f"frontmatter (not one of the declared pins "
-                        f"{sorted(self._PINNED_AGENTS)!r}): {lines!r}",
-                    )
-
-    def test_security_reviewer_frontmatter_order_unchanged_around_the_pin(self):
-        # The pin only removes the model_tier slot — tools before model,
-        # applies_to after, exactly as an unpinned agent with the same
-        # optional fields would render.
-        src_file = _AGENTS_SRC / "security-reviewer.md"
-        self.assertTrue(src_file.exists(), f"missing pinned source: {src_file}")
-        out_path = generate_agents._render_one(src_file, self.tmp_path)
-        rendered = Path(out_path).read_text(encoding="utf-8")
-        fm = _frontmatter_block(rendered)
-        keys = [line.split(":", 1)[0] for line in fm.splitlines()]
-        self.assertEqual(keys, ["name", "description", "tools", "model", "applies_to"])
 
 
 if __name__ == "__main__":
