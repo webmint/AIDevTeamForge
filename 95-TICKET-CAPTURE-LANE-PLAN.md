@@ -1,6 +1,6 @@
 # 95 — A local ticket capture lane: `tickets/NNN-<slug>.md` as a first-class document type, so a noticed non-bug work item and a pasted tracker ticket both survive the moment they were mentioned
 
-**Status:** NOT STARTED — awaiting Phase 0 ratification (D1–D7 + OQ-1–OQ-7 unanswered). Nothing below is built.
+**Status:** **Phase 0 CLOSED 2026-09-04 — every item (D1–D7 + OQ-1–OQ-7) ratified AS RECOMMENDED by a single blanket maintainer directive; Phases 1–4 CLEARED to build; Phase 5 is the user-driven HARD GATE and is NOT part of the build.** Nothing below is built yet. Every decision keeps its recommendation, its alternatives with the reason each is rejected, and its honest bound — **and ratification changed none of them.** ⚠ **The closure came as ONE directive and no per-item deliberation was supplied** — see `## Phase 0 close record`, which says so plainly rather than implying fourteen separate arguments were had. **Ratifying a recommendation does not strengthen it**, and a build that reads a ratified bound as discharged has left this plan.
 
 - **The evidence is ONE maintainer request, dated 2026-09-04, given in conversation. There is NO consumer incident and none is claimed.** This is a predicted-gap / maintainer-directive plan in plan 87's class. **Say that wherever this plan is summarized** — see `## Evidence constraint`.
 - **This is explicitly NOT a Jira replacement and it adds NO tracker integration.** It inherits plan 91's stance verbatim: *nothing checks that the ticket exists.* A `tickets/` file records what a human wrote down; it never asserts that a tracker agrees.
@@ -114,7 +114,7 @@ Fetched **2026-09-04** from `https://code.claude.com/docs/en/slash-commands`. **
 
 Each carries the recommendation, the alternatives with the reason each is rejected, and the **honest bound — what the decision does NOT achieve.** **The bounds are load-bearing: a decision ratified with its bound deleted cannot be re-opened honestly later.**
 
-### D1 — A separate sibling directory, NOT merged with `bugs/` *(awaiting ratification)*
+### D1 — A separate sibling directory, NOT merged with `bugs/` *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** The new document type lives in its **own top-level directory beside `bugs/`**, with its own numbering sequence (OQ-3), its own field set (D3), its own status vocabulary (D5) and its own creating command (D3). **`bugs/` gains nothing, loses nothing and changes in no byte.**
 
@@ -127,7 +127,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, TWO parts.** **(i) Two drawers means a filing decision, every time, made by a human or by a model with an advisory rubric behind it** (D6). Nothing mechanical routes an item to the right drawer, and **a misfiled enhancement in `bugs/` is exactly as cold-fixable after this plan as before it** — this decision protects the new type from the trigger; it does not protect the trigger from human error. **(ii) Nothing connects a ticket file to whatever the pipeline later does with it** (D5's bound), so the two directories tell you what was captured and never what was finished.
 
-### D2 — The name: `tickets/`, with a written disambiguation rule *(awaiting ratification — this is a fork)*
+### D2 — The name: `tickets/`, with a written disambiguation rule *(RATIFIED 2026-09-04 — as recommended; a fork, and the `tickets/` arm WITH the disambiguation rule is the one taken)*
 
 **RECOMMENDED RULE.** The directory is **`tickets/`**, and `storage-rules.md` carries a **mandatory disambiguation rule** stating the two senses explicitly:
 
@@ -144,7 +144,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **The disambiguation rule is prose and nothing enforces it.** No test greps for a bare "ticket", and none is proposed — a lint over English prose in this repo would fire on plan 91's own shipped sentences. **The rule binds authors who read `storage-rules.md`, and its failure mode is a future sentence that is ambiguous rather than wrong.**
 
-### D3 — A new command `/devforge:report-ticket`, not a `--type` flag on `/devforge:report-bug` *(awaiting ratification)*
+### D3 — A new command `/devforge:report-ticket`, not a `--type` flag on `/devforge:report-bug` *(RATIFIED 2026-09-04 — as recommended, fields and status values included)*
 
 **RECOMMENDED RULE.** A new command in `/devforge:report-bug`'s exact shape: **pure capture, agent-free, no diagnosis, no lifecycle advancement, model-invocable**, backed by a two-verb helper (`preflight` → `write-ticket`) that owns the directory resolution, the numbering, the slug, the validation and the atomic write (fact 2). **The orchestrator composes values and supplies the date; the helper never calls the clock.**
 
@@ -169,7 +169,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, THREE parts.** **(i) A 17th model-invocable command's `description` is permanent always-on context** in every session in every install — the fetched docs put the combined listing text under a 1,536-character truncation, and plan 93 recorded that a command's description is what is lost first when that budget is under pressure, while its NAME never evicts. **The ≈40-word budget from plan 63 OQ-1 binds, and a description that exceeds it has spent someone else's context.** **(ii) `**Type**` is unchecked** — nothing prevents a defect from being filed as `enhancement`, which lands it outside `/devforge:fix`'s cold lane with nothing to say so. **(iii) The `**Ticket**` value is shape-validated and nothing more** — plan 91's statement is inherited word for word, and this plan adds no verification of any kind.
 
-### D4 — The consumer ships in the SAME plan *(awaiting ratification — DEPENDS ON D3)*
+### D4 — The consumer ships in the SAME plan *(RATIFIED 2026-09-04 — as recommended; DEPENDS ON D3, which was ratified in the same directive)*
 
 **RECOMMENDED RULE.** `/devforge:report-ticket` does **not** ship without its reader. `/devforge:research` gains a **file-path arm** at Phase 0.3, instruction-only, in four parts:
 
@@ -189,7 +189,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound, THREE parts.** **(i) Detection is path-shaped and therefore fallible** — a file that matches the shape and is not a ticket file is read as one, and a ticket file moved elsewhere is read as a topic string. **The failure is visible in the next message** (the run announces what it read), which is the whole mitigation. **(ii) The pre-offer is a convenience, not a link** — picking it records the ID in the feature directory and writes **nothing** back to the ticket file (D5). **(iii) Nothing verifies that the body reached the handoff intact**; OQ-6 is where that risk is decided, and a build that resolves OQ-6 by putting a pasted body inside a shell argument has chosen the failure this bound names.
 
-### D5 — The lifecycle is MANUAL-ONLY in v1 *(awaiting ratification)*
+### D5 — The lifecycle is MANUAL-ONLY in v1 *(RATIFIED 2026-09-04 — as recommended, so the tempting middle stays DECLINED for v1)*
 
 **RECOMMENDED RULE.** `Open → In Progress → Done` is maintained by **whoever works the item**. **No command flips a ticket file's status, no command fills a field in it, and no command deletes one.** `/devforge:report-ticket` only ever writes a fresh `Open` record, and its rule set says so in the shape `/devforge:report-bug` rule 7 already uses.
 
@@ -205,7 +205,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **A ticket file can be permanently stale and nothing anywhere will say so.** The framework will happily carry a `tickets/` directory of `Open` items that all shipped months ago. **That is the ratified design and it must be stated in the emitted text**, not discovered by a user — `storage-rules.md`'s new section says the lifecycle is manual, in the same voice as its existing *"Manual: the user edits `**Status**: Fixed`"* line.
 
-### D6 — One sentence in the conversational fix-or-file offer *(awaiting ratification — the ONLY change to anything plan 88 shipped)*
+### D6 — One sentence in the conversational fix-or-file offer *(RATIFIED 2026-09-04 — as recommended; still the ONLY change to anything plan 88 shipped)*
 
 **RECOMMENDED RULE.** `src/CLAUDE.md`'s `### Conversational fix-or-file offer` keeps its three arms and its discriminator **verbatim** — *"whether the fix REPAIRS existing behavior or CHANGES what the system does — never by counting files."* Its **third arm** gains one clause: a change may be **filed for later** with `/devforge:report-ticket` as an alternative to starting the full chain from `/devforge:research` now.
 
@@ -219,7 +219,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 **⚠ Honest bound.** **The offer is advisory model judgment and it is not a gate** — the same bound plan 88 D6 carries, inherited unchanged. **The only mechanical net in this whole plan is the helper's own argument validation**, which fires after the user has already typed the command. **Nothing detects an item that should have been captured and was not.**
 
-### D7 — Scope tripwire: zero gates, and the roster registration is Python *(awaiting ratification)*
+### D7 — Scope tripwire: zero gates, and the roster registration is Python *(RATIFIED 2026-09-04 — as recommended)*
 
 **RECOMMENDED RULE.** **Zero gates, zero new `verify-*` gate numbers, zero hard-fail validators** — plan 75's tripwire in both halves. **Nothing this plan adds ever blocks anything.**
 
@@ -252,37 +252,45 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 ## Open questions (OQ-1–OQ-7)
 
-### OQ-1 — Helper packaging: a sibling module, or a type parameter on the shared writer?
+### OQ-1 — Helper packaging: a sibling module, or a type parameter on the shared writer? *(ANSWERED 2026-09-04 — the sibling module as recommended; the reuse MECHANISM is the PROMOTE arm, picked by the build orchestrator under the blanket delegation — see the attribution below)*
 
-**RECOMMENDATION: a sibling `_shared/ticket_file.py`** that **reuses** `_slugify` and the number-scanning helper from `_shared/bug_file.py` — **the reuse MECHANISM is a Phase 0 pick, see the bound below** — and carries its own `_format_ticket` and `file_ticket`. **`_shared/bug_file.py` gains no format branch, no `type=` parameter and no new caller-facing behavior** — under the promote arm below it would gain exactly one private-helper rename and nothing else.
+**RECOMMENDATION: a sibling `_shared/ticket_file.py`** that **reuses** `_slugify` and the number-scanning helper from `_shared/bug_file.py` — **the reuse MECHANISM was left open here and is answered below by the PROMOTE arm** — and carries its own `_format_ticket` and `file_ticket`. **`_shared/bug_file.py` gains no format branch, no `type=` parameter and no new caller-facing behavior** — under the promote arm it gains exactly **two** behavior-preserving private-helper renames and nothing else.
 
 **Reasoning.** The two formats genuinely differ — different fields, different status vocabulary, no `## Fix Notes`, no `## Related Issues` batch cross-linking (a ticket run writes exactly one file). A `type=` parameter threading through `_format_bug` would branch roughly half that function's body. **And the decisive ground is risk, not elegance: `bug_file.py` is the write path for `/devforge:verify` Phase 9 triage, `/devforge:report-bug` and `/devforge:fix`'s cold close, and plan 88's consumer e2e has never run.** Widening it to serve a fourth caller puts an unvalidated lane under a fresh edit.
 
 ⚠ **The scan helper is currently named with a leading underscore** (`_scan_highest_bug_number`, fact 4). **Importing a private name across modules inside the same package is a real style question the build must answer explicitly** — either promote it to a public name in the same commit, or copy the four-line scan. **Do not import the underscored name silently.**
 
-### OQ-2 — Does `/devforge:verify` Phase 9 triage ever write to `tickets/`?
+**ANSWER — the PROMOTE arm, and the attribution is part of the answer.** ⚠ **The blanket directive that closed Phase 0 supplied no arm for this fork, because this section offered none to ratify: it named two arms and required only that one be chosen.** **The pick was therefore made by the BUILD ORCHESTRATOR on 2026-09-04 under that blanket delegation — it is not a maintainer per-item pick, and no summary may report it as one.** The reasoning, recorded so the pick is re-openable:
+
+- **Single owner beats a copy that drifts.** This repo's own style resolves shared behavior through one owner — `_shared/memory.py` owns the memory path literal and its probe, `_shared/feature_alloc.py` owns `TICKET_RE` and `normalize_ticket` (fact 6). **A copied scan lets `bugs/` and `tickets/` numbering rules diverge silently**, which is the failure class the single-owner style exists to prevent.
+- **The rename is behavior-preserving and test-pinned.** Nothing about the scan changes; the existing tests over `bugs/` numbering keep asserting the same behavior through the new name.
+- **The SAME rule extends to `_slugify`** — also underscored (fact 4), also shared, also a place where ticket and bug slugs could drift apart. **It is promoted in the same commit on the same ground.**
+
+⚠ **The accepted cost, stated as a WIDENING of what this section previously recorded.** The bound above originally said the promote arm costs `_shared/bug_file.py` **one** private-helper rename; extending the rule to `_slugify` makes it **two** — plus their internal-caller updates inside that module and the test references that name them. **That is a widening of the recorded cost, not a restatement of it**, and it is what the promote arm buys the single-owner guarantee with. **Nothing else in `_shared/bug_file.py` moves.**
+
+### OQ-2 — Does `/devforge:verify` Phase 9 triage ever write to `tickets/`? *(ANSWERED 2026-09-04 — as recommended: NO)*
 
 **RECOMMENDATION: NO.** Triage findings are defects by construction — they come from acceptance criteria that failed and mechanical checks that did not pass. **Routing any of them to a non-defect drawer would need a classifier that does not exist**, and would make the triage step's output ambiguous about which drawer to look in. **`/devforge:verify` is untouched by this plan.**
 
-### OQ-3 — Numbering: shared with `bugs/`, or its own sequence?
+### OQ-3 — Numbering: shared with `bugs/`, or its own sequence? *(ANSWERED 2026-09-04 — as recommended: its OWN sequence)*
 
 **RECOMMENDATION: its OWN sequence**, scanned from its own directory, so both directories start at `001`. Sharing would require a scan across two directories — new logic in a shared writer OQ-1 declines to touch — to buy a global uniqueness nobody needs. **`tickets/001-*.md` and `bugs/001-*.md` coexisting is unambiguous because the directory is part of every reference.**
 
 ⚠ **One consequence, stated so it is not discovered later**: a reference written as bare `001` is now ambiguous. **Every emitted sentence names the directory** — `tickets/NNN-<slug>.md`, never `NNN-<slug>.md`.
 
-### OQ-4 — Does a ticket file's `**Ticket**:` ID satisfy `REQUIRE_TICKET` automatically?
+### OQ-4 — Does a ticket file's `**Ticket**:` ID satisfy `REQUIRE_TICKET` automatically? *(ANSWERED 2026-09-04 — as recommended: NO, it only pre-offers)*
 
 **RECOMMENDATION: NO.** The ID **pre-offers** at Step 4.1 (D4 part 4) and does nothing else. `read_require_ticket` and `normalize_ticket` are untouched, `allocate-feature-dir`'s `--ticket` still comes from **the user's answer** to question 2, and a run that pre-offers an ID the user then declines allocates with no ticket.
 
 **Reasoning.** `REQUIRE_TICKET` is plan 91's opt-in discipline mechanism, and its whole value is that a human named the ticket for **this feature**. **An ID auto-satisfying the requirement from a file written weeks earlier converts a per-run commitment into a stored default** — and plan 91's 2026-08-31 ruling refused a comparable conversion when it declined to make the ticket structurally mandatory, on the ground that it would silently reverse that plan's own OQ-1. **The pre-offer saves typing; it does not answer.**
 
-### OQ-5 — Git disposition of `tickets/`
+### OQ-5 — Git disposition of `tickets/` *(ANSWERED 2026-09-04 — as recommended: tracked, by adding nothing anywhere)*
 
 **RECOMMENDATION: tracked, exactly parallel to `bugs/`, and NOTHING is added anywhere to make that true.** Verified (fact 14): `src/files/devforge.gitignore` lists only `.devforge/` paths, so `bugs/` is ordinary tracked content; `install.sh` contains no `bugs` string at all; and the directory is created lazily by `os.makedirs` on the first write. **`tickets/` inherits all three properties by doing nothing** — no gitignore entry, no installer change, no `.gitkeep`.
 
 ⚠ **Two findings surfaced while verifying this, neither owned by this plan.** **(a) `DEVELOPMENT-STATUS.md:69` says install ships an empty `bugs/` with a `.gitkeep`**, and the only `gitkeep` token in any `*.sh` is an unrelated comment about `docs/`. **Pre-existing and false as written; recorded, not fixed here.** **(b) `/devforge:report-ticket` will make no git commit** (mirroring fact 15), so a captured ticket sits uncommitted in the working tree until a human commits it — **which is the existing behavior for bug files and is stated in the emitted text rather than left to inference** (OQ-7).
 
-### OQ-6 — How does a pasted body reach the helper?
+### OQ-6 — How does a pasted body reach the helper? *(ANSWERED 2026-09-04 — as recommended: `--body-file <path>`, `-` reads stdin, NO inline `--body`)*
 
 **RECOMMENDATION: `--body-file <path>`, with `-` reading stdin — never a Bash argument.**
 
@@ -294,7 +302,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 ⚠ **Ratify this one explicitly.** It changes `write-ticket`'s argument surface, so a Phase 0 that nods past it hands the decision to whoever writes Phase 1, at the point where the inline form is cheapest to code.
 
-### OQ-7 — Does `/devforge:report-ticket` commit the file it writes?
+### OQ-7 — Does `/devforge:report-ticket` commit the file it writes? *(ANSWERED 2026-09-04 — as recommended: NO)*
 
 **RECOMMENDATION: NO — mirror `/devforge:report-bug` exactly.** It writes one file, prints the path, gives a forward pointer and stops; the file is left in the working tree for the user to commit (fact 15). **`artifact_helper commit-artifacts` is not called**, which also keeps this lane outside plan 87's language-guard coverage — **a bound to state, not to close here**, since that guard rides `commit-artifacts` only and already misses `wip-commit` by plan 87's own recorded scope.
 
@@ -302,9 +310,35 @@ Each carries the recommendation, the alternatives with the reason each is reject
 
 ---
 
+## Phase 0 close record
+
+**Ratified 2026-09-04 by the maintainer, in-session, with a SINGLE BLANKET DIRECTIVE** — verbatim, in Ukrainian: *«ратифікую. Розробляй по флоу»* (*"I ratify. Build per the flow."*). **Every item — D1–D7 and OQ-1–OQ-7 — is ratified AS RECOMMENDED.** No item was amended, deferred or declined except where a decision's own recommendation was to decline (D1's alternatives (a)–(d); D2's three; D3's three; D4's four; D5's three; D6's three; D7's three; OQ-2's, OQ-4's, OQ-6's and OQ-7's rejected arms) — **those declines ARE the recommendation, not a departure from it.**
+
+⚠ **What this closure is, stated plainly rather than dressed up: ONE directive, not fourteen deliberations.** The maintainer supplied no per-item reasoning, and **this record does not manufacture any.** The arguments standing behind each answer are the ones already written in the decision bodies above — they were ratified, not re-derived, and **nothing in this closure adds evidence to any of them.** *(Precedent: plan 91's Phase 0, closed 2026-08-28, and plans 92's and 94's, both closed 2026-09-03 — each by a single blanket directive, and each recording the blanket form rather than implying per-item argument.)*
+
+**The five explicit picks, as answered — written answers, because Phase 0's own Verify demands them and an inherited nod is not one:**
+
+| Pick | Answer |
+|---|---|
+| **D2's name** | **`tickets/`, WITH the mandatory disambiguation rule.** The `backlog/` arm is not taken. `storage-rules.md` carries the two senses explicitly — **"ticket ID"** = the tracker identifier of shape `^[A-Z]+-[0-9]+$`, **"ticket file"** = `tickets/NNN-<slug>.md` — and every emitted sentence uses one of the two full phrases, never a bare "ticket" |
+| **D3's field set** | **The six fields and the three status values exactly as tabled** — `**Status**` (`Open` / `In Progress` / `Done`), `**Type**`, `**Source**`, `**Ticket**`, `**Reported**`, body — **plus the H1 rendering element (`# Ticket NNN: [Short Title]`, fed by an optional `--title`), which sits OUTSIDE the six-field count** and is the value D4 part 2 reads as its topic seed |
+| **D6's amendment** | **RATIFIED — the one-clause amendment to the conversational offer's third arm.** The discriminator, the three arms and plan 88's rubric text are otherwise byte-unchanged, and no forward pointer is added to `/devforge:report-bug` |
+| **OQ-6's argument surface** | **`--body-file <path>`, with `-` reading stdin. NO inline `--body`.** The pasted body crosses no shell boundary as an argument |
+| **OQ-1's reuse mechanism** | **The PROMOTE arm** — ⚠ **and this one was NOT answered by the directive.** OQ-1 offered two arms and recommended neither, so **the build orchestrator picked it on 2026-09-04 under the blanket delegation.** `_scan_highest_bug_number` **and** `_slugify` are promoted to public names in the same commit; the reasoning and the widened cost are recorded at OQ-1 itself. **It is not a maintainer per-item pick and no summary may report it as one** |
+
+**What ratification did NOT change — recorded so a future session does not read closure as scope growth:**
+
+- **Every alternative and every honest bound survives verbatim.** D1's two bounds, D2's unenforced prose rule, D3's three, D4's three, D5's permanently-stale-ticket bound, D6's advisory-not-a-gate bound and D7's nothing-verifies-a-reader bound are **accepted costs, not answered ones.** **Phase 0's own Verify requires this**, and none was deleted.
+- ⚠ **Three costs were ratified WITH their bounds and must not be re-read as discharged.** **(a) Nothing links a ticket file to the feature directory a later run allocates from it** (D5) — a project can work a ticket and leave its file reading `Open` forever, and that is the design. **(b) The filing decision is human or advisory-model judgment** (D1 bound (i), D6's bound) — nothing mechanical routes an item to the right drawer. **(c) A 17th model-invocable command's `description` is permanent always-on context in every install** (D3 bound (i)).
+- **The evidence base is unchanged: ONE maintainer request plus four mechanical facts.** ⚠ **Ratifying a request does not upgrade it into a finding**, and no summary of this plan may imply a consumer incident.
+- **The scope tripwire holds.** Zero gates, zero new `verify-*` numbers, zero hard-fail validators; Python confined to D7's list. **A phase that needs more has crossed its own boundary.**
+- **Phase 5 is NOT cleared.** It is a deferred user-driven HARD GATE with five known-answer anchors, **anchors 2 and 3 scored as a PAIR**. **Everything Phases 1–4 produce will be build-verified and NOT consumer-validated.**
+
+---
+
 ## Phases
 
-### Phase 0 — Ratification *(doc-only)*
+### Phase 0 — Ratification *(doc-only)* — **CLOSED 2026-09-04**
 
 **Objective:** ratify or amend D1–D7 and answer OQ-1–OQ-7, recording each answer in this file with its reasoning. **Nothing else may start.**
 
@@ -314,7 +348,7 @@ Each carries the recommendation, the alternatives with the reason each is reject
 - **D3's field set.** The six fields and the three status values are ratified **here**, not at build. **A field added later is a schema change to files already written.**
 - **D6's amendment to plan 88's rubric.** It is the only byte this plan proposes to change in a shipped, not-yet-consumer-validated lane. **A ratifier who declines it gets a capture command the model rarely offers**, which is a legitimate arm and must be picked knowingly.
 - **OQ-6's argument surface.** `--body-file` / stdin, or an inline `--body`. **This decides whether a pasted body can be corrupted by shell parsing**, and it is cheapest to get right before Phase 1 exists.
-- **OQ-1's private-name import.** Promote the scan helper to a public name, or copy the scan. **Either is fine; silently importing an underscored name across modules is not.**
+- **OQ-1's private-name import.** Promote the scan helper to a public name, or copy the scan. **Either was acceptable at drafting time, and the PROMOTE arm was taken — see OQ-1's ANSWER**; silently importing an underscored name across modules was never one of the arms.
 
 **⚠ One question Phase 0 CANNOT answer**, and it must not pretend otherwise: **whether anyone will actually file tickets.** There is no incident, no usage data and no measurement (`## Evidence constraint`). **A clean Phase 5 shows the lane works; it never shows the gap cost anything.**
 
