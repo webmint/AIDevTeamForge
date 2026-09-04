@@ -641,6 +641,43 @@ Scope, all inside `src/commands/research/main.md`:
 - ⚠ **This phase DEPENDS on Phase 3a having landed**: the arm passes `--value-file` to `set-verbatim-prompt`, and that option does not exist until Phase 3a ships it. **An instruction written against the inline `--value` would put a pasted body inside a shell argument** — the failure Phase 3a exists to prevent — so a Phase 3 that runs first has written a spec its helper cannot honour safely.
 - **`git diff --stat` shows `research/main.md` and nothing else.**
 
+#### Phase 3 build record — 2026-09-04
+
+**Route as specified: instruction-author → instruction-reviewer.** ⚠ **Instruction-only, and it touched ONE file.** Build-verified, NOT consumer-validated.
+
+**What landed — six edits delivering the four ratified parts, all inside `src/commands/research/main.md`:**
+
+1. **Phase 0.3's ticket-file arm**, a conditional block placed **BEFORE** the topic-string paragraph, because detection has to run before the argument is treated as a topic. Five numbered steps: announce the path read; open the file with the Read tool; the `# Ticket NNN: <title>` heading's title part seeds `set-topic`; the body is written VERBATIM to a scratch file with the Write tool and passed as `set-verbatim-prompt --value-file` (`-` reads stdin), **never inline**, with the command-substitution reason in one clause; and a `**Ticket**:` value other than `(none)` is carried to Step 4.1 **unnormalized**. The block shows only the two setter calls that differ, states that `reset-memo` / `reset-report` / `set-date` and the six-dimension rubric are untouched, states that the run READS the ticket file and never writes it, and closes with an explicit no-op clause for a non-matching argument.
+2. **The `set-verbatim-prompt` explanation extended** so the arm does not falsify it: in the ticket-file arm the persisted value is the ticket file's BODY rather than `$ARGUMENTS`, **the field and its meaning unchanged — only the door it arrives through differs.**
+3. **The `STARTING POINT` rubric sentence extended** — a consumed ticket file is pre-filled input **in exactly that sense and carries no extra authority**: however complete it looks, it seeds `symptom` and nothing else.
+4. **The never-fabricate-a-user-mode rule extended** — two ticket-file phrasings added inside the existing banned list, plus *"a consumed ticket file is input, never permission."*
+5. **Step 4.1's question 2** — the conditional third authored option `"<ID> (from the ticket file)"` listed first, **three authored options in that case and two otherwise**, no authored "Other", `(Recommended)` on none, *"Pre-offering is not answering"*, and the answer-reading list gaining the new arm plus a **hardened `No ticket`** that stands even when an ID was pre-offered.
+6. **The read-only sentence** in the outputs section, stating a consumed ticket file appears in no output list in either mode.
+
+**Reviewer verification highlights — what it checked rather than assumed:**
+
+- **Every mechanical claim was matched against the COMMITTED Phase 1 and Phase 3a code**, not against this plan: the `# Ticket NNN: <title>` heading and the field order the arm parses were diffed against `_format_ticket`'s actual render, and the `--value-file` flag, its `-` stdin form and the `newline=""` read behavior against the shipped parser and handler.
+- **The discipline-not-verification paragraph was diffed WORD FOR WORD and is byte-identical.** ⚠ **This is the check most worth naming**, because the paragraph sits directly beneath an edited block and an accidental re-flow would look like nothing.
+- **OQ-4 holds MECHANICALLY, not by prose:** the pre-offered ID flows into the **unmodified** `<ticket>` variable and reaches the **unmodified** `allocate-feature-dir` call, so a declined pre-offer allocates per the user's actual answer because there is no other path for it to take.
+- **The ordinary arm and the Fresh-every-run guarantee are byte-unchanged** — `set-verbatim-prompt --value "<full raw $ARGUMENTS>"` still sits at its original site, and the unconditional reset is still unconditional.
+- **A `value-file` grep returns exactly three files**, all expected: the two committed Phase 3a sources and this command spec.
+
+**Reviewer findings — 0 high / 2 medium / 1 low / 1 nit — ALL FIXED:**
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | Medium | One bare **"ticket"** survived in added text at the hardened `No ticket` arm — the exact drift the vocabulary rule exists to prevent, in the sentence that asserts it | **FIXED** → "is not a ticket ID" |
+| 2 | Medium | The three-option list gave no guidance on **position**, while Question 1 pairs first-slot with `(Recommended)` — so a reader could infer the pre-offered ID is recommended because it is listed first | **FIXED** — the contrast is now stated: position carries no weight here, read the label, not the slot |
+| 3 | Low | "Step 4.1's ticket question" was ambiguous under this plan's own two-senses rule | **FIXED** → "ticket-ID question" |
+| 4 | Nit | A double negative ("grants no shortcut … would not have granted, which is none") made a load-bearing sentence read twice | **FIXED** → "grants exactly the shortcut pasting the same text inline would — none" |
+
+**Two items raised by the author and resolved by the reviewer:**
+
+1. **The discipline paragraph's opening — *"the message that carries the two questions"* — is STILL TRUE.** "Two questions" counts the questions in the one AskUserQuestion call (save + ticket), not the options in question 2. **Checked deliberately, because the third option makes it read wrong at a glance.**
+2. ⚠ **RESIDUAL, recorded not fixed: that same untouched paragraph uses a bare "ticket" three times.** The byte-identical requirement and the vocabulary rule collide there, and **byte-identical wins** — the paragraph is the one this phase must not re-flow. Every sentence this phase ADDED uses "ticket ID" or "ticket file".
+
+**`claude-code-guide` coverage:** this session's invocation covered the command surface, and **Phase 3 changed no frontmatter** — no `allowed-tools` entry, no key, no description. The pass is cited rather than re-run.
+
 ### Phase 4 — Docs, ledgers, and the plan-88 amendment *(instruction-only)*
 
 **Route: instruction-author → instruction-reviewer**, plus `claude-code-guide` for `src/CLAUDE.md` (it ships as the consumer's root `CLAUDE.md`; plan 08's always-on-trim discipline binds, and **"checked, nothing to amend" is a finding to record**, not a phase that failed).

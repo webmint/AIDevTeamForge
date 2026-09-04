@@ -25,6 +25,8 @@ Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorte
 - `<feature_dir>/emission-matrix.md` — CONDITIONAL: present only when the recommended approach removes or suppresses a value the changed code emits; composed by the orchestrator in Phase 3 and written by Phase 4 on save. Its absence means that trigger did not fire — see Phase 3's Emission matrix step.
 - Branch `spec/<ticket>`, or `spec/<feature-slug>` when the run named no ticket — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
 
+A ticket file consumed as this run's input (Phase 0.3's ticket-file arm) is **READ and never written** — it appears in no list above, in either mode. `/devforge:research` does not flip its `**Status**:`, does not record the allocated feature directory in it, and does not delete it; a ticket file's lifecycle is maintained by hand.
+
 On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
@@ -74,6 +76,27 @@ Exit 0 → stamp fresh; skip the helper call. Non-zero → run `.devforge/lib/ge
 
 ### Phase 0.3 — Topic argument
 
+**Ticket-file arm (conditional — check this FIRST).** Before treating `$ARGUMENTS` as a topic string, check whether it names an **existing file** whose path matches the ticket-file shape `tickets/NNN-<slug>.md`. When it does, this run was invoked on a previously captured work item rather than on a typed topic:
+
+1. **Announce which ticket file you read**, by path, in your first user-facing message. Detection is path-shaped, so it can be wrong in both directions — a lookalike path read as a ticket file, or a ticket file moved elsewhere read as a topic string. Saying which file you opened is what lets the user catch either one in the next turn.
+2. **Read the file with the Read tool.** Its `# Ticket NNN: <title>` heading carries the title; the metadata block (`**Status**`, `**Type**`, `**Source**`, `**Ticket**`, `**Reported**`) carries the fields; everything after that block is the BODY.
+3. **The title seeds the topic** — pass the heading's title part (not the `Ticket NNN:` prefix) as `set-topic --value`.
+4. **The body becomes the verbatim prompt, and it never crosses a shell argument.** Write the body bytes VERBATIM to a scratch file with the Write tool, then pass that path to `set-verbatim-prompt --value-file` (`-` reads stdin instead). **Never pass a ticket-file body through the inline `--value`**: inside a double-quoted shell argument, backticks and `$(...)` are command substitution, and a pasted tracker-ticket body routinely contains both.
+5. **Carry the ticket ID, when there is one.** If the file's `**Ticket**:` field holds a value other than `(none)`, hold that ticket ID in working memory for Step 4.1's ticket-ID question. Hold it as written; do not normalize, upper-case, or repair it.
+
+So the ticket-file arm changes only WHICH values two setters receive:
+
+```bash
+.devforge/lib/research_helper set-topic --value "<title from the ticket file's H1>"
+.devforge/lib/research_helper set-verbatim-prompt --value-file "<scratch path holding the body>"
+```
+
+Everything else in this phase is unchanged: `reset-memo` and `reset-report` still run unconditionally, `set-date` is still stamped, and the six-dimension rubric in Phase 1 still runs in full.
+
+**This run READS the ticket file and never writes it.** It does not flip the file's `**Status**:`, does not record the allocated feature directory in it, and does not delete it — a ticket file's lifecycle is maintained by hand, and no command in this framework advances it.
+
+**When `$ARGUMENTS` does NOT match that shape — the ordinary case — this arm is a no-op** and everything below applies exactly as it always has.
+
 If `$ARGUMENTS` is non-empty, treat it as the topic. If empty, ask the user via AskUserQuestion: `"What's the topic? (bug or enhancement, one sentence)"` — single-line question text, free-text answer. Then reset helper state and stamp topic + date:
 
 ```bash
@@ -84,7 +107,7 @@ If `$ARGUMENTS` is non-empty, treat it as the topic. If empty, ask the user via 
 .devforge/lib/research_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/devforge:research` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence prompt (e.g. a symptom plus a trailing "Suspected cause:" hypothesis); the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/devforge:research` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence prompt (e.g. a symptom plus a trailing "Suspected cause:" hypothesis); the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch. In the ticket-file arm the persisted value is the ticket file's BODY rather than `$ARGUMENTS`, supplied through `--value-file`; the field and its meaning are unchanged — what the user actually asked for, in their own words — and only the door it arrives through differs.
 
 Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/research-state.json` + `.devforge/research-report.json` are overwritten with fresh defaults. `/devforge:research` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
 
@@ -166,9 +189,9 @@ When `matches` comes back empty, and equally when it carries entries but none of
 
 Convert the vague topic into a structured symptom memo across 6 dimensions. The helper owns the rubric; the orchestrator drives one dimension at a time, picking the highest-uncertainty dimension to ask next.
 
-**MANDATORY: never skip the rubric.** Even when `$ARGUMENTS` contains a pre-filled ticket that appears to address all 6 dimensions, ask each dimension question separately and wait for the user's answer in its own turn. Pre-filled input is a STARTING POINT for the `symptom` dimension only — never a license to auto-fill the remaining 5 in one pass. User commitment is per-dimension; that is the forcing function this phase exists for. The rubric is not optional, not advisory, not skippable based on input completeness.
+**MANDATORY: never skip the rubric.** Even when `$ARGUMENTS` contains a pre-filled ticket that appears to address all 6 dimensions, ask each dimension question separately and wait for the user's answer in its own turn. Pre-filled input is a STARTING POINT for the `symptom` dimension only — never a license to auto-fill the remaining 5 in one pass. **A ticket file consumed by Phase 0.3's ticket-file arm is pre-filled input in exactly this sense and carries no extra authority**: however complete it looks, however many of the six dimensions its body appears to address, it seeds `symptom` and nothing else. User commitment is per-dimension; that is the forcing function this phase exists for. The rubric is not optional, not advisory, not skippable based on input completeness.
 
-**MANDATORY: never fabricate a user mode.** Do not write — in any user-facing message, internal narration, or tool-call rationale — phrases like "user requested no-questions mode", "user wants free-form", "user said skip the rubric", "no-prompt mode", or any equivalent. No such mode exists. No such request is in scope. If you find yourself about to justify a shortcut by attributing intent to the user, STOP — you are rationalizing a fabrication. Run the rubric.
+**MANDATORY: never fabricate a user mode.** Do not write — in any user-facing message, internal narration, or tool-call rationale — phrases like "user requested no-questions mode", "user wants free-form", "user said skip the rubric", "no-prompt mode", **"the ticket file already answers everything", "the ticket file covers all six dimensions"**, or any equivalent. No such mode exists. No such request is in scope. **A consumed ticket file is input, never permission** — reading one grants exactly the shortcut pasting the same text inline would — none. If you find yourself about to justify a shortcut by attributing intent to the user, STOP — you are rationalizing a fabrication. Run the rubric.
 
 ### Rubric dimensions
 
@@ -1197,6 +1220,8 @@ After echoing the rendered report, ask via AskUserQuestion — TWO questions in 
 
 **Question 2 — the ticket.** Single-line question text `"Which ticket is this feature tracked under?"` with exactly two options: `"No ticket"` and `"I'll type the ticket"`. Do NOT add an "Other" option of your own here either; the tool appends its own free-text row, and that row is where the ticket ID goes — typing `PROJ-123` into it answers the question in one step. Mark neither option `(Recommended)`: which one is right is the project's own policy, not this run's call.
 
+**When this run consumed a ticket file that carried a ticket ID** (Phase 0.3's ticket-file arm), add that ID as a THIRD authored option, first in the list: `"<ID> (from the ticket file)"`, then `"No ticket"`, then `"I'll type the ticket"` — exactly three authored options in that case, exactly two otherwise. The rules above are unchanged by it: still no "Other" of your own, still the tool's own free-text row, and still `(Recommended)` on none of them — unlike Question 1's first-and-`(Recommended)` pairing, position here carries no weight, so read the label, not the slot. **Pre-offering is not answering.** The user picks, exactly as they would with two options; a pre-offered ID that the user declines is not used, and the allocation follows the answer they actually gave.
+
 State this plainly in the message that carries the two questions, not as an aside: **nothing checks that the ticket exists.** This framework has no tracker integration, and the only test applied to the value is its shape (`LETTERS-NUMBER`), so `PROJ-0000` satisfies the rule exactly as a real ticket does. Naming a ticket is a discipline a project may require of itself — it is never evidence that the ticket named is a real one.
 
 End the turn. The user's reply opens the next turn. Read question 1's answer as follows:
@@ -1208,7 +1233,8 @@ End the turn. The user's reply opens the next turn. Read question 1's answer as 
 
 Read question 2's answer as follows, and carry the result to Step 4.2 as `<ticket>`:
 
-- `No ticket` → `<ticket>` is unset for this run.
+- `<ID> (from the ticket file)` — present only when the third option was offered → `<ticket>` is that ID, carried to Step 4.2 exactly as the ticket file recorded it. Do not re-shape it; the helper owns the format and refuses what it cannot accept.
+- `No ticket` → `<ticket>` is unset for this run. **This answer stands even when a ticket ID was pre-offered** — the user declined it, and a declined pre-offer is not a ticket ID.
 - `I'll type the ticket`, picked with nothing typed → ask question 2 again on its own, naming that the ticket ID goes in the free-text row. Do not guess an ID, and do not read the bare pick as `No ticket` — the two answers mean opposite things.
 - Free text (the tool's own row) → that text is `<ticket>`, carried to Step 4.2 exactly as typed. Do not upper-case it, do not add or strip a prefix, and do not repair a near-miss such as `proj 123`: the helper owns the format and refuses what it cannot accept, and repairing it here would bake into the run a value the user never typed.
 
