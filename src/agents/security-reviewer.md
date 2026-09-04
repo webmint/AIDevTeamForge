@@ -2,8 +2,7 @@
 name: security-reviewer
 description: "Use to review code for security vulnerabilities — injection, auth/authz bypass, secret leaks, sensitive-data exposure, insecure dependencies, and unsafe code patterns. Use proactively before merging auth, input-handling, or data-access changes."
 tools: Read, Grep, Glob, Bash
-model_tier: think
-model_pin: opus
+model_tier: security
 applies_to: ["all"]
 ```
 
