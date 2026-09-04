@@ -389,7 +389,40 @@ Each carries the recommendation, the alternatives with the reason each is reject
 - **`git diff --stat` shows zero changes under `src/commands/` and `src/devforge/storage-rules.md`** — those are Phase 2.
 - **The counted roster numbers are stated in the commit message**, counted live, never incremented from this document.
 
+⚠ **Dated note, 2026-09-04 — two of the criteria above MOVED, and the criteria themselves are left as written rather than edited.** The `verify-memory-lane` **observed-failure-first** bullet and the **`--list` prints 21** bullet both presuppose deliverable 5, which did NOT land in this phase (build-record divergence 1). **They are Phase 2b's to satisfy, with the registrations**, and they are scored there. **Every other criterion above was scored in this phase.**
+
 **This phase appends a `#### Phase 1 build record` block** carrying what landed, every divergence with its reason, and the reviewer findings by severity.
+
+#### Phase 1 build record — 2026-09-04
+
+**Route as specified: python-engineer → python-reviewer, test-first.** ⚠ **This block records a BUILD, not a consumer observation.** Nothing below was run on a real install.
+
+**What landed:**
+
+1. **`_shared/ticket_file.py`** — `file_ticket(tickets_dir, item, date, source)` plus `_format_ticket` and `_resolve_title`. Atomic `mkstemp` + `os.replace`, `makedirs(..., exist_ok=True)`, **own-sequence numbering (OQ-3)** through the promoted `scan_highest_number`, slug through the promoted `slugify`.
+2. **`_report_ticket/__init__.py` + `_cli.py`** — `preflight` (fail-soft, prints `{tickets_dir, root, is_wrapper}`, resolves `<install_root>/tickets` in BOTH modes, **always exit 0**) and `write-ticket` (`--tickets-dir` / `--date` required; **`--body-file <path>` with `-` reading stdin and NO inline `--body`, per OQ-6**; `--title` optional; `--type` required over `enhancement | task | imported`; `--source` optional, default `manual`, over `manual | paste`; `--ticket` through the imported `normalize_ticket`, invalid → exit 2, absent → `(none)`). **Exit 0 / 2 / 1, and an exit-2 writes nothing.**
+3. **`report_ticket_helper.py` + the POSIX `report_ticket_helper` shim**, the shim reported as shipped executable (`-rwxr-xr-x`). ⚠ **The mode is recorded as the build reported it and was not independently re-checked when this block was written** — a file mode is not readable through the tools that wrote this record. **Re-check it at Phase 2b**, where the emitter first depends on the pair.
+4. **OQ-1's PROMOTE arm executed.** `_shared/bug_file.py`: `_scan_highest_bug_number` → **`scan_highest_number`** (its body is directory-generic, which is why the promoted name drops `bug`) and `_slugify` → **`slugify`**; every caller and test reference updated; **behavior byte-identical**; a provenance note added to the module docstring. **This is exactly the two-rename cost OQ-1's ANSWER recorded, and nothing beyond it.**
+5. **Tests — 70 new**, 25 in `test_ticket_file.py` and 45 in `test_report_ticket_helper.py`, including: the **byte-identical round-trip of a body carrying a backtick and `$(`, through BOTH `--body-file` and `-` on stdin**; a CRLF round-trip; invalid-ticket **exit-2-writes-nothing**; both vocabulary rejections; numbering independence from a populated `bugs/`; title fallback; and an explicit `--ticket ""` rejection. **Suite results: `tests/lib` 11628 passed / 16 skipped / 0 failed; `tests/scripts` 31 passed; `verify-agent-reachability` PASS; `verify-memory-lane` PASS.** ⚠ **That last PASS is VACUOUS with respect to `report-ticket`** — the reviewer's word, quoted deliberately — because nothing is registered yet, so the gate had nothing about this command to check.
+
+**Divergences, each with its reason:**
+
+1. ⚠ **THE BIG ONE — deliverable 5 (the three roster registrations and the five test-pin updates) did NOT land in this phase**, by orchestrator scope amendment. **The mechanism:** `tests/scripts/test_claude_emitter.py::test_full_emit_when_only_is_none` runs `emit()` against **LIVE `src/`** and asserts every `_PROMOTED` name appears in the emitted set, while `emit()` **silently `continue`s** on a name whose `src/commands/<name>/` does not load. **So registering before Phase 2 ships `src/commands/report-ticket/main.md` turns the suite red.** ⚠ **The plan's own Phase 1 Verify was internally contradictory on exactly this point** — it demanded both *"`tests/scripts` green"* and *"zero changes under `src/commands/`"*, which deliverable 5 cannot satisfy together. **Resolution: the registrations land as a dedicated Python step — Phase 2b — immediately after Phase 2, and the observed-gate-failure ritual is executed THERE** (append to `_PROMOTED`, run `scripts/verify-memory-lane.py`, record that it failed, then add the disposition). **Stated plainly, because it is the state a fresh session will find: until Phase 2b lands, `report_ticket_helper` is ORPHANED — complete, tested, and reachable by nothing.** Confirmed at the time of writing: `report-ticket` appears in none of the three rosters. **This is python-reviewer finding 1 (High), deferred on this recorded reasoning rather than dismissed.**
+2. **Title fallback is the FIRST NON-EMPTY LINE of the body, not the whole body.** An H1 rendered from a multi-paragraph pasted ticket would be absurd; this mirrors the spirit of `report-bug`'s title-defaults-to-description without inheriting its whole-value behavior. **A third fallback exists** — a body that is empty or whitespace-only yields the literal `Untitled ticket`, mirroring `_format_bug`'s own `Untitled bug`.
+3. **An empty or whitespace-only body exits 2 and writes nothing.** Not in the plan text; it mirrors the sibling's required non-empty `--description`.
+4. **`ticket_file.py` unifies the title and slug source through one `_resolve_title`.** `bug_file.py`'s pre-existing two-literal split was left untouched — **the promote arm's "and nothing else" bound holds.**
+
+**Reviewer findings by severity, with dispositions:**
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | **High** | The three roster registrations are missing, so the helper is unreachable | **DEFER — re-scoped to Phase 2b** on divergence 1's recorded reasoning. **Not dismissed**, and the orphan state is stated in this record so it cannot be mistaken for completion |
+| 2 | **Medium** | CRLF universal-newline translation on the `--body-file` read path, where the stdin path did **not** translate — a route-dependent, undocumented difference in what got written | **FIXED** (`newline=""`). ⚠ **And the fix surfaced a SECOND latent instance of the same class** in the test helper `_read_first_ticket()`, also fixed — **recorded explicitly because it is the review catch earning its keep: one reported symptom, two real sites** |
+| 3 | **Low** | The promoted `slugify` falls back to the literal `"bug"`, so a symbol-only ticket title lands at `tickets/NNN-bug.md` | **OWNED RESIDUAL — not built.** OQ-1's ANSWER closed at *"and nothing else"*, and an additive `fallback=` parameter would be a third change beyond the ratified cost. **A natural pair with D2's disambiguation concern** — a ticket file named `bug` is precisely the collision D2 exists to prevent — and the right home is a future plan, not this one |
+| 4 | **Nit** | Four test method names still carried the old private helper names as labels | **FIXED** (renamed) |
+| 5 | **Nit** | `cmd_write_ticket`'s docstring enumerated the exit-2 cases but omitted the empty-body case | **FIXED** |
+
+**Independently re-verified when this record was written** (not taken on report): the two promoted public names exist in `bug_file.py` and neither underscored name survives as a definition; `ticket_file.py` carries `file_ticket` / `_format_ticket` / `_resolve_title`; `_cli.py` carries `--body-file`, `newline=""`, both vocabulary tuples and the empty-body exit-2; `_resolve_title`'s first-non-empty-line rule; both launcher files exist; and **`report-ticket` is absent from `_PROMOTED`, `DISPOSITIONS` and `HELPER_STEMS`**, which is what makes divergence 1's orphan statement a fact rather than a forecast.
 
 ### Phase 2 — The command spec and the storage contract *(instruction-only)*
 
@@ -406,10 +439,33 @@ Scope:
 - **Every sentence about the helper uses setter/getter language** — the helper owns the structure, numbering, validation and atomic write; the orchestrator composes values and supplies the date. **No sentence tells the orchestrator to compose a number, a slug or a file path.**
 - **The emitted text says the lifecycle is manual and names no mechanical writer** (D5's bound).
 - **The emitted text carries the discipline-not-verification statement** for the `**Ticket**` field, in plan 91's voice.
-- **`git grep -n "tickets/" src/` shows the new files plus the storage-rules sites and nothing else** — Phase 3's research edits have not started.
+- **`git grep -n "tickets/" src/` shows exactly three groups and nothing else**: Phase 1's two library files (`src/devforge/lib/_shared/ticket_file.py` and `src/devforge/lib/_report_ticket/_cli.py`, which already carried the literal before this phase began), this phase's `src/commands/report-ticket/main.md`, and this phase's `src/devforge/storage-rules.md` sites — **and no hit under `src/commands/research/`**, because Phase 3's edits have not started.
 - **No plan vocabulary in emitted text** — "D3", "OQ-6" and this plan's number are maintainer vocabulary. Emitted text names only commands, files and behaviors.
 - **The `description` is counted in words and the count is stated in the commit message.**
 - **The frontmatter contains no key outside the four named**, and the `name:` line's inertness (fetched docs) is not contradicted by any sentence.
+
+### Phase 2b — Roster registrations *(Python)*
+
+**Route: python-engineer → python-reviewer.**
+
+**Why this section exists, in one sentence:** deliverable 5 could not land in Phase 1 because `emit()` silently skips a `_PROMOTED` name whose command source does not yet exist while a live-`src/` test asserts every promoted name is emitted — **see the `#### Phase 1 build record`'s divergence 1 for the mechanism** — so the registrations run **strictly AFTER Phase 2's `src/commands/report-ticket/main.md` has landed**, and not before. ⚠ **Until this phase lands, `report_ticket_helper` is orphaned: complete, tested, and reachable by nothing.**
+
+**Deliverables:**
+
+1. **The three registrations.** `scripts/emitters/claude.py`'s `_PROMOTED` gains `"report-ticket"`; `scripts/lib/memory_lane.py`'s `DISPOSITIONS` gains a `NOT_APPLICABLE` entry **with a reason written in `report-bug`'s voice** (pure capture, writes one file and stops, dispatches no agent, renders no judgment for memory to inform); `src/devforge/lib/_profile/_segment.py`'s `HELPER_STEMS` gains `"report-ticket": "report_ticket_helper"`. ⚠ **All three in one commit** — the first fails loudly without the second, and the third fails **silently** (D7, `## Verified mechanics` row 10).
+2. **The five pin and numeral updates.** `tests/lib/test_memory_lane.py`'s `len(DISPOSITIONS) == 20` → 21; `test_live_repo_matches_the_20_known_names` — **both its NAME and its assertion**; the two `== 20` assertions in `tests/lib/_profile/test_segment.py`; and `scripts/lib/memory_lane.py`'s docstring numerals plus its `# ---- N/A (7)` group comment. ⚠ **`# ---- READS (13)` does NOT move** — the new command is `N/A`.
+3. **The observed-gate-failure ritual.** Append to `_PROMOTED`, run `scripts/verify-memory-lane.py` **before** adding the `DISPOSITIONS` entry, and **record that it failed**; then add the entry and re-run. ⚠ **An unobserved gate is indistinguishable from an absent one**, which is the whole reason this ritual is a deliverable rather than a nicety.
+
+**Verify:**
+
+- python-reviewer clean; **full `tests/lib` and `tests/scripts` green.**
+- **`python3 scripts/emitters/claude.py --list` prints 21 names** with `report-ticket` present. *(Moved here from Phase 1 — see that phase's dated Verify note.)*
+- **`scripts/verify-memory-lane.py` passes NON-VACUOUSLY** — its failure was observed first per deliverable 3, so the pass is now a statement about `report-ticket` rather than about a command the gate never saw. *(Moved here from Phase 1.)*
+- **The shim's executable bit is re-checked and its mode RECORDED** (`ls -l src/devforge/lib/report_ticket_helper`). ⚠ **Phase 1 recorded that mode as reported rather than verified**; this is where it is confirmed, and it matters here because the emitter first depends on the launcher pair.
+- **The counted roster numbers are stated in the commit message** — 21 promoted, 17 model-invocable, 4 human-typed-only — **counted live, never incremented from this document.**
+- **`git diff --stat` shows no change under `src/commands/`** — this phase touches the two `scripts/` roster files, one `src/devforge/lib/_profile/` file and two test modules.
+
+**This phase appends a `#### Phase 2b build record` block** carrying what landed, the observed gate failure verbatim, every divergence with its reason, and the reviewer findings by severity.
 
 ### Phase 3 — The `/devforge:research` consumer arm *(instruction-only)*
 

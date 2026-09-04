@@ -62,7 +62,7 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _shared.bug_file import file_bugs, _slugify, _scan_highest_bug_number  # noqa: E402
+from _shared.bug_file import file_bugs, slugify, scan_highest_number  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -261,17 +261,17 @@ class TestFileBugsNumbering(unittest.TestCase):
         self.assertTrue(names[1].startswith("002-"))
         self.assertTrue(names[2].startswith("003-"))
 
-    def test_scan_highest_bug_number_empty_dir(self):
+    def test_scan_highest_number_empty_dir(self):
         os.makedirs(self.bugs_dir, exist_ok=True)
-        n = _scan_highest_bug_number(self.bugs_dir)
+        n = scan_highest_number(self.bugs_dir)
         self.assertEqual(n, 0)
 
-    def test_scan_highest_bug_number_with_existing(self):
+    def test_scan_highest_number_with_existing(self):
         os.makedirs(self.bugs_dir, exist_ok=True)
         for name in ("001-foo.md", "007-bar.md", "003-baz.md"):
             with open(os.path.join(self.bugs_dir, name), "w", encoding="utf-8") as fh:
                 fh.write("x")
-        n = _scan_highest_bug_number(self.bugs_dir)
+        n = scan_highest_number(self.bugs_dir)
         self.assertEqual(n, 7)
 
     def test_bugs_dir_created_if_absent(self):
@@ -336,31 +336,31 @@ class TestFileBugsRelatedIssues(unittest.TestCase):
 class TestSlugify(unittest.TestCase):
 
     def test_spaces_to_hyphens(self):
-        self.assertEqual(_slugify("null cart total"), "null-cart-total")
+        self.assertEqual(slugify("null cart total"), "null-cart-total")
 
     def test_uppercase_to_lowercase(self):
-        self.assertEqual(_slugify("Null Cart Total"), "null-cart-total")
+        self.assertEqual(slugify("Null Cart Total"), "null-cart-total")
 
     def test_special_chars_to_hyphen(self):
-        result = _slugify("bug: invalid/path")
+        result = slugify("bug: invalid/path")
         self.assertNotIn(":", result)
         self.assertNotIn("/", result)
 
     def test_collapse_multiple_hyphens(self):
-        result = _slugify("bug--double")
+        result = slugify("bug--double")
         self.assertNotIn("--", result)
 
     def test_cap_at_30_chars(self):
         long_title = "this is a very long title that exceeds 30 characters"
-        result = _slugify(long_title)
+        result = slugify(long_title)
         self.assertLessEqual(len(result), 30)
 
     def test_empty_string_gives_bug(self):
-        result = _slugify("")
+        result = slugify("")
         self.assertEqual(result, "bug")
 
     def test_strip_leading_trailing_hyphens(self):
-        result = _slugify("--leading and trailing--")
+        result = slugify("--leading and trailing--")
         self.assertFalse(result.startswith("-"))
         self.assertFalse(result.endswith("-"))
 
@@ -378,16 +378,16 @@ class TestSlugify(unittest.TestCase):
         hyphen, so single hyphens survive.  Multi-hyphen runs ARE collapsed.
         """
         # A title with hyphens: each hyphen → hyphen (same char), then collapsed
-        result = _slugify("pre-existing-bug-here")
+        result = slugify("pre-existing-bug-here")
         self.assertEqual(result, "pre-existing-bug-here")
 
         # A title where a hyphen is adjacent to another non-alnum (space + hyphen)
         # The space-hyphen run is one non-alnum run → single hyphen
-        result = _slugify("bug -title")
+        result = slugify("bug -title")
         self.assertNotIn("--", result, "Adjacent non-alnum runs should collapse to one hyphen")
 
         # Consecutive hyphens in input → collapsed to single hyphen
-        result = _slugify("bug---triple")
+        result = slugify("bug---triple")
         self.assertNotIn("--", result, "Triple hyphen should collapse to single hyphen")
 
     # --- Word-boundary truncation tests (Fix A) ---
@@ -397,7 +397,7 @@ class TestSlugify(unittest.TestCase):
         # This title slugifies to "verify-touched-falls-back-to-manifest-detection"
         # which is > 30 chars; truncation must land on a complete word.
         title = "verify touched falls back to manifest detection"
-        result = _slugify(title, max_len=30)
+        result = slugify(title, max_len=30)
         self.assertLessEqual(len(result), 30)
         # Must not end with a partial word fragment: every token must be a
         # complete word from the original slug.
@@ -412,20 +412,20 @@ class TestSlugify(unittest.TestCase):
     def test_truncation_produces_result_no_longer_than_cap(self):
         """Result never exceeds max_len even for a title that hits the boundary."""
         title = "v2 empty category menu response handler edge case"
-        result = _slugify(title, max_len=30)
+        result = slugify(title, max_len=30)
         self.assertLessEqual(len(result), 30)
 
     def test_truncation_single_overlong_word_gives_nonempty_slug(self):
         """A single word longer than max_len must still produce a non-empty slug."""
         title = "averylongsingletokenwithnohyphensthatwillexceedthirtychars"
-        result = _slugify(title, max_len=30)
+        result = slugify(title, max_len=30)
         self.assertGreater(len(result), 0)
         self.assertNotEqual(result, "bug")  # actual word chars present
 
     def test_short_title_unchanged_by_truncation_logic(self):
         """A title shorter than max_len is not modified by the truncation path."""
         title = "null cart total"
-        result = _slugify(title, max_len=30)
+        result = slugify(title, max_len=30)
         self.assertEqual(result, "null-cart-total")
 
     def test_truncation_does_not_produce_trailing_hyphen(self):
@@ -433,7 +433,7 @@ class TestSlugify(unittest.TestCase):
         # Craft a slug where a hyphen sits exactly at the cap boundary.
         # "aaa-bbb-ccc-ddd-eee-fff-ggg-hh" is 31 chars (hyphen at pos 29).
         title = "aaa bbb ccc ddd eee fff ggg hhh"
-        result = _slugify(title, max_len=30)
+        result = slugify(title, max_len=30)
         self.assertFalse(result.endswith("-"))
         self.assertLessEqual(len(result), 30)
 
@@ -449,7 +449,7 @@ class TestSlugify(unittest.TestCase):
         ]
         for title, expected in cases:
             with self.subTest(title=title):
-                result = _slugify(title, max_len=30)
+                result = slugify(title, max_len=30)
                 self.assertEqual(result, expected)
                 self.assertFalse(result.endswith("-"))
 

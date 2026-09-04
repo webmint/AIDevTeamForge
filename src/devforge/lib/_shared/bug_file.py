@@ -5,6 +5,16 @@ than /verify can file bugs with a custom Source field.
 
 Public surface
 --------------
+  scan_highest_number(dir_path) -> int
+  slugify(title, max_len=30) -> str
+      Directory-generic (not bug-specific despite living here): the
+      NNN-prefix scan and the filename-slug rule.  Promoted from
+      _scan_highest_bug_number / _slugify (95-TICKET-CAPTURE-LANE-PLAN.md
+      OQ-1's ratified PROMOTE arm) so _shared/ticket_file.py can reuse
+      them rather than copy them -- single owner, no drift between
+      bugs/ and tickets/ numbering or slug rules.  Behavior-preserving
+      renames only; nothing about either function's logic changed.
+
   close_bug(bug_file_path, date, fix_notes) -> None
       Plan 88 D4 -- the cold-fix lane's single bugs/ write.  Flips exactly
       the ONE named bug file's own **Status**: line from Open/In Progress to
@@ -130,14 +140,22 @@ _SLUG_NONALNUM_RE = re.compile(r"[^a-z0-9]+")
 _SLUG_COLLAPSE_RE = re.compile(r"-{2,}")
 
 
-def _scan_highest_bug_number(bugs_dir):
+def scan_highest_number(dir_path):
     # type: (str) -> int
-    """Return the highest NNN prefix found in bugs_dir, or 0 if none."""
-    if not os.path.isdir(bugs_dir):
+    """Return the highest NNN prefix found in dir_path, or 0 if none.
+
+    Directory-generic: scans *.md filenames for a leading digit-run +
+    hyphen, independent of what the files inside are named or contain.
+    Shared by bug_file.file_bugs (bugs/) and ticket_file.file_ticket
+    (tickets/) -- each directory's sequence is scanned independently
+    (95-TICKET-CAPTURE-LANE-PLAN.md OQ-3), so passing bugs_dir here never
+    affects tickets_dir's numbering or vice versa.
+    """
+    if not os.path.isdir(dir_path):
         return 0
     highest = 0
     try:
-        entries = os.listdir(bugs_dir)
+        entries = os.listdir(dir_path)
     except OSError:
         return 0
     for name in entries:
@@ -151,7 +169,7 @@ def _scan_highest_bug_number(bugs_dir):
     return highest
 
 
-def _slugify(title, max_len=30):
+def slugify(title, max_len=30):
     # type: (str, int) -> str
     """Convert title to a filename slug, truncating at a word boundary.
 
@@ -291,7 +309,7 @@ def file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify"):
     os.makedirs(bugs_dir, exist_ok=True)
 
     # Scan ONCE for the highest existing bug number
-    highest = _scan_highest_bug_number(bugs_dir)
+    highest = scan_highest_number(bugs_dir)
     start_num = highest + 1
 
     # Pre-compute all file paths (for Related Issues cross-links)
@@ -299,7 +317,7 @@ def file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify"):
     for i, issue in enumerate(issues):
         number = start_num + i
         title = (issue.get("title") or "bug").strip()
-        slug = _slugify(title)
+        slug = slugify(title)
         filename = "{0:03d}-{1}.md".format(number, slug)
         paths.append(os.path.join(bugs_dir, filename))
 
