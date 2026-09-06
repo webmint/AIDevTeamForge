@@ -1,7 +1,7 @@
 # 96 — PR Reading Guide Plan
 
 **Created**: 2026-09-06
-**Status**: **Phase 0 CLOSED 2026-09-06** (single blanket maintainer directive — every D-item and OQ ratified AS RECOMMENDED, no per-item deliberation supplied; see `## Phase 0 close record`). **Build phases 1–4 in progress this session.** Phase 5 is a DEFERRED user-driven HARD GATE — not run, so nothing here is consumer-validated.
+**Status**: **✅ DONE (build) 2026-09-06 — Phase 0 CLOSED and Phases 1–4 BUILT.** Phase 0 closed by a single blanket maintainer directive — every D-item and OQ ratified AS RECOMMENDED, no per-item deliberation supplied (see `## Phase 0 close record`). **Phase 5 is a DEFERRED user-driven HARD GATE — NOT run**, so everything here is build-verified and **NOT consumer-validated**.
 
 Make `summary.md` a reviewer's READING GUIDE rather than only a recap, and make the PR-ready artifact actually reach the PR.
 
@@ -244,6 +244,22 @@ Instruction-only, under the ratified D4 arm. Route through **instruction-author 
 - The `## [Unreleased]` entry names the two new summary sections and the finalize PR line.
 - The phase's close note records, per checked file, either the edit made or an explicit "verified no-op".
 - `CLAUDE.md` carries a one-line index entry for plan 96 and `PLAN-STATUS-ARCHIVE.md` carries the full entry.
+
+#### Phase 4 close note — the per-site sweep, recorded 2026-09-06
+
+Every site below was checked LIVE. Each is recorded as an edit or an explicit verified no-op, because an unrecorded no-op cannot be told apart from an unchecked site.
+
+| Site | Outcome |
+|---|---|
+| `CHANGELOG.md` `## [Unreleased]` → `### Added` | **EDIT** — one entry at the top of the list, matching the file's `- feat(<scopes>): <description> (<plan-file>, Phases …)` shape; names both new summary sections, the three new `read_verification` fields, the `gh pr create` line, and the honest bounds. |
+| `src/CLAUDE.md` pipeline chain (the `→` arrow line) | **VERIFIED NO-OP** — names commands and their order; neither changed. |
+| `src/CLAUDE.md` `/devforge:summarize` catalog line | **VERIFIED NO-OP** — states the output path and the WIP commit; both still exactly true. It never described the summary's section shape. |
+| `src/CLAUDE.md` `/devforge:finalize` catalog line | **VERIFIED NO-OP** — names the docs pass, the safety-net commit and the squash; it never described the PHASE-4 results block. |
+| `src/CLAUDE.md` `#### /devforge:summarize [spec-file]` | **VERIFIED NO-OP** — all three claims still hold: it gates on the spec `Complete` flip, writes only `summary.md`, and renders no verdict (plan 24 D1 intact). |
+| `src/CLAUDE.md` `#### /devforge:finalize [spec-file]` | **VERIFIED NO-OP** — "the last step before creating a PR" remains true, and the printed `gh pr create` line makes it more apt, not stale. |
+| `src/CLAUDE.md` `## Artifact Storage` tree | **VERIFIED NO-OP by absence** — the tree never lists `summary.md` at all, so there is no shape to update. |
+
+Confirming grep over `src/CLAUDE.md` for `six sections|Review guide|Not verified|gh pr` returns **no hits**, so the file makes no claim this build falsified.
 
 ### Phase 5 — Consumer e2e — DEFERRED, user-driven HARD GATE
 
