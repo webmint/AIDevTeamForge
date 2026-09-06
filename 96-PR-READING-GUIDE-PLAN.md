@@ -1,7 +1,7 @@
 # 96 — PR Reading Guide Plan
 
 **Created**: 2026-09-06
-**Status**: **DRAFT — Phase 0 pending ratification.** Nothing below is ratified. No build phase starts until the maintainer closes Phase 0. Every D-item and OQ carries a recommendation, its reasoning, and the counter-argument against it; the recommendation is a proposal, never a decision.
+**Status**: **Phase 0 CLOSED 2026-09-06** (single blanket maintainer directive — every D-item and OQ ratified AS RECOMMENDED, no per-item deliberation supplied; see `## Phase 0 close record`). **Build phases 1–4 in progress this session.** Phase 5 is a DEFERRED user-driven HARD GATE — not run, so nothing here is consumer-validated.
 
 Make `summary.md` a reviewer's READING GUIDE rather than only a recap, and make the PR-ready artifact actually reach the PR.
 
@@ -128,6 +128,38 @@ Nothing below is ratified. Each item states a recommendation, its reasoning, and
 The file-to-decision mapping is **MODEL JUDGMENT over named inputs, and nothing checks it**. No gate reads it, no validator parses it, and a wrong mapping produces a misleading guide with no error anywhere.
 
 **RECOMMEND recording this as an accepted bound, stated in the emitted text** — the claim is **orientation, not enforcement**. This mirrors plan 86 F3's honesty pattern (*"NOTHING CHECKS the declaration"* — the claim there is that its absence is visible, not that anything enforces it). The emitted sentence must not use the words *accurate*, *correct* or *reliable* about the mapping.
+
+---
+
+## Phase 0 close record
+
+**CLOSED 2026-09-06** by a **single blanket maintainer directive** («го»). **Every D-item and OQ is ratified AS RECOMMENDED.**
+
+⚠ **No per-item deliberation was supplied, and this record says so** rather than implying the arguments were weighed one by one (plans 91 / 92 / 94 / 95 precedent). Each item's recommendation, reasoning and counter-argument stand as drafted above; the close adopted the recommendation set wholesale. A future session must not cite this close as evidence that any individual counter-argument was answered — it was accepted along with the rest.
+
+### Per-item outcomes
+
+| Item | Ratified arm | Consequence for the build |
+|---|---|---|
+| **D1** | **(a)** instruction-only | The orchestrator reads `### Two-hats partition` subsections + task titles from the task files it already enumerates. **No amendment phase is owed** — the conditional Python phase D1(b) would have required is NOT triggered. |
+| **D2** | **(b)** widen `read_verification` | **Phase 1 RUNS.** It delivers `e2e_status` + the two advisory booleans, and **NO `reasons` key**. |
+| **D3** | as drafted | Both placements (`### Review guide` after `### What was built`; `### Not verified` after `### Acceptance criteria`), the omit-empty rule on both, and the verbatim-only Not-verified rule. |
+| **D4** | **(i)** print-only | `/devforge:finalize` PHASE 4 prints the `gh pr create` line; nothing executes `gh`. Arm (ii) stays the **named strengthening arm** with its recorded trigger (*"the maintainer observes the printed line going unused"*). **The `claude-code-guide` precondition attached to (ii) is therefore NOT owed** for this build. |
+| **OQ-1** | **yes**, widened to BOTH | Rule 4's enumeration names task `## Change Details` AND the task title header, at **both** enumeration sites (rule 4 and PHASE 3's closing no-speculation sentence). |
+| **OQ-2** | **no** | `/devforge:summarize` PHASE 5's closing message is unchanged. |
+| **OQ-3** | accepted bound | The orientation-not-enforcement bound is stated in the emitted text; the words *accurate* / *correct* / *reliable* appear nowhere in it. |
+
+### Build-binding field names
+
+The three fields D2(b) adds to `read_verification`'s result dict are **named here so Phase 1's Python and Phase 2's instruction edits cannot drift apart**. These spellings are binding on both phases:
+
+| Field | Type | Source in `verification.md` |
+|---|---|---|
+| `e2e_status` | `str` or `None` | The status token regexed out of the `E2E run ({status}, advisory — does not block the verdict): {note}` bullet under `**Reasons**:` in `## Verdict`. `None` when no such bullet is present. |
+| `has_scope_creep_advisory` | `bool` | Presence of the `## Code Quality` scope-creep block carrying `_(advisory — does not block the verdict)_`. |
+| `has_leftover_artifacts_advisory` | `bool` | Presence of the `## Code Quality` leftover-artifacts block carrying `_(advisory — does not block the verdict)_`. |
+
+⚠ **`reasons` is NOT a field.** Its absence is a ratified constraint, not an oversight — Phase 1's Verify asserts the key is absent. Do not add it "for completeness"; nothing composes from it, and exposing it would push judgment-mining into the orchestrator against D3.
 
 ---
 
