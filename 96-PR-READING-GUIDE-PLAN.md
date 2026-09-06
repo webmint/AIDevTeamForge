@@ -24,7 +24,9 @@ The data to compose such a guide already exists in this command's own scratch in
 - `decisions.json` — `decision` / `chosen` / `rationale` / `rejected` per key decision (`read-plan-decisions`).
 - `notes.json` — per-task `files_changed` and the task file path (`parse-completion-notes`).
 - Task titles, from the task files the command already enumerates.
-- The **Two-hats partition** declarations plan 86's F2 put in task files: a `### Two-hats partition` subsection riding the free-form `## Change Details` section, MIXED tasks only, and **deliberately never a header field** (plan 86 **Facts 17/18** — header fields are helper-emitted and flag-gated in `render_task_file`, so a new one would have been Python, while `## Change Details` is a free-form skeleton section the ORCHESTRATOR fills).
+- The **Two-hats partition** declarations plan 86's F2 put in task files: **behavior-changing / behavior-preserving labels ON the `- In <path>:` entries already written in `## Change Details`** (and, where one file holds both kinds of change, on the named functions under an entry), MIXED tasks only, and **deliberately never a header field** (plan 86 **Facts 17/18** — header fields are helper-emitted and flag-gated in `render_task_file`, so a new one would have been Python, while `## Change Details` is a free-form skeleton section the ORCHESTRATOR fills).
+
+⚠ **Correction recorded 2026-09-06 so it is not re-inherited: there is NO `### Two-hats partition` heading in a task file.** An earlier revision of this plan described the partition as a subsection by that name, and Phase 2 consumed that wrong description once before instruction-reviewer caught it. `### Two-hats partition (mixed behavior-change + restructuring tasks)` is a heading in `src/commands/breakdown/main.md` — the name of the INSTRUCTION section that tells `/devforge:breakdown` how to write the labels — and that lane states in its own text that it *"adds NO flag and NO header line"*. A consumer therefore looks for the labels, never for a heading; a grep for the heading in task files finds nothing and would wrongly conclude no task declares a partition.
 
 ### F2 — no honest-bounds section (medium)
 
@@ -61,7 +63,7 @@ Nothing below is ratified. Each item states a recommendation, its reasoning, and
 
 ### D1 — F1 composition route
 
-**Fork.** (a) **Instruction-only** — `/devforge:summarize` PHASE 3 gains a composition input: the orchestrator reads the `### Two-hats partition` subsections and task titles directly from the task files it already enumerates for `parse-completion-notes` (the `--task-file` list is already at hand in PHASE 2.2). (b) **Python** — widen `parse-completion-notes` with a `two_hats` field.
+**Fork.** (a) **Instruction-only** — `/devforge:summarize` PHASE 3 gains a composition input: the orchestrator reads the behavior-changing / behavior-preserving labels on `## Change Details` entries (the Two-hats partition — labels on the existing `- In <path>:` entries, no heading) and task titles directly from the task files it already enumerates for `parse-completion-notes` (the `--task-file` list is already at hand in PHASE 2.2). (b) **Python** — widen `parse-completion-notes` with a `two_hats` field.
 
 **RECOMMEND (a).** The two-hats block is deliberately free-form prose (plan 86 Facts 17/18 — never a header field, because header fields are helper-emitted and flag-gated while `## Change Details` is orchestrator-filled), so a prose-composing orchestrator is its natural consumer. There is direct precedent: plan 90 D2 had `/devforge:breakdown` read the E2E table from `plan.md` directly, *"as the dead-code table already is"*.
 
@@ -141,7 +143,7 @@ The file-to-decision mapping is **MODEL JUDGMENT over named inputs, and nothing 
 
 | Item | Ratified arm | Consequence for the build |
 |---|---|---|
-| **D1** | **(a)** instruction-only | The orchestrator reads `### Two-hats partition` subsections + task titles from the task files it already enumerates. **No amendment phase is owed** — the conditional Python phase D1(b) would have required is NOT triggered. |
+| **D1** | **(a)** instruction-only | The orchestrator reads the behavior-changing / behavior-preserving labels on `## Change Details` entries + task titles from the task files it already enumerates. **No amendment phase is owed** — the conditional Python phase D1(b) would have required is NOT triggered. |
 | **D2** | **(b)** widen `read_verification` | **Phase 1 RUNS.** It delivers `e2e_status` + the two advisory booleans, and **NO `reasons` key**. |
 | **D3** | as drafted | Both placements (`### Review guide` after `### What was built`; `### Not verified` after `### Acceptance criteria`), the omit-empty rule on both, and the verbatim-only Not-verified rule. |
 | **D4** | **(i)** print-only | `/devforge:finalize` PHASE 4 prints the `gh pr create` line; nothing executes `gh`. Arm (ii) stays the **named strengthening arm** with its recorded trigger (*"the maintainer observes the printed line going unused"*). **The `claude-code-guide` precondition attached to (ii) is therefore NOT owed** for this build. |
@@ -202,7 +204,7 @@ The existing keys (`ac_list`, `verdict`, `path`) are **byte-unchanged in shape**
 Instruction-only. Route through **instruction-author → instruction-reviewer**.
 
 - `references/summary-format.md` — the skeleton gains `### Review guide` (after `### What was built`) and `### Not verified` (after `### Acceptance criteria`), each with its omit-empty condition stated in the skeleton the way `### Deviations from plan` states its own, plus their composition rules in the `## Composition rules` list. The `## Inputs that shape the summary` list is updated to name what each new section draws on.
-- `main.md` PHASE 3 — gains the two composition items in the numbered section list (renumbering the existing items, which are positional), the D1(a) task-file read step, and OQ-1's source widening at BOTH sites (rule 4 and PHASE 3's closing no-speculation sentence), naming **both** task `## Change Details` and the task title header.
+- `main.md` PHASE 3 — gains the two composition items in the numbered section list (renumbering the existing items, which are positional), the D1(a) task-file read step (**the behavior-changing / behavior-preserving labels on `## Change Details` entries — there is no heading to search for**), and OQ-1's source widening at BOTH sites (rule 4 and PHASE 3's closing no-speculation sentence), naming **both** task `## Change Details` and the task title header.
 - `main.md` PHASE 2.2 — the surrounding prose names `has_unverified` as a CONSUMED field, not only an emitted one.
 - Under D2(b): `main.md` PHASE 2.1 and the `$WORKDIR/verification.json` scratch-file bullet name `e2e_status` and the two advisory booleans. **They must not name a `reasons` key** — it is deliberately absent from the returned shape.
 - The emitted text states OQ-3's bound (orientation, not enforcement) and D3's verdict-free clause (verbatim quotation, never a judgment this command makes).
@@ -212,7 +214,7 @@ Instruction-only. Route through **instruction-author → instruction-reviewer**.
 - `grep -n 'has_unverified' src/commands/summarize/main.md` returns ≥ 1 hit **inside a composition or consumption sentence**, not only in the two field enumerations that exist today.
 - `summary-format.md` contains both new headings, and each is within 3 lines of an omit-when-empty instruction.
 - `grep -n 'Change Details' src/commands/summarize/main.md` returns a hit inside rule 4's source enumeration AND inside PHASE 3's closing no-speculation sentence; both of those sentences also name the task title header.
-- Under D2(b): `grep -n 'reasons' src/commands/summarize/main.md` returns no hit describing a key of `verification.json` — the orchestrator is never pointed at a raw reasons list.
+- Under D2(b): `grep -n 'reasons' src/commands/summarize/main.md` returns **no hit PRESENTING `reasons` as an available key** — the orchestrator is never pointed at a raw reasons list. **Negative mentions PASS and are expected**: the spec states in two places that the key does not exist and is not to be added, which is the guard against a future session restoring it, so a criterion demanding zero occurrences would delete its own protection.
 - No occurrence of the words `verdict` or `findings` is introduced as something either new section RENDERS; the existing verdict-free / findings-free statements are unchanged.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
@@ -248,7 +250,7 @@ Instruction-only, under the ratified D4 arm. Route through **instruction-author 
 **NOT run at build time.** Build-verified is not consumer-validated. Three known-answer anchors:
 
 1. **A feature with a mixed task carrying a two-hats declaration and an unverified Done-When box** → `summary.md` renders `### Review guide` and `### Not verified`, and each names exactly those inputs (the declared partition; that task's unverified box).
-2. **A clean, fully-verified feature** → BOTH sections are ABSENT, and the summary's section shape is identical to today's skeleton.
+2. **A clean, fully-verified feature** → BOTH sections are ABSENT, and the summary's section shape is identical to today's skeleton. ⚠ **Fixture requirement, recorded 2026-09-06 during Phase 2**: the Review guide's omit condition keys off `decisions` being empty AND no task carrying a behavior-changing / behavior-preserving label — NOT off verification state — so this fixture's feature must ALSO have no recorded key decisions in `plan.md`. A clean feature that recorded decisions will legitimately render the Review guide, and scoring that as a failure would misread correct behavior. Only the Not-verified section keys off verification state.
 3. **`/devforge:finalize` with `summary.md` present and the squash succeeded** → the results block carries the `gh pr create --body-file` line verbatim, with the real feature dir substituted.
 
 ⚠ **Anchors 1 and 2 are scored as a PAIR** — a section that always renders passes anchor 1 and fails anchor 2, so anchor 1 alone proves nothing. Under D2(b), anchor 1 additionally records whether a non-`e2e-clean` `e2e_status` reached the Not-verified section.
