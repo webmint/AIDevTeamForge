@@ -256,13 +256,30 @@ Present the "Feature Finalized" results block (the shape is documented in `refer
 **Summary**: [included in squash | not found — /devforge:summarize was not run]
 
 Feature is ready for PR.
+
+Create it with:
+gh pr create --title "<message_used>" --body-file <feature_dir>/summary.md
 ```
 
 In wrapper mode, add a `**Source commit**:` line from the `source_repo` outcome (the `[TICKET-ID] - Description` commit, traceless per D5). When the squash was SKIPPED (already-pushed guard, 3.2) or no-op'd, report that in place of the **Commit** line — never claim a clean commit that did not happen.
 
+**The `gh pr create` line is CONDITIONAL on BOTH of two facts, and you print it only when both hold:**
+
+1. `<feature_dir>/summary.md` was PRESENT at PHASE 0.3 (the same present/absent state the `**Summary**:` line reports) — the command's `--body-file` names that file, so without it the printed command would reference a nonexistent path.
+2. The squash SUCCEEDED in the install/wrapper repo — `$WORKDIR/squash.json`'s `install_repo` outcome has a `head_sha` and is not refused, no-op'd or in a danger state.
+
+**When either fact is false, omit the `Create it with:` line and the command line entirely** — print no placeholder, no commented-out variant and no "run this once you have a summary" hint. A refused or skipped squash means the branch does not hold the commit this PR would describe, and a missing summary means there is no body to attach; in both cases the results block ends at `Feature is ready for PR.` exactly as it does today.
+
+Substitute two values into the line, both already in hand:
+
+- `<message_used>` — the `message_used` field from `$WORKDIR/squash.json`'s `install_repo` outcome (the message the squash actually used, which is what the **Commit** line above already reports). Never the source-repo message, even in wrapper mode: the PR is opened against the install/wrapper repo's branch.
+- `<feature_dir>` — the feature directory PHASE 0.1 resolved, exactly as resolved. It already carries every segment above `summary.md`, so nothing is prepended to it.
+
+**`/devforge:finalize` prints this command; it never runs it.** It is printed for the USER to copy and run — the command dispatches no `gh` call, checks no `gh` availability, and reads no remote state, so a machine without `gh` installed or authenticated sees the same printed line and loses nothing else. Do NOT add an offer to run it, and do not run it on an agreement: that is a deliberately un-built alternative, not an omission.
+
 Then print a soft `/devforge:generate-docs` reminder for structural doc drift (OQ-3 — a soft pointer, NOT a gate): *Surgical docs are updated for this feature. If the feature added new packages, concerns, or domain terms, run `/devforge:generate-docs` to regenerate the structural docs this surgical pass does not cover.*
 
-`/devforge:finalize` is TERMINAL — there is NO next-pipeline-command pointer. The "ready for PR" line above IS the next step (create the PR).
+`/devforge:finalize` is TERMINAL — there is NO next-pipeline-command pointer. The "ready for PR" line above IS the next step (create the PR), and the `gh pr create` line beneath it is that same next step made concrete: the shell command the user runs to take it. It points at no forge command and hands off to no pipeline step — `gh` is an external tool, and the step it performs is the one this command already named in prose. Printing it changes nothing about this command being the last one in the pipeline.
 
 Clean up the scratch directory — nothing else needs it after the results are presented:
 
@@ -281,4 +298,4 @@ rm -rf "$WORKDIR"
 6. **Wrapper-mode dual squash, source traceless** (D5) — in wrapper mode `/devforge:finalize` squashes BOTH repos: the install/wrapper commit is `feat(scope):` + `COMMIT_ATTRIBUTION` per config; the source commit is `[TICKET-ID] - Description` with NO `Co-Authored-By`, NO conventional prefix, and NO AI traces, regardless of config. The helper enforces the source-repo no-attribution invariant.
 7. **Docs retarget to LIVE locations** (D1) — the tech-writer dispatch updates `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, and `docs/architecture.md` only; the dropped Plan-F per-feature / per-resource / per-guide tiers are never resurrected (see `references/results-and-docs.md`). Structural doc drift is left to `/devforge:generate-docs` (the PHASE-4 soft reminder).
 8. **Renders no verdict, runs no finder ensemble** — `/devforge:finalize` is gate + docs + squash. It dispatches one agent (`tech-writer`); it runs no finder/refuter/verdict machinery (those belong to `/devforge:review` and `/devforge:verify`). Do not add any.
-9. **Terminal** — `/devforge:finalize` is the last pipeline step. Its "next step" is "create a PR"; there is no downstream command pointer.
+9. **Terminal** — `/devforge:finalize` is the last pipeline step. Its "next step" is "create a PR"; there is no downstream forge command pointer. The PHASE-4 `gh pr create` line is not one: `gh` is an external tool, not a pipeline step, and the line is printed for the user to run — this command executes it never. "Terminal" bars handing off to another `/devforge:` command; it does not bar naming the shell command for the step already named in prose.

@@ -31,7 +31,12 @@ After the squash confirms, the orchestrator presents a block of this shape (valu
 **Summary**: [included in squash | not found — /devforge:summarize was not run]
 
 Feature is ready for PR.
+
+Create it with:
+gh pr create --title "<message_used>" --body-file <feature_dir>/summary.md
 ```
+
+The last two lines are CONDITIONAL — see the `gh pr create` composition rule below. A run that omits them ends the block at `Feature is ready for PR.`
 
 Composition rules:
 
@@ -40,9 +45,10 @@ Composition rules:
 - **Docs** — `updated <docs targets>` when the PHASE-2 tech-writer wrote and `[WIP]`-committed docs; `skipped — <reason>` when the agent justifiably found no docs needed; `tech-writer failed — <error>` when the agent errored (the squash still ran).
 - **Summary** — `included in squash` when `<feature_dir>/summary.md` existed at PHASE 0 (its `[WIP]` commit folds into the squash); `not found — /devforge:summarize was not run` when the PHASE-0 soft-warn fired.
 - When the squash was SKIPPED (already-pushed guard) or NO-OP'd (nothing to finalize), report that outcome in place of the **Commit** line instead of a clean-commit hash — never claim a squash that did not happen.
+- **`gh pr create`** — printed ONLY when BOTH hold: `<feature_dir>/summary.md` was present at PHASE 0 (the same state the **Summary** line reports), AND the install/wrapper squash SUCCEEDED (a `head_sha`, not refused / no-op'd / skipped / danger). When either is false, omit the `Create it with:` line and the command line together — no placeholder, no commented-out variant, no deferred hint. `<message_used>` is the `install_repo` outcome's `message_used` (never the source-repo message, even in wrapper mode — the PR is opened against the install/wrapper branch); `<feature_dir>` is the directory PHASE 0.1 resolved, used exactly as resolved. **`/devforge:finalize` prints this command and does not run it** — no `gh` call, no availability check, no remote read; the user copies and runs it.
 
 ## What this block is NOT
 
 - **No verdict.** `/devforge:finalize` renders no APPROVED / NEEDS WORK / REJECTED — the verdict is `/devforge:verify`'s. Do not add a verdict line.
 - **No findings.** `/devforge:finalize` runs no finder ensemble and no refutation pass — findings are `/devforge:review`'s. Do not add a findings list.
-- **No next-pipeline-command pointer.** `/devforge:finalize` is terminal — its "next step" is "create a PR", already named in the block. Do not point at a downstream command.
+- **No next-pipeline-command pointer.** `/devforge:finalize` is terminal — its "next step" is "create a PR", already named in the block. Do not point at a downstream forge command. **The `gh pr create` line is NOT such a pointer** and does not contradict this bullet: it is that same "create a PR" step made concrete, `gh` being an external tool rather than a pipeline step, and it is printed for the user to run — this command executes nothing new. What stays barred is handing off to another `/devforge:` command.
