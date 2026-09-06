@@ -14,8 +14,25 @@ Three pure parsers that consume real producer output:
           ## Verdict
 
           **APPROVED** | **NEEDS WORK** | **REJECTED**
+
+          **Reasons**:
+
+          - <reason line 1>
+          - ...
       This is the AUTHORITATIVE AC status (D3) — /summarize does NOT re-derive
       ACs from the spec.
+
+      Plan 96 Phase 1 (D2(b)) widens the result with three mechanically
+      parsed fields, all derived from exact strings render_report /
+      compute_verdict emit (see _verify/_verdict.py + _verify/_report.py):
+        e2e_status                     — the "E2E run (<status>, ...)"
+                                          reasons bullet's status token, or
+                                          None when absent/off.
+        has_scope_creep_advisory       — True when the Code Quality section
+                                          carries the scope-creep advisory.
+        has_leftover_artifacts_advisory — same, for leftover artifacts.
+      The raw `reasons` list is deliberately NOT part of the result — see
+      the comment at its parse site.
 
   parse_completion_notes(task_text)
       Parse ONE task file's "## Completion Notes" section (filled by
@@ -85,6 +102,36 @@ _AC_HEADING_RE = re.compile(r"^##\s+Acceptance Criteria\s*$", re.MULTILINE)
 # Heading that starts the Verdict section.
 _VERDICT_HEADING_RE = re.compile(r"^##\s+Verdict\s*$", re.MULTILINE)
 
+# Heading that starts the Code Quality section (where the two advisory
+# blocks below are rendered).
+_CODE_QUALITY_HEADING_RE = re.compile(r"^##\s+Code Quality\s*$", re.MULTILINE)
+
+# The "**Reasons**:" block heading under ## Verdict (render_report — NOT the
+# console-only "**Key reasons**:" line render_inline_summary emits, which
+# never reaches a file).
+_REASONS_HEADING_RE = re.compile(r"^\*\*Reasons\*\*:\s*$", re.MULTILINE)
+
+# The e2e reasons bullet compute_verdict appends (mirrors _verify/_verdict.py's
+# "E2E run ({0}, advisory — does not block the verdict): {1}" format string
+# exactly).  Captures the status token (e.g. "e2e-clean", "e2e-failing",
+# "inconclusive").  status "off" never renders a bullet (plan 90 D8), so
+# there is nothing to match in that case.
+_E2E_REASON_RE = re.compile(
+    r"^-\s*E2E run \(([^,]+), advisory — does not block the verdict\):",
+    re.MULTILINE,
+)
+
+# The two advisory blocks render_report emits in "## Code Quality" (mirrors
+# _verify/_report.py's exact rendered shape).
+_SCOPE_CREEP_ADVISORY_RE = re.compile(
+    r"^\*\*Scope creep\*\* _\(advisory — does not block the verdict\)_:",
+    re.MULTILINE,
+)
+_LEFTOVER_ARTIFACTS_ADVISORY_RE = re.compile(
+    r"^\*\*Leftover artifacts\*\* _\(advisory — does not block the verdict\)_:",
+    re.MULTILINE,
+)
+
 # Separator / header rows to skip (e.g. "|---|---|---|" and the "| AC | Status | Evidence |" header).
 _TABLE_SKIP_RE = re.compile(r"^\|[-:\s|]+\|$")
 
@@ -117,6 +164,12 @@ def read_verification(path):
       ac_list   list[dict]  — per-AC dicts with keys: id, status, evidence
       verdict   str         — "APPROVED", "NEEDS WORK", "REJECTED", or ""
       path      str         — the file path read
+      e2e_status  str or None — the e2e reasons bullet's status token
+                                (e.g. "e2e-clean"), or None when the bullet
+                                is absent (no Reasons block, no Verdict
+                                section, or an "off" run that renders none).
+      has_scope_creep_advisory        bool — Code Quality scope-creep advisory present
+      has_leftover_artifacts_advisory bool — Code Quality leftover-artifacts advisory present
 
     On error returns ({}, error_message).
     """
@@ -191,10 +244,49 @@ def read_verification(path):
     if verdict_match:
         verdict = verdict_match.group(1)
 
+    # --- Parse e2e status bullet (plan 96 D2(b)) ---
+    # Bounded forward-search: Verdict heading -> Reasons heading -> bullet,
+    # mirroring the verdict_match search_start style above.  Any missing
+    # link in the chain (no Verdict heading, no Reasons heading, no bullet)
+    # yields None.
+    e2e_status = None
+    reasons_heading_match = None
+    if verdict_heading:
+        reasons_heading_match = _REASONS_HEADING_RE.search(text, verdict_heading.end())
+    if reasons_heading_match:
+        e2e_match = _E2E_REASON_RE.search(text, reasons_heading_match.end())
+        if e2e_match:
+            e2e_status = e2e_match.group(1).strip()
+
+    # --- Parse advisory presence (plan 96 D2(b)) ---
+    # Note: the raw `reasons` list is deliberately NOT part of the returned
+    # shape — nothing composes from it, and exposing it would push
+    # text-mining judgment into the orchestrating command.
+    #
+    # Section-bound (mirrors the AC-table section-slicing above): an AC
+    # evidence cell could otherwise echo one of these marker strings and
+    # false-positive a whole-document search.  No "## Code Quality" section
+    # -> both booleans False; deliberately no whole-file fallback.
+    has_scope_creep_advisory = False
+    has_leftover_artifacts_advisory = False
+    cq_heading_match = _CODE_QUALITY_HEADING_RE.search(text)
+    if cq_heading_match:
+        cq_start = cq_heading_match.end()
+        cq_next_match = re.search(r"^##\s+", text[cq_start:], re.MULTILINE)
+        cq_end = cq_start + cq_next_match.start() if cq_next_match else len(text)
+        cq_section = text[cq_start:cq_end]
+        has_scope_creep_advisory = bool(_SCOPE_CREEP_ADVISORY_RE.search(cq_section))
+        has_leftover_artifacts_advisory = bool(
+            _LEFTOVER_ARTIFACTS_ADVISORY_RE.search(cq_section)
+        )
+
     result = {
         "ac_list": ac_list,
         "verdict": verdict,
         "path": path,
+        "e2e_status": e2e_status,
+        "has_scope_creep_advisory": has_scope_creep_advisory,
+        "has_leftover_artifacts_advisory": has_leftover_artifacts_advisory,
     }
     return result, None
 

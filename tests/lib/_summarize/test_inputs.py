@@ -32,6 +32,30 @@ Coverage:
     - verdict not found → verdict == ""
     - AC table header row is not included in ac_list
 
+  read_verification (plan 96 Phase 1, D2(b) — e2e_status / advisory flags):
+    round-trips through the FULL real producer chain (compute_verdict feeding
+    render_report), not a hand-built verdict dict:
+    - e2e_status parsed for each status compute_verdict can emit a bullet for
+      (e2e-clean / e2e-failing / inconclusive)
+    - status "off" / e2e omitted → no bullet rendered → e2e_status is None
+    - a Reasons block present but carrying no e2e bullet → None
+    - no Reasons block at all (zero reasons) → None
+    - no "## Verdict" section at all → None
+    - empty file → None
+    - has_scope_creep_advisory / has_leftover_artifacts_advisory: each
+      detected independently, both False when hygiene is clean, a
+      not-checked scope-creep block is never mistaken for the advisory
+      shape, and a checked-but-EMPTY scope-creep block ("none detected")
+      is likewise never mistaken for it
+    - both advisory booleans are Code-Quality-SECTION-bound: an AC evidence
+      cell that literally echoes an advisory marker string (before the
+      "## Code Quality" heading) is not a false positive, and no
+      "## Code Quality" section at all yields both False (no whole-file
+      fallback)
+    - regression anchor: the returned dict carries NO "reasons" key
+    - existing keys (ac_list, verdict, path) keep their pre-existing shapes
+      alongside the three new fields
+
   parse_completion_notes:
     - files_changed parsed from real mark-complete output (comma-separated)
     - expects_met / produces_met parsed correctly
@@ -91,7 +115,7 @@ from _summarize._inputs import (  # noqa: E402
 # _verify._report.render_report — the verification.md producer.
 from _verify._report import render_report as _render_verify_report  # noqa: E402
 from _verify._ac import merge_ac_results  # noqa: E402
-from _verify._verdict import compute_verdict  # noqa: E402
+from _verify._verdict import compute_verdict as _compute_verdict  # noqa: E402
 
 # _implement._cmds_complete — the Completion Notes producer.
 from _implement._cmds_complete import _fill_completion_notes  # noqa: E402
@@ -140,12 +164,18 @@ def _make_review_findings(missing=True, confirmed_count=0, contested_count=0):
     }
 
 
-def _make_hygiene():
-    # type: () -> Dict
+def _make_hygiene(scope_creep=None, leftover_artifacts=None, scope_creep_checked=False):
+    # type: (Optional[List[str]], Optional[List[Dict]], bool) -> Dict
+    """Build a hygiene dict as check_hygiene would produce.
+
+    Optional args let callers trigger the "Scope creep" / "Leftover
+    artifacts" advisory blocks render_report emits; the no-arg call keeps
+    the pre-existing clean shape.
+    """
     return {
-        "scope_creep": [],
-        "leftover_artifacts": [],
-        "scope_creep_checked": False,
+        "scope_creep": scope_creep or [],
+        "leftover_artifacts": leftover_artifacts or [],
+        "scope_creep_checked": scope_creep_checked,
     }
 
 
@@ -170,6 +200,46 @@ def _render_real_verification(
     }
     review_findings = _make_review_findings(missing=True)
     hygiene = _make_hygiene()
+    return _render_verify_report(
+        verdict=verdict,
+        ac_results=ac_results,
+        review_findings=review_findings,
+        hygiene=hygiene,
+        feature=feature,
+        date_str=date_str,
+        mechanical_status="pass",
+        ac_verification_mode="code-only",
+    )
+
+
+def _render_real_verification_via_compute_verdict(
+    ac_results=None,
+    feature="specs/001-test",
+    date_str="2026-06-17",
+    hygiene=None,
+    e2e=None,
+    review_missing=True,
+):
+    # type: (...) -> str
+    """Produce a REAL verification.md through the FULL real producer chain:
+    compute_verdict (the e2e reasons bullet + the source of the verdict dict)
+    feeding render_report (the markdown renderer) — not a hand-built verdict
+    dict.  This is what makes the e2e-status regex a round-trip test against
+    _verdict.py's actual format string, not an invented shape.
+    """
+    if ac_results is None:
+        ac_results = [_ac_result("AC-1", "PASS", "All unit tests pass")]
+    if hygiene is None:
+        hygiene = _make_hygiene()
+    review_findings = _make_review_findings(missing=review_missing)
+    verdict = _compute_verdict(
+        ac_results,
+        "pass",
+        review_findings,
+        hygiene,
+        "code-only",
+        e2e=e2e,
+    )
     return _render_verify_report(
         verdict=verdict,
         ac_results=ac_results,
@@ -424,6 +494,317 @@ class TestReadVerificationEdgeCases(unittest.TestCase):
             self.assertIsNone(err)
             for ac in result["ac_list"]:
                 self.assertNotEqual(ac["id"].lower(), "ac")
+        finally:
+            os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Plan 96 Phase 1 (D2(b)): TestReadVerificationE2EStatus
+# ---------------------------------------------------------------------------
+
+
+class TestReadVerificationE2EStatus(unittest.TestCase):
+    """e2e_status: parsed from compute_verdict's real "E2E run (...)" bullet.
+
+    Uses the FULL real producer chain (compute_verdict -> render_report),
+    not a hand-built verdict dict, so the regex is proven against the
+    actual format string in _verify/_verdict.py, not an invented shape.
+    """
+
+    def _round_trip(self, e2e):
+        # type: (Optional[Dict]) -> Dict
+        content = _render_real_verification_via_compute_verdict(e2e=e2e)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            return result
+        finally:
+            os.unlink(path)
+
+    def test_e2e_clean_status_parsed(self):
+        result = self._round_trip({"status": "e2e-clean", "note": "3 scenarios passed"})
+        self.assertEqual(result["e2e_status"], "e2e-clean")
+
+    def test_e2e_failing_status_parsed(self):
+        result = self._round_trip({"status": "e2e-failing", "note": "1 scenario failed"})
+        self.assertEqual(result["e2e_status"], "e2e-failing")
+
+    def test_e2e_inconclusive_status_parsed(self):
+        result = self._round_trip({"status": "inconclusive", "note": "suite timed out"})
+        self.assertEqual(result["e2e_status"], "inconclusive")
+
+    def test_e2e_off_status_renders_no_bullet(self):
+        """status "off" is silent (plan 90 D8) — no bullet is rendered at all,
+        so e2e_status is None."""
+        result = self._round_trip({"status": "off", "note": ""})
+        self.assertIsNone(result["e2e_status"])
+
+    def test_e2e_omitted_yields_none(self):
+        """No e2e param at all behaves like "off" — e2e_status is None."""
+        result = self._round_trip(None)
+        self.assertIsNone(result["e2e_status"])
+
+    def test_reasons_block_present_but_no_e2e_bullet(self):
+        """A Reasons block exists (the review-missing reason) but carries no
+        e2e bullet — e2e_status must be None, not mis-match some other line."""
+        content = _render_real_verification_via_compute_verdict(
+            e2e=None, review_missing=True,
+        )
+        self.assertIn("**Reasons**:", content)
+        self.assertNotIn("E2E run (", content)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertIsNone(result["e2e_status"])
+        finally:
+            os.unlink(path)
+
+    def test_no_reasons_block_at_all_yields_none(self):
+        """A clean APPROVED report with zero reasons renders no Reasons block
+        at all (render_report's else-branch) — distinct from the "Reasons
+        block present, no e2e bullet" case above."""
+        content = _render_real_verification_via_compute_verdict(
+            ac_results=[_ac_result("AC-1", "PASS", "ok")],
+            hygiene=_make_hygiene(),
+            e2e=None,
+            review_missing=False,
+        )
+        self.assertNotIn("**Reasons**:", content)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertIsNone(result["e2e_status"])
+        finally:
+            os.unlink(path)
+
+    def test_no_verdict_section_at_all_yields_none(self):
+        """No "## Verdict" heading at all (mirrors the pre-existing
+        test_verdict_missing_returns_empty_string fixture shape)."""
+        content = (
+            "## Acceptance Criteria\n\n"
+            "| AC | Status | Evidence |\n|---|---|---|\n| AC-1 | PASS | ok |\n"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertIsNone(result["e2e_status"])
+        finally:
+            os.unlink(path)
+
+    def test_empty_file_yields_none(self):
+        """An empty file has no Verdict section — e2e_status is None."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write("")
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertIsNone(result["e2e_status"])
+        finally:
+            os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Plan 96 Phase 1 (D2(b)): TestReadVerificationAdvisoryFlags
+# ---------------------------------------------------------------------------
+
+
+class TestReadVerificationAdvisoryFlags(unittest.TestCase):
+    """has_scope_creep_advisory / has_leftover_artifacts_advisory: parsed
+    from render_report's real "## Code Quality" advisory blocks.
+    """
+
+    def _round_trip(self, hygiene):
+        # type: (Dict) -> Dict
+        content = _render_real_verification_via_compute_verdict(hygiene=hygiene)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            return result
+        finally:
+            os.unlink(path)
+
+    def test_scope_creep_advisory_detected(self):
+        hygiene = _make_hygiene(
+            scope_creep=["src/extra.py"], scope_creep_checked=True,
+        )
+        result = self._round_trip(hygiene)
+        self.assertTrue(result["has_scope_creep_advisory"])
+        self.assertFalse(result["has_leftover_artifacts_advisory"])
+
+    def test_leftover_artifacts_advisory_detected(self):
+        hygiene = _make_hygiene(
+            leftover_artifacts=[
+                {"file": "src/a.py", "line": 10, "kind": "debug_print", "snippet": "print(x)"},
+            ],
+        )
+        result = self._round_trip(hygiene)
+        self.assertTrue(result["has_leftover_artifacts_advisory"])
+        self.assertFalse(result["has_scope_creep_advisory"])
+
+    def test_both_advisories_detected(self):
+        hygiene = _make_hygiene(
+            scope_creep=["src/extra.py"],
+            scope_creep_checked=True,
+            leftover_artifacts=[
+                {"file": "src/a.py", "line": 10, "kind": "bare_todo", "snippet": "# TODO"},
+            ],
+        )
+        result = self._round_trip(hygiene)
+        self.assertTrue(result["has_scope_creep_advisory"])
+        self.assertTrue(result["has_leftover_artifacts_advisory"])
+
+    def test_neither_advisory_when_hygiene_clean(self):
+        result = self._round_trip(_make_hygiene())
+        self.assertFalse(result["has_scope_creep_advisory"])
+        self.assertFalse(result["has_leftover_artifacts_advisory"])
+
+    def test_scope_creep_not_checked_is_not_an_advisory(self):
+        """scope_creep_checked=False renders "not checked", never the
+        advisory shape, even when hygiene carries no findings."""
+        hygiene = _make_hygiene(scope_creep_checked=False)
+        result = self._round_trip(hygiene)
+        self.assertFalse(result["has_scope_creep_advisory"])
+
+    def test_scope_creep_checked_but_clean_is_not_an_advisory(self):
+        """scope_creep_checked=True with an EMPTY scope_creep list renders
+        render_report's "**Scope creep**: none detected" branch — not the
+        advisory shape (which only appears when scope_creep is non-empty)."""
+        hygiene = _make_hygiene(scope_creep_checked=True)
+        result = self._round_trip(hygiene)
+        self.assertFalse(result["has_scope_creep_advisory"])
+
+    def test_ac_evidence_echoing_advisory_marker_is_not_a_false_positive(self):
+        """Regression anchor for the section-bounding fix: an AC evidence
+        cell that happens to literally contain either advisory marker string
+        (in the "## Acceptance Criteria" section, BEFORE "## Code Quality")
+        must NOT flip the boolean — only the real Code Quality section
+        counts.  Hygiene here is clean, so a whole-document (unbounded)
+        search would have false-positived on the AC evidence text.
+        """
+        ac_inputs = [
+            _ac_result(
+                "AC-1", "PASS",
+                "**Scope creep** _(advisory — does not block the verdict)_: "
+                "unrelated evidence text, not a real Code Quality block",
+            ),
+            _ac_result(
+                "AC-2", "PASS",
+                "**Leftover artifacts** _(advisory — does not block the verdict)_: "
+                "unrelated evidence text, not a real Code Quality block",
+            ),
+        ]
+        content = _render_real_verification_via_compute_verdict(
+            ac_results=ac_inputs, hygiene=_make_hygiene(),
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertFalse(result["has_scope_creep_advisory"])
+            self.assertFalse(result["has_leftover_artifacts_advisory"])
+        finally:
+            os.unlink(path)
+
+    def test_no_code_quality_section_yields_both_false(self):
+        """No "## Code Quality" heading at all -> both booleans False, with
+        no whole-file fallback (per the ratified fix)."""
+        content = (
+            "## Acceptance Criteria\n\n"
+            "| AC | Status | Evidence |\n|---|---|---|\n| AC-1 | PASS | ok |\n"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertFalse(result["has_scope_creep_advisory"])
+            self.assertFalse(result["has_leftover_artifacts_advisory"])
+        finally:
+            os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Plan 96 Phase 1 (D2(b)): TestReadVerificationReasonsExcluded — regression
+# anchor for the ratified "no raw reasons key" constraint.
+# ---------------------------------------------------------------------------
+
+
+class TestReadVerificationReasonsExcluded(unittest.TestCase):
+    """D2(b): the raw `reasons` list is deliberately NOT part of the result —
+    nothing composes from it, and exposing it would push text-mining
+    judgment into the orchestrating command."""
+
+    def test_no_reasons_key_in_result(self):
+        content = _render_real_verification_via_compute_verdict(
+            e2e={"status": "e2e-failing", "note": "1 scenario failed"},
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertNotIn("reasons", result)
+        finally:
+            os.unlink(path)
+
+    def test_existing_keys_unchanged_shape_alongside_new_fields(self):
+        """ac_list / verdict / path keep their pre-existing shapes when the
+        three new fields are also present."""
+        content = _render_real_verification_via_compute_verdict(
+            ac_results=[_ac_result("AC-1", "PASS", "Unit tests pass")],
+            e2e={"status": "e2e-clean", "note": "all green"},
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(content)
+            path = fh.name
+        try:
+            result, err = read_verification(path)
+            self.assertIsNone(err)
+            self.assertIsInstance(result["ac_list"], list)
+            self.assertEqual(result["ac_list"][0]["id"], "AC-1")
+            self.assertEqual(result["ac_list"][0]["status"], "PASS")
+            self.assertEqual(result["verdict"], "APPROVED")
+            self.assertEqual(result["path"], path)
         finally:
             os.unlink(path)
 
