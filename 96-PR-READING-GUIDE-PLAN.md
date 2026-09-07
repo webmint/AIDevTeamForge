@@ -1,7 +1,7 @@
 # 96 — PR Reading Guide Plan
 
 **Created**: 2026-09-06
-**Status**: **✅ DONE (build) 2026-09-06 — Phase 0 CLOSED and Phases 1–4 BUILT.** Phase 0 closed by a single blanket maintainer directive — every D-item and OQ ratified AS RECOMMENDED, no per-item deliberation supplied (see `## Phase 0 close record`). **Phase 5 is a DEFERRED user-driven HARD GATE — NOT run**, so everything here is build-verified and **NOT consumer-validated**.
+**Status**: **✅ DONE (build) 2026-09-06 — Phase 0 CLOSED and Phases 1–4 BUILT; plan CLOSED 2026-09-07 by maintainer directive.** Phase 0 closed by a single blanket maintainer directive — every D-item and OQ ratified AS RECOMMENDED, no per-item deliberation supplied (see `## Phase 0 close record`). Commits: `d898b09` draft / `b6f5232` Phase 0 close / `26fedaa` Phase 1 / `c0a9baa` Phase 2 / `46acd27` Phase 3 / `275e32b` Phase 4. **Phase 5 consumer e2e is DEFERRED TO POST-RELEASE by maintainer decision 2026-09-07 — a user-driven HARD GATE, NOT run and NOT WAIVED: this is a TIMING decision and the maintainer intends to run it.** So **"done" means BUILT and BUILD-VERIFIED, never that Phase 5 passed** — nothing here is consumer-validated. The three known-answer anchors below remain the recipe, anchors 1 and 2 stay pair-scored, and anchor 2's no-key-decisions fixture note stands.
 
 Make `summary.md` a reviewer's READING GUIDE rather than only a recap, and make the PR-ready artifact actually reach the PR.
 
@@ -261,7 +261,9 @@ Every site below was checked LIVE. Each is recorded as an edit or an explicit ve
 
 Confirming grep over `src/CLAUDE.md` for `six sections|Review guide|Not verified|gh pr` returns **no hits**, so the file makes no claim this build falsified.
 
-### Phase 5 — Consumer e2e — DEFERRED, user-driven HARD GATE
+### Phase 5 — Consumer e2e — DEFERRED TO POST-RELEASE, user-driven HARD GATE
+
+⚠ **Deferred to post-release by maintainer directive 2026-09-07** (verbatim, Ukrainian: *«ок закривай план як зроблений тест буде після релізу»* — *"ok, close the plan as done; the test will be after the release"*). **This is a TIMING decision, NOT a waiver** — the maintainer intends to run it, and the plan is closed on the BUILD only (the plan-86 / plan-91 pattern). **A closed status here never means Phase 5 passed**; until it runs, every claim in this plan is build-verified and NOT consumer-validated. The recipe below is unchanged by the close.
 
 **NOT run at build time.** Build-verified is not consumer-validated. Three known-answer anchors:
 
