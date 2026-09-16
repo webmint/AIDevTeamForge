@@ -47,6 +47,7 @@ done
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$TEMPLATE_DIR/scripts/constitution-drift-check.sh"
 . "$TEMPLATE_DIR/scripts/devforge-state-migrate.sh"
+. "$TEMPLATE_DIR/scripts/post-update-checks.sh"
 
 if [ -z "$TARGET_DIR" ]; then
   echo "Usage: update.sh [--dry-run] [--force] <target-project-directory>"
@@ -684,6 +685,13 @@ added "WRITE  .claude/template-version → $TEMPLATE_VERSION"
 echo ""
 
 if [ "$DRY_RUN" = true ]; then
+  # Post-update advisories (scripts/post-update-checks.sh) — WARN-only, and
+  # shown here as well as after "Update complete" so a preview surfaces what
+  # the update itself will not fix.
+  if [ "$HAS_CONFIG" = true ]; then
+    forge_check_config_completeness "$TARGET_DIR" "$TEMPLATE_DIR"
+  fi
+  forge_check_precommit_hook "$TARGET_DIR" "$TEMPLATE_DIR"
   info "Dry run complete — no files were modified."
   exit 0
 fi
@@ -1196,3 +1204,12 @@ if [ "$TARGET_VERSION" != "(unknown)" ]; then
     warn "This is a major version upgrade. Check CHANGELOG.md for breaking changes."
   fi
 fi
+
+# ── Post-update advisories (scripts/post-update-checks.sh) ────────────────
+# WARN-only, last in the output so they are what the user reads: settings the
+# update cannot fill in (an existing project-config.json is never re-rendered
+# here) and an installed pre-commit hook copy the update does not refresh.
+if [ "$HAS_CONFIG" = true ]; then
+  forge_check_config_completeness "$TARGET_DIR" "$TEMPLATE_DIR"
+fi
+forge_check_precommit_hook "$TARGET_DIR" "$TEMPLATE_DIR"

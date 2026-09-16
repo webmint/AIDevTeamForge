@@ -5,6 +5,13 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- fix(update): `update.sh` now says when the project configuration needs `/devforge:configure` re-run. An update never re-renders an existing `.devforge/project-config.json`, so on a 2.0.9 install the keys 2.0.10 added (`CLAUDE_TIER_SECURITY`, the four `CLAUDE_EFFORT_*`, `E2E_COMMAND`, `REQUIRE_TICKET`) stayed missing with nothing in the output saying so: `security-reviewer` moved from `model: opus` to `model: inherit` (the session's model) without appearing among the applied-model lines, the end-to-end lane and the ticket gate stayed off, and `configure_helper verify` exited 2. A new WARN-only, fail-soft check in `scripts/post-update-checks.sh` runs the template's `configure_helper verify` and lists each violation with the fix — just before a `--dry-run` exits, and last in a real run. It makes the state visible; it changes no model and writes no config. Found by running this `update.sh` against a copy of a real 2.0.9 install.
+- fix(update): a stale installed pre-commit hook is now reported. `/devforge:constitute` installs the forcing-functions hook as a COPY in `.git/hooks/pre-commit` and `update.sh` refreshes only `.devforge/templates/git-hooks/`, so an install that took the hook kept the old `find -maxdepth 2` and skipped `verify-design-tokens` at commit time for features in the `specs/<YYYY>/<MM>/<leaf>/` layout (`/devforge:implement`'s per-task gate runs every enabled rule and was unaffected). The update now resolves the active hook through `git rev-parse --git-path hooks/pre-commit` (so `core.hooksPath` and a target nested in a parent repository are honored) and, when that file carries the framework hook's marker line but differs from the shipped copy, prints the re-copy command. It never overwrites the hook. Not observed on a live hook — the examined 2.0.9 install had none installed; the mechanism was verified by reading.
+- fix(manifest): `projectOwned` now lists `tickets/**`, its two dead `.claude/` paths are corrected to `.devforge/project-config.json` and `.devforge/wip.md`, and the dead `DEVELOPMENT-STATUS.md` entry is dropped. Documentation only — the list feeds `update.sh`'s skip count and protects nothing (`src/devforge/storage-rules.md`).
+
 ## [2.0.10] - 2026-09-08
 
 ### Added
