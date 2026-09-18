@@ -5,7 +5,10 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.11] - 2026-09-18
+
+### Changed
+- Template version: 2.0.10 → 2.0.11
 
 ### Fixed
 - fix(update): `update.sh` now says when the project configuration needs `/devforge:configure` re-run. An update never re-renders an existing `.devforge/project-config.json`, so on a 2.0.9 install the keys 2.0.10 added (`CLAUDE_TIER_SECURITY`, the four `CLAUDE_EFFORT_*`, `E2E_COMMAND`, `REQUIRE_TICKET`) stayed missing with nothing in the output saying so: `security-reviewer` moved from `model: opus` to `model: inherit` (the session's model) without appearing among the applied-model lines, the end-to-end lane and the ticket gate stayed off, and `configure_helper verify` exited 2. A new WARN-only, fail-soft check in `scripts/post-update-checks.sh` runs the template's `configure_helper verify` and lists each violation with the fix — just before a `--dry-run` exits, and last in a real run. It makes the state visible; it changes no model and writes no config. Found by running this `update.sh` against a copy of a real 2.0.9 install.
