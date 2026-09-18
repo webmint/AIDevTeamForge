@@ -140,7 +140,7 @@ The setter is idempotent on `--statement`: re-recording the same statement overw
 
 #### Step 2 — Minimality challenge
 
-Compose the SIMPLEST change that satisfies the stated desired outcome ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest change — a guessed mechanism, an extra distinction, a new state — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal fix. Concretely for the trip-wire this gate exists to catch: a prompt whose desired outcome is "render an empty section plus an error toast on load failure, never leak the prior items" yields the minimal fix "branch the render on load-failure; show empty + toast" — with NO inline-items mechanism and NO empty-vs-failure split, because neither is in the stated desired outcome. `--minimal-fix` is optional on the setter (omit it on `hypothesis` statements — their minimal fix is "verify first", not a code change), but for the requirement statement carrying the desired outcome it is REQUIRED: it is the surface the user confirms or corrects.
+Compose the SIMPLEST change that satisfies the stated desired outcome ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest change — a guessed mechanism, an extra distinction, a new state — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal fix. The minimal fix states what changes; it states what the change leaves untouched only by quoting the prompt's own words. What the change does not touch is established later — by this command's investigation output (Phase 2.4c's caller enumeration and, when it fires, Phase 3's emission matrix) and by the user's own `unchanged_behavior` answer in Phase 1 — never by an intake assumption. Concretely for the trip-wire this gate exists to catch: a prompt whose desired outcome is "render an empty section plus an error toast on load failure, never leak the prior items" yields the minimal fix "branch the render on load-failure; show empty + toast" — with NO inline-items mechanism and NO empty-vs-failure split, because neither is in the stated desired outcome. `--minimal-fix` is optional on the setter (omit it on `hypothesis` statements — their minimal fix is "verify first", not a code change), but for the requirement statement carrying the desired outcome it is REQUIRED: it is the surface the user confirms or corrects.
 
 #### Step 3 — Echo-back + ONE confirmation
 
@@ -150,12 +150,29 @@ Render the echo-back block and surface it for confirmation:
 .devforge/lib/research_helper render-intake-echo
 ```
 
-The helper owns the block shape — `## Intake interpretation` with a `### Requirements (what you asked for)` section (each requirement + its `Minimal scope:` line), a `### Hypotheses to verify — NOT requirements` section (omitted entirely when no hypothesis was classified — the proportionality rule), and a `### Minimal scope` section. The hypotheses section is where a suspected cause surfaces as "hypothesis to verify, not a requirement." Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
+The helper owns the block shape — `## Intake interpretation` with a `### Requirements (as I read your prompt)` section (each requirement + its `Minimal scope:` line), a `### Hypotheses to verify — NOT requirements` section (omitted entirely when no hypothesis was classified — the proportionality rule), and a `### Minimal scope` section. The hypotheses section is where a suspected cause surfaces as "hypothesis to verify, not a requirement." Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
 
 Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]`. End the turn. The user's reply opens the next turn.
 
-- On `confirm`: proceed to Phase 1.
-- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔`hypothesis`, or a minimal fix that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → proceed to Phase 1; `correct` (or any other reply) → proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+- On `confirm`: record the interpretation as confirmed (below), then proceed to Phase 1.
+- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔`hypothesis`, or a minimal fix that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → record the interpretation as confirmed (below), then proceed to Phase 1; `correct` (or any other reply) → record the interpretation as unconfirmed (below), then proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+- On a reply to the first ask that picks neither option — one that hands the choice back to you ("you decide", "up to you", or the same in any language), or free text that names neither `confirm` nor `correct` — this is not a pick: ask `"Is this interpretation right?"` once more with the same options and end the turn. On that second reply, `confirm` and `correct` take their arms above; a reply that again picks neither → record the interpretation as unconfirmed (below), then proceed to Phase 1. Never take `confirm` on the user's behalf.
+
+Record the outcome before Phase 1 begins, passing the user's reply verbatim — the option label they picked, or the exact text they typed:
+
+```bash
+# `confirm` — at the first ask, the re-ask, or the post-correction ask:
+.devforge/lib/research_helper record-intake-confirmation \
+    --state confirmed \
+    --reply "<the user's reply, verbatim>"
+
+# the unconfirmed arms above:
+.devforge/lib/research_helper record-intake-confirmation \
+    --state unconfirmed \
+    --reply "<the user's reply, verbatim>"
+```
+
+The helper renders this as one `**Intake interpretation**:` line in the rendered report. An unconfirmed interpretation is your own reading of the prompt — never cite it later, to the user or in any artifact, as something the user confirmed.
 
 When the prompt is a clean single-requirement bug with no hypothesis and one obvious minimal fix, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
 
@@ -226,6 +243,8 @@ Some enhancements target a UI surface with a design reference — an HTML export
       --selectors '[]'
   ```
 
+A reply that hands this question back to you ("you decide", "up to you", or the same in any language) is treated as `none`: record the empty anchor above. Never name a design reference on the user's behalf.
+
 The helper validates `--value` as a design-source `scheme:target`; a value whose scheme is not one of `html` / `figma` / `screenshot` / `none` is rejected with a non-zero exit and nothing is persisted, so pass a well-formed `scheme:target` or the bare word `none`. This capture is OPTIONAL and is NOT one of the six rubric dimensions above — it does not participate in the coverage check or `symptom-finalize`, so an unanswered design-reference question never blocks finalization. This call does NOT gate progression. Advance to the pre-rubric docs scan regardless of the user's answer.
 
 ### Pre-rubric docs scan (orchestrator-only)
@@ -260,6 +279,8 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
 
    Subcommand names: `set-symptom`, `set-affected-area`, `set-repro-or-current`, `set-desired`, `set-scope` **(see narrow-framing gate below — requires `--evidence` when value is `"one place"`)**, `set-unchanged-behavior`. Default `--state` is `Clear` — pass `--state Partial` when the answer leaves a gap. For follow-up turns on the same dimension, add `--increment-turn` so the helper tracks the bounded-turn cap.
 
+   **A delegated answer is your inference, never the user's.** If the user hands a free-text dimension's answer back to you ("you decide", "up to you", or the same in any language), answer it yourself, pass `--state Partial`, open `--value` with `Model inference — the user delegated: `, and tell the user the answer is yours. If the user hands the `scope` choice back, pick one of its three options yourself, pass it as `--value` exactly as labelled with `--state Partial` (the narrow-framing gate below still applies to `"one place"`), and tell the user the scope is your pick — the label goes in bare because a prefixed value would no longer normalize to `"one place"` and would bypass the `set-scope` evidence requirement below, so `--state Partial` plus your message to the user carry the attribution. Never fill a dimension by citing an earlier answer or the Phase 0.5 intake echo as the user's decision on that dimension.
+
    **`set-scope` evidence requirement (narrow-framing gate).** When the user picks `"one place"` from the closed-choice options, `set-scope` requires an additional `--evidence` flag carrying a `file:line` citation that proves the symptom is localized to that single site:
 
    ```bash
@@ -293,11 +314,13 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
 
    `--rewrite-dimension` clears the loser's value so the user must re-answer it on the next pass.
 
+   An explicit pick of either value records `user-chose-<new|prior>`. A reply that hands the choice back to you ("you decide", "up to you", or the same in any language) is not a pick: choose the side yourself, record `--resolution "delegated-<new|prior>"` instead, and tell the user the choice is yours.
+
 4. **Run LLM-side drift check.** Compare the just-set answer against the previously-confirmed dimensions held in memory from prior turns. Classify as one of:
    - `direct` — already handled by the helper in step 3; skip here.
-   - `drift` — new answer expands scope beyond an earlier confirmed boundary (e.g., `affected_area` was `"one component"` earlier, but the new answer indicates feature-wide). Do not block. Hold the observation in memory; surface it to the user at the next natural pause (after the coverage echo or before mode detection) as a plain-prose note: `"Heads up — your <new dimension> answer suggests <observed drift>. Adjust <affected dimension> or continue?"` Wait for the user's reply before advancing.
+   - `drift` — new answer expands scope beyond an earlier confirmed boundary (e.g., `affected_area` was `"one component"` earlier, but the new answer indicates feature-wide). Do not block. Hold the observation in memory; surface it to the user at the next natural pause (after the coverage echo or before mode detection) as a plain-prose note: `"Heads up — your <new dimension> answer suggests <observed drift>. Adjust <affected dimension> or continue?"` Wait for the user's reply before advancing. A reply that picks neither — one that hands the choice back to you, or free text that names neither adjusting nor continuing — is not a pick: ask the note's question once more, and if the second reply again picks neither, continue, rewriting no dimension.
    - `refinement` — new answer is a superset of the earlier one (e.g., `"Admin > Products"` → `"Admin > Products + Admin > Orders"`). Re-call the affected dimension's setter with the superset value to overwrite (e.g., `set-affected-area --value "Admin > Products + Admin > Orders" --state Clear`). No user prompt.
-   - `mode-flip` — symptom signaled bug-shape, the new answer signals enhancement-shape (or vice versa). Ask via AskUserQuestion `"Treat this as a bug or an enhancement?"` with options `["bug", "enhancement"]`, then call `detect-mode --override <choice>`.
+   - `mode-flip` — symptom signaled bug-shape, the new answer signals enhancement-shape (or vice versa). Ask via AskUserQuestion `"Treat this as a bug or an enhancement?"` with options `["bug", "enhancement"]`, then call `detect-mode --override <choice>`. If the user hands that choice back to you ("you decide", "up to you", or the same in any language), run `detect-mode` without `--override` instead and keep a non-null `mode` it returns; on a `null` `mode`, pick the mode yourself, call `detect-mode --override <your choice>`, and tell the user the mode is your choice, not theirs.
    - `none` — no drift; advance to the next dimension.
 
    Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift, refinement, and mode-flip classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/devforge:research` run by reading prior assistant messages in the conversation.
@@ -348,6 +371,8 @@ Stdout JSON: `{"mode": "bug" | "enhancement" | null, "source": "auto" | "overrid
 .devforge/lib/research_helper detect-mode --override <user's choice>
 ```
 
+If the user hands this choice back to you ("you decide", "up to you", or the same in any language), detection has produced no mode to keep: pick the mode yourself, pass it as `detect-mode --override <your choice>`, and tell the user the mode is your choice, not theirs.
+
 ### Stop discipline (mandatory)
 
 After emitting any AskUserQuestion or free-text prompt in Phase 1, end the assistant turn. Do NOT advance to the next dimension, the next protocol step, or any helper setter call in the same turn. The user's reply opens the next turn; the next turn parses it and continues. Plain-prose prompts have no harness-level "wait for user" affordance — the LLM-level stop is the only mechanism preventing accidental auto-advance.
@@ -360,7 +385,7 @@ Phase 2 runs in the main thread — NO subagent dispatch. Orchestrator-inline ke
 
 Before any CBM call, surface the estimated CBM call count + token cost based on `affected_area`. Rough rule of thumb: one-package scope ≈ 15-30 CBM calls; feature-wide ≈ 30-60 calls; cross-cutting ≈ 60-120 calls. Token cost is bounded — orchestrator-inline reuses the existing session context, no fresh subagent boot.
 
-Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled. Re-run /devforge:research from scratch when ready — prior state will be overwritten.") into the user-facing message and end the turn. On `proceed`: continue.
+Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled. Re-run /devforge:research from scratch when ready — prior state will be overwritten.") into the user-facing message and end the turn. On `proceed`: continue. A reply that picks neither option — one that hands the choice back to you, or free text that names neither `proceed` nor `cancel` — is not a pick: ask the same question once more, and if the second reply again picks neither, take `cancel`.
 
 ### Phase 2.2 — Read docs layer first
 
@@ -646,7 +671,7 @@ search_code(pattern="@click=|onClick=|addEventListener|v-on:|onPress|onPanRespon
 
 Pick the function bound to the user-action event. Record its qualified name.
 
-**Heuristic-fragility fallback.** If no handler token is found via the `search_code` sweep (dynamic event binding with variable event type, composable-wrapped binding, framework-specific syntax not in the token list, programmatic dispatch), ask the user ONE direct prompt: *"I couldn't auto-detect the click/event handler that triggers the bug from the symptom file. Which function or method handles the user action that reproduces the bug? (give a function name or `file:line`)"*. Wait for the user answer, then proceed. Do NOT guess. Do NOT skip Phase 2.4d on heuristic miss — the user-fallback is the recovery path.
+**Heuristic-fragility fallback.** If no handler token is found via the `search_code` sweep (dynamic event binding with variable event type, composable-wrapped binding, framework-specific syntax not in the token list, programmatic dispatch), ask the user ONE direct prompt: *"I couldn't auto-detect the click/event handler that triggers the bug from the symptom file. Which function or method handles the user action that reproduces the bug? (give a function name or `file:line`)"*. Wait for the user answer, then proceed. Do NOT guess. Do NOT skip Phase 2.4d on heuristic miss — the user-fallback is the recovery path. If the user hands this answer back to you or cannot name the handler, identify the handler yourself with the Phase 2.3 chain tools — tracing it from the code, which is not guessing — and tell the user the identification is yours, not theirs.
 
 **Step 2 — Identify the write-boundary call.** The function the handler eventually calls that PERSISTS the operation. Write-boundary token list (covers REST + Redux + repository + WebSocket + GraphQL + IndexedDB + SSE + message-bus + Apollo cache + state-management actions):
 
@@ -654,7 +679,7 @@ Pick the function bound to the user-action event. Record its qualified name.
 addLine|dispatch|commit|mutate|mutation|repo.save|*.put|*.post|*.create|*.update|*.emit|*.send|*.publish|cache.writeQuery|cache.writeFragment|store.put|tx.add|tx.put|.dispatchEvent|eventBus.emit|bus.publish
 ```
 
-Run `search_code` for those tokens in the symptom file. Pick the call whose receiver name matches one of the tokens AND whose argument list visibly carries the symptom value (the value cited in `memo.dimensions.symptom` or `memo.dimensions.desired`). Record its qualified name. If no token matches (project uses non-conventional write-boundary verbs not on the list — e.g., `tellSaga`, `enqueueWork`, `requestSync`), ask the user ONE direct prompt: *"I couldn't auto-detect the write-boundary call (the function that persists the operation) from the symptom file. Which function in the call chain actually persists the change? (give a function name or `file:line`)"*. Wait for the user answer, then proceed.
+Run `search_code` for those tokens in the symptom file. Pick the call whose receiver name matches one of the tokens AND whose argument list visibly carries the symptom value (the value cited in `memo.dimensions.symptom` or `memo.dimensions.desired`). Record its qualified name. If no token matches (project uses non-conventional write-boundary verbs not on the list — e.g., `tellSaga`, `enqueueWork`, `requestSync`), ask the user ONE direct prompt: *"I couldn't auto-detect the write-boundary call (the function that persists the operation) from the symptom file. Which function in the call chain actually persists the change? (give a function name or `file:line`)"*. Wait for the user answer, then proceed. If the user hands this answer back to you or cannot name the call, identify the write-boundary call yourself with the Phase 2.3 chain tools and tell the user the identification is yours, not theirs.
 
 **Step 3 — Trace handler → write-boundary.** Run:
 
@@ -664,7 +689,7 @@ trace_path(<handler_qn>, mode=calls, direction=outbound)
 
 Record the full path of intermediate function QNs (everything between the handler and the write-boundary call, exclusive on both ends). Use `mode=calls` always — CBM's `mode=data_flow` returns identical hop lists to `mode=calls` for first-party project code (pre-flight verified 2026-05-18) and provides no incremental signal.
 
-**Handler-not-a-graph-node fallback.** Vue / SFC template files emit only File and Module nodes in the CBM graph — the handler defined in `<script setup>` may not resolve as a Function node. If `trace_path` returns empty OR `search_graph(name_pattern="<handler_name>")` returns 0 results, ask the user ONE direct prompt: *"I couldn't trace from `<handler>` to a write-boundary call via the code graph (Vue/template files often aren't indexed at function granularity). What intermediate functions does the handler call before reaching the persistence call? (list function names or `file:line` references)"*. Wait for the user answer, then proceed with the user-supplied chain.
+**Handler-not-a-graph-node fallback.** Vue / SFC template files emit only File and Module nodes in the CBM graph — the handler defined in `<script setup>` may not resolve as a Function node. If `trace_path` returns empty OR `search_graph(name_pattern="<handler_name>")` returns 0 results, ask the user ONE direct prompt: *"I couldn't trace from `<handler>` to a write-boundary call via the code graph (Vue/template files often aren't indexed at function granularity). What intermediate functions does the handler call before reaching the persistence call? (list function names or `file:line` references)"*. Wait for the user answer, then proceed with the user-supplied chain. If the user hands this answer back to you or cannot name the intermediates, trace the chain yourself with the Phase 2.3 chain tools and state in each intermediate's Step 4 `--relevance` that you traced it; never describe that chain as user-supplied, in a finding or to the user.
 
 **Step 4 — Read each intermediate end-to-end + record findings.** For EACH intermediate function on the path (excluding the handler and the write-boundary themselves), apply two cumulative filters to decide whether to call `get_code_snippet`:
 
@@ -1230,6 +1255,7 @@ End the turn. The user's reply opens the next turn. Read question 1's answer as 
 - `Don't save` → go to Step 4.7.
 - Free text (the tool's own row) → treat it as SAVE, using the typed text as the feature name — UNLESS the text clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. Normalize the typed text by the same rule as the proposed slug: lowercase it, replace each non-alphanumeric run with `-`, keep the first 4 words, and require 2-4 words with a letter as the first character. Use the normalized slug for the rest of Phase 4.
 - Free text that yields no valid slug under that rule (fewer than two usable words, or nothing that can start with a letter) → do not guess a name. Ask Step 4.1's question 1 again, naming what was wrong with the typed text; the user can also pick either literal option to move on.
+- Free text that hands the choice back to you ("you decide", "up to you", or the same in any language) → neither a feature name nor a decline, so neither free-text arm above applies to it. Ask Step 4.1's question 1 once more; if the second reply again hands the choice back, take `Don't save` and go to Step 4.7. Never take `Save as <proposed-slug> (Recommended)` because it is recommended.
 
 Read question 2's answer as follows, and carry the result to Step 4.2 as `<ticket>`:
 
@@ -1240,7 +1266,7 @@ Read question 2's answer as follows, and carry the result to Step 4.2 as `<ticke
 
 On the `Don't save` arm, question 2's answer is discarded — Step 4.7 allocates nothing, so no ticket is used.
 
-**Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<feature>'?"` with exactly two options, `"Save to <feature> (Recommended)"` and `"Don't save"` — `<feature>` is the seed's `feature` field, per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<feature_dir>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm.
+**Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<feature>'?"` with exactly two options, `"Save to <feature> (Recommended)"` and `"Don't save"` — `<feature>` is the seed's `feature` field, per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<feature_dir>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm. A free-text reply that hands the choice back to you ("you decide", "up to you", or the same in any language) is outside that rule — it is neither a save nor a decline: ask this question once more, and if the second reply again hands it back, take `Don't save` and go to Step 4.7. Never take `Save to <feature> (Recommended)` because it is recommended.
 
 That variant asks its one save question and nothing else — there is no ticket question in attach mode. Step 4.2's attach arm skips `allocate-feature-dir` entirely, and that helper verb is the only place the ticket rule applies, so an attach run neither asks for a ticket nor requires one, whatever the project's policy is.
 

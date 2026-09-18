@@ -72,7 +72,7 @@ Branch decision. `/devforge:research` and `/devforge:discover` create the spec b
 
 - **Already on a `spec/*` branch:** keep the branch. Proceed to Phase 0.3. Branch creation in Step 4.1 is skipped.
 - **On the default branch:** prepare for the fallback spec-branch creation. Do NOT derive a slug from `$ARGUMENTS` here — `create-branch` names the branch `spec/<feature-slug>` from the `feature_slug` in state (it supplies no ticket, and it never reads `spec_number`), and that field is not resolved yet at this point: Phase 0.3 resets state, Phase 0.4 resolves the feature directory, and Step 4.1's `assign-feature-name` sets the value on every path. Branch creation is deferred to Step 4.1 for that reason — on the warm and cold paths, and on the bucketed path when the directory's last segment is a slug, the value that step assigns comes from the resolved feature dir's own name, so the branch carries the identity intake already gave the feature instead of one guessed here. Phases 1–3 are read-only research and safe to run on the default branch.
-- **On any other branch** (not default, not `spec/*`): ask the user via AskUserQuestion: `"You're on <branch>. Create a spec branch from here, switch to <default-branch> first, or stay on <branch>?"` with options `["from-here", "switch-to-default", "stay"]`. Single-line question text. End the turn. The user's reply opens the next turn. On `from-here`: keep current branch as base; defer branch creation to Step 4.1. On `switch-to-default`: run `git checkout <default-branch>` in the next turn before continuing. On `stay`: skip branch creation entirely (Step 4.1 will not call `create-branch`).
+- **On any other branch** (not default, not `spec/*`): ask the user via AskUserQuestion: `"You're on <branch>. Create a spec branch from here, switch to <default-branch> first, or stay on <branch>?"` with options `["from-here", "switch-to-default", "stay"]`. Single-line question text. End the turn. The user's reply opens the next turn. On `from-here`: keep current branch as base; defer branch creation to Step 4.1. On `switch-to-default`: run `git checkout <default-branch>` in the next turn before continuing. On `stay`: skip branch creation entirely (Step 4.1 will not call `create-branch`). A reply that picks none of these options — one that hands the choice back to you, or free text that names none of them — is not a pick: ask the same question once more, and if the second reply again picks none, take `stay`.
 
 ### Phase 0.3 — Session-state reset
 
@@ -127,6 +127,8 @@ Every arm resolves a feature directory: it is the PARENT directory of the handof
 - **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (most-recent-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 0.5. The resolved feature dir is that path's parent.
 - **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line); print each line's trailing ` | re-entry` marker unchanged where present, and state in one line of prose above the block that a `re-entry` line revises an already-specified feature. Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 0.5. The resolved feature dir is the picked path's parent.
 - **`cold`** → skip the import. `cold` means "do not pre-seed the spec from the handoff's CONTENT" — it does NOT mean "no feature dir" and it is NOT a bypass of the gate above, which has already passed. The resolved feature dir is the FIRST (most-recent) line's parent directory, the same one `yes-most-recent` would have imported from; there is no cold-pick-other arm. Record that resolved path in state: invoke `.devforge/lib/specify_helper record-handoff-path --handoff-path <that line's handoff path>`, taking the second field of that same first line. The verb records that one path and nothing else — no handoff content is imported, and the `handoff.json` this run emits still reports no upstream handoff at all in its provenance block, exactly as it would on a run with none. Step 5.4's `write-design-anchor` and `finalize-handoff` read that path back to locate the feature directory on Step 4.1's bucketed path, where no `spec_number` is set and neither verb can compose a directory from one. `spec.md` still lands in that directory, and Step 4.1 derives from its name whatever identity that name carries. Continue to Phase 0.5 with no pre-seed. One cost to weigh before picking `cold` on a `re-entry`-marked hit: skipping the import leaves the design anchor empty in state, so Step 5.4's `write-design-anchor` — which composes purely from state and overwrites unconditionally — replaces the feature's existing `design-anchor.json` with a selector-less anchor built from this run's `**Design source**:` answer; pick `yes-most-recent` or `pick-other` instead when the feature has a design anchor worth keeping.
+
+A reply that picks none of these three options — one that hands the choice back to you, or free text that names none of them — is not a pick: ask the same question once more, and if the second reply again picks none, end the turn with nothing imported and no handoff path recorded; never take `yes-most-recent` for the user. The user re-invokes `/devforge:specify` to choose.
 
 On the two importing arms, `import-handoff` also seeds identity in state from the resolved feature dir's own name, so Step 4.1 allocates no number: a `<NNN>-<slug>` basename seeds `spec_number` + `feature_slug` both; a directory sitting in a `<YYYY>/<MM>` bucket seeds `feature_slug` alone when its last segment is a kebab-case slug, and seeds neither when that segment is a ticket identifier or any other value that is not one. A name matching none of those leaves both fields unseeded for Step 4.1's genuine fallback. It dispatches on `handoff_kind` automatically; no separate subcommand is needed for research vs discover handoffs.
 
@@ -377,7 +379,7 @@ For each decision point (across all 7 categories), in priority order (**scope > 
 
    The helper auto-assigns a `dp_id` of the form `DP-<category>-<N>` and creates the entry with `status="pending"`.
 
-2. **Resolve the decision point** — auto path vs interactive path. Both wrong-mode calls are hard helper gates (exit 2): `set-dp-default-applied` in interactive mode emits `"set-dp-default-applied: mode=interactive rejects default-applied setter (use set-dp-answer)"`, and `set-dp-answer` in auto mode emits `"set-dp-answer: mode=auto rejects user-answer setter (use set-dp-default-applied)"`. The orchestrator picks the setter that matches the mode `detect-mode` persisted in state; the helper enforces.
+2. **Resolve the decision point** — auto path vs interactive path. Every wrong-mode call is a hard helper gate (exit 2): `set-dp-default-applied` in interactive mode without `--delegated-reply` emits `"set-dp-default-applied: mode=interactive rejects default-applied setter (use set-dp-answer)"`, `set-dp-default-applied --delegated-reply` in auto mode emits `"set-dp-default-applied: --delegated-reply is for mode=interactive only (mode=auto already records its own default-applied trail)"`, and `set-dp-answer` in auto mode emits `"set-dp-answer: mode=auto rejects user-answer setter (use set-dp-default-applied)"`. Interactive mode therefore accepts `set-dp-default-applied` only with `--delegated-reply` — the delegated-decision case at the end of the interactive path below. The orchestrator picks the setter that matches the mode `detect-mode` persisted in state; the helper enforces.
 
    **Auto path** (mode=`auto`): draft the default from Phase 1.5 findings + model recommendation, then:
 
@@ -402,6 +404,17 @@ For each decision point (across all 7 categories), in priority order (**scope > 
        --dp-id "<DP-id>" \
        --user-answer "<verbatim user answer>"
    ```
+
+   `--user-answer` carries only an answer the user actually gave. When the reply hands the decision point back to you instead ("you decide", "up to you", or the same in any language) — to an `AskUserQuestion` call, a bundled question inside one, or an item of the numbered-markdown fallback list alike — choose the value yourself and record it with the user's reply passed verbatim:
+
+   ```bash
+   .devforge/lib/specify_helper set-dp-default-applied \
+       --dp-id "<DP-id>" \
+       --default-applied "<your choice>" \
+       --delegated-reply "<the user's reply, verbatim>"
+   ```
+
+   Then tell the user the value is your choice, not theirs. The rendered spec marks the entry `[default applied]` in §8 with a note that the user delegated the choice, the Step 5.1 approval summary lists it, and it resolves the decision point for the stop rule below exactly as an auto-mode default does.
 
 3. **Deferral path** (either mode). When the user (or auto-mode rationale) explicitly punts the decision to §6 Out of Scope or §8 Open Questions:
 
@@ -463,6 +476,7 @@ Goal: classify the spec type, read the mandatory per-type files, supplement with
 - AskUserQuestion `"Research handoff pre-seeded spec_type=<value>; accept or override?"` with options `["accept", "override"]`.
 - On `accept`: call `.devforge/lib/specify_helper classify-spec-type --spec-type <pre-seeded-value> --rationale "pre-seeded from research handoff at <handoff_path>" --seeded-by-upstream`. Lock in the value.
 - On `override`: proceed with normal LLM-driven `classify-spec-type` flow described below.
+- On a reply that picks neither — one that hands the choice back to you, or free text that names neither option — ask the same question once more, and if the second reply again picks neither, take `accept`: the pre-seeded value stands under the rationale above, which names it as pre-seeded from the research handoff, not as the user's choice.
 
 Skip this precondition entirely when Phase 0.4 did not import (spec_type_seeded_by_upstream is false OR spec_type is null).
 
@@ -480,7 +494,7 @@ Choose one of five spec types based on `$ARGUMENTS` + Phase 1.5 findings:
     --rationale "<one-line rationale>"
 ```
 
-**Upstream pre-seeding (origin-based, from Phase 1 source-origin tags).** When any Phase 1 input has `source_origin == "discover"` (this feature's `discovery-report.md`, §1.6), pre-seed `spec_type=greenfield_feature` because `/devforge:discover` is scope-locked to greenfield. Add `--seeded-by-upstream` to the call and use a rationale that cites the discovery report. Surface the pre-seed to the user before locking it in, via AskUserQuestion: `"Upstream is /devforge:discover — pre-seeded spec_type=greenfield_feature; override?"` with options `["accept", "override"]`. Single-line question text. End the turn. On `accept`, proceed. On `override`, ask which of the other four types in the next turn and re-call `classify-spec-type` without `--seeded-by-upstream`.
+**Upstream pre-seeding (origin-based, from Phase 1 source-origin tags).** When any Phase 1 input has `source_origin == "discover"` (this feature's `discovery-report.md`, §1.6), pre-seed `spec_type=greenfield_feature` because `/devforge:discover` is scope-locked to greenfield. Add `--seeded-by-upstream` to the call and use a rationale that cites the discovery report. Surface the pre-seed to the user before locking it in, via AskUserQuestion: `"Upstream is /devforge:discover — pre-seeded spec_type=greenfield_feature; override?"` with options `["accept", "override"]`. Single-line question text. End the turn. On `accept`, proceed. On `override`, ask which of the other four types in the next turn and re-call `classify-spec-type` without `--seeded-by-upstream`. A reply that picks neither option — one that hands the choice back to you, or free text that names neither — is not a pick: ask the same question once more, and if the second reply again picks neither, take `accept`, so the pre-seeded `greenfield_feature` stands under its rationale citing the discovery report.
 
 A `research` origin (this feature's `research-report.md`) and `prior_spec` origins do NOT pre-seed (research is neutral on bug/enhancement/refactor; the LLM classifies from content). A resolved feature dir carrying neither report — no `research`- or `discover`-tagged Phase 1 input — does NOT pre-seed either. This pre-seed is driven by the Phase 1 reads, not by the import: a `cold` pick in Phase 0.4 skips the handoff-content import but still reads the reports in §1.5/§1.6, so a `discovery-report.md` pre-seeds `greenfield_feature` on the cold path too. The handoff-seeded precondition above is the one that does NOT fire on `cold`, because no import ran.
 
@@ -844,6 +858,8 @@ Compose the declaration value from the choice:
 - `Figma` → in the next turn, ask in plain prose: `"Paste the Figma frame URL."` Compose `figma:<url>` from the URL the user supplies.
 - `Screenshot / image file` → in the next turn, ask in plain prose: `"Give the screenshot path, relative to the repo root."` Compose `screenshot:<path>` from the path the user supplies.
 
+If the user hands this choice back to you ("you decide", "up to you", or the same in any language), take the first option, `None — no UI, or no design reference`, compose `none`, and tell the user it was taken because they delegated the choice, not because they picked it.
+
 Write the composed value:
 
 ```bash
@@ -896,17 +912,21 @@ Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (app
 .devforge/lib/specify_helper render-summary
 ```
 
-Stdout is the deterministic 4-bullet approval summary. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path in its first line is the helper's own string, composed by `render-summary` from the feature directory this run wrote into — `specs/<YYYY>/<MM>/<leaf>` on Step 4.1's bucketed path, and `specs/<NNN>-<feature-name>` on the warm, cold and genuine-fallback paths, which carry a spec number; do not rewrite it here):
+Stdout is the deterministic approval summary: four bullets, plus a `**Defaults applied**:` bullet between the acceptance-criteria and out-of-scope bullets when at least one decision point is `[default applied]`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path in its first line is the helper's own string, composed by `render-summary` from the feature directory this run wrote into — `specs/<YYYY>/<MM>/<leaf>` on Step 4.1's bucketed path, and `specs/<NNN>-<feature-name>` on the warm, cold and genuine-fallback paths, which carry a spec number; do not rewrite it here):
 
 ```
 I've created the specification at `specs/.../spec.md`. Key points:
 - **What changes**: [1-2 sentences]
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria across [count of applicable subsections] AC categories
-- **Out of scope**: [key exclusions]
+- **Defaults applied**:
+  - **[DP-id]**: [description] → default: [value]
+- **Out of scope**: [every exclusion, in full]
 
 Please review and either approve or request changes. Once approved, run `/devforge:plan` to create the technical implementation plan.
 ```
+
+The `**Defaults applied**:` bullet lists every decision point that stands at `[default applied]` when the summary renders — auto-mode defaults and delegated ones alike, a delegated one followed by the user's own reply — and is omitted entirely when there are none. The `**Out of scope**:` bullet lists every §6 item in full, never a shortened selection.
 
 ### Step 5.2 — Constitution recheck (re-run)
 
@@ -923,6 +943,8 @@ AskUserQuestion: `"Approve this spec?"` with options `["approve", "request-chang
 - **`approve`** → emit the manual-next-step block (Step 5.4). Spec status stays `Draft`. The user (or `/devforge:plan` on its first run) flips status to `Approved` separately — `/devforge:specify` does not auto-flip.
 - **`request-changes`** → in the next turn, ask the user which phase/section to revise. Re-enter the relevant phase (re-run the setters that touch the cited area), then re-run Phase 4 Step 4.9 verifiers + Step 4.10 design-source capture + `render` + write the file + Phase 5 Step 5.1 summary + Step 5.3 approval. The state file persists across the loop; setters mutate in place.
 - **`cancel`** → leave `.devforge/specify-state.json` in its current state and the rendered `spec.md` on disk as a draft; tell the user `"Run /devforge:specify again when ready; current state preserved at .devforge/specify-state.json (will be overwritten on the next /devforge:specify invocation)."` End the turn.
+
+A reply that picks none of these options — one that hands the choice back to you, or free text that names none of them — is not a pick: ask the same question once more, and if the second reply again picks none, take `cancel` — state preserved, the spec stays `Draft` — and never `approve`.
 
 ### Step 5.4 — Manual-next-step block
 

@@ -129,7 +129,7 @@ The setter is idempotent on `--statement`: re-recording the same statement overw
 
 #### Step 2 — Minimality challenge
 
-Compose the SIMPLEST scope that satisfies the stated feature intent ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest scope — a "we should also …" speculative feature, an extra integration the user only guessed at — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal scope. `--minimal-fix` is optional on the setter (omit it on `hypothesis`/scope-expander statements — their minimal scope is the feature without the speculative addition), but for the requirement statement carrying the feature intent it is REQUIRED: it is the surface the user confirms or corrects.
+Compose the SIMPLEST scope that satisfies the stated feature intent ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest scope — a "we should also …" speculative feature, an extra integration the user only guessed at — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal scope. The minimal scope states what changes; it states what the change leaves untouched only by quoting the prompt's own words. What the change does not touch is established later — by this command's investigation output (Step 2.2's fit-check, which records the integration touchpoints the feature does reach) and by the user's own `non_goals` answer in Phase 1 — never by an intake assumption. `--minimal-fix` is optional on the setter (omit it on `hypothesis`/scope-expander statements — their minimal scope is the feature without the speculative addition), but for the requirement statement carrying the feature intent it is REQUIRED: it is the surface the user confirms or corrects.
 
 #### Step 3 — Echo-back + ONE confirmation
 
@@ -139,12 +139,29 @@ Render the echo-back block and surface it for confirmation:
 .devforge/lib/discover_helper render-intake-echo
 ```
 
-The helper owns the block shape — `## Intake interpretation` with a `### Requirements (what you asked for)` section (each requirement + its `Minimal scope:` line), a `### Scope-expanders to verify — NOT requirements` section (omitted entirely when no scope-expander was classified — the proportionality rule), and a `### Minimal scope` section. The scope-expanders section is where a "we should also …" addition or placement guess surfaces as "scope-expander to verify, not a requirement," and its routing text names `record-gap --dimension integration_points` (NOT a research hypothesis lane). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
+The helper owns the block shape — `## Intake interpretation` with a `### Requirements (as I read your prompt)` section (each requirement + its `Minimal scope:` line), a `### Scope-expanders to verify — NOT requirements` section (omitted entirely when no scope-expander was classified — the proportionality rule), and a `### Minimal scope` section. The scope-expanders section is where a "we should also …" addition or placement guess surfaces as "scope-expander to verify, not a requirement," and its routing text names `record-gap --dimension integration_points` (NOT a research hypothesis lane). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
 
 Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]`. End the turn. The user's reply opens the next turn.
 
-- On `confirm`: proceed to Phase 1.
-- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔scope-expander, or a minimal scope that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → proceed to Phase 1; `correct` (or any other reply) → proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+- On `confirm`: record the interpretation as confirmed (below), then proceed to Phase 1.
+- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔scope-expander, or a minimal scope that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → record the interpretation as confirmed (below), then proceed to Phase 1; `correct` (or any other reply) → record the interpretation as unconfirmed (below), then proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+- On a reply to the first ask that picks neither option — one that hands the choice back to you ("you decide", "up to you", or the same in any language), or free text that names neither `confirm` nor `correct` — this is not a pick: ask `"Is this interpretation right?"` once more with the same options and end the turn. On that second reply, `confirm` and `correct` take their arms above; a reply that again picks neither → record the interpretation as unconfirmed (below), then proceed to Phase 1. Never take `confirm` on the user's behalf.
+
+Record the outcome before Phase 1 begins, passing the user's reply verbatim — the option label they picked, or the exact text they typed:
+
+```bash
+# `confirm` — at the first ask, the re-ask, or the post-correction ask:
+.devforge/lib/discover_helper record-intake-confirmation \
+    --state confirmed \
+    --reply "<the user's reply, verbatim>"
+
+# the unconfirmed arms above:
+.devforge/lib/discover_helper record-intake-confirmation \
+    --state unconfirmed \
+    --reply "<the user's reply, verbatim>"
+```
+
+The helper renders this as one `**Intake interpretation**:` line in the rendered report. An unconfirmed interpretation is your own reading of the prompt — never cite it later, to the user or in any artifact, as something the user confirmed.
 
 When the prompt is a clean single-requirement feature idea with no scope-expander and one obvious minimal scope, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
 
@@ -235,6 +252,8 @@ Some features target a UI surface with a design reference — an HTML export, a 
       --selectors '[]'
   ```
 
+A reply that hands this question back to you ("you decide", "up to you", or the same in any language) is treated as `none`: record the empty anchor above. Never name a design reference on the user's behalf.
+
 The helper validates `--value` as a design-source `scheme:target`; a value whose scheme is not one of `html` / `figma` / `screenshot` / `none` is rejected with a non-zero exit and nothing is persisted, so pass a well-formed `scheme:target` or the bare word `none`. This capture is OPTIONAL and is NOT one of the eight rubric dimensions above — it does not participate in the coverage check or `scope-finalize`, so an unanswered design-reference question never blocks finalization. This call does NOT gate progression. Advance to the docs scan regardless of the user's answer.
 
 ### Pre-rubric docs scan (orchestrator-only)
@@ -267,6 +286,8 @@ For each of the 8 dimensions, in highest-uncertainty-first order:
 
    Subcommand names: `set-scope-functional-scope`, `set-scope-users`, `set-scope-inputs-outputs`, `set-scope-integration-points`, `set-scope-constraints`, `set-scope-non-goals`, `set-scope-success-criteria`, `set-scope-edge-cases`. Default `--state` is `Clear` — pass `--state Partial` when the answer leaves a gap. For follow-up turns on the same dimension, add `--increment-turn` so the helper tracks the bounded-turn cap.
 
+   **A delegated answer is your inference, never the user's.** If the user hands a dimension's answer back to you ("you decide", "up to you", or the same in any language) — at a plain-prose prompt or a closed-choice one — answer it yourself, pass `--state Partial`, open `--value` with `Model inference — the user delegated: `, and tell the user the answer is yours. Never fill a dimension by citing an earlier answer or the Phase 0.5 intake echo as the user's decision on that dimension.
+
 3. **Run helper-side conflict check.**
 
    ```bash
@@ -284,9 +305,11 @@ For each of the 8 dimensions, in highest-uncertainty-first order:
 
    `--rewrite-dimension` clears the loser's value so the user must re-answer it on the next pass.
 
+   An explicit pick of either value records `user-chose-<new|prior>`. A reply that hands the choice back to you ("you decide", "up to you", or the same in any language) is not a pick: choose the side yourself, record `--resolution "delegated-<new|prior>"` instead, and tell the user the choice is yours.
+
 4. **Run LLM-side drift check.** Compare the just-set answer against the previously-confirmed dimensions held in memory from prior turns. Classify as one of:
    - `direct` — already handled by the helper in step 3; skip here.
-   - `drift` — new answer expands scope beyond an earlier confirmed boundary (e.g., `users` was `"internal admins only"` earlier, but the new answer indicates external API consumers as well). Do not block. Hold the observation in memory. Surface immediately as a plain-prose message in the next assistant turn, BEFORE asking the next dimension question: `"Heads up — your <new dimension> answer suggests <observed drift>. Adjust <affected dimension> or continue?"` End the turn. The user's reply opens the next turn; parse it and determine whether to adjust the affected dimension or continue to the next dimension.
+   - `drift` — new answer expands scope beyond an earlier confirmed boundary (e.g., `users` was `"internal admins only"` earlier, but the new answer indicates external API consumers as well). Do not block. Hold the observation in memory. Surface immediately as a plain-prose message in the next assistant turn, BEFORE asking the next dimension question: `"Heads up — your <new dimension> answer suggests <observed drift>. Adjust <affected dimension> or continue?"` End the turn. The user's reply opens the next turn; parse it and determine whether to adjust the affected dimension or continue to the next dimension. A reply that picks neither — one that hands the choice back to you, or free text that names neither adjusting nor continuing — is not a pick: ask the note's question once more, and if the second reply again picks neither, continue to the next dimension, rewriting no dimension.
    - `refinement` — new answer is a superset of the earlier one (e.g., `"login + signup"` → `"login + signup + password-reset"`). Re-call the affected dimension's setter with the superset value to overwrite (e.g., `set-scope-functional-scope --value "login + signup + password-reset" --state Clear`). No user prompt.
    - `none` — no drift; advance to the next dimension.
 
@@ -319,6 +342,14 @@ If the user accepts gaps: for each dimension with state ∈ `{Partial, Missing}`
 ```
 
 `--accept-gaps` flips `memo.override_recorded = True` — this is the closed override-set referenced by invariant D's verdict-flip rule (see Phase 3 verify).
+
+A reply to the coverage question that picks neither — one that hands the choice back to you ("you decide", "up to you", or the same in any language), or free text that names neither continuing nor accepting — is not an acceptance: ask the same question once more, and if the second reply again picks neither, record a gap marker for each dimension with state ∈ `{Partial, Missing}` exactly as above, then finalize with the override withheld:
+
+```bash
+.devforge/lib/discover_helper scope-finalize --accept-gaps --no-verdict-override
+```
+
+`--no-verdict-override` accepts the same gaps but sets `memo.override_recorded` to `False`, so invariant D's verdict-flip rule still applies in full. Tell the user the gaps were recorded and the verdict rule is not overridden.
 
 If the user is clarifying all the way to `Clear`, finalize without the flag:
 
@@ -610,7 +641,7 @@ Helper cross-checks the following invariants. Exit 0 → pass; non-zero → at l
 - **A** — required fields populated per verdict (different minima per verdict; `Reconsider` accepts a thinner report than the proceeding-verdicts).
 - **B** — `design_options` ≥ 1 entry when verdict ∈ `{Worth pursuing, Promising with caveats}`.
 - **C** — `recommended_option.name` matches an existing `design_options[*].name`.
-- **D — Verdict flip rule** — `overall_fit ∈ {Strained, Misfit}` OR `effort_estimate = "Major refactor required"` → verdict MUST be `Reconsider` UNLESS `memo.override_recorded == True` (set only by `scope-finalize --accept-gaps`). This `unless` clause is the closed override-set — the only sanctioned override path is the Phase 1 explicit `--accept-gaps` finalization; no other gate flips the rule.
+- **D — Verdict flip rule** — `overall_fit ∈ {Strained, Misfit}` OR `effort_estimate = "Major refactor required"` → verdict MUST be `Reconsider` UNLESS `memo.override_recorded == True` (set only by `scope-finalize --accept-gaps` without `--no-verdict-override`; the finalization Phase 1 runs on a coverage reply that picks neither option passes that flag and sets it to `False`). This `unless` clause is the closed override-set — the only sanctioned override path is the Phase 1 explicit `--accept-gaps` finalization; no other gate flips the rule.
 - **E** — `next_step_text` non-empty when verdict ∈ `{Worth pursuing, Promising with caveats}`; `None` when verdict is `Reconsider`.
 - **F** — `derisk_plan` ≥ 1 entry when verdict ∈ `{Worth pursuing, Promising with caveats}`.
 - **G — Internal canonical-pattern cite rule** — when any `prior_art[*].source` starts with `internal:`, `recommended_option.rationale` MUST contain at least one of those `internal:` file/dir paths as a substring. Forces the recommended option to be framed as "extend existing `<path>`" or to state explicitly which capability the existing implementation does NOT cover. Triggered only when Step 2.0 surfaced ≥1 internal hit; no-op otherwise.
@@ -652,6 +683,7 @@ End the turn. The user's reply opens the next turn. Read question 1's answer as:
 - `Save as <feature-name>` → save under the proposed slug; run the `### On save` flow.
 - `Don't save` → run the `### On don't-save` branch.
 - **Free text** → treat it as "save, and this text is the feature name", UNLESS the text clearly declines (`"no"`, `"skip"`, `"not now"`, or equivalent), which is a `Don't save`. Normalize the text to the same 2-4 word lowercase kebab-case shape and use it as `<feature-name>`. If it cannot be normalized (no alphanumeric content to work with), ask this same question once more with a corrected proposal and the same two options, then end the turn.
+- **Free text that hands the choice back to you** ("you decide", "up to you", or the same in any language) → neither a feature name nor a decline, so the free-text arm above does not apply to it. Ask this same question once more with the same two options and end the turn; if the second reply again hands the choice back, run the `### On don't-save` branch. Never take `Save as <feature-name>` because it is recommended.
 
 Read question 2's answer as, carrying the result into `### On save` step 1 as `<ticket>`:
 
@@ -663,7 +695,7 @@ On the `Don't save` branch question 2's answer is discarded — nothing is alloc
 
 This prompt is also re-entered from `### On save` step 1 when `allocate-feature-dir` rejects the slug or the ticket; the reply branches above apply unchanged on that second pass, and step 1 says which of the two questions to re-ask.
 
-**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug. That variant asks its one save question and nothing else — there is no ticket question in attach mode. Step 1 of `### On save` skips `allocate-feature-dir` entirely in attach mode, and that helper verb is the only place the ticket rule applies, so an attach run neither asks for a ticket nor requires one, whatever the project's policy is.
+**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<feature>'?"` with options `["Save to <feature>", "Don't save"]`, where `<feature>` is the seed's `feature` field — per Phase 0.6's rule that the seed's `feature` is what your messages NAME while the `feature_dir` reported alongside it is where they WRITE. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug. A free-text reply that hands the choice back to you ("you decide", "up to you", or the same in any language) is outside that rule — it is neither a save nor a decline: ask this question once more, and if the second reply again hands it back, run the `### On don't-save` branch. That variant asks its one save question and nothing else — there is no ticket question in attach mode. Step 1 of `### On save` skips `allocate-feature-dir` entirely in attach mode, and that helper verb is the only place the ticket rule applies, so an attach run neither asks for a ticket nor requires one, whatever the project's policy is.
 
 ### On save
 

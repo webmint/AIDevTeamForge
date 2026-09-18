@@ -271,9 +271,11 @@ Frame the choice as "check the TRANSLATION, not the proof": `Revise spec` means 
 
 Carry the user's pick forward to PHASE 6.
 
+A reply that picks none of these options — one that hands the disposition back to you, or free text that names none of them — is not a pick: ask the same question once more. If the second reply again picks none, record NO pick and carry that forward to PHASE 6, then tell the user the disposition is still theirs and name both next steps: `/devforge:plan` to proceed on this report, or a re-run of `/devforge:spec-check` to make the pick — `/devforge:specify` re-opens an already-specified feature only through a re-entry seed, and the one this command writes comes only from a `Revise spec` pick on a REVISE-SPEC recommendation. Never take `Revise spec`, or any other option, because it is recommended.
+
 ## PHASE 6 — Verdict-gated seed (matching REVISE-SPEC pick only)
 
-When PHASE 5 captured NO pick — the clean arm, where no gate was raised — write NO seed and go straight to PHASE 7. A seed exists to redirect a `/devforge:specify` re-run at a confirmed problem, and a clean run confirmed none; the enumeration below is over picks, and on that arm there is no pick to enumerate.
+When PHASE 5 captured NO pick — the clean arm, where no gate was raised, or PHASE 5.2 when neither its question nor the one re-ask drew a pick — write NO seed and go straight to PHASE 7. A seed exists to redirect a `/devforge:specify` re-run at a confirmed problem, and a clean run confirmed none; the enumeration below is over picks, and on that arm there is no pick to enumerate.
 
 Otherwise the user made a pick. Write the backward re-entry seed ONLY when that PHASE-5 pick is `Revise spec` AND the recommended disposition was REVISE-SPEC. On any other pick — `Consistent`, `Dismiss`, or a cross-pick (`Revise spec` when the recommendation was NOT REVISE-SPEC) — write NO seed and skip to PHASE 7. This verdict-gating stops an overridden or false-positive seed from becoming an orphan a later `/devforge:specify` run silently obeys.
 
@@ -305,7 +307,9 @@ rm -rf "$WORKDIR"
 Then point the user at the next step:
 
 - No PHASE-5 pick (the clean arm), or a `Consistent` / `Dismiss` pick → the next command is `/devforge:plan`.
-- `Revise spec` → the next command is `/devforge:specify`; the emitted `spec-check-seed.json` directs the re-run at the conflicting ACs.
+- `Revise spec` on a REVISE-SPEC recommendation → the next command is `/devforge:specify`; the emitted `spec-check-seed.json` directs the re-run at the conflicting ACs.
+- `Revise spec` on any other recommendation (a cross-pick; PHASE 6 wrote no seed) → name both next commands — `/devforge:plan` to proceed on this report, or `/devforge:spec-check` again to make the pick.
+- No pick at PHASE 5.2 (neither its question nor the one re-ask drew one) → the disposition is still the user's: name both next commands — `/devforge:plan` to proceed on this report, or `/devforge:spec-check` again to make the pick.
 
 ## Important rules
 

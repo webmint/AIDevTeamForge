@@ -53,8 +53,10 @@ Copy the helper's stdout VERBATIM into your next user-facing message as a fenced
 End the turn. The user's reply opens the next turn.
 
 - **`yes`** → proceed to Phase 0a.5 with the resolved path.
-- **`pick-other`** → in the next turn, run `.devforge/lib/breakdown_helper list-plans` and emit stdout as a numbered list inside a fenced block (exit 2 means no `specs/` directory exists — copy the helper's stderr VERBATIM into a fenced block and end the turn). The helper output is unbounded (one line per plan, mtime desc). For `AskUserQuestion`, take the first four lines as the four option labels — AskUserQuestion caps at four options, so the LLM truncates client-side, not the helper. Question: `"Which plan to break down?"` — single-line text. If more than four plans exist, include `other` as the fourth option; on `other`, ask the user via free-text follow-up for the explicit path, then re-run `pick-plan <path>` to validate. On the chosen path, treat it as the resolved path and proceed to Phase 0a.5.
+- **`pick-other`** → in the next turn, run `.devforge/lib/breakdown_helper list-plans` and emit stdout as a numbered list inside a fenced block (exit 2 means no `specs/` directory exists — copy the helper's stderr VERBATIM into a fenced block and end the turn). The helper output is unbounded (one line per plan, mtime desc). For `AskUserQuestion`, take the first four lines as the four option labels — AskUserQuestion caps at four options, so the LLM truncates client-side, not the helper. Question: `"Which plan to break down?"` — single-line text. If more than four plans exist, include `other` as the fourth option; on `other`, ask the user via free-text follow-up for the explicit path, then re-run `pick-plan <path>` to validate. On the chosen path, treat it as the resolved path and proceed to Phase 0a.5. A reply to `"Which plan to break down?"`, or to its `other` follow-up, that names neither a listed plan nor a path — one that hands the choice back to you, or free text naming neither — is not a pick: ask the same question once more, and if the second reply again names neither, end the turn without resolving a plan.
 - **`cancel`** → tell the user `"/devforge:breakdown cancelled. Re-run /devforge:breakdown when ready."` and end the turn.
+
+A reply to `"Process this plan?"` that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `cancel`.
 
 ## PHASE 0a.5: Upstream handoff (consumer)
 
@@ -112,9 +114,9 @@ Stdout is one of five state tokens:
 
 - `flipped` — plan was Draft, now Approved. Tell the user: `"Plan status: Draft → Approved (implicit approval via /devforge:breakdown)."`
 - `already-approved` — continue silently; no message needed.
-- `complete` — the plan has a Status of `Complete` (e.g. manually set). Warn the user, then `AskUserQuestion` `"Plan status is Complete — proceed against a completed plan?"` with options `["yes", "cancel"]`. On `cancel`, end the turn.
+- `complete` — the plan has a Status of `Complete` (e.g. manually set). Warn the user, then `AskUserQuestion` `"Plan status is Complete — proceed against a completed plan?"` with options `["yes", "cancel"]`. On `cancel`, end the turn. A reply that picks neither option — one that hands the choice back to you, or free text that names neither — is not a pick: ask the same question once more, and if the second reply again picks neither, take `cancel`.
 - `inserted` — plan lacked a Status line; helper inserted `**Status**: Approved`. Tell the user: `"Plan was missing a Status line; helper inserted **Status**: Approved."`
-- `unknown-status:<value>` — plan has a non-standard status. Tell the user the value, then `AskUserQuestion` `"Status is non-standard — proceed?"` with options `["yes", "cancel"]`. On `cancel`, end the turn.
+- `unknown-status:<value>` — plan has a non-standard status. Tell the user the value, then `AskUserQuestion` `"Status is non-standard — proceed?"` with options `["yes", "cancel"]`. On `cancel`, end the turn. A reply that picks neither option — one that hands the choice back to you, or free text that names neither — is not a pick: ask the same question once more, and if the second reply again picks neither, take `cancel`.
 
 Exit 2 means the plan is malformed (neither Date nor Status frontmatter line). Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
@@ -168,7 +170,7 @@ Stdout is one of four forms:
 
 - `current` — the spec's cited files are unchanged since it was stamped. Proceed silently to Phase 1; no message needed.
 - `missing` — no drift stamp exists for this spec. Tell the user `"No drift stamp for this spec; proceeding."` and proceed to Phase 1.
-- `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with breakdown?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /devforge:breakdown."` and end the turn. On `proceed`, continue to Phase 1.
+- `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with breakdown?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /devforge:breakdown."` and end the turn. On `proceed`, continue to Phase 1. A reply that picks neither option — one that hands the choice back to you, or free text that names neither — is not a pick: ask the same question once more, and if the second reply again picks neither, take `cancel`.
 - `not-a-git-repo` on stdout (exit 2) — the drift check cannot run (no git repository / no HEAD / git binary missing). Tell the user `"Spec drift check unavailable (not a git repository); proceeding without it."` and proceed to Phase 1. The drift check is advisory — a non-git target must NOT block breakdown.
 
 ## PHASE 1: Deep file analysis
@@ -624,6 +626,7 @@ Present a summary. This block is LLM-authored (breakdown state lives on disk in 
 **Dependency chain**: [simplified graph]
 **Riskiest tasks**: [list High-risk tasks and why]
 **Review checkpoints**: [count] (before tasks [list])
+**Grill**: [recommended disposition]; [clean — no question was asked | not clean]; [`grill-seed.json` present | no `grill-seed.json`]
 **Contract chain**: [ok | N findings recorded in Risk Assessment]
 **AC coverage**: [all covered | N flagged in Risk Assessment]
 **Agent roster**: all agents installed
@@ -637,6 +640,8 @@ The `**Design fidelity**:` line is CONDITIONAL — include it ONLY when this fea
 
 The `**Property coverage**:` line is likewise CONDITIONAL — include it ONLY when `/devforge:plan` declared pure-builder targets (i.e. the PHASE 3.5 property-coverage gate returned `ok`, not `skip`). When there are no pure-builder targets, OMIT the line entirely.
 
+The `**Grill**:` line is always present — Phase 0a.6 lets a run reach this point only when a grill report exists — and it states only what files record: the recommended disposition from the `**Verdict**:` line under `<feature_dir>/grill.md`'s `## Disposition` heading; clean when that report's `## Summary` line `Confirmed: N | Contested: N | Dismissed: N | Uncertain: N` shows 0 confirmed, 0 contested and 0 uncertain (a clean grill asks no question), not clean otherwise; and whether `<feature_dir>/grill-seed.json` exists. Never state what the user picked at `/devforge:grill`'s disposition question: nothing records that pick, and a seed does not stand in for one, because `/devforge:grill` never deletes a seed an earlier run of it wrote.
+
 Then ask via `AskUserQuestion`:
 
 - Question: `"Approve this breakdown?"` — single-line text.
@@ -647,6 +652,8 @@ End the turn. The user's reply opens the next turn.
 - **`approve`** → proceed to Phase 5 (finalize).
 - **`request-changes`** → in the next turn, ask the user which task or aspect to revise. Re-enter the relevant phase (Phase 1 file analysis / Phase 2 decomposition / Phase 2.5 design-fidelity intake / Phase 3 task writing / Phase 3.5 gates) as needed; re-render the affected task files and index via Write or Edit; re-run the Phase 3.5 gates; re-present the summary above and re-issue this approval prompt. The state lives in the rendered files on disk; this loop mutates them in place.
 - **`cancel`** → tell the user `"/devforge:breakdown cancelled. Task drafts preserved at <feature_dir>/tasks/."` and end the turn.
+
+A reply to `"Approve this breakdown?"` that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `cancel`.
 
 ## PHASE 5: Finalize
 
