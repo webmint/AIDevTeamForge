@@ -18,6 +18,10 @@ def _render_report_md(memo: dict, report: dict) -> str:
     Section order (locked):
       1. Title + frontmatter (Date, Topic, Mode, Verdict)
       2. Summary
+      2b. Intake interpretation confirmation (plan 98 D4a — one line, when
+          memo.intake_confirmation is not None; omitted entirely when
+          never recorded, matching every pre-existing memo file byte for
+          byte)
       3. Symptom (5-dim table)
       4. Codebase Findings (with Framing column)
       5. Root Cause Hypothesis
@@ -73,6 +77,37 @@ def _render_report_md(memo: dict, report: dict) -> str:
     out.append("")
     out.append(report.get("summary") or "(summary unset)")
     out.append("")
+
+    # Intake interpretation confirmation (plan 98 D4a). None (never
+    # recorded, incl. every memo file written before this field existed —
+    # _load_memo does not merge in the default, so the key can be absent
+    # entirely) renders nothing, byte-identical to a pre-plan-98 report.
+    # The reply is free text a user typed in conversation; it goes through
+    # _md_escape_list_text (same escaper the Literal Archaeology bullet
+    # list uses) so an embedded newline or markdown-active character
+    # cannot split this onto more than one physical line or leak
+    # formatting into the surrounding report.
+    intake_confirmation = memo.get("intake_confirmation")
+    if intake_confirmation is not None:
+        if intake_confirmation.get("state") == "confirmed":
+            out.append("**Intake interpretation**: confirmed by the user")
+        else:
+            # _md_escape_list_text does not escape '"' (it has two other
+            # callers that never wrap their output in literal quotes);
+            # this call site wraps the reply in "..." itself, so it
+            # escapes '"' -> '\"' locally (a valid CommonMark escape) so
+            # an embedded quote cannot read as the closing wrapper quote.
+            # discover_helper's and specify_helper's equivalent lines do
+            # the same at their own call sites.
+            escaped_reply = _md_escape_list_text(
+                intake_confirmation.get("reply") or ""
+            ).replace("\"", "\\\"")
+            out.append(
+                "**Intake interpretation**: NOT confirmed — the reply was \"{0}\"".format(
+                    escaped_reply
+                )
+            )
+        out.append("")
 
     # Symptom table — 5 dims (drop unchanged_behavior from render per Plan;
     # it's used for verify cross-check, not user-facing report).

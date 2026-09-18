@@ -79,6 +79,13 @@ def default_memo_state() -> dict:
         # Appended by record-intake-classification; read by render-intake-echo.
         # Append-only; re-recording the same statement replaces its entry (idempotent).
         "intake_classifications": [],
+        # Plan 98 D4a -- the user's confirm/correct reply to the
+        # render-intake-echo block. None until record-intake-confirmation
+        # fires (an old memo file written before this field existed also
+        # loads as None via dict.get, never a KeyError); last-write-wins
+        # on re-call (mirrors data_flow_chain's scalar overwrite
+        # convention). {state: "confirmed"|"unconfirmed", reply: str}.
+        "intake_confirmation": None,
         # Plan 53 Phase 1 -- captured design intent. Optional; NOT one of
         # RUBRIC_DIMENSIONS (does not gate symptom-finalize). set-design-anchor
         # persists {kind, file, selectors} into value; finalize-handoff maps it

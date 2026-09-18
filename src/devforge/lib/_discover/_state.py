@@ -101,6 +101,15 @@ def default_memo_state() -> dict:
         # cause. discover has no record-hypothesis verb.
         # Idempotent: same statement replaces existing entry.
         "intake_classifications": [],
+        # Plan 98 D4a -- persisted intake-echo confirmation. None until
+        # set (an old memo written before this field existed loads with
+        # this key absent -- callers use .get("intake_confirmation")
+        # defensively, mirroring intake_classifications' back-compat
+        # pattern above). Set by record-intake-confirmation with
+        # {state: "confirmed"|"unconfirmed", reply: str}; render() emits
+        # an honestly-labelled line from it and never credits an
+        # unconfirmed reply as the user's decision.
+        "intake_confirmation": None,
         # Plan 53 Phase 1 -- captured design intent. Optional; NOT one of
         # RUBRIC_DIMENSIONS (does not gate scope-finalize). set-scope-design-anchor
         # persists {kind, file, selectors} into value; finalize-handoff maps it

@@ -1,6 +1,6 @@
 """Step 5 — intake-interrogation gate command handlers for discover_helper.
 
-Two verbs:
+Three verbs:
   record-intake-classification  — setter: persists per-statement binary
                                    classification (requirement vs hypothesis)
                                    + the orchestrator-composed minimal_fix.
@@ -8,6 +8,13 @@ Two verbs:
                                    (requirements / scope-expanders-to-verify /
                                    minimal scope) to stdout verbatim for the
                                    orchestrator to copy to the user.
+  record-intake-confirmation     — setter (plan 98 D4a): persists whether the
+                                   user confirmed the echo-back block or the
+                                   run proceeded on an unconfirmed reading
+                                   (a non-pick, e.g. a delegated reply). The
+                                   confirmation is never inferred -- the
+                                   orchestrator calls this once per intake
+                                   echo with the actual outcome.
 
 DISCOVER LANE DIVERGENCE — do NOT mirror /research here:
   - A "hypothesis" in discover is a scope-expander or placement guess, not a
@@ -40,6 +47,13 @@ from ._validators import _die, _validate_scalar
 # ---------------------------------------------------------------------------
 
 INTAKE_KIND_ENUM = ("requirement", "hypothesis")
+
+# Enum — single source of truth for the intake-confirmation state (plan 98
+# D4a). "confirmed" is set only when the user actually picked confirm at
+# the echo-back re-ask; "unconfirmed" covers every other outcome (a
+# non-pick, a delegated reply, or the re-ask exhausted without a pick) --
+# the model's reading proceeds, but it is never cited as "you confirmed".
+INTAKE_CONFIRMATION_STATE_ENUM = ("confirmed", "unconfirmed")
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +117,45 @@ def cmd_record_intake_classification(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_record_intake_confirmation(args: argparse.Namespace) -> int:
+    """Persist the outcome of the intake-echo confirmation ask (plan 98 D4a).
+
+    Persists {state, reply} into memo.intake_confirmation, overwriting any
+    prior call (idempotent re-recording -- e.g. a re-ask that later gets an
+    explicit pick replaces the earlier "unconfirmed" record).
+
+    --state must be one of: confirmed | unconfirmed.
+    --reply is the verbatim (or paraphrased) user reply that produced this
+    state and is REQUIRED even for --state confirmed -- render() quotes it
+    only on the unconfirmed path, but the field is never optional here so a
+    caller cannot silently skip recording what was actually said.
+
+    This is the ONE persisted record of whether the user confirmed the
+    echoed intake reading. An "unconfirmed" record is the model's own
+    reading proceeding after a non-pick (e.g. a delegated reply); it is
+    never rendered or cited as the user's confirmation.
+    """
+    try:
+        reply = _validate_scalar(args.reply, "record-intake-confirmation.reply")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    state = args.state
+    if state not in INTAKE_CONFIRMATION_STATE_ENUM:
+        return _die(
+            "record-intake-confirmation: --state {0!r} is not valid; "
+            "allowed: {1}".format(state, list(INTAKE_CONFIRMATION_STATE_ENUM)),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            memo["intake_confirmation"] = {"state": state, "reply": reply}
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-intake-confirmation: {0}".format(err))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Render handler.
 # ---------------------------------------------------------------------------
@@ -114,7 +167,7 @@ def cmd_render_intake_echo(args: argparse.Namespace) -> int:
     Block structure:
       ## Intake interpretation
 
-      ### Requirements (what you asked for)
+      ### Requirements (as I read your prompt)
       - <statement>
         Minimal scope: <minimal_fix>
 
@@ -162,7 +215,7 @@ def cmd_render_intake_echo(args: argparse.Namespace) -> int:
     # Requirements section — rendered only when non-empty (F2: suppress header
     # and placeholder when only scope-expanders are recorded).
     if requirements:
-        lines.append("### Requirements (what you asked for)")
+        lines.append("### Requirements (as I read your prompt)")
         lines.append("")
         for entry in requirements:
             lines.append("- {0}".format(entry.get("statement", "")))

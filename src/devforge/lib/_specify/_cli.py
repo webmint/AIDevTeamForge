@@ -213,11 +213,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "set-dp-default-applied",
-        help="Auto path: mark DP default_applied with named default.",
+        help="Auto path: mark DP default_applied with named default. "
+             "Interactive path with --delegated-reply (plan 98 D3).",
     )
     sp.add_argument("--dp-id", required=True, dest="dp_id")
     sp.add_argument(
         "--default-applied", required=True, dest="default_applied",
+    )
+    sp.add_argument(
+        "--delegated-reply", default=None, dest="delegated_reply",
+        help="mode=interactive only: the user's own verbatim reply "
+             "delegating this decision point (e.g. 'you decide'). "
+             "Makes this setter legal in interactive mode; rejected in "
+             "mode=auto.",
     )
     sp.set_defaults(func=cmd_set_dp_default_applied)
 
@@ -664,7 +672,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "render-summary",
-        help="Emit 4-bullet approval summary; persist to state.",
+        help="Emit approval summary (4 bullets, plus a conditional "
+             "Defaults applied block when any DP is default-applied; "
+             "out-of-scope items listed in full); persist to state.",
     )
     sp.set_defaults(func=cmd_render_summary)
 

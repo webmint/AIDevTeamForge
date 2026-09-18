@@ -87,6 +87,36 @@ def _render_section_acs(
     return lines
 
 
+def _format_delegated_reply(reply: str) -> str:
+    """Collapse a --delegated-reply to one line and escape it so it stays
+    safe inside the italic `_("...")_` wrapper both callers below
+    (`_render_open_questions_section`, `_approval_summary`) use.
+
+    An unescaped `_` or `*` inside the reply would close the wrapper's own
+    italics early and leak formatting into the surrounding line; a stray
+    backtick would open a code span; a stray `|` would read as a
+    table-cell delimiter if this line is later quoted inside a table; an
+    embedded `"` is escaped to `\\"` -- a valid CommonMark backslash
+    escape that still renders as `"` -- so a reader can see where the
+    quoted reply ends in the raw file, matching the sibling escapers this
+    plan's other two producers (discover, research) use for the same
+    reply text. Escaping RULE, in order: backslash first (so this
+    function never double-escapes its own output), then `"`, backtick,
+    `*`, `_`, `|` -- reimplemented here rather than imported:  `_specify`
+    has no existing dependency on `_research` or `_discover`.
+
+    Same whitespace-collapse idiom as `_shared/literal_call_shape.py`'s
+    `_normalize_call_shape` (`" ".join(text.split())`), duplicated here
+    rather than imported: this module has no existing dependency on that
+    sibling helper and the idiom is a single stdlib expression.
+    """
+    one_line = " ".join((reply or "").split())
+    escaped = one_line.replace("\\", "\\\\")
+    for ch in ('"', "`", "*", "_", "|"):
+        escaped = escaped.replace(ch, "\\" + ch)
+    return escaped
+
+
 def _render_open_questions_section(state: Dict[str, Any]) -> List[str]:
     """Compose §8 — explicit open questions + DP-derived entries."""
     resolutions_by_id: Dict[str, Dict[str, Any]] = {
@@ -120,13 +150,17 @@ def _render_open_questions_section(state: Dict[str, Any]) -> List[str]:
         status = dp.get("status")
         if status == "default_applied":
             has_entry = True
-            lines.append(
-                "- **{0}** [default applied]: {1} → default: {2}".format(
-                    dp.get("dp_id", ""),
-                    dp.get("description", ""),
-                    dp.get("default_applied", ""),
-                )
+            line = "- **{0}** [default applied]: {1} → default: {2}".format(
+                dp.get("dp_id", ""),
+                dp.get("description", ""),
+                dp.get("default_applied", ""),
             )
+            delegated_reply = (dp.get("delegated_reply") or "").strip()
+            if delegated_reply:
+                line += ' _(you delegated this choice: "{0}")_'.format(
+                    _format_delegated_reply(delegated_reply)
+                )
+            lines.append(line)
         elif status == "deferred_open_question":
             has_entry = True
             lines.append(
@@ -323,7 +357,10 @@ def _canonicalize_for_compare(b: bytes) -> bytes:
 
 
 def _approval_summary(state: Dict[str, Any]) -> str:
-    """Compose v3 4-bullet summary (Variance rule #9, verbatim shape).
+    """Compose v3 4-bullet summary (Variance rule #9, verbatim shape), plus
+    a conditional "Defaults applied" block (98-DELEGATED-REPLY-ATTRIBUTION-
+    PLAN.md D6, below) present only when a decision point is
+    default-applied, and out-of-scope items rendered in full.
 
     The `specs/.../spec.md` literal below is `_feature_dir_display(state)`
     -- see that function's docstring for why the plain
@@ -331,6 +368,17 @@ def _approval_summary(state: Dict[str, Any]) -> str:
     hand-build stopped being accurate once e1ffb2f shipped Step 4.1's
     bucketed path, and for how the fallback still matches this function's
     pre-existing behaviour on every other path.
+
+    98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md D6: this is the summary the
+    user approves, so it must show everything the model supplied on the
+    user's behalf. Two changes from the pre-plan-98 shape: (1) a
+    "Defaults applied" bullet list enumerates every default_applied
+    decision point (auto-applied and delegated alike; the delegated ones
+    carry `_format_delegated_reply`'s suffix, same as the §8 render) --
+    omitted entirely when there are none, so a spec with no default-applied
+    DPs renders byte-identically to before; (2) the out-of-scope list is
+    no longer truncated to 3 items / 80 chars each -- every item renders
+    in full.
     """
     overview = (state.get("overview") or "_(no overview)_").strip()
     if len(overview) > 240:
@@ -346,14 +394,34 @@ def _approval_summary(state: Dict[str, Any]) -> str:
     }
     subsection_count = len(subsection_set)
     if state["out_of_scope"]:
-        oos_short = "; ".join(
-            (o.get("content", "") or "").strip()[:80]
-            for o in state["out_of_scope"][:3]
+        oos_all = "; ".join(
+            (o.get("content", "") or "").strip()
+            for o in state["out_of_scope"]
         )
-        if len(state["out_of_scope"]) > 3:
-            oos_short += "; …"
     else:
-        oos_short = "_(none)_"
+        oos_all = "_(none)_"
+
+    default_dps = [
+        d for d in state["decision_points"]
+        if d.get("status") == "default_applied"
+    ]
+    defaults_block = ""
+    if default_dps:
+        dp_lines = ["- **Defaults applied**:"]
+        for d in default_dps:
+            entry = "  - **{0}**: {1} → default: {2}".format(
+                d.get("dp_id", ""),
+                d.get("description", ""),
+                d.get("default_applied", ""),
+            )
+            delegated_reply = (d.get("delegated_reply") or "").strip()
+            if delegated_reply:
+                entry += ' _(you delegated this choice: "{0}")_'.format(
+                    _format_delegated_reply(delegated_reply)
+                )
+            dp_lines.append(entry)
+        defaults_block = "\n".join(dp_lines) + "\n"
+
     return (
         "I've created the specification at "
         "`{fd}/spec.md`. Key points:\n"
@@ -361,6 +429,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         "- **Files affected**: {fc} files across {ac} areas\n"
         "- **Acceptance criteria**: {acc} testable criteria across "
         "{sc} AC categories\n"
+        "{db}"
         "- **Out of scope**: {oos}\n"
         "\n"
         "Please review and either approve or request changes. Once "
@@ -368,7 +437,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         "plan."
     ).format(
         fd=_feature_dir_display(state), ov=overview, fc=file_count, ac=area_count,
-        acc=ac_count, sc=subsection_count, oos=oos_short,
+        acc=ac_count, sc=subsection_count, oos=oos_all, db=defaults_block,
     )
 
 

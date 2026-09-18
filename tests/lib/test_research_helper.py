@@ -12972,7 +12972,7 @@ class TestRenderIntakeEcho(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             out = r.stdout
             self.assertIn("## Intake interpretation", out)
-            self.assertIn("### Requirements (what you asked for)", out)
+            self.assertIn("### Requirements (as I read your prompt)", out)
             self.assertIn("render empty section on load failure", out)
             self.assertIn("branch on load_failed flag", out)
 
@@ -13106,6 +13106,264 @@ class TestRenderIntakeEcho(unittest.TestCase):
             req_pos = out.index("### Requirements")
             hyp_pos = out.index("### Hypotheses to verify")
             self.assertLess(req_pos, hyp_pos, "Requirements section must precede Hypotheses section")
+
+
+# ---------------------------------------------------------------------------
+# Plan 98 D4a — record-intake-confirmation + its research-report.md line.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordIntakeConfirmation(unittest.TestCase):
+    """record-intake-confirmation setter: persists {state, reply} into
+    memo.intake_confirmation. Overwrites on re-record (idempotent)."""
+
+    def test_confirmed_state_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes, that's right",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            self.assertEqual(
+                state["intake_confirmation"],
+                {"state": "confirmed", "reply": "yes, that's right"},
+            )
+
+    def test_unconfirmed_state_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "figure it out yourself",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            self.assertEqual(
+                state["intake_confirmation"],
+                {"state": "unconfirmed", "reply": "figure it out yourself"},
+            )
+
+    def test_second_call_overwrites(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "up to you",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes, correct",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            self.assertEqual(
+                state["intake_confirmation"],
+                {"state": "confirmed", "reply": "yes, correct"},
+                "second call must overwrite, not append",
+            )
+
+    def test_invalid_state_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "maybe",
+                "--reply", "sure",
+            ])
+            self.assertNotEqual(r.returncode, 0, "invalid --state must be rejected")
+
+    def test_empty_reply_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "   ",
+            ])
+            self.assertEqual(r.returncode, 2, "empty --reply should exit 2")
+
+    def test_missing_state_flag_is_argparse_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--reply", "yes",
+            ])
+            self.assertNotEqual(r.returncode, 0, "missing --state should error")
+
+    def test_missing_reply_flag_is_argparse_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+            ])
+            self.assertNotEqual(r.returncode, 0, "missing --reply should error")
+
+
+class TestRenderIntakeConfirmationLine(unittest.TestCase):
+    """research-report.md's 'Intake interpretation' line (plan 98 D4a):
+    renders before ## Symptom when recorded; omitted (byte-identical to
+    a pre-plan-98 report) when never recorded."""
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_absent_when_never_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            out = self._render(devforge)
+            self.assertNotIn("Intake interpretation", out)
+
+    def test_confirmed_line_present_before_symptom(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes, correct",
+            ])
+            out = self._render(devforge)
+            self.assertIn("**Intake interpretation**: confirmed by the user", out)
+            confirm_pos = out.index("**Intake interpretation**")
+            symptom_pos = out.index("## Symptom")
+            self.assertLess(confirm_pos, symptom_pos, "line must render before ## Symptom")
+
+    def test_unconfirmed_line_quotes_reply_verbatim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "figure it out yourself",
+            ])
+            out = self._render(devforge)
+            self.assertIn(
+                "**Intake interpretation**: NOT confirmed — the reply was "
+                "\"figure it out yourself\"",
+                out,
+            )
+
+    def test_reply_with_newline_and_markdown_chars_stays_one_line(self):
+        """A reply carrying an embedded newline plus '|' and '*' must not
+        split the report line or leak markdown formatting."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            reply = "up to you\n*whatever* | you think is best"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", reply,
+            ])
+            out = self._render(devforge)
+            matching = [
+                line for line in out.splitlines()
+                if line.startswith("**Intake interpretation**")
+            ]
+            self.assertEqual(len(matching), 1, "line must stay on exactly one physical line")
+            line = matching[0]
+            self.assertIn("\\*whatever\\*", line, "markdown-active '*' must be escaped")
+            self.assertIn("\\|", line, "table-active '|' must be escaped")
+
+    def test_reply_with_embedded_double_quotes_escapes_them_not_the_wrapper(self):
+        """A reply containing embedded double quotes must not read as
+        closing the wrapper quote early: the embedded quotes render as
+        \\" while the two wrapper quotes around the whole reply stay
+        plain '"'. python-reviewer Medium finding: _md_escape_list_text
+        does not escape '"' (its two other callers never wrap output in
+        literal quotes); this call site escapes '"' locally."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            reply = 'he said "just do it" and left'
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", reply,
+            ])
+            out = self._render(devforge)
+            matching = [
+                line for line in out.splitlines()
+                if line.startswith("**Intake interpretation**")
+            ]
+            self.assertEqual(len(matching), 1, "line must stay on exactly one physical line")
+            line = matching[0]
+            expected = (
+                '**Intake interpretation**: NOT confirmed — the reply was "'
+                'he said \\"just do it\\" and left'
+                '"'
+            )
+            self.assertEqual(line, expected)
+            # The two wrapper quotes must be the only UNESCAPED quotes:
+            # strip every escaped occurrence first, then exactly two '"'
+            # remain (open + close of the reply wrapper).
+            unescaped_count = line.replace('\\"', "").count('"')
+            self.assertEqual(unescaped_count, 2, "wrapper quotes must be the only unescaped quotes")
+
+    def test_default_memo_has_intake_confirmation_field(self):
+        """default_memo_state must include intake_confirmation as None."""
+        memo = research_helper.default_memo_state()
+        self.assertIn("intake_confirmation", memo)
+        self.assertIsNone(memo["intake_confirmation"])
+
+
+class TestD8AttributingVocabularyHelpTexts(unittest.TestCase):
+    """Plan 98 D8: research's help texts stop crediting 'the user' with
+    an outcome the helper never verified, and --resolution documents
+    both the explicit-pick and delegated label shapes."""
+
+    def test_record_conflict_resolution_top_level_help_is_neutral(self):
+        r = _run(["--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("user resolution", r.stdout)
+
+    def test_record_conflict_resolution_help_documents_delegated_label(self):
+        r = _run(["record-conflict-resolution", "--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("delegated-", r.stdout)
+        self.assertIn("user-chose-", r.stdout)
+
+    def test_symptom_finalize_help_no_longer_credits_user(self):
+        r = _run(["symptom-finalize", "--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("User explicitly accepted", r.stdout)
+        self.assertIn("override_recorded", r.stdout)
 
 
 # ---------------------------------------------------------------------------

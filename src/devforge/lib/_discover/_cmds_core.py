@@ -265,6 +265,32 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
 _OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
+def _collapse_reply_for_render(reply: str) -> str:
+    """Collapse a free-text reply to one markdown-safe rendered line.
+
+    Used by cmd_render for memo.intake_confirmation.reply (plan 98 D4a),
+    which is orchestrator-supplied free text and may legitimately contain
+    newlines, control characters, or markdown-active characters. Passes:
+      1. Collapse every whitespace run (including \\n/\\r/\\t) to a single
+         space, so a multi-line reply renders on the one confirmation line.
+      2. Drop any remaining control character (codepoint < 0x20) the
+         whitespace collapse didn't already remove.
+      3. Backslash-escape backslashes first (so this function does not
+         double-escape its own output), then backtick, '*', '_', '|' --
+         the same markdown-active set research's _md_escape_list_text
+         escapes (src/devforge/lib/_research/_render.py) -- plus the
+         double-quote, since the caller wraps the result in a literal
+         "..." pair and an unescaped quote would visually break out of
+         that wrapping.
+    """
+    collapsed = " ".join(reply.split())
+    collapsed = "".join(ch for ch in collapsed if ord(ch) >= 0x20)
+    collapsed = collapsed.replace("\\", "\\\\")
+    for ch in ("`", "*", "_", "|", '"'):
+        collapsed = collapsed.replace(ch, "\\" + ch)
+    return collapsed
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Render the full discovery report Markdown to stdout. Read-only.
 
@@ -272,6 +298,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     of field population; sparse sections show placeholder text per spec.
     constitution_constraints section is omitted entirely when empty.
     Open uncertainties section is rendered only when memo.gaps is non-empty.
+    An **Intake interpretation** line (plan 98 D4a) renders immediately
+    after the header block, before the first `## ` section, ONLY when
+    memo.intake_confirmation has been recorded; it is omitted entirely
+    (not even a placeholder) when the intake-echo confirmation was never
+    called, matching intake_classifications' own back-compat default.
     """
     try:
         report = _load_report(args.devforge_dir)
@@ -292,6 +323,21 @@ def cmd_render(args: argparse.Namespace) -> int:
     lines.append("**Topic**: {0}".format(topic))
     lines.append("**Verdict**: {0}".format(verdict))
     lines.append("")
+
+    # Intake interpretation confirmation (plan 98 D4a) -- rendered ONLY
+    # when record-intake-confirmation has been called at least once.
+    # Never rendered as the user's confirmation when the state is
+    # "unconfirmed": the reply is quoted, labelled NOT confirmed.
+    intake_confirmation = memo.get("intake_confirmation")
+    if intake_confirmation is not None:
+        if intake_confirmation.get("state") == "confirmed":
+            lines.append("**Intake interpretation**: confirmed by the user")
+        else:
+            reply = _collapse_reply_for_render(intake_confirmation.get("reply") or "")
+            lines.append(
+                "**Intake interpretation**: NOT confirmed — the reply was \"{0}\"".format(reply)
+            )
+        lines.append("")
 
     # Summary.
     lines.append("## Summary")
@@ -528,6 +574,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
          memo.override_recorded is set by scope-finalize --accept-gaps and serves
          dual purpose: (1) user accepted Phase 0 coverage gaps, (2) user accepts
          an unfavorable fit verdict. Document this dual purpose here.
+         scope-finalize --accept-gaps --no-verdict-override (plan 98 OQ-3)
+         accepts the same gaps but leaves override_recorded False, so this
+         rule still forces Reconsider on an unfavorable fit.
       E. Next-step text: Worth pursuing / Promising with caveats requires non-empty
          next_step_text; Reconsider requires None.
       F. Derisk plan: >=1 entry under Worth pursuing / Promising with caveats.

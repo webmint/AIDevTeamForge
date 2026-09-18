@@ -138,7 +138,7 @@ def cmd_check_conflicts(args: argparse.Namespace) -> int:
 
 
 def cmd_record_conflict_resolution(args: argparse.Namespace) -> int:
-    """Persist a user-chosen resolution and clear the loser dimension.
+    """Persist the resolution for a detected conflict and clear the loser dimension.
 
     If state.conflicts is empty, run detect first and append the detected
     conflicts; then apply the resolution at --index. Out-of-range index
@@ -212,8 +212,22 @@ def cmd_scope_finalize(args: argparse.Namespace) -> int:
 
     Open conflicts always block (regardless of --accept-gaps).
     Partial/Missing dimensions block unless --accept-gaps is passed;
-    when passed, sets memo.override_recorded = True.
+    when passed, sets memo.override_recorded = True -- UNLESS
+    --no-verdict-override rides along (plan 98 OQ-3), in which case gaps
+    are still accepted (finalize succeeds) but override_recorded is
+    explicitly set to False -- not merely left alone, so a stale True from
+    an earlier plain --accept-gaps call on the same memo cannot survive a
+    later delegated finalize -- and verify's Rule D still forces a
+    Reconsider verdict on an unfavorable fit. --no-verdict-override is a
+    modifier: it is invalid without --accept-gaps.
     """
+    no_verdict_override = bool(getattr(args, "no_verdict_override", False))
+    if no_verdict_override and not args.accept_gaps:
+        return _die(
+            "scope-finalize: --no-verdict-override requires --accept-gaps "
+            "(it modifies that flag's effect; it is invalid alone).",
+            code=2,
+        )
     try:
         with _state_transaction(args.devforge_dir, "memo") as memo:
             conflicts = memo.get("conflicts") or []
@@ -244,7 +258,11 @@ def cmd_scope_finalize(args: argparse.Namespace) -> int:
                     )
             else:
                 if not open_indices:
-                    memo["override_recorded"] = True
+                    # Explicit assignment either way -- not a conditional
+                    # skip -- so a stale True left by an earlier plain
+                    # --accept-gaps call cannot survive a later delegated
+                    # (--no-verdict-override) finalize.
+                    memo["override_recorded"] = not no_verdict_override
 
             if violations:
                 for v in violations:

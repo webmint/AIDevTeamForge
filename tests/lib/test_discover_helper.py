@@ -1015,6 +1015,167 @@ class TestScopeFinalize(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Plan 98 OQ-3 — scope-finalize --no-verdict-override.
+# ---------------------------------------------------------------------------
+
+
+class TestScopeFinalizeNoVerdictOverride(unittest.TestCase):
+    def test_alone_exits_2(self):
+        """--no-verdict-override without --accept-gaps -> exit 2, names both flags."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r = _run(["--devforge-dir", str(devforge), "scope-finalize", "--no-verdict-override"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--no-verdict-override", r.stderr)
+            self.assertIn("--accept-gaps", r.stderr)
+
+    def test_with_accept_gaps_finalizes_with_override_recorded_false(self):
+        """--accept-gaps --no-verdict-override -> exit 0; override_recorded stays False."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            dims = list(discover_helper.RUBRIC_DIMENSIONS)
+            for d in dims[:7]:
+                _set_dim(devforge, d, "value for " + d, "Clear")
+            _set_dim(devforge, dims[7], "partial info", "Partial")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "scope-finalize", "--accept-gaps", "--no-verdict-override",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertFalse(memo["override_recorded"])
+
+    def test_stale_true_from_earlier_plain_accept_gaps_is_overwritten_false(self):
+        """A plain --accept-gaps call (True) followed by a delegated
+        --accept-gaps --no-verdict-override call must explicitly flip
+        override_recorded back to False -- not merely leave a stale True
+        untouched -- both in the memo and in the built handoff."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            feature_dir = Path(tmp) / "specs" / "2026" / "09" / "stale-override-feature"
+            _build_full_report(devforge)
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-verbatim-prompt",
+                "--value", "Add rate limiting to the HTTP middleware layer.",
+            ])
+            # First: plain --accept-gaps records True.
+            r = _run(["--devforge-dir", str(devforge), "scope-finalize", "--accept-gaps"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertTrue(memo["override_recorded"])
+            # Then: a later delegated finalize must explicitly flip it back.
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "scope-finalize", "--accept-gaps", "--no-verdict-override",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertFalse(memo["override_recorded"], "stale True must not survive")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff", "--feature-dir", str(feature_dir),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            handoff_path = feature_dir / "discover-handoff.json"
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            self.assertFalse(handoff["discovery_block"]["override_recorded"])
+
+    def test_accept_gaps_alone_still_records_override_true(self):
+        """Regression pin: --accept-gaps alone is byte-for-byte today's behavior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            dims = list(discover_helper.RUBRIC_DIMENSIONS)
+            for d in dims[:7]:
+                _set_dim(devforge, d, "value for " + d, "Clear")
+            _set_dim(devforge, dims[7], "partial info", "Partial")
+            r = _run(["--devforge-dir", str(devforge), "scope-finalize", "--accept-gaps"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertTrue(memo["override_recorded"])
+
+    def test_no_verdict_override_verdict_rule_d_still_flags_strained_fit(self):
+        """After --accept-gaps --no-verdict-override, verify Rule D still fires
+        on a Strained/Misfit fit paired with a non-Reconsider verdict -- the
+        override was recorded but override_recorded itself stayed False."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            dims = list(discover_helper.RUBRIC_DIMENSIONS)
+            for d in dims[:7]:
+                _set_dim(devforge, d, "value for " + d, "Clear")
+            _set_dim(devforge, dims[7], "partial info", "Partial")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "scope-finalize", "--accept-gaps", "--no-verdict-override",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            _run(["--devforge-dir", str(devforge), "set-overall-fit", "--value", "Strained"])
+            _run(["--devforge-dir", str(devforge), "set-verdict", "--value", "Worth pursuing"])
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("verify: D:", r.stderr)
+            self.assertIn("Strained", r.stderr)
+
+    def test_no_verdict_override_leaves_built_handoff_override_recorded_false(self):
+        """The built discover-handoff.json's discovery_block.override_recorded
+        also stays False after --accept-gaps --no-verdict-override (checked
+        via the real finalize-handoff verb, not a hand-authored fixture)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            feature_dir = Path(tmp) / "specs" / "2026" / "09" / "test-feature"
+            _build_full_report(devforge)
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-verbatim-prompt",
+                "--value", "Add rate limiting to the HTTP middleware layer.",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "scope-finalize", "--accept-gaps", "--no-verdict-override",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertFalse(memo["override_recorded"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff", "--feature-dir", str(feature_dir),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            handoff_path = feature_dir / "discover-handoff.json"
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            self.assertFalse(handoff["discovery_block"]["override_recorded"])
+
+
+# ---------------------------------------------------------------------------
+# Plan 98 D8 — attributing vocabulary help texts.
+# ---------------------------------------------------------------------------
+
+
+class TestD8AttributingVocabularyHelpTexts(unittest.TestCase):
+    """discover's help texts stop crediting 'the user' with an outcome the
+    helper never verified, and --resolution documents both the
+    explicit-pick and delegated label shapes."""
+
+    def test_record_conflict_resolution_top_level_help_is_neutral(self):
+        r = _run(["--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("user resolution", r.stdout)
+
+    def test_record_conflict_resolution_help_documents_delegated_label(self):
+        r = _run(["record-conflict-resolution", "--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("delegated-", r.stdout)
+        self.assertIn("user-chose-", r.stdout)
+
+    def test_scope_finalize_accept_gaps_help_no_longer_credits_user(self):
+        r = _run(["scope-finalize", "--help"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("User explicitly accepted", r.stdout)
+        self.assertNotIn("user explicitly accept", r.stdout.lower())
+        self.assertIn("override_recorded", r.stdout)
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 — investigation setters.
 # ---------------------------------------------------------------------------
 
@@ -2181,6 +2342,112 @@ class TestRender(unittest.TestCase):
             self.assertIn("## Open uncertainties", r.stdout)
             self.assertIn("[NEEDS CLARIFICATION: users — TBD — end users or admins?]", r.stdout)
 
+    def test_intake_confirmation_absent_when_never_recorded(self):
+        """No record-intake-confirmation call -> no Intake interpretation line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("**Intake interpretation**", r.stdout)
+
+    def test_intake_confirmation_confirmed_renders_fixed_line(self):
+        """--state confirmed renders the fixed confirmed line, before the first ## section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("**Intake interpretation**: confirmed by the user", r.stdout)
+            # Must never quote a raw reply for the confirmed state.
+            self.assertNotIn("the reply was", r.stdout)
+            # Renders before the first `## ` section.
+            confirm_idx = r.stdout.index("**Intake interpretation**")
+            first_section_idx = r.stdout.index("## ")
+            self.assertLess(confirm_idx, first_section_idx)
+
+    def test_intake_confirmation_unconfirmed_quotes_reply(self):
+        """--state unconfirmed renders the NOT-confirmed line quoting the reply verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "figure it out yourself",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(
+                "**Intake interpretation**: NOT confirmed — the reply was "
+                "\"figure it out yourself\"",
+                r.stdout,
+            )
+            # Never rendered as the user's confirmation.
+            self.assertNotIn("confirmed by the user", r.stdout)
+
+    def test_intake_confirmation_multiline_reply_collapses_to_one_safe_line(self):
+        """A multi-line reply with an embedded quote collapses to one markdown-safe line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            messy_reply = 'up to you\nwhatever you think is "best"\t— your call'
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", messy_reply,
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # The rendered confirmation line must be exactly one physical line.
+            confirmation_lines = [
+                line for line in r.stdout.splitlines()
+                if line.startswith("**Intake interpretation**")
+            ]
+            self.assertEqual(len(confirmation_lines), 1)
+            line = confirmation_lines[0]
+            # No raw newline/tab survives inside the rendered line.
+            self.assertNotIn("\n", line)
+            self.assertNotIn("\t", line)
+            # The embedded double-quote is backslash-escaped, so the line's
+            # own wrapping quotes stay the only unescaped ones.
+            self.assertIn('\\"best\\"', line)
+            self.assertIn("up to you whatever you think", line)
+
+    def test_intake_confirmation_reply_escapes_markdown_active_chars(self):
+        """A reply containing backtick, '*', '_', and '|' has each escaped
+        (mirrors research's _md_escape_list_text set), and the rest of the
+        rendered report is unaffected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            markdown_reply = "use `code` or *emphasis* or _underline_ | pipe"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", markdown_reply,
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            confirmation_lines = [
+                line for line in r.stdout.splitlines()
+                if line.startswith("**Intake interpretation**")
+            ]
+            self.assertEqual(len(confirmation_lines), 1)
+            line = confirmation_lines[0]
+            self.assertIn("\\`code\\`", line)
+            self.assertIn("\\*emphasis\\*", line)
+            self.assertIn("\\_underline\\_", line)
+            self.assertIn("\\|", line)
+            # The rest of the rendered report is unaffected by the escaping
+            # applied to this one confirmation line.
+            self.assertIn("## Summary", r.stdout)
+            self.assertIn("*No prior-art references recorded.*", r.stdout)
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 — verify tests.
@@ -2535,6 +2802,117 @@ class TestDiscoverRecordIntakeClassification(unittest.TestCase):
             self.assertIsNone(entry["minimal_fix"])
 
 
+class TestDiscoverRecordIntakeConfirmation(unittest.TestCase):
+    """record-intake-confirmation verb (plan 98 D4a)."""
+
+    def test_confirmed_state_persists(self):
+        """--state confirmed persists {state, reply} in memo.intake_confirmation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes, that's right",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertEqual(
+                memo["intake_confirmation"],
+                {"state": "confirmed", "reply": "yes, that's right"},
+            )
+
+    def test_unconfirmed_state_persists(self):
+        """--state unconfirmed persists {state, reply} in memo.intake_confirmation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "figure it out yourself",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertEqual(
+                memo["intake_confirmation"],
+                {"state": "unconfirmed", "reply": "figure it out yourself"},
+            )
+
+    def test_overwrite_on_repeat(self):
+        """A second call replaces the first (idempotent re-recording)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "unconfirmed",
+                "--reply", "up to you",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "yes, correct",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = _read_memo(devforge)
+            self.assertEqual(
+                memo["intake_confirmation"],
+                {"state": "confirmed", "reply": "yes, correct"},
+            )
+
+    def test_invalid_state_rejected(self):
+        """An invalid --state value is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "maybe",
+                "--reply", "some reply",
+            ])
+            self.assertEqual(r.returncode, 2, "invalid state should exit 2")
+
+    def test_empty_reply_rejected(self):
+        """An empty --reply is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-confirmation",
+                "--state", "confirmed",
+                "--reply", "   ",
+            ])
+            self.assertEqual(r.returncode, 2, "empty reply should exit 2")
+
+    def test_default_memo_has_intake_confirmation_field_none(self):
+        """default_memo_state must include intake_confirmation defaulting to None."""
+        import discover_helper
+        memo = discover_helper.default_memo_state()
+        self.assertIn("intake_confirmation", memo)
+        self.assertIsNone(memo["intake_confirmation"])
+
+    def test_old_memo_without_key_loads_and_renders(self):
+        """A memo JSON predating this field loads fine and renders no confirmation line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir(parents=True)
+            # Hand-write a memo file matching the pre-plan-98 shape (no
+            # intake_confirmation key at all) to prove back-compat load.
+            old_memo = discover_helper.default_memo_state()
+            del old_memo["intake_confirmation"]
+            (devforge / "discover-scope.json").write_text(json.dumps(old_memo), encoding="utf-8")
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("**Intake interpretation**", r.stdout)
+
+
 class TestDiscoverRenderIntakeEcho(unittest.TestCase):
     """render-intake-echo verb: discover-flavored echo-back block."""
 
@@ -2564,7 +2942,7 @@ class TestDiscoverRenderIntakeEcho(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             out = r.stdout
             self.assertIn("## Intake interpretation", out)
-            self.assertIn("### Requirements (what you asked for)", out)
+            self.assertIn("### Requirements (as I read your prompt)", out)
             self.assertIn("quote revision history log", out)
             self.assertIn("append-only history table", out)
 

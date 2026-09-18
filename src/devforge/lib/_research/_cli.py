@@ -76,8 +76,10 @@ from ._cmds_dataflow import (
 )
 from ._cmds_render_verify import cmd_render, cmd_verify, cmd_verify_hypothesis_suppression
 from ._cmds_intake import (
+    INTAKE_CONFIRMATION_STATE_ENUM,
     INTAKE_KIND_ENUM,
     cmd_record_intake_classification,
+    cmd_record_intake_confirmation,
     cmd_render_intake_echo,
 )
 from ._cmds_handoff import (
@@ -373,10 +375,19 @@ def _register_subcommands(subparsers) -> None:
 
     sp = subparsers.add_parser(
         "record-conflict-resolution",
-        help="Log user resolution for a previously detected conflict.",
+        help="Record the resolution for a previously detected conflict.",
     )
     sp.add_argument("--index", required=True, type=int, help="0-based index into conflicts list.")
-    sp.add_argument("--resolution", required=True, help="Resolution label.")
+    sp.add_argument(
+        "--resolution",
+        required=True,
+        help=(
+            "Resolution label (free text; not validated against an enum). "
+            "'user-chose-<new|prior>' when the user made an explicit pick; "
+            "'delegated-<new|prior>' when the user handed the choice back "
+            "and the model applied the arm on their behalf."
+        ),
+    )
     sp.add_argument(
         "--rewrite-dimension",
         default=None,
@@ -401,7 +412,10 @@ def _register_subcommands(subparsers) -> None:
     sp.add_argument(
         "--accept-gaps",
         action="store_true",
-        help="User explicitly accepted Partial/Missing dimensions; record override.",
+        help=(
+            "Finalize with Partial/Missing dimensions recorded as gaps "
+            "(sets override_recorded)."
+        ),
     )
     sp.set_defaults(func=cmd_symptom_finalize)
 
@@ -1082,6 +1096,31 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_render_intake_echo)
+
+    sp = subparsers.add_parser(
+        "record-intake-confirmation",
+        help=(
+            "Persist the user's confirm/correct reply to the intake echo "
+            "(plan 98 D4a): {state, reply} into memo.intake_confirmation. "
+            "Renders as one line in the report. Re-recording overwrites "
+            "the prior value (idempotent)."
+        ),
+    )
+    sp.add_argument(
+        "--state",
+        required=True,
+        choices=list(INTAKE_CONFIRMATION_STATE_ENUM),
+        help=(
+            "'confirmed' when the user picked the matching arm at the echo; "
+            "'unconfirmed' after a non-pick / re-ask / delegating reply."
+        ),
+    )
+    sp.add_argument(
+        "--reply",
+        required=True,
+        help="The user's reply to the echo, verbatim (not a paraphrase).",
+    )
+    sp.set_defaults(func=cmd_record_intake_confirmation)
 
     # Step 7 — append-outcome.
     sp = subparsers.add_parser(

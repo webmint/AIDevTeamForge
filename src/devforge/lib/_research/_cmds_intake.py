@@ -1,6 +1,6 @@
 """Step 5 — intake-interrogation gate command handlers for research_helper.
 
-Two verbs:
+Three verbs:
   record-intake-classification  — setter: persists per-statement binary
                                    classification (requirement vs hypothesis)
                                    + the orchestrator-composed minimal_fix.
@@ -8,6 +8,11 @@ Two verbs:
                                    (requirements / hypotheses-to-verify /
                                    minimal fix) to stdout verbatim for the
                                    orchestrator to copy to the user.
+  record-intake-confirmation     — setter (plan 98 D4a): persists the
+                                   user's confirm/correct reply to that
+                                   echo-back ({state, reply}), so an
+                                   unconfirmed interpretation is never
+                                   later cited as "the user confirmed".
 
 Helper-owns-shape: the orchestrator supplies the classification values;
 this module owns the echo-block structure and storage layout.
@@ -106,7 +111,7 @@ def cmd_render_intake_echo(args: argparse.Namespace) -> int:
     Block structure:
       ## Intake interpretation
 
-      ### Requirements (what you asked for)
+      ### Requirements (as I read your prompt)
       - <statement>
         Minimal scope: <minimal_fix>
 
@@ -150,7 +155,7 @@ def cmd_render_intake_echo(args: argparse.Namespace) -> int:
     # Requirements section — rendered only when non-empty (F2: suppress header
     # and placeholder when only hypotheses are recorded).
     if requirements:
-        lines.append("### Requirements (what you asked for)")
+        lines.append("### Requirements (as I read your prompt)")
         lines.append("")
         for entry in requirements:
             lines.append("- {0}".format(entry.get("statement", "")))
@@ -193,4 +198,40 @@ def cmd_render_intake_echo(args: argparse.Namespace) -> int:
         lines.append("")
 
     sys.stdout.write("\n".join(lines) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Confirmation setter (plan 98 D4a).
+# ---------------------------------------------------------------------------
+
+
+INTAKE_CONFIRMATION_STATE_ENUM = ("confirmed", "unconfirmed")
+
+
+def cmd_record_intake_confirmation(args: argparse.Namespace) -> int:
+    """Persist the user's confirm/correct reply to the intake echo.
+
+    Persists {state, reply} into memo.intake_confirmation. --state is one
+    of "confirmed" | "unconfirmed" (enforced by argparse choices).
+    --reply is the user's reply, stored VERBATIM -- render_report_md
+    quotes it back exactly on the "unconfirmed" arm, so a reader who was
+    not in the conversation sees the actual words, not the model's gloss
+    on them (this is the fix for the incident this verb exists to
+    record: a delegating reply mistaken for confirmation and later cited
+    as "the user confirmed").
+
+    Overwrites any prior value (idempotent re-recording — e.g. a
+    corrected re-ask after the first non-pick).
+    """
+    try:
+        reply = _validate_scalar(args.reply, "record-intake-confirmation.reply")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            memo["intake_confirmation"] = {"state": args.state, "reply": reply}
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-intake-confirmation: {0}".format(err))
     return 0

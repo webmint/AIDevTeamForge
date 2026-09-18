@@ -104,8 +104,10 @@ from ._cmds_feature_alloc import (  # noqa: E402
 from ._cmds_design_anchor import cmd_set_scope_design_anchor  # noqa: E402
 from ._cmds_absence import cmd_record_absence_probe  # noqa: E402
 from ._cmds_intake import (  # noqa: E402
+    INTAKE_CONFIRMATION_STATE_ENUM,
     INTAKE_KIND_ENUM,
     cmd_record_intake_classification,
+    cmd_record_intake_confirmation,
     cmd_render_intake_echo,
 )
 from ._cmds_scope import (  # noqa: E402
@@ -289,10 +291,19 @@ def _register_subcommands(subparsers) -> None:
 
     sp = subparsers.add_parser(
         "record-conflict-resolution",
-        help="Persist user resolution for a detected conflict and clear the loser dimension.",
+        help="Record the resolution for a detected conflict and clear the loser dimension.",
     )
     sp.add_argument("--index", required=True, type=int, help="0-based index into conflicts list.")
-    sp.add_argument("--resolution", required=True, help="Resolution label (free text).")
+    sp.add_argument(
+        "--resolution",
+        required=True,
+        help=(
+            "Resolution label (free text; not validated). Documented labels: "
+            "'user-chose-<new|prior>' for an explicit pick between the two "
+            "sides, 'delegated-<new|prior>' when the user handed the choice "
+            "back and the model picked a side."
+        ),
+    )
     sp.add_argument(
         "--rewrite-dimension",
         required=True,
@@ -318,7 +329,24 @@ def _register_subcommands(subparsers) -> None:
     sp.add_argument(
         "--accept-gaps",
         action="store_true",
-        help="Accept Partial/Missing dimensions; record override_recorded=True.",
+        help=(
+            "Proceed past Partial/Missing dimensions and record "
+            "override_recorded=True (the sole recorded override of verdict "
+            "rule D). Pair with --no-verdict-override when this call is not "
+            "an explicit pick."
+        ),
+    )
+    sp.add_argument(
+        "--no-verdict-override",
+        action="store_true",
+        dest="no_verdict_override",
+        help=(
+            "Modifier for --accept-gaps (requires it; invalid alone): "
+            "finalize the same way but do NOT set override_recorded=True, "
+            "so verdict rule D still forces a Reconsider verdict on an "
+            "unfavorable fit. Used when the gap-acceptance did not come "
+            "from an explicit pick."
+        ),
     )
     sp.set_defaults(func=cmd_scope_finalize)
 
@@ -634,6 +662,30 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_record_intake_classification)
+
+    sp = subparsers.add_parser(
+        "record-intake-confirmation",
+        help=(
+            "Persist whether the user confirmed the intake echo-back block "
+            "(plan 98 D4a). --state confirmed is set only on an explicit "
+            "confirm; --state unconfirmed covers a non-pick (e.g. a "
+            "delegated reply) after one re-ask, and the run proceeds on the "
+            "model's own reading -- never cited as the user's confirmation. "
+            "Overwrites any prior call (idempotent)."
+        ),
+    )
+    sp.add_argument(
+        "--state",
+        required=True,
+        choices=list(INTAKE_CONFIRMATION_STATE_ENUM),
+        help="Outcome of the confirmation ask: 'confirmed' or 'unconfirmed'.",
+    )
+    sp.add_argument(
+        "--reply",
+        required=True,
+        help="The verbatim (or paraphrased) user reply that produced this state (non-empty; required for both states).",
+    )
+    sp.set_defaults(func=cmd_record_intake_confirmation)
 
     sp = subparsers.add_parser(
         "render-intake-echo",
