@@ -56,6 +56,8 @@ Because the softness is in the translation, `/spec-check` MUST surface the full 
 - **Blast radius is contained to `/specify`** because `/spec-check`'s `target_stage` is always `"spec"` — the other three seed consumers (`/research`, `/discover`, `/plan`) never match a spec-targeted seed, so their globs stay as-is.
 - Emitted only on the REVISE-SPEC matching pick (mirrors plan 39's verdict-gated seed-write — no orphan seed on a DISMISS/CONSISTENT/overridden verdict).
 
+**(AMENDED 2026-09-18 — plan 98.)** The matching-pick-only rule above now also covers a reply that is no pick at all: at `/devforge:spec-check` PHASE 5.2 a reply that picks none of the offered dispositions is asked once more, a second such reply records no pick and writes no seed while the disposition stays the user's, and PHASE 7 routes that case — and a `Revise spec` cross-pick, which also writes no seed — to `/devforge:plan` or a re-run of `/devforge:spec-check`, never to `/devforge:specify`, which re-opens an already-specified feature only through a re-entry seed (`98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md`).
+
 ### D6 — Constraint IR schema (OQ-4)
 Helper owns the shape; the LLM fills values. Three parts:
 

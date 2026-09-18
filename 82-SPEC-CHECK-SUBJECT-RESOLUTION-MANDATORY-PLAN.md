@@ -348,6 +348,14 @@ setup files, not the seven.
 gate fires**, with the report still rendered, still written and still WIP-committed.
 Anything else fires the existing `AskUserQuestion` gate with the dispositions unchanged.
 
+**(AMENDED 2026-09-18 — plan 98.)** The dispositions are still unchanged and the gate
+gained a non-pick arm: a reply that picks none of them is asked once more, a second such
+reply records no pick and writes no seed while the disposition stays the user's, and
+PHASE 7 routes that case — and a `Revise spec` cross-pick, which also writes no seed — to
+`/devforge:plan` or a `/devforge:spec-check` re-run rather than to `/devforge:specify`,
+which blocks on a specified feature that has no spec-targeting seed; the `/devforge:plan`
+gate's presence + freshness predicate is untouched (`98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md`).
+
 **The no-solvable-IR escape question: ratified as the recommended framing.** A run that
 produces no solvable IR still writes a report recording that fact, and **that report
 satisfies the gate** — the check RAN. No `--skip-spec-check` flag is added.

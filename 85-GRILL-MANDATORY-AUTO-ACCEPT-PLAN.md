@@ -675,6 +675,13 @@ arrays. The defence is that this predicate DECIDES whether a human is consulted,
 prose-derived branch on a value the orchestrator computes itself is the softest possible
 form of that decision.
 
+**(AMENDED 2026-09-18 — plan 98.)** The non-clean arm above gained one arm: at PHASE 7.2 a
+reply that picks none of the offered options — a delegation, or free text that names no
+option — is asked once more, and a second such reply takes no option and writes no seed,
+telling the user the disposition is still theirs (the bounded-loop escalation gained the
+same single re-ask), so D6's NARROWS clause "the USER owns every non-clean verdict at
+PHASE 7" can no longer be met by a pick the model made (`98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md`).
+
 ### D6 — The Rule-1 reversal is a formal amendment, lighter than plan 82's D14 reversal *(RATIFIED 2026-08-25 — keep the flag; amendment NARROWS)*
 
 > **RATIFIED 2026-08-25 — `disable-model-invocation: true` STAYS on `/devforge:grill`, and

@@ -364,6 +364,8 @@ Plan 21's drop of `/refactor` is sound (its front half duplicates `/audit`'s ana
 
 If during triage a "fix" turns out to need an architectural change or a behavior/feature change (not a defect repair), `/fix` STOPS and recommends `/specify` (the same guard the v1.28 draft had — re-built fresh, not copied, per D6). `/fix` remediates defects, not feature work; feature/architecture changes re-enter the spec pipeline.
 
+**(AMENDED 2026-09-18 — plan 98.)** D7 stands unchanged, and the rule its bounce carries in `src/commands/fix/main.md` PHASE 1 — that *"any reply that does not select `re-enter specify`, writes NO seed"* — is now generalized framework-wide by `98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md` (the emitted `CLAUDE.md` `### Never` item 7 plus one arm sentence per open run-decision site: a reply that picks none of the offered options is never the user's pick, is asked once more, and then takes the command's named no-write arm), while this bounce sentence itself stays byte-unchanged as that plan's one zero-re-ask site.
+
 ## Implementation notes / discovered constraints
 
 ### 2026-06-19 — `wip-commit` is task-coupled; `/fix` gets an ADDITIVE task-less mode (the ONE `implement_helper` change)

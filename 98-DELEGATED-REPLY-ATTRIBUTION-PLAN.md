@@ -1,7 +1,7 @@
 # 98 — Delegated-Reply Attribution Plan
 
 **Created**: 2026-09-18
-**Status**: Phase 0 CLOSED 2026-09-18 (blanket maintainer directive, every item as recommended — see `## Phase 0 close record`). Build in progress.
+**Status**: **✅ DONE (build) 2026-09-18 — Phase 0 CLOSED and Phases 1–3 BUILT.** Phase 0 was closed by a single blanket maintainer directive: every item ratified AS RECOMMENDED, no per-item deliberation supplied (see `## Phase 0 close record`). Commits: `5271c72` draft / `78c8d17` Phase 0 close + OQ-8 resolution + sub-phases 2a, 2d and 2e / `0b4155a` Phase 1 / `a96d840` sub-phases 2b and 2c. The Phase 3 docs commit follows this sweep, and no SHA is recorded for it here. ⚠ **Sub-phases 2a, 2d and 2e landed BEFORE Phase 1**, in the Phase-0-close commit. They name none of Phase 1's verbs or flags, so the forced build order still held for 2b and 2c, the only sub-phases that name them. **One post-ratification maintainer pick amends D9** — configure Q10, an explicit pick (see D9). **Phase 4 consumer e2e is DEFERRED — a user-driven HARD GATE, NOT run.** Everything here is **build-verified, NOT consumer-validated**, and "done" never means Phase 4 passed. ⚠ **The evidence class is unchanged by the build:** ONE observed site, every other site predicted, nothing measured (see `## Origin & evidence`).
 
 Close the path by which a reply that picks nothing — a delegation such as "figure it out yourself", an evasive reply, or free text in AskUserQuestion's auto-added "Other" row — becomes, one step later, "the user's decision". The plan has five parts. First, one always-on rule in the emitted `CLAUDE.md` splits every question into two classes: RUN DECISIONS, where a non-pick is re-asked once and then takes the command's named no-write arm, and CONTENT ANSWERS, where the model answers and the record says the model answered. Second, per-site sentences at the open binding sites. Third, a persisted, honestly labelled intake confirmation at the one observed site. Fourth, approval summaries that list everything the model supplied. Fifth, helper vocabulary that stops crediting the user by name. **Implicit approval by invocation is NOT changed** — the maintainer accepted it on 2026-09-18, before ratification (D5).
 
@@ -133,6 +133,8 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 
 **None of the three attributes a decision to the user.**
 
+⚠ **Amended 2026-09-18 (build):** the count of THREE above covers the no-write arms of RUN-DECISION rows only, and it should be read that way. Two arms that write sit outside it. The `spec_type` pre-seed row below is really a CONTENT answer, not a no-write run decision: its `accept` keeps the upstream pre-seeded value, labelled as pre-seeded, through `classify-spec-type --seeded-by-upstream`. D3's design-source `None…` arm writes `set-design-source`. **Neither attributes anything to the user.** Trap 2 carries the same correction.
+
 | Command | Site (grep text) | Second non-pick takes |
 |---|---|---|
 | research / discover | Phase 0.5 `"Is this interpretation right?"` (both asks) | proceed to Phase 1 with the interpretation recorded UNCONFIRMED (D4) — one of the three missing-pick records |
@@ -143,8 +145,8 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 | specify | Step 5.3 `"Approve this spec?"` | `cancel` (spec stays Draft, state preserved) |
 | specify | handoff pick `yes-most-recent / pick-other / cold` | end the turn, nothing imported |
 | specify | other-branch `from-here / switch-to-default / stay` | `stay` |
-| specify | spec_type pre-seed `accept / override` | `accept` (keeps the pre-seeded value, already labelled as pre-seeded) |
-| spec-check | PHASE 5.2 disposition | NO pick, NO seed; say the disposition is still the user's and name both next routes |
+| specify | spec_type pre-seed `accept / override` | `accept` (keeps the pre-seeded value, already labelled as pre-seeded) — ⚠ *Amended 2026-09-18 (build): a content answer, not a no-write run decision; see the note above this table* |
+| spec-check | PHASE 5.2 disposition | NO pick, NO seed; say the disposition is still the user's and name both next routes — ⚠ *Amended 2026-09-18 (build): the two routes are `/devforge:plan` and a spec-check re-run; see the note below this table* |
 | plan | PHASE 0a `"Process this spec?"`, pick-other, drift proceed/cancel, 0b `complete` / `unknown-status` | `cancel` / end the turn |
 | plan | architect §6 Out-of-Scope escalation | the spec's §6 boundary stands (no override) |
 | plan | PHASE 3 `"Approve this plan?"` | `cancel` |
@@ -167,6 +169,8 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 
 ⚠ **The `src/CLAUDE.md` row is kept for M1 consistency ONLY:** a delegation is not an agreement to that specific command. **It is NOT an approval protection.** The maintainer accepted the approval side effect of invoking the next command (D5, RESOLVED 2026-09-18), so a model-invoked `/devforge:plan` or `/devforge:breakdown` still flips `Approved`, and this row does not claim otherwise.
 
+⚠ **Amended 2026-09-18 (build) — the spec-check row.** "Name both next routes" shipped as `/devforge:plan`, to proceed on the report, or a re-run of `/devforge:spec-check`, to make the pick. `/devforge:specify` is not one of them. It blocks on a feature directory that already holds `spec.md` and has no spec-targeting seed (`_specify/_cmds_handoff.py`, `find-handoffs`), and a non-pick writes no seed. For the same reason, spec-check PHASE 7 routes a `Revise spec` CROSS-pick, which writes no seed, to the same two routes instead of the blocked `/devforge:specify`.
+
 **RECOMMEND.**
 
 **Counter-argument, recorded:** roughly 30 sentences across roughly 17 files is a large prose surface. OPEN-LOW sites get NO per-site sentence; D1 covers them, and its second default ends the turn there with nothing written. That is a deliberate bound, and it is listed in Non-goals.
@@ -182,7 +186,7 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 | research | Phase 2.4d write-boundary / intermediates prompts | the model traces the chain itself and records it as model-traced, never "user-supplied" |
 | research / discover | design-reference prompt | a delegation is `none` — the model never names a reference on the user's behalf |
 | specify | Phase 2 decision points (interactive) | `set-dp-default-applied` becomes legal in interactive mode WITH a required `--delegated-reply "<verbatim reply>"` (Python, D8); §8 renders it `[default applied]` naming the delegation; auto mode byte-unchanged |
-| specify | design source | the first option `None…` (already the stated default) |
+| specify | design source | the first option `None…` (already the stated default) — ⚠ *Amended 2026-09-18 (build): this arm writes `set-design-source`; see D2's note on the count of THREE* |
 | plan | PHASE 3 interactive decision points | `[default applied]` marker in interactive mode too, listed under "Decision Points Resolved" exactly as auto mode lists it |
 | setup (D9) | init / configure / constitute questions | see D9 |
 
@@ -215,12 +219,14 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 - The specify and plan approve gates remain class-A questions (D2). A second non-pick there takes `cancel`.
 - A later invocation of the next command still flips the artifact to `Approved`, by the maintainer's accepted design.
 - `storage-rules.md`'s `Approved` definitions, `src/CLAUDE.md`'s Hard Gates wording, both PHASE-0b blocks and every `cmd_check_status_and_flip` stay byte-unchanged.
+  - ⚠ **Amended 2026-09-18 (build):** "both PHASE-0b blocks … stay byte-unchanged" is too strong. Their flip logic, tokens and messages are unchanged. But the two PHASE-0b QUESTIONS in each of `/devforge:plan` and `/devforge:breakdown` — the `complete` and `unknown-status` arms — each gained the one non-pick sentence that D2's own `0b complete / unknown-status` rows call for. The other surfaces this bullet names are byte-unchanged.
 
 ### D6 — Approval summaries show everything the model supplied
 
 - **`/devforge:specify` Step 5.1:** list every `[default applied]` decision point, delegated ones included, and every out-of-scope item in full. The 3-item / 80-char truncation goes (`_specify/_render.py`, Python).
 - **`/devforge:plan` PHASE 3 summary:** add a `**Defaults applied**:` line listing each `[default applied]` decision, auto and delegated alike. The line is omitted when there are none.
 - **`/devforge:breakdown` PHASE 4 summary:** add a `**Grill**:` line naming the report's disposition and what happened at grill 7.2 — picked X, not picked, or a clean run with no question.
+  - ⚠ **Amended 2026-09-18 (build):** nothing records what the user picked at grill 7.2 — `grill-state.json` has no pick field (fact 7) — so the line cannot show it. What shipped names three recorded facts and never the pick: the report's RECOMMENDED disposition, whether the run was clean (read from `grill.md`'s `## Summary` counts), and whether `grill-seed.json` exists.
 - **`/devforge:grill` 7.2:** the description of the matching re-entry option shows the seed inputs it would commit (`must_satisfy`, `prior_conclusion`).
 
 **RECOMMEND.**
@@ -257,6 +263,8 @@ In the `/devforge:report-bug` description and the `/devforge:report-ticket` body
 **RECOMMEND.**
 
 **Counter-argument, recorded:** setup runs once, with the human present, and the stakes are lower. Accepted — hence class B.
+
+⚠ **Amended 2026-09-18, after ratification, by an explicit maintainer pick** — made through AskUserQuestion during the build, so it is a pick, not a delegation. **configure Q10 is the ONE exception to this decision's first bullet.** A delegation at Q10 takes `No`, never the recommended `Yes`. The reason is that the same answer also turns on stamping the user's `git config user.name` into committed pipeline artifacts as a `Run by:` line (`_shared/provenance.py`'s `read_ai_attribution_enabled` reads it), and publishing a person's name is never decided on a delegation. Q10's text now names both effects, as this decision's last bullet asked. Phase 4 anchor 8 tests the exception.
 
 ### D10 — Tripwires and non-deltas
 
@@ -319,7 +327,7 @@ The rule relies on AskUserQuestion always offering a free-text "Other" row. **Ve
 - **D6** — RATIFIED as recommended.
 - **D7** — RATIFIED as recommended.
 - **D8** — RATIFIED as the collected Python surface (follows D3, D4, D6, OQ-3).
-- **D9** — RATIFIED as recommended.
+- **D9** — RATIFIED as recommended. ⚠ *Amended after ratification, 2026-09-18, by an explicit maintainer pick: a delegated configure Q10 takes `No` — see D9.*
 - **D10** — RATIFIED as recommended.
 - **OQ-1** — `### Never` item 7.
 - **OQ-2** — one re-ask.
@@ -328,7 +336,7 @@ The rule relies on AskUserQuestion always offering a free-text "Other" row. **Ve
 - **OQ-5** — reword to "informational; nothing records consent"; no new question.
 - **OQ-6** — a second non-pick keeps option 1 (no relaunch) and the Completion Notes record "shape not confirmed by the user — delegated".
 - **OQ-7** — per-site sentences in each command.
-- **OQ-8** — the `claude-code-guide` check is owed before Phase 2 (a precondition, not an arm).
+- **OQ-8** — the `claude-code-guide` check is owed before Phase 2 (a precondition, not an arm). *Discharged 2026-09-18, before Phase 2 — see OQ-8.*
 
 ---
 
@@ -365,6 +373,34 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 - If D4(c) is ratified, `grep -rn "Requirements (what you asked for)" src/devforge/lib tests/` returns zero hits. The two `main.md` quotes change in Phase 2, not here.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
 
+#### Phase 1 build record — 2026-09-18
+
+**Route as specified: python-engineer → python-reviewer. Every package was reviewed and every finding was fixed. Commit `0b4155a`.** ⚠ This block records a BUILD, not a consumer observation. Nothing below was run on a real install.
+
+**What landed:**
+
+1. **research + discover.**
+   - `record-intake-confirmation --state confirmed|unconfirmed --reply "<verbatim>"` writes `memo.intake_confirmation` (D4a).
+   - The report renders one `**Intake interpretation**:` line: confirmed, or NOT confirmed with `the reply was "<reply>"`. The reply is collapsed to one line and markdown-escaped.
+   - The intake echo heading is now `### Requirements (as I read your prompt)` (D4c).
+   - The help texts are neutral (D8). `record-conflict-resolution` documents `user-chose-<new|prior>` and `delegated-<new|prior>`, and `--accept-gaps` no longer says "User explicitly accepted".
+2. **discover — `scope-finalize --accept-gaps --no-verdict-override` (OQ-3).**
+   - It records the gaps and sets `override_recorded` to False explicitly.
+   - Verdict invariant D therefore still forces `Reconsider`. The invariant is enforced at three sites under `_discover/`: `_cmds_core.py`'s `cmd_verify`, `_handoff_build.py`'s `DiscoveryBlock` copy, and `handoff_schema.py`'s `DiscoveryBlock` post-init.
+   - `--no-verdict-override` alone exits 2. `--accept-gaps` alone is unchanged.
+3. **specify.**
+   - `set-dp-default-applied` is accepted in interactive mode only with `--delegated-reply`, and the reply is stored as `dp.delegated_reply` (D3). Auto mode plus the flag exits 2. Interactive mode without the flag keeps the original rejection.
+   - §8 appends `_(you delegated this choice: "…")_` to the unchanged `[default applied]` prefix.
+   - Status transitions clear a stale `user_answer` / `delegated_reply`.
+   - The Step-5.1 summary gains a conditional `- **Defaults applied**:` block and lists every out-of-scope item in full. The 3-item / 80-char cut is removed (D6).
+   - The stale "4-bullet" wording was fixed in `_specify/`'s `_cli.py`, `_render.py` and `_cmds_phase5.py`.
+
+**Tests:** the full `tests/lib` + `tests/scripts` run is 11171 passed, 14 skipped. Targeted suites: `test_research_helper.py` 588 passed, 2 skipped; `test_specify_helper.py` 373; `test_discover_helper.py` 187.
+
+**Verify greps, re-run 2026-09-18 when this record was written:**
+- `Requirements (what you asked for)` has zero hits under `src/` and `tests/`.
+- `user-chose` under `src/devforge/lib` has exactly two hits: `_research/_cli.py` and `_discover/_cli.py`. Each is a help-text label sitting beside `delegated-<new|prior>`.
+
 ### Phase 2 — Instructions
 
 **Route: instruction-author → instruction-reviewer. OQ-8's `claude-code-guide` check runs FIRST.** The phase is split into five sub-phases so that no single dispatch is large.
@@ -383,6 +419,63 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 - `fix/main.md`'s bounce sentence is byte-identical: *"An 'Other' answer, and any reply that does not select `re-enter specify`, writes NO seed."*
 - **D5 is RESOLVED as keep, so its surface is byte-unchanged:** `grep -rn "constitutes approval" src/commands` still hits `plan/main.md` and `breakdown/main.md` (verified 2026-09-18), and `src/devforge/storage-rules.md` has no diff.
 - instruction-reviewer returns SHIP-READY for each sub-phase, or every finding is fixed.
+
+#### Phase 2 build record — 2026-09-18
+
+**Route as specified: instruction-author → instruction-reviewer for each sub-phase, and every finding was fixed.** OQ-8's `claude-code-guide` check ran first (see OQ-8). **Commits: `78c8d17` carries 2a, 2d and 2e with the Phase 0 close, and `a96d840` carries 2b and 2c.** ⚠ Instruction-only. Nothing below has been observed on a real install.
+
+**What landed:**
+
+- **2a — `src/CLAUDE.md`.**
+  - `### Never` item 7, with items 1–6 byte-identical. It is the first multi-sentence `### Never` item, as D1's pattern note said it would be.
+  - An explicit-yes agreement sentence after "one agreement per command".
+  - A non-pick sentence at the fix-or-file offer.
+  - The Hard Gates list and `storage-rules.md` are untouched (D5).
+- **2b — `research/main.md` and `discover/main.md`.**
+  - The intake confirmation calls, the no-exclusions rule (D4b) and the new heading quote.
+  - Delegated rubric dimensions: `--state Partial`, with the value prefix "Model inference — the user delegated: ".
+  - Conflict `delegated-*`, the drift note, design reference → none, and the save question → `Don't save`.
+  - research: the cost gate, the mode flip, and all three Phase 2.4d prompts.
+  - discover: the coverage exit and the verdict-rule-D text.
+- **2c — `specify`, `spec-check`, `plan`, `grill` and `breakdown`.**
+  - specify: the delegated decision point via `--delegated-reply`, and the Step 5.1 docs.
+  - spec-check: a non-pick → no pick, no seed, and the routes named. PHASE 7 now routes a `Revise spec` CROSS-pick, which writes no seed, to `/devforge:plan` or a spec-check re-run instead of the blocked `/devforge:specify` (D2's amended spec-check row).
+  - plan: the `**Defaults applied**:` line.
+  - breakdown: the `**Grill**:` line, as amended at D6.
+  - grill: a 7.2 non-pick → no pick, no seed. The matching re-entry option's description shows its seed inputs.
+  - Re-asks were added at plan's §6 escalation and at grill's bounded-loop escalation.
+- **2d — `implement` (plus `references/crash-recovery.md`, `references/forcing-functions-gate.md` and `references/review-loop.md`), `fix`, `finalize`, `review` and `verify`.**
+  - The named arms: `stop` / `manual` / no squash / neither / `none`.
+  - The Stage-A judgment item keeps option 1 and records "shape not confirmed by the user — delegated". The carrier differs per lane; see the build-time decisions below.
+  - The composition templates hint the pending note.
+  - fix's bounce sentence is byte-unchanged. ⚠ The live sentence reads `An "Other" answer, …` with double quotes. This document's fact 12 and the Phase 2 Verify render it with single quotes inside their own double-quoted italics, so grep `writes NO seed`, not the quoted form.
+- **2e — setup and standalone commands.**
+  - `report-bug` / `report-ticket`: the model-invoked path takes only the user's own words (D7).
+  - `pr-review`: the skip arms. The NDA reminder no longer claims consent (OQ-5).
+  - `audit`: the cost guards end the turn.
+  - `init-forge`, `configure` (with `references/q11-tiers.md` and `references/q12-ac.md`) and `constitute` (D9, OQ-4):
+    - Delegated defaults are named.
+    - A delegation typed as free text is never stored as a value.
+    - Q-domain → zero entities.
+    - 6.2 → `cancel`, and "user-acknowledged ship-as-is" appears only after `ship`.
+    - prune-agents falls back to SKIP.
+    - The configure and constitute Phase 3 fallbacks warn "WITHOUT your confirmation".
+  - `generate-docs`: a verified no-op.
+
+**Tests:** the live-spec tests (reachability, memory-lane, emitter, per-package) were green after every sub-phase. ⚠ The per-row grep list this phase's Verify asks for is not reproduced in this document. The recorded evidence is the per-sub-phase instruction-reviewer passes plus those tests.
+
+#### Build-time decisions — recorded 2026-09-18
+
+These are the choices the build made where the plan text was silent or said something narrower. Each item names the decision it extends. None was put to the maintainer except D9's Q10 exception, which is recorded at D9 and is not repeated here.
+
+1. **Free-text follow-ups (2e, extends D9's free-text bullet).** Some setup follow-ups appear only after the user has rejected the offered candidates. A delegation there → ask once more, then end the turn saving nothing.
+2. **Q11 with the recommended alias hidden (2e, extends D9's first bullet).** When the availability probe hides the recommended alias, "apply the recommended value" has nothing to apply. A delegation then takes the first offered option.
+3. **Re-asks at the two escalations (2c, D2).** plan's architect §6 Out-of-Scope escalation and grill's bounded-loop escalation each gained the one re-ask before their named arm.
+4. **The Stage-A note's carrier on each lane (2d, OQ-6).** OQ-6 named the task's Completion Notes. implement records the note in `mark-complete --notes`, and fix's cold lane records it in `close-bug --fix-notes`. fix's feature lane has no notes carrier, so there the note goes in the Stage-B summary shown to the user rather than into a file.
+5. **The spec-check routes (2c, D2).** See D2's amended spec-check row: `/devforge:plan` or a spec-check re-run, never the blocked `/devforge:specify`.
+6. **research `scope` passes the bare label (2b, D3).** Every other delegated rubric value carries the prefix "Model inference — the user delegated: ". research's `scope` passes the bare label, because a prefix would bypass its `"one place"` evidence gate. The reason is stated at the site.
+7. **Unified quote escaping (Phase 1, D4a).** D4a's sketch rendered the reply in single quotes. What shipped renders it in double quotes, with an embedded `"` escaped as `\"`. All three helpers — research, discover and specify — now escape the same way: backslash first, then `"`, backtick, `*`, `_` and `|`.
+8. **discover sets the override to False explicitly (Phase 1, OQ-3).** OQ-3 said `override_recorded` "stays false". The build sets it to False EXPLICITLY, so a stale True left by an earlier plain `--accept-gaps` is overwritten.
 
 ### Phase 3 — Docs sweep
 
@@ -403,6 +496,36 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 - The `CHANGELOG.md` entry states the honest bound: **a model-judgment rule plus per-site sentences — NOT mechanical detection of a delegation.**
 - Every checked site is recorded as an **edit or an explicit verified no-op**. An unrecorded no-op is indistinguishable from an unchecked site.
 
+#### Phase 3 build record — 2026-09-18
+
+**Route: instruction-author wrote this sweep; instruction-reviewer then reviewed all of it.** Docs only: no Python and no test. **The Phase 3 docs commit follows this sweep.**
+
+**instruction-reviewer outcome: SHIP-READY, with 1 nit, fixed.** The nit was this block's route sentence, which read as a completed review before the review was recorded.
+
+**This plan document, edited in this sweep:**
+- the `**Status**:` line;
+- the Phase 1 and Phase 2 build records and the build-time decisions list;
+- four dated in-place amendments at the decisions they correct: D2's count of THREE with Trap 2, D2's spec-check row, D5, and D6;
+- D9's post-ratification Q10 amendment, with Phase 4 anchor 8;
+- `## Residuals (found during the build, not fixed)`;
+- short dated notes at the close record's D9 and OQ-8 lines, Trap 8, the build order, and `## When resuming work` steps 3 and 5.
+
+**The rest of this phase's list — each site an edit or an explicit verified no-op, as this phase's Verify requires:**
+
+| Site | Outcome |
+|---|---|
+| `CHANGELOG.md` | **EDIT** — a new `## [Unreleased]` section was created, because none existed. It carries one entry, which states the honest bound. |
+| `DEVELOPMENT-STATUS.md` `## Key Design Decisions` | **EDIT** — item 19 was added. Item 2 ("Hard gates at every phase transition") was kept and a clause appended: the approval questions are explicit and a reply that picks nothing never approves, while the `Approved` status on `spec.md` / `plan.md` is written when the next command runs (implicit approval by invocation, kept by D5). |
+| Repo `CLAUDE.md` | **EDIT** — the plan-98 index line now has the DONE shape. |
+| `PLAN-STATUS-ARCHIVE.md` | **EDIT** — the plan-98 entry was added after plan 96's. |
+| `26-REINTRODUCE-FIX-PLAN.md` | **EDIT** — a dated note after D7. |
+| `23-ADVERSARIAL-GRILLING-PLAN.md` | **EDIT** — a dated sub-bullet under D9. |
+| `85-GRILL-MANDATORY-AUTO-ACCEPT-PLAN.md` | **EDIT** — a dated note at the end of D5. |
+| `62-SMT-REQUIREMENTS-CONSISTENCY-PLAN.md` | **EDIT** — a dated note after D5. |
+| `82-SPEC-CHECK-SUBJECT-RESOLUTION-MANDATORY-PLAN.md` | **EDIT** — a dated note in D5, after "Auto-accept semantics". |
+| `FINDINGS.md` finding 2 | **EDIT** — a dated note. |
+| `README.md` | **VERIFIED NO-OP — not edited.** A case-insensitive grep for `approv` / `delegat` / `Other` returns seven lines (5, 34, 57, 71, 73, 74, 79), and none states anything this build falsified. The three `other` hits (34, 71, 73) are ordinary English. 74 says `/devforge:plan` works "from the approved spec", which the kept flip still makes true. 79 is the `APPROVED` verdict token. Lines 5 (*"Every phase transition needs your explicit approval"*) and 57 (*"Each arrow is a user-approved gate"*) make the same claim as `DEVELOPMENT-STATUS.md` item 2. Their imprecision about the implicit `Approved` flip predates this plan, which kept that flip (D5). |
+
 ### Phase 4 — Consumer e2e — DEFERRED, user-driven HARD GATE, NOT run
 
 **Everything above is build-verified, NOT consumer-validated. "Done" never means Phase 4 passed.** The anchors are known-answer cases and are **scored in PAIRS**: a rule that refuses everything passes the delegation half and fails the explicit half.
@@ -416,12 +539,35 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
    - **(a) Delegation:** "you decide" twice → `cancel`, and the spec stays Draft. A later `/devforge:plan` invocation still flips it to Approved, by the maintainer's accepted design (D5), so **that flip is NOT a failure of this anchor.**
    - **(b) Explicit pick:** an explicit `approve` at specify behaves as today.
 7. **finalize:** "you decide" twice → no squash.
+8. **configure Q10 — scored as a pair within this anchor.** ⚠ *Added 2026-09-18 (build), for D9's post-ratification Q10 exception.* **Both halves run with `git config user.name` SET.** With it unset, no `Run by:` line is stamped under either answer, and half (a) would pass vacuously.
+   - **(a) Delegation:** Q10 answered with a delegation → `No` is saved and named among configure's delegated values, and no later pipeline run stamps a `Run by:` line into `spec.md`, `plan.md`, `research-report.md` or `summary.md`.
+   - **(b) Explicit pick:** an explicit `Yes` behaves as today: the commit-message footer, plus a `Run by:` line naming the user's `git config user.name` in those four documents.
 
 #### Verify
 
-- All seven anchors are scored **explicitly** — stated, not summarized — with each pair scored together.
+- All seven anchors are scored **explicitly** — stated, not summarized — with each pair scored together. ⚠ *Amended 2026-09-18 (build): all EIGHT — anchor 8 was added for D9's Q10 exception.*
 - **If an anchor fails**, record the negative with the artifacts, and name the mechanism before proposing anything. A laundered pick is a D1/D2 finding, an unnamed delegated default is a D3/D6 finding, and a stall on an explicit pick is a D1 over-reach finding. **They have different fixes.**
 - **A clean run is evidence that the rules behave on planted replies, NEVER evidence that the gap cost anything.** The only observed failure is on a frozen install, and it cannot be re-run here.
+
+---
+
+## Residuals (found during the build, not fixed)
+
+Each item below was found during the build and deliberately left unfixed. All of them are pre-existing unless the item says otherwise. ⚠ Line digits drift — grep the quoted text.
+
+1. **Seed deletion claim.** `research/main.md` and `discover/main.md` claim that the next `/devforge:grill` run deletes seeds. Grill's spec and the `_grill/` code delete nothing.
+2. **Grill's bounded-loop escalation.** The text writes the seed first and escalates after. It does not say whether the escalation replaces the seed write.
+3. **research mode re-detection.** Mode detection re-runs `detect-mode` without `--override`, which overwrites a Phase-1 mode-flip choice, whether the user's or the model's.
+4. **Inline reply arguments.** `--reply "<verbatim>"` and `--delegated-reply "<verbatim>"` pass user text inline in a shell argument. That is the same inline hazard plan 95 recorded for rubric answers. The two flags are this plan's. The hazard class is not, and this plan does not widen it in kind.
+5. **spec-check PHASE 5.2's `Revise spec` option description** promises a `/devforge:specify` re-run that a cross-pick cannot deliver.
+6. **fix PHASE 4** never tells the loop to record judgment items, although its Stage A depends on them.
+7. **OPEN-LOW prompts left to the always-on rule, with no per-site sentence** — the bound D2's counter-argument and the Non-goals state:
+   - research: the topic prompt and the coverage exit;
+   - discover: the references prompt;
+   - specify: the default-branch, pick-other index and Figma-screenshot follow-ups;
+   - pr-review: the paste-body and file-path follow-ups;
+   - generate-docs: the cost gate.
+8. **The repo `CLAUDE.md` "Where to find what" router** still says `_PROMOTED` (20 names) and 16 model-invocable. The live tree has been 21 / 17 / 4 since plan 95. This is not this plan's residual, and the maintainer was told.
 
 ---
 
@@ -448,7 +594,7 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 
 **Trap 1 — citing "Never guess" as already covering this** (fact 4). After a delegation the model is not unsure what the user wants, so that rule does not fire.
 
-**Trap 2 — a "no-write arm" that writes.** Check every D2 row. A no-write arm writes nothing except a record that makes the missing pick visible, and exactly THREE sites write one: the research/discover intake UNCONFIRMED record (D4), the discover coverage-exit gap records with no verdict override (OQ-3), and the Stage-A *"shape not confirmed by the user — delegated"* Completion Note (OQ-6). None of them attributes a decision to the user.
+**Trap 2 — a "no-write arm" that writes.** Check every D2 row. A no-write arm writes nothing except a record that makes the missing pick visible, and exactly THREE sites write one: the research/discover intake UNCONFIRMED record (D4), the discover coverage-exit gap records with no verdict override (OQ-3), and the Stage-A *"shape not confirmed by the user — delegated"* Completion Note (OQ-6). None of them attributes a decision to the user. ⚠ **Amended 2026-09-18 (build):** that count covers RUN-DECISION arms only. The specify `spec_type` `accept` arm is a content answer that keeps the pre-seeded value, and the design-source `None…` arm writes `set-design-source`. Both write, both sit outside the three, and neither attributes anything to the user (see D2's note).
 
 **Trap 3 — Class B turned into refusal.** Refusing to answer after a delegation turns the rubric into friction. Class B is attribution, not refusal.
 
@@ -464,6 +610,7 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 - **The four shared files.** Plan 97 (`97-WRAPPER-MODE-FRAMEWORK-MENTION-GUARD-PLAN.md`, DRAFT) proposes edits to `src/commands/implement/main.md`, `src/commands/fix/main.md`, `src/commands/verify/main.md` and `src/commands/implement/references/crash-recovery.md`. All four are in this plan's sub-phase 2d.
 - **The shared docs site.** Both plans' Phase 3 create `CHANGELOG.md`'s `## [Unreleased]` section, so the second finds it present.
 - **The rule.** **Whichever plan ships second reads those files LIVE and re-derives its own edits, never from a pre-computed diff** (the plans 89/90 coordination precedent). The rule binds the READ, not the edit.
+- ⚠ **Recorded 2026-09-18 (build):** this plan's sub-phase 2d landed first (`78c8d17`), while plan 97 was still a DRAFT with nothing built. Under the rule above, plan 97 is therefore the plan that ships second, and it owes the LIVE read of the four shared files.
 
 **Also remember: unclassified ⇒ Class A,** and a Class-A question with no named option ends the turn with nothing written on a second non-pick (D1's second default).
 
@@ -473,6 +620,8 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 1. **Phase 1 (Python) first.** Phase 2 names verbs and flags that must exist: `record-intake-confirmation`, `--delegated-reply`, `--no-verdict-override`.
 2. **OQ-8's `claude-code-guide` check** precedes Phase 2.
 3. **Phase 3 last**, because it records what the earlier phases actually did.
+
+⚠ *Recorded 2026-09-18 (build): sub-phases 2a, 2d and 2e landed before Phase 1, in `78c8d17`. None of them names a Phase-1 verb or flag — only the research, discover and specify specs do, and those are 2b and 2c — so the forced part of this order held.*
 
 **File anchors:**
 
@@ -495,11 +644,12 @@ Every ratifiable D-item (D1–D4, D6–D10) and every OQ (OQ-1–OQ-8) gets a re
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation.
 2. **Check `## Phase 0 close record` first.** If it still reads *Pending*, nothing is ratified and **no build phase may start**.
 3. **Read the live files before editing.** Line digits in this document drift, so **grep the quoted text, never the digits** — `Is this interpretation right?`, `(or any other reply)`, `Requirements (what you asked for)`, `rejects default-applied setter`, `user-chose`, `User explicitly accepted`, `override_recorded`, `auto-injects 'Other'`.
+   - ⚠ *Recorded 2026-09-18 (build):* two of these strings are gone from `src/` by design: `Requirements (what you asked for)` (D4c) and `User explicitly accepted` (D8). Zero hits for them is the built state, not a regression. In `_specify/_cmds_phase2.py` the mode-gate message is split across two string literals, so grep `default-applied setter` to reach it there.
 4. **Check plan 97's state before sub-phase 2d or Phase 3** (Trap 8).
 5. **Route every edit through the house flow:**
    - instruction-author → instruction-reviewer for every markdown edit;
    - python-engineer → python-reviewer for every Python edit;
-   - **`claude-code-guide` for every Claude-Code-integration fact** (OQ-8 is owed before Phase 2).
+   - **`claude-code-guide` for every Claude-Code-integration fact** (OQ-8 is owed before Phase 2 — discharged 2026-09-18).
 6. **Commit by explicit path, never `git add -A`.** Another session may be mid-build in the same checkout.
 7. **After each phase, cross-check.** Grep every identifier, verb, flag, heading and token touched, and fix any dangling reference in the SAME change.
 8. **Keep the evidence class attached.** Any summary of this plan repeats it: ONE observed site, a read-only audit, every other site predicted, nothing measured.
