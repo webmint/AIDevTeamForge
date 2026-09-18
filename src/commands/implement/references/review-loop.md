@@ -72,6 +72,8 @@ PHASE 6 records three kinds of decision item, all surfaced at PHASE 7 Stage A on
   - `alternative` — the named alternative the loop did NOT take (becomes Stage A option 2).
 
   A judgment item's finding IS fixed; the human only confirms the SHAPE — so it is NOT an open finding and may reach Stage B.
+
+  A Stage A reply that picks none of the item's options leaves the shape unconfirmed: `main.md` PHASE 7 asks once more, and on a second such reply keeps `agent_resolution` without relaunching the agent and records `shape not confirmed by the user — delegated` in the task's Completion Notes.
 - **could-not-converge** — recorded when the loop escalated at the cap with one or more reviewers still dirty. It carries the unresolved reviewer objection(s). Stage A surfaces it with the options `send back with direction / skip / stop` (per `main.md` PHASE 7 Stage A) — there is no option to accept the finding as-is, because an open finding must never reach `approve`.
 - **conflict** — recorded when the orchestrator found a COMPARABLE-severity contradiction it must not decide on the user's behalf. It carries the contested finding and the two reviewers' incompatible positions. Stage A names the contested finding on one line and offers the two positions as the first two options (plus `let me specify` and `stop`); the chosen resolution becomes a repair direction, after which the loop re-reviews to clean — the conflict is resolved before Stage B, never approved open.
 

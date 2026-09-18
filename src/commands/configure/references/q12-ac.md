@@ -2,6 +2,8 @@
 
 `/devforge:configure` Phase 4 asks one AskUserQuestion to pick the acceptance-criteria verification mode, then conditionally asks three follow-up questions (Q12.1 / Q12.2 / Q12.3) when the user selects `runtime-assisted`. Persist each answer via its setter before issuing the next question.
 
+**When the user hands a follow-up back to you.** At a Q12.1 / Q12.2 / Q12.3 `Confirm` / `Override` question, treat a reply that hands the choice back to you ("you decide", "up to you", or the same in any language) as `Confirm`: save the detected value and name it in `/devforge:configure` Phase 7's delegated-values lines. At a plain free-text prompt in those three follow-ups, such a reply is not a URL or a command — never pass it to a setter; that prompt runs only when detection found nothing or the user overrode the detected value, so there is no value to apply on their behalf: ask the same prompt once more, and if the second reply again gives no value, end the turn without saving that field, telling the user to re-run `/devforge:configure` once they know it.
+
 ## Q12 — Mode selection
 
 Use AskUserQuestion: "How should /devforge:verify check acceptance criteria?"
@@ -11,6 +13,8 @@ Use AskUserQuestion: "How should /devforge:verify check acceptance criteria?"
 - `off` — skip behavioral AC verification; code-reading floor only (advisory, non-blocking)
 
 Save via `.devforge/lib/configure_helper set-ac-verification-mode <choice>`.
+
+If the user hands this choice back to you ("you decide", "up to you", or the same in any language — including one typed as free text instead of an option), save `code-only` and name it in `/devforge:configure` Phase 7's delegated-values lines.
 
 ### Mode taxonomy
 

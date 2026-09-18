@@ -396,6 +396,8 @@ Tell the user where `verification.md` was written and the next step, branched on
 - **NEEDS WORK** — offer the user a two-arm fix-or-file choice for the blocking issues (these are ALTERNATIVES, not a pipeline): **(A)** run `/devforge:fix` to remediate the blockers now (a gated remediation loop reusing `/devforge:implement`'s back-half verify + review-panel + commit — re-running `/devforge:verify` afterward re-checks the ACs against the remediated diff), or **(B)** file bugs to defer (PHASE 9 — the batch bug-filing path below). `/devforge:verify` only PROPOSES `/devforge:fix` — it never runs it inside its own run, and it writes no `bugs/` file itself except via the PHASE-9 `file-bugs` path the user elects; the user takes arm A by typing `/devforge:fix` or by agreeing to the offer, after which the orchestrator runs it as the next command, or proceeds into PHASE 9 to take arm B. Do NOT suggest re-running `/devforge:implement` here — `/devforge:implement` drains approved tasks, which does not fix a NEEDS-WORK finding; `/devforge:fix` does.
 - **REJECTED** — the feature has a spec-level problem; revise the spec via `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown`, then re-implement.
 
+On NEEDS WORK, a reply that picks neither arm — one that hands the choice back to you, or names neither `/devforge:fix` nor filing bugs — is not a pick: ask once more, and if the second reply again picks neither, run no `/devforge:fix`, skip PHASE 9 and go straight to the cleanup block below, so no bug is filed.
+
 On APPROVED or REJECTED, skip PHASE 9 and go straight to the cleanup block below.
 
 ## PHASE 9 — Issue report + batch bug-filing (NEEDS WORK only)
@@ -432,6 +434,8 @@ Compose `$WORKDIR/issues.json` as a JSON array of issue dicts and write it with 
 ```
 
 Write that array to `$WORKDIR/issues.json`, then make the `file-bugs` call above. `file-bugs` scans the existing `bugs/` directory for the highest `NNN` prefix, assigns sequential numbers from there, and writes one `bugs/NNN-<slug>.md` per issue in the `.devforge/storage-rules.md` format (`Source: verify`). `--date` is REQUIRED (`YYYY-MM-DD`). Stdout is the JSON array of paths written; report them to the user. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn. When the user elects **none**, do NOT compose `issues.json` and SKIP the `file-bugs` call entirely (do not invoke it with an empty path).
+
+A reply that picks none of **all**, **select** and **none** — one that hands the choice back to you, or free text that names none of them — is not a pick, and neither is a **select** reply that names no issue: ask the question that drew that reply once more, and if the second reply is again one of these, take **none**.
 
 ## Cleanup
 

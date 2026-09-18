@@ -385,6 +385,8 @@ Then point the user to the next step: tell them `<feature_dir>/review.md` was wr
 
 Then, ONLY when the report's confirmed-or-high-stakes findings set is non-empty (the inline summary just printed in PHASE 4.3 showed a non-zero `confirmed` or `contested` count — the same set the headline surfaced; use that printed count, do not re-read `$WORKDIR/partition.json`), ALSO offer the user a two-arm fix-or-file choice for those findings, ALONGSIDE the `/devforge:verify` next-step (it does not replace it — `/devforge:review` still points to `/devforge:verify`): **(A)** run `/devforge:fix` to remediate the surfaced findings now (a gated remediation loop reusing `/devforge:implement`'s back-half verify + review-panel + commit), or **(B)** file a bug to defer. `/devforge:review` only PROPOSES — it never runs `/devforge:fix` inside its own run and writes no `bugs/` file (it stays findings-only); the user takes arm A by typing `/devforge:fix` or by agreeing to the offer, after which the orchestrator runs it as the next command, or files a bug to take arm B. When the report is findings-empty (both the `confirmed` and `contested` counts are zero), propose NOTHING here — no `/devforge:fix` offer on a clean report.
 
+A reply that picks neither arm — one that hands the choice back to you, or names neither `/devforge:fix` nor filing a bug — is not a pick: ask once more, and if the second reply again picks neither, run nothing and file nothing.
+
 Finally, clean up the scratch directory in one step — `render-inline-summary` (PHASE 4.3) was the last reader of `$WORKDIR/partition.json` and the `commit-artifacts` step above reads only the `<feature_dir>` paths, so nothing else needs the scratch:
 
 ```bash

@@ -96,11 +96,13 @@ AskUserQuestion adds a free-text row to every question; a user who takes it type
 
 Then save the typed value with that tier's model setter, unchanged.
 
+This path, and the save above, is only for text that names a model. A reply to a tier's model question that hands the choice back to you ("you decide", "up to you", or the same in any language) — typed into the free-text row or given any other way — is not a model name: never save it as one. Treat it as a delegation instead: save the option marked `(Recommended)` in that question (when the probe left no option carrying the marker, the first option offered) and name it in `/devforge:configure` Phase 7's delegated-values lines.
+
 ## Saving the answers
 
 `.devforge/lib/configure_helper set-claude-tier-<tier> <value>` — `<tier>` is `think`, `do`, `verify` or `security`. A value matching `opus`, `sonnet`, `haiku` or `fable` case-insensitively is normalized to lowercase; any other non-empty value is stored verbatim as a pinned model ID.
 
-`.devforge/lib/configure_helper set-claude-effort-<tier> <value>` — the value must be one of `default`, `low`, `medium`, `high`, `xhigh`, `max`. The setter exits 2 on anything else and writes nothing: surface its stderr and ask that tier's effort question again rather than substituting a value of your own.
+`.devforge/lib/configure_helper set-claude-effort-<tier> <value>` — the value must be one of `default`, `low`, `medium`, `high`, `xhigh`, `max`. The setter exits 2 on anything else and writes nothing: surface its stderr and ask that tier's effort question again rather than substituting a value of your own. A reply to an effort question that hands the choice back to you is a delegation, not a value for the setter: save `default`, the option marked `(Recommended)`, and name it in `/devforge:configure` Phase 7's delegated-values lines.
 
 Save a tier's two answers before issuing the next tier's call, so an interrupted run keeps every answer already collected.
 

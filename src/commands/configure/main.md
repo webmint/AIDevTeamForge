@@ -207,7 +207,7 @@ For the three verbatim fields (`project_structure`, `dev_commands`, `architectur
 - Reply equals `yes` (case-insensitive, exact after strip) → apply all 24 Phase 2 values via setters.
 - Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:configure` again when you're ready to review the detected values." Leave `configure.yaml` in its post-`reset` defaults state. Do not advance to Phase 4.
 - Otherwise → parse line-by-line as `<field>: <value>`. Field names are case-insensitive; tolerate either dashed (`project-name`) or underscore-separated (`project_name`) keys. Apply the user's override for matched lines; apply the Phase 2 composed value for every other field.
-- Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values as confirmed and warn the user: "Proceeding with detected values; re-run `/devforge:configure` to revise."
+- Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values — never recorded or cited as confirmed by the user — and warn the user: "Proceeding with the detected values WITHOUT your confirmation; re-run `/devforge:configure` to revise."
 
 ### Setter mapping
 
@@ -291,13 +291,19 @@ Use AskUserQuestion: "How strict should workflow enforcement be?"
 
 Save via `.devforge/lib/configure_helper set-workflow-enforcement <choice>`.
 
+If the user hands this choice back to you ("you decide", "up to you", or the same in any language — including one typed as free text instead of an option), save `Strict` and name it in Phase 7's delegated-values lines.
+
 ### Q10: AI Attribution
 
 Use AskUserQuestion: "Add AI attribution footer to commit messages?"
-- `Yes` (Recommended) — commits include `Generated with Claude Code` footer
-- `No` — commit messages stay clean of attribution
+- `Yes` (Recommended) — commits include `Generated with Claude Code` footer, and the committed spec, plan, research report and summary each carry a `Run by:` line with your `git config user.name` when one is set
+- `No` — commit messages stay clean of attribution, and no `Run by:` line is stamped into any of those documents
+
+The answer has both effects, so state both in the message that carries the question: the commit-message footer, and whether a `Run by:` provenance line naming the person who ran the command (their `git config user.name`) is stamped into the pipeline documents that get committed.
 
 Save via `.devforge/lib/configure_helper set-ai-attribution <choice>`.
+
+If the user hands this choice back to you, save `No` — never the recommended `Yes`: the same answer turns on stamping the user's `git config user.name` into committed pipeline documents, and publishing a person's name is never decided on a delegation. Name it in Phase 7's delegated-values lines.
 
 ### Q11: Claude Tier Models and Effort
 
@@ -321,6 +327,8 @@ State both bounds below in the message that carries the question, in your own wo
 - **The answer is reversible without re-running this command.** `.devforge/lib/configure_helper set-require-ticket <true|false>`, then re-run `render-config` so the change reaches `project-config.json`.
 
 Save via `.devforge/lib/configure_helper set-require-ticket <choice>`.
+
+If the user hands this choice back to you, save the option that carries the `(Recommended)` marker and name it in Phase 7's delegated-values lines.
 
 ## Phase 5 — Render + prune + substitute + apply
 
@@ -409,7 +417,7 @@ For each `decisions[]` entry, render `applies_to` as a comma-separated list (or 
 
   Use absolute paths; do not rely on prior `cd` state. Then advance to Phase 5.3.
 
-- Reply unparseable (no `yes`, no `cancel`, no recognizable override lines, or override lines reference unknown agent names) → re-prompt once with the parsing rules clarified. On the second invalid reply, fall back to applying the helper's exact decisions (`prune-agents --apply`) and warn the user: "Proceeding with helper's pruning decisions; re-run `/devforge:configure` to revise."
+- Reply unparseable (no `yes`, no `cancel`, no recognizable override lines, or override lines reference unknown agent names) → re-prompt once with the parsing rules clarified. On the second invalid reply, default to SKIP — do not run `prune-agents --apply` and delete no agent file — and warn the user: "Skipping agent pruning; every agent is kept. Re-run `/devforge:configure` to prune." Do NOT auto-apply on an ambiguous reply: this sub-step deletes agent files, so default-skip is the safer fallback.
 
 ### Phase 5.3 — Substitute templates
 
@@ -503,7 +511,7 @@ The folder list in the first echo line mirrors the helper's `FRAMEWORK_FOLDERS`;
 
 - Reply equals `cancel` (case-insensitive, exact after strip) → SKIP this phase; no ignore files written. Note that the `manual` instructions are still worth doing. Advance to Phase 7.
 
-- Reply unparseable (no `yes`, no `cancel`) → re-prompt once with the choice restated. On the second invalid reply, default to SKIP — write nothing — and warn the user: "Skipping framework-folder linter exclusions; re-run `/devforge:configure` to apply them." Do NOT auto-apply on an ambiguous reply: unlike Phase 5.2's prune-agents (which defaults to apply), this phase writes into the user's OWN project tooling configs, so default-skip is the safer fallback.
+- Reply unparseable (no `yes`, no `cancel`) → re-prompt once with the choice restated. On the second invalid reply, default to SKIP — write nothing — and warn the user: "Skipping framework-folder linter exclusions; re-run `/devforge:configure` to apply them." Do NOT auto-apply on an ambiguous reply: this phase writes into the user's OWN project tooling configs, so default-skip is the safer fallback — the same fallback Phase 5.2's prune-agents takes.
 
 ## Phase 7 — Verify + report
 
@@ -523,6 +531,8 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 `summary` is read-only; it prints a deterministic field-by-field report to stdout. After the helper runs, copy its stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 
+**Delegated-values lines.** Below the fenced block, name each value this run saved because the user handed its Phase 4 question back to you (Q9–Q13, including the Q11 tiers and the Q12.1–Q12.3 follow-ups), one line per field in the form `<field>: <value> — applied by default — you delegated`. Q10 is the one exception to that form, because a delegated Q10 saves `No` rather than its recommended option: its line reads `ai_attribution: No — applied because you delegated; attribution and your name stay off`. When the user handed back no question, add no such line.
+
 ## Closing
 
-`/devforge:configure` is complete. The 36 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 45 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; every remaining agent carrying a `model_tier:` line and each of the eight mapped commands under `.claude/commands/devforge/` carries the model and effort level Q11 chose (Phase 5.4); the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."
+`/devforge:configure` is complete. The 36 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 45 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when Phase 5.2 skipped pruning — on a `cancel` reply or a second unparseable one); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; every remaining agent carrying a `model_tier:` line and each of the eight mapped commands under `.claude/commands/devforge/` carries the model and effort level Q11 chose (Phase 5.4); the framework's folders were excluded from the project's linters (Phase 6 — applied; skipped on a `cancel` reply, a scanning error, or a second unparseable reply; or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."

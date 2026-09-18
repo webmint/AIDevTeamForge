@@ -321,7 +321,7 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 - Reply equals `yes` (case-insensitive, exact after strip) → apply this section's Phase 2 composed values via the setters listed in the "Setter mapping per section" table below.
 - Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`reset` defaults state plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
 - Otherwise → parse line-by-line per the override syntax shown in the section's echo template. Apply each accepted override in order; apply the Phase 2 composed value for every other rule/table/code-example. Tag values are case-insensitive (helper's `_validate_enum` normalizes mixed-case to canonical lowercase / uppercase per enum).
-- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values as confirmed and warn: "Proceeding with proposed values for Section <N>; re-run `/devforge:constitute` to revise."
+- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values — never recorded or cited as confirmed by the user — and warn: "Proceeding with the proposed values for Section <N> WITHOUT your confirmation; re-run `/devforge:constitute` to revise."
 
 After parsing each section's reply, apply the resulting setter calls IN ORDER per section type:
 - Section 1: one `set-project-identity` call.
@@ -461,6 +461,8 @@ If `INIT_JSON.project_state` is missing or holds an unexpected value, ask via As
 
 Save via `.devforge/lib/constitute_helper set-mode --value <existing-codebase|greenfield>` (helper's `_validate_enum` accepts the lowercase canonical form).
 
+If the user hands this choice back to you ("you decide", "up to you", or the same in any language — including one typed as free text instead of an option), save `existing-codebase` (the `Existing codebase` option, the recommended one) and name it in the closing message as applied by default because the user delegated (see Closing).
+
 ### Q-domain (conditional, greenfield only)
 
 Run this prompt only when BOTH conditions hold:
@@ -480,6 +482,8 @@ Apply the answer by composing one rule per entity into Section 5.1. Each entity 
 ```
 
 (If Section 5.1 wasn't created in Phase 3 because the glossary was empty, also issue `add-section --bucket domain --number 5.1 --title "Key Entities"` first.)
+
+If the user hands this answer back to you ("you decide", "up to you", or the same in any language), write ZERO entity rules — issue no `add-rule` and no `add-section` for it — and tell the user that no business entities were recorded: entities become constitution law, so they are never invented on the user's behalf.
 
 ### Date stamps + project name
 
@@ -544,6 +548,8 @@ On exit 2, surface stderr verbatim, then ask the user via plain prose: "validate
 - Reply `cancel` → write a one-line warning to stdout: "constitution.md flagged as incomplete; re-run `/devforge:constitute` to address per-dimension failures." Then proceed to Phase 6.3 (the summary still helps diagnose the gaps).
 - Reply `fix <number>` → proceed to Phase 6.3, then in the closing message recommend the user re-run `/devforge:constitute` and edit Section `<number>` during Phase 3.
 
+A reply that picks none of these — one that hands the choice back to you, or free text that names none of `ship`, `cancel` or `fix <number>` — is not a pick: ask the same question once more, and if the second reply again picks none, take `cancel`. Never take `ship` on such a reply.
+
 ### Phase 6.3 — Summary
 
 ```bash
@@ -577,4 +583,4 @@ On `Other`: treat the free-text answer as a "No" with the user's text recorded i
 
 ## Closing
 
-`/devforge:constitute` is complete. `.devforge/constitute.json` carries the canonical state; `<install_root>/constitution.md` is rendered with all required sections (plus Section 7 when `mode == "greenfield"`); `verify` passed; `validate` reported a composite quality score (≥ 0.95 = pass, below = user-acknowledged ship-as-is). The 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) is now complete. Tell the user: "`/devforge:constitute` is done. Open `<install_root>/constitution.md` to review, or run `/devforge:specify <feature>` to start a feature."
+`/devforge:constitute` is complete. `.devforge/constitute.json` carries the canonical state; `<install_root>/constitution.md` is rendered with all required sections (plus Section 7 when `mode == "greenfield"`); `verify` passed; `validate` reported a composite quality score (≥ 0.95 = pass; below 0.95, the closing message calls it "user-acknowledged ship-as-is" only when the user replied `ship` at Phase 6.2 — after `cancel`, `fix <number>`, or a second reply that picked none of them, it says the score is below the pass line and was not acknowledged). When the user handed Q-mode back to you, the closing message also names `mode: existing-codebase — applied by default — you delegated`. The 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) is now complete. Tell the user: "`/devforge:constitute` is done. Open `<install_root>/constitution.md` to review, or run `/devforge:specify <feature>` to start a feature."

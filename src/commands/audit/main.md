@@ -209,7 +209,7 @@ Options (2–4; AskUserQuestion auto-injects "Other"):
 - `Whole codebase` — re-run as `/devforge:audit --full` (broad, with recurring-issues).
 - `Proceed anyway` — continue with the current narrow scope.
 
-On `Risk-targeted sample` or `Whole codebase`: tell the user the exact command to re-invoke and end the turn. On `Proceed anyway`: continue. When `scope_oversize` is false, proceed silently — no prompt.
+On `Risk-targeted sample` or `Whole codebase`: tell the user the exact command to re-invoke and end the turn. On `Proceed anyway`: continue. A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, end the turn with no agent dispatched; never take `Proceed anyway` on such a reply. When `scope_oversize` is false, proceed silently — no prompt.
 
 ### 2.4 — Render the scope block
 
@@ -234,7 +234,7 @@ Options (2–4; AskUserQuestion auto-injects "Other"):
 - `Risk-targeted sample` — re-run as `/devforge:audit --top 25 --passes {passes}` (score the riskiest files, keep the passes).
 - `Proceed anyway` — continue with `{passes}` passes over the current scope.
 
-On `Fewer passes` or `Risk-targeted sample`: tell the user the exact command to re-invoke and end the turn. On `Proceed anyway`: continue to Phase 3. When `passes * file_count` is at or under the threshold, proceed silently — no prompt.
+On `Fewer passes` or `Risk-targeted sample`: tell the user the exact command to re-invoke and end the turn. On `Proceed anyway`: continue to Phase 3. A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, end the turn with no agent dispatched; never take `Proceed anyway` on such a reply. When `passes * file_count` is at or under the threshold, proceed silently — no prompt.
 
 ## PHASE 3 — Launch Adversarial Agents
 

@@ -36,6 +36,8 @@ When PHASE 0 reads a `wip.md` whose `**Command**:` is `/implement`, it asks via 
 - **`skip`** → `git -C <source_root> reset --hard <Checkpoint>` in the **source** repo (so the partial edits do not bleed forward), mark the task skipped via `implement_helper mark-skipped --task-file <resolved-task-file> --index <feature>/tasks/README.md --number NNN` (the helper sets `**Status**: Skipped` in the task file and rewrites the matching `tasks/README.md` index row — it does NOT touch git or `wip.md`), then clear `wip.md`, advance to PHASE 1. PHASE 0 runs before `resolve-next-task`, so resolve the task file by globbing `<Feature>/tasks/<Task>-*.md` from the marker's `Feature` + `Task` number (match the number prefix; do not reconstruct the slug). `resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.
 - **`manual`** → keep all state and `wip.md` in place; end the turn for hand inspection. Use when the working tree needs a human look before deciding.
 
+A reply that picks none of these four options — one that hands the choice back to the orchestrator, or free text that names no option — is not a pick: PHASE 0 asks the same question once more, and if the second reply again picks none, it takes `manual` and touches nothing.
+
 ## Command-mismatch detection
 
 When PHASE 0 reads a `wip.md` whose `**Command**:` is anything OTHER than `/implement` (a marker left by a different command), it does NOT proceed. It tells the user a previous session of a different command was interrupted and to resolve that session first, then ends the turn. Running `/devforge:implement` against another command's marker would corrupt that command's recovery state — the mismatch guard prevents it.

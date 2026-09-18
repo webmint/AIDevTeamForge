@@ -74,6 +74,9 @@ Read `.devforge/wip.md`.
 
     The helper sets `**Status**: Skipped` in the task file and rewrites the matching `tasks/README.md` index row (it does NOT touch git or `wip.md`); exit 2 means the task file or index row was not found — copy its stderr VERBATIM into a fenced code block and resolve before re-running. `resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.
   - **`manual`** → keep all state and `wip.md` in place; tell the user `"/devforge:implement paused for manual inspection. Re-run /devforge:implement when ready."` and end the turn.
+
+  A reply that picks none of these four options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `manual` and touch nothing.
+
 - **Present with a `**Command**:` value other than the marker literal `/implement`** → a different command was interrupted. Do NOT proceed. Tell the user `"A previous session of a different command was interrupted (see .devforge/wip.md). Resolve that session first before running /devforge:implement."` and end the turn.
 
 **Model advisory (printed, never gating).** This step prints one line and does nothing else: it asks no question, it gates nothing, and the user is free to ignore what it says. Every arm above that carries the run forward routes through it — the three that continue to PHASE 1, and the `resume` arm that re-enters the loop at its recorded phase.
@@ -238,14 +241,20 @@ Iterate the recorded decision items. For EACH item, ask ONE `AskUserQuestion` �
   - **`<named alternative>` or `let me specify`** → treat as a repair. For `let me specify`, ask the user via free-text follow-up for the direction. Relaunch the implementing agent with the chosen direction, re-run PHASE 4 (capture-touched-files, from the same checkpoint SHA) → PHASE 5 (verify) → PHASE 6 (review panel), rebuild the decision set from the new loop, and restart Stage A.
   - **`stop`** → keep `.devforge/wip.md` + the working tree; tell the user the loop stopped at task `NNN`; end the loop.
 
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, keep option 1 without relaunching the agent, and add `shape not confirmed by the user — delegated`, naming the item's finding, to the `--notes` value Stage B's `approve` passes to `mark-complete`, so the task's Completion Notes record that the user never confirmed this shape. Option 1 stays because it is the resolution already in the working tree, never because it is marked `(recommended)`; a second such reply to this judgment question itself is the only Stage A reply that moves on to the next item instead of taking `stop`, and Stage B still asks for approval. That exception does not reach its `let me specify` follow-up: a follow-up reply that gives no direction is asked once more, and if the second follow-up reply again gives none, take `stop`, as every other item's follow-up does.
+
 For a `could-not-converge` item (recorded when PHASE 6 escalated at the cap with one or more reviewers still dirty), the question's options are `["send back with direction", "skip", "stop"]` — there is NO accept-the-finding-as-is option, because an open finding must never reach `approve` (the D4 guarantee above):
 - **`send back with direction`** → free-text follow-up, then repair as above (relaunch the implementing agent → re-run PHASE 4 (capture) → PHASE 5 (verify) → PHASE 6 (review panel) → rebuild the decision set → restart Stage A). The loop continues under human direction; it does not ship the open finding.
 - **`skip`** → take the Stage B `skip` path below.
 - **`stop`** → keep `wip.md` + working tree; end the loop.
 
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick, and neither is a `send back with direction` follow-up reply that gives no direction: ask the question that drew that reply once more, and if the second reply is again one of these, take `stop`.
+
 For a `conflict` item (recorded when PHASE 6 found a COMPARABLE-severity contradiction it must not decide on the user's behalf), the question names the contested finding on one line and offers the two reviewers' incompatible positions as the first two options, each explained in its `description`: `["<reviewer A's position>", "<reviewer B's position>", "let me specify", "stop"]`:
 - **`<reviewer A's position>` / `<reviewer B's position>` / `let me specify`** → treat the chosen resolution as a repair direction. For `let me specify`, ask the user via free-text follow-up. Relaunch the implementing agent with the chosen resolution → re-run PHASE 4 (capture) → PHASE 5 (verify) → PHASE 6 (review panel) → rebuild the decision set → restart Stage A. The conflict is thus RESOLVED and re-reviewed to clean before Stage B — never approved open.
 - **`stop`** → keep `wip.md` + working tree; end the loop.
+
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick, and neither is a `let me specify` follow-up reply that gives no direction: ask the question that drew that reply once more, and if the second reply is again one of these, take `stop`. Never pick either reviewer's position for the user — this item exists because PHASE 6 must not decide it on the user's behalf.
 
 Most tasks record zero decision items → Stage A is skipped entirely and the gate is just Stage B.
 
@@ -264,7 +273,7 @@ End the turn. The user's reply opens the next turn.
   1. Mark the task complete FIRST (so the commit captures the completed task file + index). Before calling `mark-complete`, determine which Done-When conditions were NOT mechanically confirmed this run: when verification was scoped (the PHASE 5 `tooling_unavailable` → `scope-and-approve` path was taken), the type-check, lint, AND test Done-When conditions are unconfirmed; when `verify-touched` returned a clean `pass`, all conditions are confirmed, except that the test Done-When condition is unconfirmed on a `pass` whose `test_commands_run` array is EMPTY (PHASE 5) — no test command ran, so nothing confirmed it. Pass each unconfirmed condition as a repeatable `--unverified-box "<distinguishing substring>"` — a substring that uniquely identifies that Done-When checkbox's line (read the condition text from the task file resolved in PHASE 1). To identify the verification boxes when the verification-scoped flag is set: scan the task file's `## Done When` section (the text between `## Done When` and the next `## ` heading); any checkbox line mentioning type-check / type errors / tsc / lint / linting / test / tests / spec / unit test / pytest / jest / vitest (case-insensitive) is a verification condition — pass that line's text WITHOUT the `- [ ] ` / `- [x] ` prefix as a `--unverified-box` substring (the helper match is plain case-sensitive substring containment, so the substring must reproduce the box text exactly; you are only widening which Done-When lines get detected as verification conditions, not how `mark-complete` matches). The verify gate short-circuits at the first unavailable tool and the remaining commands do not run, so under `scope-and-approve` the type-check, lint, AND test Done-When conditions are all conservatively left unverified (the gate did not complete) — erring toward not-claiming verification is the honest direction. If no such line exists, pass no `--unverified-box` argument. On a clean `pass`, pass NO `--unverified-box` arguments — with exactly one carve-out: when that `pass` payload's `test_commands_run` array is EMPTY (PHASE 5), no test command ran, so pass the task file's standing test Done-When condition (the `Tests pass on changed files (see Development Commands section)` line the helper-emitted skeleton always carries) as its text WITHOUT the `- [ ] ` prefix, leaving that one box unticked and annotated instead of claiming a test run that did not happen:
 
      ```bash
-     .devforge/lib/implement_helper mark-complete --task-file <task_file> --index <index_file> --number NNN --files '<touched-files-json>' --expects-met <X/Y> --produces-met <X/Y> --notes "<deviations or (none)>" [--unverified-box "<substring>" ...]
+     .devforge/lib/implement_helper mark-complete --task-file <task_file> --index <index_file> --number NNN --files '<touched-files-json>' --expects-met <X/Y> --produces-met <X/Y> --notes "<deviations, or a pending Stage-A 'shape not confirmed by the user — delegated' note, or (none)>" [--unverified-box "<substring>" ...]
      ```
 
      Pass the `task_file` and `index_file` paths emitted by PHASE 1's `resolve-next-task` — do not construct them.
@@ -309,6 +318,8 @@ End the turn. The user's reply opens the next turn.
   5. Loop: return to PHASE 1. (`resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.)
 - **`stop`** → keep `.devforge/wip.md` + the working tree as-is; tell the user the loop stopped at task `NNN` with work uncommitted; end the loop.
 
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick, and neither is a `repair` follow-up reply that gives no direction: ask the question that drew that reply once more, and if the second reply is again one of these, take `stop` — `.devforge/wip.md` and the working tree stay as they are, and nothing is committed.
+
 ### Gate-blocked path (verify cap reached, wrapper-isolation failure, or forcing-functions exit 2)
 
 When PHASE 5 reaches the self-repair cap, PHASE 5 returns `isolation_failure` (wrapper mode), or PHASE 6's forcing-functions gate exits 2, the task never reaches the `approve` prompt. Present the relayed findings (copied VERBATIM as above), then ask via `AskUserQuestion`:
@@ -318,6 +329,8 @@ When PHASE 5 reaches the self-repair cap, PHASE 5 returns `isolation_failure` (w
   - **`repair`** → free-text direction → relaunch the implementing agent → re-run PHASE 4 (capture-touched-files) → PHASE 5 → PHASE 6 → return here.
   - **`skip`** → the Stage B `skip` path above.
   - **`stop`** → keep `wip.md` + working tree; end the loop.
+
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick, and neither is a `repair` follow-up reply that gives no direction: ask the question that drew that reply once more, and if the second reply is again one of these, take `stop`.
 
 Because no content commit has happened, there is nothing to roll back — the working tree holds the partial work; the user repairs, skips, or stops.
 
@@ -331,6 +344,8 @@ When PHASE 5 returns `tooling_unavailable`, a configured type-check, lint, or te
   - **`scope-and-approve`** → the mechanical verify gate is acknowledged unavailable (the configured type-check, lint, or test command could not run) for this task. Proceed to **PHASE 6** — the review panel AND the forcing-functions gate still run, since they are independent of the type checker — then the normal **Stage B** hard gate. Carry a **verification-scoped** flag noting the type-check, lint, and test Done-When conditions are unconfirmed; Stage B's `mark-complete` (step 1) leaves those boxes unticked per the verification-scoped rule.
   - **`skip`** → the Stage B `skip` path above.
   - **`stop`** → keep `.devforge/wip.md` + the working tree; end the loop.
+
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `stop`. Never take `fix-tooling` because it is recommended.
 
 ---
 

@@ -55,4 +55,6 @@ When the gate blocks (exit 2), the relayed `reports` name which rule(s) failed a
 - **`skip`** → reset to the checkpoint, mark the task `Skipped`, advance (PHASE 7 `skip` path).
 - **`stop`** → keep `wip.md` + working tree; end the loop.
 
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `stop`.
+
 There is no `approve` past a failed forcing-functions gate — the change is not green, and no content has been committed, so there is nothing to roll back; the working tree holds the partial work.

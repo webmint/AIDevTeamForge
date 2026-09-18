@@ -40,6 +40,8 @@ Use AskUserQuestion: "Is this a standalone project, or a wrapper workspace aroun
 
 **If the user picks `Wrapper workspace`:** proceed to §1.2.
 
+**If the user hands this choice back to you** ("you decide", "up to you", or the same in any language — including one typed as free text instead of an option): take `Standalone project`, apply it exactly as above, and name it in Step 5's delegated-values lines.
+
 ### 1.2: Resolve Wrapper Source Root
 
 This substep runs only in the wrapper case. It scans for nested git repositories to suggest the source root, then has three branches based on the candidate count: exactly one, zero, or multiple.
@@ -51,7 +53,7 @@ Use AskUserQuestion (replace `<folder-name>` with the path from the scan above):
 - `Yes` — wrapper around `<folder-name>` (Recommended)
 - `No` — the source root is a different folder
 
-If `Yes`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-name>`. If `No`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`.
+If `Yes`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-name>`. If `No`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`. If the user hands this choice back to you, take `Yes`, apply it exactly as above, and name it in Step 5's delegated-values lines.
 
 **If zero nested `.git` directories are found:**
 Use a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`.
@@ -63,9 +65,11 @@ Use AskUserQuestion (replace each `<folder-N>` with the corresponding path from 
 - `<folder-3>`
 - `None of these — let me type the path`
 
-If the user picks `<folder-N>`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`.
+If the user picks `<folder-N>`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`. If the user hands this choice back to you, take `<folder-1>`, apply it exactly as above, and name it in Step 5's delegated-values lines.
 
 **Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/devforge:init-forge` if that's wrong"), then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <first-folder>`.
+
+**Delegated folder answer:** A reply to the free-text prompt "Which folder contains the client's source code?" that hands the answer back to you is not a folder name — never pass it to `set-project-root`. That prompt runs only after the user rejected every detected candidate or when none was found, so there is no value to apply on their behalf: ask the same prompt once more, and if the second reply again names no folder, end the turn without invoking `set-workspace-mode` or `set-project-root`, telling the user to re-run `/devforge:init-forge` once they know which folder holds the client's source code.
 
 ## Step 2: Project State Classification
 
@@ -98,6 +102,8 @@ For all three probes, treat any non-zero exit (missing directory, non-git worksp
 
 If the user picks `main` or `master`, invoke `.devforge/lib/init_helper set-default-branch <choice>`. If the user picks `None of these`, follow up with a plain free-text prompt: "What's the default branch name?", then invoke `.devforge/lib/init_helper set-default-branch <answer>`.
 
+If the user hands this choice back to you, take `main`, apply it exactly as above, and name it in Step 5's delegated-values lines. A reply to the free-text prompt "What's the default branch name?" that hands the answer back to you is not a branch name — never pass it to `set-default-branch`; that prompt runs only after the user rejected `main` and `master`, so ask it once more, and if the second reply again names no branch, end the turn without invoking `set-default-branch`, telling the user to re-run `/devforge:init-forge` once they know the default branch name.
+
 ## Step 4: Discover packages
 
 Walk the directory tree under `project_root` (depth limit 4 — covers typical monorepo nesting like `apps/<name>/` or `packages/<scope>/<sub>/`) for any standard package-manifest file (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pubspec.yaml`, `Gemfile`, `*.gemspec`, `composer.json`, `mix.exs`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `*.csproj` — use your knowledge of which ecosystem uses which). Skip dependency / build / hidden directories (e.g., `node_modules/`, `vendor/`, `target/`, `build/`, `dist/`, `.venv/`, `venv/`, `__pycache__/`, and any directory whose name starts with `.`).
@@ -111,6 +117,8 @@ For each manifest, invoke `.devforge/lib/init_helper add-package --path <package
 Renders the persisted state from `.devforge/init.yaml` so the user can verify the captured fields before handoff to `/devforge:generate-docs`.
 
 Invoke `.devforge/lib/init_helper summary`. The helper reads `.devforge/init.yaml` and prints a deterministic, human-readable report to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+
+**Delegated-values lines.** Below the fenced block, name each value this run applied because the user handed its question back to you in Step 1 or Step 3, one line per field in the form `<field>: <value> — applied by default — you delegated`. When the user handed back no question, add no such line.
 
 ## Step 6: Build the structural index
 

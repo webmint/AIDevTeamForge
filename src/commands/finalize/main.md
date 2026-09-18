@@ -217,6 +217,8 @@ Compose the commit subject(s) the squash will use:
 
 Present the proposed message(s) to the user and ask for explicit confirmation before any history is rewritten — for example: *Proposed feature commit: `feat(001-auth): add email/password sign-in`* (and, in wrapper mode, *Proposed source commit: `[AUTH-123] - Add email/password sign-in`*) *— confirm to squash, or edit the message(s).* Wait for the user to confirm (or supply edited message(s)). Do NOT proceed to 3.4 without confirmation — the squash is destructive (D4 / OQ-1).
 
+A confirmation is an explicit confirm of the proposed message(s), or edited message(s) the user supplies; a reply that is neither — one that hands the decision back to you included — is not a confirmation: ask once more, and if the second reply is again neither, do not squash — end the turn with the `[WIP]`/`[checkpoint]` commits unsquashed and local history not rewritten.
+
 ### 3.4 — Execute the squash
 
 On confirmation, run `squash` with `--confirm` and the confirmed message(s):

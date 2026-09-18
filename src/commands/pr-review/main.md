@@ -93,7 +93,7 @@ Branch on `status`:
 
 - **`ok`** → continue to Phase 0.
 - **`stale`** → surface the helper's JSON to the reviewer verbatim as a fenced code block, then dispatch `mcp__codebase-memory-mcp__detect_changes` per the `mcp_tool_hint`. After the MCP call returns, run `.devforge/lib/cbm_sync_helper write` to refresh the stamp. Continue to Phase 0.
-- **`absent`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. The dict carries `cost_estimate_usd` (rule-of-thumb $1 per 1000 source files, capped at 10 000 files). Quote that estimate to the reviewer as plain prose alongside the JSON, then ask via AskUserQuestion: `"CBM index missing; estimated indexing cost ~$<value> USD. Run index_repository?"` with options `["index", "skip"]`. Single-line question text. End the turn. The reviewer's reply opens the next turn. On `index`: dispatch `mcp__codebase-memory-mcp__index_repository` per the `mcp_tool_hint`, then run `.devforge/lib/cbm_sync_helper write`. Continue to Phase 0. On `skip`: continue to Phase 0; Phase 3.5 blast-radius fill will skip (no graph to query).
+- **`absent`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. The dict carries `cost_estimate_usd` (rule-of-thumb $1 per 1000 source files, capped at 10 000 files). Quote that estimate to the reviewer as plain prose alongside the JSON, then ask via AskUserQuestion: `"CBM index missing; estimated indexing cost ~$<value> USD. Run index_repository?"` with options `["index", "skip"]`. Single-line question text. End the turn. The reviewer's reply opens the next turn. On `index`: dispatch `mcp__codebase-memory-mcp__index_repository` per the `mcp_tool_hint`, then run `.devforge/lib/cbm_sync_helper write`. Continue to Phase 0. On `skip`: continue to Phase 0; Phase 3.5 blast-radius fill will skip (no graph to query). A reply that picks neither option — one that hands the choice back to you, or free text that names neither — is not a pick: ask the same question once more, and if the second reply again picks neither, take `skip`; `index_repository` runs only on an explicit `index`.
 - **`not-a-git-repo`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. End the turn with: `"Target is not a git repository. /devforge:pr-review requires a git working tree."` No further phases run.
 
 ### Phase 0 — Forge-state tier detection
@@ -140,6 +140,8 @@ Resolve ticket text via AskUserQuestion: `"Ticket text source for PR $pr_number?
 - **`paste-now`** → in the next turn, prompt as plain prose: `"Paste the ticket body (Linear / Jira / GitHub issue text). End with an empty line."` The reviewer's reply is the ticket text. Pass it via `--ticket-text "<content>"`.
 - **`from-file`** → in the next turn, prompt as plain prose: `"Enter the absolute path to the ticket file."` The reviewer's reply is the path. Pass it via `--ticket-file <path>`.
 - **`skip`** → no `--ticket-text` / `--ticket-file` flag. Phase 5 scope-drift will degrade to PR-body-only.
+
+A free-text reply that is itself the ticket body is the reviewer's content: treat it as `paste-now` and pass that text via `--ticket-text "<content>"` without prompting for it again. Any other reply that picks none of the three options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, take `skip`.
 
 Invoke intake:
 
@@ -305,7 +307,7 @@ Diff text, PR body, ticket text, and linked-issue references are sent to Claude 
 
 All output artefacts under `.devforge/pr-reviews/` stay on the reviewer's local machine. By default, the install script adds `.devforge/` to the target repo's `.gitignore` — verify the gitignore entry is present before running `/devforge:pr-review`. If `.devforge/` is committed (which would be a misconfiguration), every PR review you run leaks the diff + ticket + findings into the foreign repo's git history.
 
-This reminder is surfaced to the reviewer as plain prose after the three pre-condition checks pass. The reviewer's continuation past that prompt is treated as confirmation; no AskUserQuestion gate is enforced (one-time prose reminder is sufficient for a private-overlay workflow).
+This reminder is surfaced to the reviewer as plain prose after the three pre-condition checks pass. The reminder is informational and nothing records consent: the reviewer's continuation past that prompt is never cited as their confirmation; no AskUserQuestion gate is enforced (one-time prose reminder is sufficient for a private-overlay workflow).
 
 ## Cost
 
@@ -343,6 +345,6 @@ All per-PR artefacts live under `.devforge/pr-reviews/$pr_number/`:
 2. **Helper-owned shape.** State + brief + findings + bundle structure is locked by `pr_review_helper`. The orchestrator's only direct JSON edits are Phase 3.5's blast-probe fill and Phase 6.5's `state.findings` + `state.drift` append — both fill helper-declared fields only.
 3. **No MCP from helpers.** Every CBM `trace_path` / `search_graph` / `search_code` / `index_repository` / `detect_changes` call is dispatched by the orchestrator, not by helper code. The helper-side surface is pure filesystem + subprocess (`gh`, `cbm_sync_helper`).
 4. **CBM unavailable is degrade-not-stop.** When MCP tools are not loaded, Phase 3.5 is skipped, blast probe specs travel to cavecrew unfilled, and the reviewer is told explicitly. Phases -1 through 7.5 still run.
-5. **Confidentiality is the reviewer's responsibility.** The pre-Phase-(-1) reminder is informational. No automated check enforces NDA / approval status — the reviewer's continuation past the reminder is treated as confirmation.
+5. **Confidentiality is the reviewer's responsibility.** The pre-Phase-(-1) reminder is informational. No automated check enforces NDA / approval status and nothing records consent — the reviewer's continuation past the reminder is never cited as their confirmation.
 6. **Phase 6.5 finding-schema fields are locked.** `{severity, location, category, evidence, fix_hint, source_heuristic}` is the canonical shape. When cavecrew omits `confidence`, default to `0.0` (matches the helper's defensive default). Do not invent fields.
 7. **Re-running is idempotent on the PR.** Re-invoking `/devforge:pr-review` on the same PR overwrites the per-PR artefacts and increments the corpus index's `review_count`; the corpus index's `first_reviewed_at` is preserved.

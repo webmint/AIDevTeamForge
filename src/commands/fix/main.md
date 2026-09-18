@@ -395,6 +395,8 @@ This is the human gate, run EXACTLY as `/devforge:implement` PHASE 7 — **no co
 
 For EACH recorded judgment item, ask ONE `AskUserQuestion` — sequentially, never batched; the question is a single line, the explanation lives in the option `description` fields. Option 1 is ALWAYS the agent's resolution, marked `(recommended)`. Choosing an alternative or `let me specify` is treated as a repair: relaunch the implementing agent with the chosen direction, re-run PHASE 3 (verify) → PHASE 4 (panel) → PHASE 5 (forcing-functions), and restart Stage A. `stop` keeps the working tree and ends the turn. Most remediations record zero judgment items → Stage A is skipped.
 
+A reply that picks none of an item's options — one that hands the choice back to you, or free text that names no option — is not a pick: ask the same question once more, and if the second reply again picks none, keep option 1 without relaunching the agent and record `shape not confirmed by the user — delegated`, naming the item's finding — on the COLD lane in the `--fix-notes` value `close-bug` writes at Stage B's `approve`, and on the FEATURE lane, whose `wip-commit` call carries no notes, in your Stage B summary to the user. Option 1 stays because it is the resolution already in the working tree, never because it is marked `(recommended)`, and Stage B still asks for approval; a `let me specify` follow-up reply that gives no direction is asked once more, and if the second follow-up reply again gives none, take `stop`.
+
 ### Stage B — Final code read (ALWAYS)
 
 Present the ready diff and the verification results. Show `git diff --stat` and the `git diff` (for a large diff, bound it: show `--stat` in full plus the diff for the highest-impact files, and tell the user the full diff is available on request). Summarize the PHASE 3 verify result, the PHASE 4 panel verdict (the four reviewers' clean verdicts plus any carried warnings), and the PHASE 5 forcing-functions result.
@@ -427,7 +429,7 @@ End the turn. The user's reply opens the next turn.
   **Cold lane, STANDALONE** — the bug file and the code live in the same repo, so the flip rides the SAME commit. Call `close-bug` FIRST, then commit both together:
 
   ```bash
-  .devforge/lib/fix_helper close-bug --bug-file <bug-file> --date "$(date +%Y-%m-%d)" --fix-notes "root cause; what changed; commit subject: fix(<scope>): <title>"
+  .devforge/lib/fix_helper close-bug --bug-file <bug-file> --date "$(date +%Y-%m-%d)" --fix-notes "root cause; what changed; commit subject: fix(<scope>): <title>; any pending Stage-A 'shape not confirmed by the user — delegated' note"
   ```
 
   ```bash
@@ -447,7 +449,7 @@ End the turn. The user's reply opens the next turn.
   ```
 
   ```bash
-  .devforge/lib/fix_helper close-bug --bug-file <bug-file> --date "$(date +%Y-%m-%d)" --fix-notes "root cause; what changed; source commit: <head_sha from the wip-commit ack>"
+  .devforge/lib/fix_helper close-bug --bug-file <bug-file> --date "$(date +%Y-%m-%d)" --fix-notes "root cause; what changed; source commit: <head_sha from the wip-commit ack>; any pending Stage-A 'shape not confirmed by the user — delegated' note"
   ```
 
   ```bash
@@ -463,6 +465,8 @@ End the turn. The user's reply opens the next turn.
   Proceed to PHASE 7.
 - **`repair`** → ask the user via free-text follow-up for the repair direction, relaunch the implementing agent with those notes, then re-run PHASE 3 (verify) → PHASE 4 (panel) → PHASE 5 (forcing-functions) → return to this hard gate.
 - **`stop`** → keep the working tree as-is; tell the user the remediation stopped with work uncommitted; clean up `$WORKDIR` and end the turn.
+
+A reply that picks none of these options — one that hands the choice back to you, or free text that names no option — is not a pick, and neither is a `repair` follow-up reply that gives no direction: ask the question that drew that reply once more, and if the second reply is again one of these, take `stop` — nothing is committed, and on the COLD lane the bug file stays untouched.
 
 ## PHASE 7 — Present + next step
 

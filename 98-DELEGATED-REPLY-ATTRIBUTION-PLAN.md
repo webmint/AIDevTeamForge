@@ -1,7 +1,7 @@
 # 98 — Delegated-Reply Attribution Plan
 
 **Created**: 2026-09-18
-**Status**: DRAFT 2026-09-18 — awaiting Phase 0 ratification. Nothing built.
+**Status**: Phase 0 CLOSED 2026-09-18 (blanket maintainer directive, every item as recommended — see `## Phase 0 close record`). Build in progress.
 
 Close the path by which a reply that picks nothing — a delegation such as "figure it out yourself", an evasive reply, or free text in AskUserQuestion's auto-added "Other" row — becomes, one step later, "the user's decision". The plan has five parts. First, one always-on rule in the emitted `CLAUDE.md` splits every question into two classes: RUN DECISIONS, where a non-pick is re-asked once and then takes the command's named no-write arm, and CONTENT ANSWERS, where the model answers and the record says the model answered. Second, per-site sentences at the open binding sites. Third, a persisted, honestly labelled intake confirmation at the one observed site. Fourth, approval summaries that list everything the model supplied. Fifth, helper vocabulary that stops crediting the user by name. **Implicit approval by invocation is NOT changed** — the maintainer accepted it on 2026-09-18, before ratification (D5).
 
@@ -303,11 +303,32 @@ Option 1 is the agent's already-applied resolution. **RECOMMEND: a second non-pi
 
 The rule relies on AskUserQuestion always offering a free-text "Other" row. **Verify that through the `claude-code-guide` agent before Phase 2** — the house rule for every Claude-Code-integration fact, never from memory. The two in-tree statements that *"AskUserQuestion auto-injects 'Other'"* (fact 7) are this framework's own claims, not the vendor's.
 
+**RESOLVED 2026-09-18, before Phase 2, via `claude-code-guide`.** (1) The only docs page it found (`code.claude.com/docs/en/agent-sdk/user-input.md`, "Handle clarifying questions") places the "Other" row on the IMPLEMENTING APPLICATION (*"Display an additional 'Other' choice after Claude's options that accepts text input"*), documents no switch to suppress it, returns free text in the same `answers[question]` field as an option label (distinguishable only by not matching a label), and documents *"1-4 questions with 2-4 options each"* without saying whether "Other" counts. (2) Claude Code's own `AskUserQuestion` tool description, as loaded in a Claude Code session on 2026-09-18, states *"Users will always be able to select 'Other' to provide custom text input"* — the CLI's behavior, which no docs page states. **Consequence for this plan: none on the design.** D1's rule is channel-agnostic — it governs *a reply that names none of the options*, whether that reply arrives through an "Other" row, as a plain typed message instead of an answer, or at a prose question — so it holds whether or not a given host renders "Other". The in-tree *"auto-injects 'Other'"* sentences are left as they are (true of the Claude Code CLI per its tool description; not this plan's subject).
+
 ---
 
 ## Phase 0 close record
 
-**Pending — nothing ratified yet.** No D-item and no OQ has a ratified arm, so **no build phase may start.** D5 was RESOLVED outside ratification on 2026-09-18 — a recorded maintainer decision, not a fork awaiting a pick. When the maintainer closes Phase 0, this section records the ratified arm for each of D1–D4, D6–D10 and OQ-1–OQ-8, one entry per item, and records D5 as RESOLVED 2026-09-18. It also records **whether per-item deliberation was supplied** (the plans 91 / 92 / 94 / 95 / 96 precedent). A blanket directive is a legitimate close, and it must be recorded as one rather than implying that each counter-argument was answered.
+**CLOSED 2026-09-18 by a single blanket maintainer directive** — given in Ukrainian right after the draft was presented; English paraphrase: *"commit plan 98 and implement it"*. **Every ratifiable item is ratified AS RECOMMENDED. No per-item deliberation was supplied**, and this record does not imply that any counter-argument was answered — each stays recorded at its decision (the plans 91 / 92 / 94 / 95 / 96 precedent). The orchestrator stated this reading of the directive to the maintainer before building, naming it as its own interpretation.
+
+- **D1** — RATIFIED as recommended: `src/CLAUDE.md` `### Never` item 7, the proposed text incl. both defaults.
+- **D2** — RATIFIED as recommended: one per-site sentence per table row; `fix/main.md`'s bounce byte-unchanged.
+- **D3** — RATIFIED as recommended: the model-channel table.
+- **D4** — RATIFIED as recommended: (a) + (b) + (c) + (d).
+- **D5** — RESOLVED 2026-09-18 by the maintainer, before ratification: KEEP implicit approval by invocation; no change. Not a ratified arm.
+- **D6** — RATIFIED as recommended.
+- **D7** — RATIFIED as recommended.
+- **D8** — RATIFIED as the collected Python surface (follows D3, D4, D6, OQ-3).
+- **D9** — RATIFIED as recommended.
+- **D10** — RATIFIED as recommended.
+- **OQ-1** — `### Never` item 7.
+- **OQ-2** — one re-ask.
+- **OQ-3** — additive `scope-finalize --no-verdict-override`, used only on the non-pick arm.
+- **OQ-4** — prune-agents falls back to SKIP; configure / constitute Phase 3 keep apply-on-fallback with a warning that says the values were applied WITHOUT confirmation.
+- **OQ-5** — reword to "informational; nothing records consent"; no new question.
+- **OQ-6** — a second non-pick keeps option 1 (no relaunch) and the Completion Notes record "shape not confirmed by the user — delegated".
+- **OQ-7** — per-site sentences in each command.
+- **OQ-8** — the `claude-code-guide` check is owed before Phase 2 (a precondition, not an arm).
 
 ---
 
