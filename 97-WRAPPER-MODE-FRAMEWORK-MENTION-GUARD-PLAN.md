@@ -1,7 +1,7 @@
 # 97 — Wrapper-Mode Framework-Mention Guard Plan
 
 **Created**: 2026-09-18
-**Status**: DRAFT 2026-09-18 — awaiting Phase 0 ratification. Nothing built. Reviewed twice (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place); OQ-1 resolved the same day via claude-code-guide.
+**Status**: DRAFT 2026-09-18 — awaiting Phase 0 ratification. Nothing built. Reviewed three times (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved the same day via claude-code-guide.
 
 Extend wrapper mode's traceless guarantee from FILES and COMMIT ATTRIBUTION to FILE CONTENT and COMMIT SUBJECTS: in wrapper mode, nothing the framework writes into the client-owned source repo may name a framework artifact or quote its content, and the one permitted reference is the source repo's ticket ID.
 
