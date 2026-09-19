@@ -309,6 +309,8 @@ Wrapper/install repo: the `_shared` merge-base for the feature-branch case + the
 
 ### D5 — Wrapper-mode dual squash; SOURCE repo gets NO AI traces
 
+**Forward note 2026-09-19 (plan 97):** Content-level traces and commit SUBJECTS are plan 97's scope rather than this D5's — in wrapper mode the source repo's per-task WIP subject no longer carries `(Task NNN)` and its pre-task checkpoint is a bare `[checkpoint]`, so the already-pushed-skip edge D9 records no longer leaves a task number behind in the client's repo, while this D5's dual squash and its `[TICKET-ID] - Description` shape are unchanged.
+
 In wrapper mode `/finalize` squashes BOTH repos. The wrapper/install repo squash commit follows the normal Commit Convention (`feat(scope): …` + `COMMIT_ATTRIBUTION` per config). The SOURCE (product) repo squash commit carries NO `Co-Authored-By`, NO AI traces, NO conventional-commit prefix — it uses the draft's `[TICKET-ID] - Description` format (ticket from the source branch name via the reused `_extract_ticket_id`; description from the spec `## 1. Overview` first 1-2 sentences), REGARDLESS of the `COMMIT_ATTRIBUTION` config (`finalize.md:13-24`). USER-CONFIRMED.
 
 ### D6 — Squash mechanics live in `_finalize/_squash.py`

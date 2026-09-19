@@ -1,7 +1,7 @@
 # 97 — Wrapper-Mode Framework-Mention Guard Plan
 
 **Created**: 2026-09-18
-**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 DONE 2026-09-19 (three python-engineer → python-reviewer loops, all SHIP-READY after one Low and one Medium test-coverage fix; full `tests/lib` suite 11745 passed); Phase 2 DONE 2026-09-19 (two instruction-author → instruction-reviewer loops, both SHIP-READY after one Medium + four Info fixes); Phase 3 IN PROGRESS 2026-09-19. Drafted 2026-09-18; reviewed three times before ratification (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved 2026-09-18 via claude-code-guide.
+**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 DONE 2026-09-19 (three python-engineer → python-reviewer loops, all SHIP-READY after one Low and one Medium test-coverage fix; full `tests/lib` suite 11745 passed); Phase 2 DONE 2026-09-19 (two instruction-author → instruction-reviewer loops, both SHIP-READY after one Medium + four Info fixes); Phase 3 DONE 2026-09-19 — **✅ DONE (build)**: Phases 1–3 BUILT and build-verified; commits `7d85ee7` Phase 0 / `df536ad` Phase 1 / `b609b21` Phase 2 / the Phase-3 docs commit. **Phase 4 consumer e2e DEFERRED — user-driven HARD GATE, NOT run and NOT WAIVED** (build-verified, NOT consumer-validated; "done" never means Phase 4 passed). Drafted 2026-09-18; reviewed three times before ratification (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved 2026-09-18 via claude-code-guide.
 
 Extend wrapper mode's traceless guarantee from FILES and COMMIT ATTRIBUTION to FILE CONTENT and COMMIT SUBJECTS: in wrapper mode, nothing the framework writes into the client-owned source repo may name a framework artifact or quote its content, and the one permitted reference is the source repo's ticket ID.
 
@@ -173,7 +173,7 @@ D2(a) covers both lanes — PHASE 2 is shared (fact 4). The cold commit's `<titl
 - **D5** — RATIFIED as recommended: the token list as stated, kept a TOKEN list; Phase 1's regex refinements are recorded at D5 below.
 - **D6** — RATIFIED: NO constitution edit; §4.2 byte-identical.
 - **D7** — RATIFIED as recommended: (a) + (b); the `[checkpoint]` prefix KEPT; the `<title>` bound recorded, not mechanized.
-- **D8** — RATIFIED as recommended: no gate, no `verify-*` number, no validator, no config key, no 16/4 delta, no back-port, standalone byte-identical.
+- **D8** — RATIFIED as recommended: no gate, no `verify-*` number, no validator, no config key, no `disable-model-invocation` flag moved (the live model-invocable / human-typed counts are contested elsewhere in the ledger — see plan 98's entry; this plan moves neither), no back-port, standalone byte-identical. *No counter-argument was ever recorded under D8 — it catalogs non-deltas, not a contested choice; noted 2026-09-19 so the Phase-0 Verify line "each decision still carries its counter-argument" is read as D1–D7.*
 - **OQ-1** — RESOLVED 2026-09-18 through the `claude-code-guide` agent, before ratification and outside it — a recorded fact, not a ratified arm; nothing about it is owed after this close.
 - **OQ-2** — ALL lines.
 - **OQ-3** — `--install-root` realpath inequality, mirroring `resolve-feature-scope`; no `--wrapper-mode` boolean.
