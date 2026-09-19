@@ -1,7 +1,7 @@
 # 99 — Scope Follows User-Visible Behavior Plan
 
 **Created**: 2026-09-19
-**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 IN PROGRESS. ⚠ Evidence class: ONE observed instance; every other site is predicted; nothing was measured.
+**Status**: **✅ DONE (build) 2026-09-19 — Phase 0 CLOSED, the D10 post-close amendment ratified, and Phases 1–2 BUILT.** Phase 0 was closed by a single blanket maintainer directive: every item ratified AS RECOMMENDED, no per-item deliberation supplied (see `## Phase 0 close record`). D10 was ratified after the close by an explicit maintainer pick, not a delegation. Commits: `b8e5d1f` draft / `5923e04` Phase 0 close / `cf6dc1c` D10 / `6a786b3` Phase 1. The Phase 2 docs commit follows this sweep, and no SHA is recorded for it here. **Phase 3 consumer e2e is DEFERRED — a user-driven HARD GATE, NOT run and NOT waived.** Everything here is **build-verified, NOT consumer-validated**, and "done" never means Phase 3 passed. ⚠ Evidence class: ONE observed instance; every other site is predicted; nothing was measured.
 
 Minimality limits HOW a change is built (mechanism, code, abstractions), never WHAT counts as done. Scope follows what the user sees. When the feature the user named is visible on more than one user-facing surface, every such surface is either covered or named to the user as an open question, with the user-visible reason. A different code path, request, use case or builder is never by itself a reason to leave a surface out. When the user hands that question back, the model decides under the same rule and records the decision as its own, with the reason, through the channel plan 98's rule requires for a model-supplied answer.
 
@@ -61,7 +61,7 @@ Each fact was verified against the tree on 2026-09-19 — spec markdown and Pyth
 
 **F6 — §8 is not a landing bucket, and a precedent already routes product questions around that.** `verify-coverage` accepts exactly four buckets — *"every finding landed in AC/Constraint/OOS/Risk"* (`_specify/_cmds_phase4_verify.py`). Specify Step 4.4's emission-matrix paragraph already routes a product question to §8 and its finding to §9: *"surface it to the user as plain prose and record it under §8 Open Questions (Step 4.7), landing its Phase 1.5 finding in §9 Risks (Step 4.8), since §8 is not one of the four buckets `verify-coverage` accepts"*. The §5.2 behavior-preservation paragraph takes the same route.
 
-**F7 — `/devforge:plan`'s view of §6.** `plan_helper render-findings-from-spec` renders each §6 item through `_truncate(text, max_len=80)` (`plan_helper.py` `_render_sec6`: `"- §6 item {0}: {1} [must not contradict]"`), which keeps the FIRST 80 characters: text appended to the end of a §6 item is cut off in the PHASE 1.5 enumeration the orchestrator works from, and a prefix survives. Architect sub-question 6 ends *"the spec's §6 Out of Scope exclusion stands — record no override of it, and have the architect re-scope that decision to the in-scope baseline (sub-question 5's minimal change)."*; plan 98 added the re-ask before it. PHASE 3's approval summary is LLM-authored, with seven conditional lines — `**Defaults applied**:`, `**Departures from convention**:` and five more — each carrying its own omit-the-entire-line rule.
+**F7 — `/devforge:plan`'s view of §6.** `plan_helper render-findings-from-spec` renders each §6 item through `_truncate(text, max_len=80)` (`plan_helper.py` `_render_sec6`: `"- §6 item {0}: {1} [must not contradict]"`), which keeps the FIRST 80 characters: text appended to the end of a §6 item is cut off in the PHASE 1.5 enumeration the orchestrator works from, and a prefix survives. Architect sub-question 6 ends *"the spec's §6 Out of Scope exclusion stands — record no override of it, and have the architect re-scope that decision to the in-scope baseline (sub-question 5's minimal change)."*; plan 98 added the re-ask before it. PHASE 3's approval summary is LLM-authored, with seven conditional lines — `**Defaults applied**:`, `**Departures from convention**:` and five more — each carrying its own omit-the-entire-line rule. *Amended 2026-09-19 (build): sub-question 6 no longer ENDS with plan 98's arm. The arm is byte-intact, but sentences the build added now follow it: the pointer to PHASE 3's `**Unconfirmed exclusions**:` line, and the opposite-direction escalation with its route (build-time decisions 1 and 6). PHASE 3 now has EIGHT conditional lines, with `**Unconfirmed exclusions**:` directly after `**Defaults applied**:`.*
 
 **F8 — The emitted always-on rules.** `src/CLAUDE.md` `### Always` has 16 items. Item 2: *"**Constitution is law** — `constitution.md` rules override everything except user instructions"*. Item 3: *"**Minimal changes** — every change should impact as little code as possible"*. `### Never` item 5 is *"**Never modify outside scope**"*, item 6 *"**Never guess**"*, and item 7 is plan 98's rule: a content answer goes *"through the channel the command names for a model-supplied answer"*, and *"A question the command does not classify decides what the run does."* The multi-sentence precedents are `### Always` item 15 (two sentences) and `### Never` item 7 (four); item 16 is one sentence joined by a semicolon.
 
@@ -189,7 +189,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 - **(d) The §6 marker, at Step 4.5.** Every §6 entry the user did not state in their own words takes the form `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`.
   - **A prefix, not a suffix:** `/devforge:plan` keeps the first 80 characters of a §6 item (F7), and §6 already renders its own ` — <finding_ref>` suffix (F5).
   - **The reason sits in parentheses, not after an em dash** (separator changed 2026-09-19, after review). A parenthesized `(user sees: …)` cannot collide with that ` — <finding_ref>` suffix, so a cited entry renders unambiguously as `- NOT included: [excluded by the model] <item> (user sees: …) — <finding_ref>`. The em-dash form is recorded as the alternative under OQ-1.
-  - **The bracketed form follows house convention:** `[default applied]`, `[exceeded cap]` and `[no DP in category X]` in specify §8, and `[NEEDS CLARIFICATION: …]` in the research report.
+  - **The bracketed form follows house convention:** `[default applied]`, `[exceeded cap]` and `[no DP in category X]` in specify §8, and `[NEEDS CLARIFICATION: …]` in the research report. *Amended 2026-09-19 (build): `[exceeded cap]` is not a render — no code emits it. A decision point that reaches the follow-up cap renders in §8 as `[deferred to open question]`, with the reason `exceeded follow-up cap` (`DP_TURN_CAP_REASON` in `_specify/_schema.py`). The orchestrator carried the false literal over from specify's own text, which the build corrected (build-time decision 5). The house-convention argument still holds on the forms that do render, `[deferred to open question]` among them.*
   - **Option (i), broad — every model-authored §6 entry. RECOMMEND.** The incident's exclusion was framed in code terms ("a different request path"). A marker scoped to "exclusions of a surface" lets a code-framed exclusion escape classification. The broad rule forces the model to write the user-visible consequence of every exclusion it makes, which turns the incident's reason into a visibly false statement.
   - **Option (ii), narrow — only §6 entries that exclude a surface showing the feature.** Less noise, but it relies on the same judgment the rule is trying to discipline.
   - **Counter-argument to (i), recorded:** noise.
@@ -207,7 +207,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 - **The line**, proposed text, placed directly after `**Defaults applied**:` because both list what the user did not decide:
   `**Unconfirmed exclusions**: [include this line ONLY if ≥1 sub-question-6 escalation ended without a decision: list each §6 entry it concerned by its leading bracketed marker, when the entry has one, and its item text only — nothing that follows the item — and say the user did not decide it here; omit the entire line when none]`
 - **Never quote the entry's `(user sees: …)` clause.** The line names an entry by its prefix, when present, and its item text, and stops there. Its emitted instruction does this without naming the clause or the marker literal, so `plan/main.md` carries neither `(user sees:` nor `[excluded by the model]`. That keeps Phase 1d's invariant: `grep -rn "(user sees:" src/` returns `specify/main.md` only.
-- **`/devforge:plan` never edits `spec.md`.** The line makes the state visible; it lifts nothing.
+- **`/devforge:plan` never edits `spec.md`.** The line makes the state visible; it lifts nothing. *Amended 2026-09-19 (build): the first sentence is too strong, and it was not carried into `src/`. PHASE 0b's `check-status-and-flip` rewrites the spec's `**Status**:` line, or inserts one. `specify_helper resolve-open-question`, which the command runs when a planning decision settles a §8 question, records a resolution in specify-state, and the spec's render strikes the resolved entry through. What shipped makes the narrower true claim: the command "adds no affected area and no acceptance criterion to `spec.md`" (build-time decision 7). The second sentence stands.*
 - **Re-read the live sub-question-6 sentence before editing** — plan 98 re-worded it (F7).
 - **Bound:** the line fires only on an escalation that ended without a decision. An exclusion — marked or not — that no Key Design Decision reaches is not re-listed at PHASE 3; the spec's Step 5.1 listed it.
 - **Consequence: D5 no longer depends on D4.** Its trigger is an escalation's outcome, not the marker, and its emitted text names no literal, so it can ship alone.
@@ -328,7 +328,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 
 ### OQ-1 — The marker literal and its separator
 
-- **The literal.** `[excluded by the model]` (**RECOMMEND** — bracketed like `[default applied]`, in plan 98's "the model" vocabulary) vs `[model exclusion]` vs `[not the user's exclusion]`. Whatever is chosen appears byte-identical in `specify/main.md` and `devils-advocate.md`; `plan/main.md` names no literal (D5).
+- **The literal.** `[excluded by the model]` (**RECOMMEND** — bracketed like `[default applied]`, in plan 98's "the model" vocabulary) vs `[model exclusion]` vs `[not the user's exclusion]`. Whatever is chosen appears byte-identical in `specify/main.md` and `devils-advocate.md`; `plan/main.md` names no literal (D5). *Amended 2026-09-19 (build): it also appears byte-identical in the grill's `references/design-attack-checklist.md` — the deliberate additional site of build-time decision 2 — which, like `devils-advocate.md`, keys on the literal prefix alone.*
 - **The separator for the user-visible reason.**
   - **RECOMMEND the parenthesized form:** `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`. It cannot collide with §6's own ` — <finding_ref>` suffix (F5).
   - **Recorded alternative — the em-dash form:** `[excluded by the model] <item> — <what the user sees because of it, or that the user sees no difference>`. It carries no fixed `user` / `sees` tokens into `verify-scope-coherence` (D4(d)'s counter-argument). On a cited entry, though, it renders two em-dash segments, and a reader cannot tell the reason from the finding reference.
@@ -446,6 +446,75 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
   - `git diff --stat` shows no `.py` file.
   - instruction-reviewer reports SHIP-READY, or every finding it raised is fixed.
 
+#### Phase 1 build record — 2026-09-19
+
+**Route as specified: instruction-author → instruction-reviewer.** The four sub-phases 1a–1d were dispatched in parallel, plus the D10 deltas, which land in files 1a, 1b and 1c already touch. **Commit `6a786b3`, eight files.** ⚠ This block records a BUILD, not a consumer observation. Nothing below was run on a real install.
+
+**instruction-reviewer outcome: SHIP-READY, with 2 findings (1 medium, 1 low), both fixed.** One of them became build-time decision 6 below. Before the build, the draft of this plan had two instruction-reviewer passes — 4 findings, then 2, all fixed.
+
+**What landed:**
+
+1. **1a — `src/CLAUDE.md` (D1, as amended by D10).** `### Always` item 17, **Scope follows what the user sees**: D10's text, 152 words in six sentences, the longest item in either list. Items 1–16 are byte-identical.
+2. **1a — `src/constitution.md` §6.1 (D2(a)).** One sentence is appended after plan 86's F5 sentence: which user-facing surfaces a change covers is set by what the user sees, never by the code that reaches them, and "as little code as possible" governs how each surface is changed, never which of them count. The heading still reads `### 6.1 Minimal Changes [universal]`.
+   - ⚠ **Designed consumer drift, not a regression.** `constitute_helper verify-universal-defaults` and the WARN-only update-time drift check report §6.1 drift for installs constituted earlier — the third such finding, after plans 86 and 89. Back-porting is a non-goal.
+   - `/devforge:specify`'s `check-constitution-compliance` treats §6.1's single MUST line as one rule, so the new words add NON-BLOCKING warnings (D2's second side effect).
+3. **1b — `src/commands/research/main.md` (D3, as amended by D10).**
+   - **Phase 2.3b's surface-count frame is widened:** other surfaces show the same FEATURE, through the same shared symbol or a different path. The falsifier names the inbound trace AND the sweep. "Mechanically" stays attached to Phase 2.4c and Step 2b only.
+   - **New `### Phase 2.4e — Feature-surface sweep (MANDATORY — mode-independent)`**, carrying:
+     - three probes — the words the user sees, the data the feature shows, and the names in the `affected_area` answer;
+     - the identity-evidence definition;
+     - an over-inclusion boundary (evidenced / suspected / other);
+     - findings recorded at Phase 2.6;
+     - the honesty bound: a SEARCH step, not a gate. Completeness is judgment, and there is no check and no validator.
+   - **Step 2b's `**What a scope justification rests on.**` paragraph:**
+     - an `out` justification names what the user sees differently, never a code path, request, use case or builder;
+     - the own-words definition;
+     - a `"one place"` scope pick excludes nothing research finds later;
+     - a suspected caller is `in`, which is not a coverage decision (build-time decision 3).
+   - Phase 2.6 and Phase 0.5 Step 2 name 2.4e.
+   - **Phase 3 step `3b`** records each uncovered surface through `record-gap --dimension affected_area`, never in `--rationale`. The gap renders under the report's `## Open Uncertainties`, which specify reads.
+4. **1c — `src/commands/specify/main.md` (D4, as amended by D10).**
+   - **A `scope_boundaries` decision point per user-facing surface.** Its description cites identity evidence, or states that there is none. The scope of such a surface is a product question, always asked in interactive mode.
+   - **The value the model supplies, on the auto path or the delegated path:**
+     - evidenced → `cover <surface>` through `set-dp-default-applied`, unless the model names a user-visible difference;
+     - unevidenced → `set-dp-deferral --deferral-kind open_question --reason "deferred by the model — why it may be the same feature: …"`;
+     - `--deferral-kind OOS` is user-only for this class, because a model OOS deferral renders nowhere.
+   - **"Cover"** means a §4 affected-area row AND a §5 AC that name the surface.
+   - **Step 4.5's marker**, for every §6 entry the user did not state in their own words: `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`.
+   - Step 4.7 now lists four §8 sources (build-time decision 4).
+   - The pre-existing false `[exceeded cap]` literal at the `--increment-turn` sentence is corrected (build-time decision 5).
+5. **1d — `src/commands/plan/main.md` (D5, plus build-time decisions 1 and 6).**
+   - **Sub-question 6:** plan 98's non-decision arm is byte-intact. An escalation that ends without a decision is listed on a new conditional PHASE 3 line, `**Unconfirmed exclusions**:`, placed after `**Defaults applied**:`. The line names no marker literal and no separator.
+   - **The orchestrator route for the architect's new uncovered-surface escalation** — a surface the spec neither covers nor excludes, including one named only in a §8 `[deferred to open question]` entry or in the §9 Risks row that cites its finding. The escalation is surfaced to the user:
+     - cover → tell the user that covering it needs a spec revision, and add a Risk Assessment row;
+     - leave out → add a Risk Assessment row;
+     - no decision → ask once more; on a second reply that again decides nothing, the surface stays uncovered, with a Risk Assessment row, an entry on the PHASE 3 line, and the user told.
+6. **1d — `src/agents/architect.md` (D6).** Rule 9's Out-of-scope-respect step gains one sentence for the opposite direction: escalate an uncovered, unexcluded feature surface per Rule 6. Rule 9's heading, number and six forcing steps are unchanged.
+7. **1d — `src/agents/devils-advocate.md` Rule 6 (D7), plus `src/commands/grill/references/design-attack-checklist.md` (build-time decision 2).** An entry marked `[excluded by the model]` is not an exclusion the spec made deliberately; when it leaves out a feature surface, it is an upstream signal.
+
+**Invariants and tests, as recorded at the build:**
+- No `.py` file changed, and no plan vocabulary entered `src/`.
+- The live-spec tests — `tests/lib/test_constitute_helper.py`, `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py` and `tests/scripts/test_claude_emitter.py` — are green: 328 passed and 2 skipped across the four files.
+
+**Verify greps, re-run 2026-09-19 when this record was written:**
+- `\[excluded by the model\]` under `src/` hits exactly three files: `specify/main.md`, `devils-advocate.md` and the grill checklist. The checklist is the deliberate additional site Phase 1d's Verify allows this record to name.
+- `(user sees:` under `src/` hits `specify/main.md` only, so `plan/main.md` carries neither literal.
+- `unresolved by the model` has zero hits under `src/`.
+- `### Phase 2.4e — Feature-surface sweep (MANDATORY — mode-independent)` exists in `research/main.md`. A case-insensitive `check 2[1-9]` has zero hits there, and the hypothesis-suppression gate still says it is *"not one of its 20 checks"*.
+- Phase 1's order note (build 1c before the devils-advocate sentence) exists to keep the marker literal byte-identical. The first grep above is what shows that it held.
+
+#### Build-time decisions — recorded 2026-09-19
+
+These are the choices the build made where the plan text was silent or said something narrower. Each item names the decision it extends. The orchestrator approved each one; none was put to the maintainer.
+
+1. **The orchestrator route for the architect's uncovered-surface escalation (1d; extends D6 and D5).** D6 gave the architect an escalation with no command-side route. Without one, a reply that decides nothing would meet a command that names no arm for it, and `### Never` item 7 would end the turn. Sub-question 6 in `plan/main.md` now carries the route — cover, leave out, or no decision, each with its Risk Assessment row. The PHASE 3 `**Unconfirmed exclusions**:` line also lists, by name, each such surface that stays uncovered because its escalation ended without a decision — beyond the §6 entries D5's proposed text names.
+2. **The grill checklist mirrors devils-advocate Rule 6 (1d; extends D7).** `src/commands/grill/references/design-attack-checklist.md` is injected into the adversary brief by the `render-brief` verb, so it carries the same sentence as Rule 6.
+3. **A suspected, unevidenced Step 2b caller is `in` (1b; extends D3(c) and D10's P1).** Its justification states that there is no identity evidence. An `out` would need a user-visible difference the model cannot name. `in` there is not a coverage decision.
+4. **Specify Step 4.7's §8 source list grew from two to four (1c; extends D4(e) and D10's P2).** The list was already incomplete, and the model's no-evidence deferral now points into it.
+5. **The false `[exceeded cap]` literal corrected in specify (1c; pre-existing; see the dated amendment at D4(d)).** The `--increment-turn` sentence named a marker that no code renders. It now names the real render, `[deferred to open question]` with the reason `exceeded follow-up cap`.
+6. **The §8 deferral named as a source of an uncovered surface (1d; extends D6 and D10's P2; an instruction-reviewer finding).** The architect's and plan's uncovered-surface sentences include a surface named only in a §8 `[deferred to open question]` entry or in the §9 Risks row that cites its finding, because that route writes it into none of §4, §5 or §6.
+7. **D5's "`/devforge:plan` never edits `spec.md`" was not carried into `src/` (1d; narrows D5).** The emitted text makes the narrower true claim — the command "adds no affected area and no acceptance criterion to `spec.md`". See the dated amendment at D5 for why the original sentence is too strong.
+
 ### Phase 2 — Docs
 
 - **`CHANGELOG.md`:** append to the existing `## [Unreleased]`, carrying the evidence class and the honest bounds.
@@ -462,8 +531,38 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 #### Verify
 
 - `99-SCOPE` greps in the repo `CLAUDE.md` and in `PLAN-STATUS-ARCHIVE.md`.
-- Each dated note exists, or the decision that conditioned it is recorded as declined.
+- Each dated note exists, or the decision that conditioned it is recorded as declined. *Amended 2026-09-19 (build): a note site that does not exist in the target plan is recorded as a VERIFIED NO-OP, with the grep that shows it is absent — plan 23 is the case (see `#### Phase 2 build record`). This matches this phase's closing bullet, which already accepts "an explicit verified no-op".*
 - No tracked file names a client, a client component or a benchmark path.
+
+#### Phase 2 build record — 2026-09-19
+
+**Route: instruction-author wrote this sweep in three parallel parts; instruction-reviewer then reviews all of it.** Docs only: no Python and no test. **The Phase 2 docs commit follows this sweep.**
+
+**instruction-reviewer outcome: SHIP-READY, 0 findings** — one pass over all nine files, 2026-09-19, which re-verified every count, SHA, grep claim and no-op against the tree.
+
+**This plan document, edited in this sweep:**
+- the `**Status**:` line;
+- `#### Phase 1 build record`, `#### Build-time decisions` and this record;
+- `## Residuals (found during the build, not fixed)`;
+- four dated build amendments: F7, D4(d), D5, and `## When resuming work` step 3;
+- a dated note at this phase's Verify, for a note site the target plan does not have;
+- dated notes at OQ-1 and at `## Context for next session`'s **Also remember**, naming the grill checklist as the third site that quotes the marker literal.
+
+**The rest of this phase's list — each site an edit or an explicit verified no-op, as this phase's closing bullet requires:**
+
+| Site | Outcome |
+|---|---|
+| `CHANGELOG.md` | **EDIT** — one entry appended to the existing `## [Unreleased]` → `### Changed`. The evidence class comes first and the honest bounds come last. |
+| Repo `CLAUDE.md` — the plan-99 index line | **EDIT** — the line now has the DONE shape. |
+| Repo `CLAUDE.md` — the "Where to find what" router | **VERIFIED NO-OP — not edited.** Nothing this build changed falsifies the `/grill` row. The router's stale `_PROMOTED` (20 names) and "16 commands model-invocable" counts date from plan 95. They are plan 98's recorded residual 8, not this plan's. |
+| `PLAN-STATUS-ARCHIVE.md` | **EDIT** — the plan-99 entry was added after plan 98's. One wrong claim in it — that `resolve-open-question` re-renders the spec — was corrected in the same sweep: the verb records a resolution in specify-state, and the spec's render strikes the resolved entry through. |
+| `DEVELOPMENT-STATUS.md` | **EDIT** — `## Key Design Decisions` item 20 was added. The false `[exceeded cap]` literal on the `specify.md` bullet was corrected to a §8 `[deferred to open question]` entry with the reason `exceeded follow-up cap`. That closes the finding `## Residuals` leaves to this record. |
+| `README.md` | **VERIFIED NO-OP — not edited.** A case-insensitive grep for `scope` / `minimal` / `surface` / `out of scope` / `rules` returns four lines (55, 66, 77, 89), and none states anything this build falsified. |
+| `98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md` | **EDIT** — a dated note under the D2 table, plus an inline pointer to it in the D2 table's `/devforge:plan` §6 Out-of-Scope row. |
+| `81-INFERENCE-RULES-PLAN.md` | **EDIT** — a dated note at F1. ⚠ The file is UNTRACKED, so the note rides no commit. It quotes nothing from the untracked evidence file beside it. |
+| `86-FOWLER-REFACTORING-GAPS-PLAN.md` | **EDIT** — a dated note in `### Phase 5 — F5: the preparatory-refactoring lane`: §6.1 and architect Rule 9 each gained a second added sentence. |
+| `85-GRILL-MANDATORY-AUTO-ACCEPT-PLAN.md` | **EDIT** — a dated pointer at the `## Non-goals` bullet that names `references/design-attack-checklist.md`. No site in that plan describes devils-advocate's Out-of-Scope respect, so the note sits where the plan names the file this build changed. |
+| `23-ADVERSARIAL-GRILLING-PLAN.md` | **VERIFIED NO-OP — not edited.** No site describes devils-advocate's Out-of-Scope respect, and the plan never names `references/design-attack-checklist.md`. `Out-of-Scope\|Out of Scope\|§6\|out-of-scope\|OOS` returns one line, where `OOS` matches inside *CHOOSES*. `respect\|devils-advocate\.md\|Rule 6` returns six lines; every one matches only on the path `src/agents/devils-advocate.md`, and `respect` and `Rule 6` have zero hits. |
 
 ### Phase 3 — Consumer e2e — DEFERRED, user-driven HARD GATE, NOT run
 
@@ -489,6 +588,21 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 - Every anchor is scored **explicitly** — stated, not summarized — with each pair scored together.
 - **If an anchor fails**, record the negative with the artifacts and name the mechanism before proposing any fix. A missed enumeration is a D3 finding; a wrong model answer is D1 / D4(b); an unmarked model exclusion is D4(d); over-inclusion is D1 / D3(c). *(Added by D10, 2026-09-19: a cover or exclusion resting on no cited identity evidence, or an unevidenced surface covered or excluded instead of deferred, is a D10 finding.)* **They have different fixes.**
 - **A clean run shows the rules behave on planted fixtures, NEVER that the gap cost anything.** The only observed instance is on a frozen install, and it cannot be re-run.
+
+---
+
+## Residuals (found during the build, not fixed)
+
+Each item below was found during the build and deliberately left unfixed. ⚠ Line digits drift — grep the quoted text.
+
+1. **Two sibling escalations have no non-decision arm (pre-existing).** The plan template's Rule 5 AC-conflict escalation in `plan/main.md`, and architect Rule 9's rejected-alternative step, have no arm for a reply that decides nothing. Sub-question 6's escalations have one; these siblings do not.
+2. **Auto mode is unaddressed at sub-question 6.** Nothing says whether a sub-question-6 escalation pauses in auto mode, and both escalation directions — the §6 one and the uncovered-surface one — inherit that ambiguity.
+3. **`plan/main.md` PHASE 2.5 step 4 is a seam.** It reads *"does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning"*. An uncovered surface's files could therefore enter File Impact without the sub-question-6 escalation.
+4. **A model's no-evidence deferral is not visible at spec approval.** Specify's Step 5.1 summary lists neither §8 deferrals nor Risks — the cost D10 records for declining the peer's `[unresolved by the model]` variant.
+5. **OQ-4's "bundled per call" rides the existing bundling threshold.** The bundling rule applies at ≥4 qualifying questions; below it, surface decision points may be asked separately.
+6. **Research check 12b's stderr.** In `_research/_cmds_render_verify.py`, check 12b's message says Phase 2.4 must probe the runner-up frame. Phase 2.4e rows tagged `--framing runner-up` now also satisfy check 12b. The message is not falsified, and the Python stays untouched.
+
+One further build finding is not listed here because Phase 2's docs sweep corrects it: `DEVELOPMENT-STATUS.md` carries the same false `[exceeded cap]` literal that build-time decision 5 corrected in specify. `#### Phase 2 build record`, still pending when this list was written, is where that edit gets recorded.
 
 ---
 
@@ -533,7 +647,7 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 
 **Trap 11 — a model-made deferral to §6.** On a `scope_boundaries` decision point about a surface showing the named feature, `set-dp-deferral --deferral-kind OOS` is the USER's route only — their own words punt it to §6. `deferred_OOS` renders in neither §6 nor §8, so a model deferral there is an exclusion no reader of the spec sees. The model's answer goes through `set-dp-default-applied` under D4(b)'s value rule. *(Amended by D10, 2026-09-19: that holds for a surface with cited identity evidence. With no evidence, the model's route is `set-dp-deferral --deferral-kind open_question`, never `OOS`.)*
 
-**Also remember:** the marker literal is defined once, in specify (1c), and quoted byte-identically in devils-advocate (1d, D7) — build 1c before that edit. `plan/main.md` names no literal. D5's `**Unconfirmed exclusions**:` line fires on EVERY sub-question-6 escalation that ended without a decision, marked or not, and never quotes a `(user sees: …)` clause.
+**Also remember:** the marker literal is defined once, in specify (1c), and quoted byte-identically in devils-advocate (1d, D7) — build 1c before that edit. *Amended 2026-09-19 (build): the grill's `references/design-attack-checklist.md` quotes it byte-identically too — the deliberate additional site of build-time decision 2.* `plan/main.md` names no literal. D5's `**Unconfirmed exclusions**:` line fires on EVERY sub-question-6 escalation that ended without a decision, marked or not, and never quotes a `(user sees: …)` clause.
 
 **File anchors:**
 
@@ -553,6 +667,7 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation.
 2. **Check `## Phase 0 close record` first.** If it still reads *Pending*, nothing is ratified and **no build phase may start.** If it holds only a dated D5-only entry, that entry permits D5's build alone; everything else still waits for the full close.
 3. **Re-verify F1–F12 against the live tree**, because line positions drift. Grep the quoted text, never the digits — `Step 2b — Trace each caller`, `other surfaces reach the same shared symbol`, `mechanically probed downstream`, `record-gap`, `NEEDS CLARIFICATION`, `scope_boundaries`, `CANNOT answer by reading`, `NOT included:`, `_render_sec6`, `exclusion stands — record no override`, `Minimal Changes [universal]`, `Out-of-scope-respect forcing step`, `Respect the spec's Out-of-Scope`. F12 is dated history, not a live state: plan 97 closed at `0a3d978`, and none of its `src/` files is one this plan edits. What still needs a live check is whether any other session has work in progress in this checkout, so run `git status`.
+   - ⚠ *Amended 2026-09-19 (build): two of these grep strings are gone from `research/main.md` by design. Phase 1b's Phase 2.3b widening (D3(a)) replaced `other surfaces reach the same shared symbol` and `mechanically probed downstream`; grep the live strings `other surfaces show the user the same feature` and `probed downstream: mechanically` instead. Zero hits for the old strings is the built state, not a regression. F1–F12 describe the tree BEFORE Phase 1, so F2 quotes the replaced text. The build also changed what F7 describes (see its amendment), F8 (`### Always` now has 17 items) and F9 (§6.1 now ends with the sentence D2(a) appended).*
 4. **Before Phase 2 touches any ledger, apply F12's rule** (Trap 10): re-read `git status` — another session may be building in this checkout — and read the ledger live. Never stage a file this plan did not edit.
 5. **Route every edit through the house flow:**
    - instruction-author → instruction-reviewer for every markdown edit;

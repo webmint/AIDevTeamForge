@@ -148,7 +148,7 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 | specify | spec_type pre-seed `accept / override` | `accept` (keeps the pre-seeded value, already labelled as pre-seeded) — ⚠ *Amended 2026-09-18 (build): a content answer, not a no-write run decision; see the note above this table* |
 | spec-check | PHASE 5.2 disposition | NO pick, NO seed; say the disposition is still the user's and name both next routes — ⚠ *Amended 2026-09-18 (build): the two routes are `/devforge:plan` and a spec-check re-run; see the note below this table* |
 | plan | PHASE 0a `"Process this spec?"`, pick-other, drift proceed/cancel, 0b `complete` / `unknown-status` | `cancel` / end the turn |
-| plan | architect §6 Out-of-Scope escalation | the spec's §6 boundary stands (no override) |
+| plan | architect §6 Out-of-Scope escalation | the spec's §6 boundary stands (no override) — ⚠ *Amended 2026-09-19 by plan 99: see the note below this table* |
 | plan | PHASE 3 `"Approve this plan?"` | `cancel` |
 | grill | PHASE 7.2 disposition | NO pick, NO seed; the disposition is still the user's |
 | grill | bounded-loop escalation "this feature may be intractable as framed — decide" | stop, NO seed |
@@ -170,6 +170,8 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 ⚠ **The `src/CLAUDE.md` row is kept for M1 consistency ONLY:** a delegation is not an agreement to that specific command. **It is NOT an approval protection.** The maintainer accepted the approval side effect of invoking the next command (D5, RESOLVED 2026-09-18), so a model-invoked `/devforge:plan` or `/devforge:breakdown` still flips `Approved`, and this row does not claim otherwise.
 
 ⚠ **Amended 2026-09-18 (build) — the spec-check row.** "Name both next routes" shipped as `/devforge:plan`, to proceed on the report, or a re-run of `/devforge:spec-check`, to make the pick. `/devforge:specify` is not one of them. It blocks on a feature directory that already holds `spec.md` and has no spec-targeting seed (`_specify/_cmds_handoff.py`, `find-handoffs`), and a non-pick writes no seed. For the same reason, spec-check PHASE 7 routes a `Revise spec` CROSS-pick, which writes no seed, to the same two routes instead of the blocked `/devforge:specify`.
+
+⚠ **Amended 2026-09-19 by plan 99 (`99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`) — the plan §6 Out-of-Scope row.** The row's arm is unchanged, but an escalation that ends without a decision now also puts its §6 entry on `/devforge:plan`'s PHASE 3 `**Unconfirmed exclusions**:` line, so an exclusion that stands only because nobody decided it is shown at plan approval instead of entrenching unseen. `/devforge:specify` Step 4.5 now marks every §6 entry the user did not state in their own words `[excluded by the model]`, and that line keeps the marker when it lists the entry.
 
 **RECOMMEND.**
 

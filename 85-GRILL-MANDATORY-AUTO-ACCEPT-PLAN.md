@@ -1702,7 +1702,11 @@ Run OQ-2's three known-answer anchors in a consumer install.
   exclusion, the four-bucket partition, the two-question PHASE-5 tree. **This plan changes
   WHEN grill runs and WHO it interrupts, never WHAT it finds.** A phase that starts editing
   `references/design-attack-checklist.md` or `references/refutation-preamble.md` has left
-  this plan.
+  this plan. **(AMENDED 2026-09-19 — plan 99.)** Plan 99, not this plan, added one sentence
+  to `references/design-attack-checklist.md` on 2026-09-19: a §6 entry marked
+  `[excluded by the model]` is not a deliberately-excluded case
+  (`99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`). This plan's own scope statement above
+  is unchanged.
 - **Making the gate read the disposition.** D3's spine and OQ-3's consequence; a gate that
   blocks on KILL is a different plan with a different argument.
 - **Growing the disposition set past four** (fact 5), or adding a fifth partition bucket.

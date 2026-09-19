@@ -748,6 +748,16 @@ unit changes no observable behavior by construction, so:
 - The guidance is permissive (MAY), never obligatory — a mandatory preparatory step would
   be a new gate and is out of bounds.
 
+**Amended 2026-09-19 by plan 99 (`99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`):**
+`src/constitution.md` §6.1 and `src/agents/architect.md` Rule 9 each gained a second added
+sentence — §6.1 a closing one (which user-facing surfaces a change covers is set by what the
+user sees, never by the code that reaches them), Rule 9's Out-of-scope-respect forcing step
+the opposite-direction escalation (a user-facing surface the spec neither covers nor
+excludes is escalated to the user rather than dropped as outside the minimal change). Both
+follow the pattern this phase set — a sentence added so the minimal-scope wording cannot be
+read against a lane, with the ban itself untouched — and F5's own sentences at both sites
+are byte-unchanged.
+
 ---
 
 ### Phase 6 — Cross-reference sweep + ledger reconciliation
