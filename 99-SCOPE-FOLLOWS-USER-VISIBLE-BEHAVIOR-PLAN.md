@@ -1,7 +1,7 @@
 # 99 — Scope Follows User-Visible Behavior Plan
 
 **Created**: 2026-09-19
-**Status**: DRAFT — awaiting Phase 0 ratification. Nothing is built. ⚠ Evidence class: ONE observed instance; every other site is predicted; nothing was measured.
+**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 IN PROGRESS. ⚠ Evidence class: ONE observed instance; every other site is predicted; nothing was measured.
 
 Minimality limits HOW a change is built (mechanism, code, abstractions), never WHAT counts as done. Scope follows what the user sees. When the feature the user named is visible on more than one user-facing surface, every such surface is either covered or named to the user as an open question, with the user-visible reason. A different code path, request, use case or builder is never by itself a reason to leave a surface out. When the user hands that question back, the model decides under the same rule and records the decision as its own, with the reason, through the channel plan 98's rule requires for a model-supplied answer.
 
@@ -86,7 +86,7 @@ Each fact was verified against the tree on 2026-09-19 — spec markdown and Pyth
 
 ## Decisions to ratify
 
-Nothing below is ratified. Each item states the decision, its options where they exist, a recommendation, and the strongest counter-argument, recorded honestly rather than answered away. D1 and D2 carry proposed emitted text. D3–D7 carry the substance of each emitted sentence: that is **proposed text, not final** — the builder may reword it, but every element listed must survive. No emitted sentence may name plan vocabulary ("D3", "plan 99", "Phase 0"); real headings such as `Phase 2.4e` are fine.
+Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0 close record`). Each item states the decision, its options where they exist, a recommendation, and the strongest counter-argument, recorded honestly rather than answered away. D1 and D2 carry proposed emitted text. D3–D7 carry the substance of each emitted sentence: that is **proposed text, not final** — the builder may reword it, but every element listed must survive. No emitted sentence may name plan vocabulary ("D3", "plan 99", "Phase 0"); real headings such as `Phase 2.4e` are fine.
 
 ### D1 — The always-on rule
 
@@ -281,7 +281,31 @@ A testForge20 fixture with a feature visible on two surfaces through different r
 
 ## Phase 0 close record
 
-Pending.
+**CLOSED 2026-09-19 by a single blanket maintainer directive**, given in Ukrainian; English paraphrase: *"I ratify the whole plan"*.
+- **An explicit pick, not a delegation.** The directive answered the orchestrator's offer of two paths: ratify everything now, or ratify D5 alone early through option (b). The maintainer picked the whole-plan path.
+- **Every item is ratified AS RECOMMENDED. No per-item deliberation was supplied.** This record does not imply that any counter-argument was answered — each stays recorded at its decision (the plans 91 / 92 / 94–98 precedent).
+- **The orchestrator stated this reading of the directive to the maintainer before building.**
+
+- **D1** — RATIFIED as proposed: `src/CLAUDE.md` `### Always` item 17, the 115-word text.
+- **D2** — RATIFIED as recommended: (a), one sentence appended to `src/constitution.md` §6.1.
+- **D3** — RATIFIED as recommended: (a) + (b) + (c) + (d).
+- **D4** — RATIFIED as recommended: (a) + (b) + (c) + (d)(i) + (e). (f) is recorded and NOT built.
+- **D5** — RATIFIED as stated, option (a): D5 ships with the rest of this plan.
+  - The full close makes option (b) moot, and no D5-only early entry exists.
+  - Its recommendation that D5 ship "no later than plan 98's release" is met only if this plan lands before that release. Nothing in this record guarantees that it will.
+- **D6** — RATIFIED as recommended.
+- **D7** — RATIFIED as recommended.
+- **D8** — RATIFIED as recommended.
+- **D9** — RATIFIED as recommended.
+- **OQ-1** — `[excluded by the model]`, with the `(user sees: …)` separator.
+- **OQ-2** — 2.4e as its own sub-phase.
+- **OQ-3** — not in v1; recorded as a named strengthening arm.
+- **OQ-4** — one decision point per uncovered surface, bundled per call.
+- **OQ-5** — a testForge20 fixture.
+
+**Files in scope, per Phase 0's Verify:**
+- 1a touches `src/CLAUDE.md` AND `src/constitution.md` (D2(a)).
+- 1d touches `src/commands/plan/main.md`, `src/agents/architect.md` and `src/agents/devils-advocate.md` (D5, D6, D7).
 
 ---
 
