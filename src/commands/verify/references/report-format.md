@@ -44,7 +44,7 @@ The report's H1 carries `<feature-dir-name>` — the last segment of `<feature_d
 **Mechanical checks**: [PASS | not run | SELF-REPAIR (warnings) | FAILED | ISOLATION FAILURE | TOOLING UNAVAILABLE]
 **Cross-task consistency**: see /devforge:review report at <feature_dir>/review.md
 **Scope creep**[ _(advisory — does not block the verdict)_ when populated]: [none detected | N changed file(s) outside the planned scope: <files> | not checked (no breakdown-handoff.json baseline)]
-**Leftover artifacts**[ _(advisory — does not block the verdict)_ when populated]: [N flagged (debug prints / bare TODOs / commented-out code) | none detected]
+**Leftover artifacts**[ _(advisory — does not block the verdict)_ when populated]: [N flagged (debug prints / bare TODOs / commented-out code / framework mentions in wrapper mode) | none detected]
 
 (NOTE: the Mechanical checks line is a REPORT of the assembled type-check / lint / build / test run ONCE via verify-touched. /devforge:verify does NOT self-repair. The Cross-task consistency line POINTS TO the /devforge:review report — /devforge:verify does NOT re-review; cross-task code-quality reasoning is /devforge:review's job.)
 

@@ -1,6 +1,6 @@
 # Crash recovery (`/devforge:implement` PHASE 0)
 
-This reference defines the interrupted-session recovery handled by PHASE 0 of `main.md`. A `/devforge:implement` run can be interrupted mid-task by a power loss, terminal crash, or network drop. Two artefacts make a mid-task interruption recoverable: the per-task empty checkpoint commit (`[checkpoint] pre-task NNN`, PHASE 2 — created in the **source** repo) and the `.devforge/wip.md` marker (in the install root). The `**Checkpoint**` SHA the marker records is the source repo HEAD captured at task start, so recovery resets the source repo, not the wrapper.
+This reference defines the interrupted-session recovery handled by PHASE 0 of `main.md`. A `/devforge:implement` run can be interrupted mid-task by a power loss, terminal crash, or network drop. Two artefacts make a mid-task interruption recoverable: the per-task empty checkpoint commit (`[checkpoint] pre-task NNN` in standalone mode, `[checkpoint]` in wrapper mode, PHASE 2 — created in the **source** repo) and the `.devforge/wip.md` marker (in the install root). The `**Checkpoint**` SHA the marker records is the source repo HEAD captured at task start, so recovery resets the source repo, not the wrapper.
 
 ## The WIP marker
 

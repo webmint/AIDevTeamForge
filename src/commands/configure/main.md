@@ -319,7 +319,7 @@ Use AskUserQuestion: "Require a ticket ID before `/devforge:research` or `/devfo
 - `false` — intake allocates whether or not a ticket is supplied
 - `true` — intake refuses to allocate until a ticket ID in `PROJ-123` form is supplied
 
-Which option carries the `(Recommended)` marker depends on `INIT_JSON.workspace_mode` (captured in Phase 1): mark `true` when it is `wrapper`, `false` otherwise — exactly one option, never both. Wrapper mode already assumes an external tracker: `/devforge:implement` composes its source-repo commit subjects as `[TICKET-ID] - <title> (Task NNN)`, scraping that token out of the source branch name, so a wrapper install has a ticket to name.
+Which option carries the `(Recommended)` marker depends on `INIT_JSON.workspace_mode` (captured in Phase 1): mark `true` when it is `wrapper`, `false` otherwise — exactly one option, never both. Wrapper mode already assumes an external tracker: `/devforge:implement` composes its source-repo commit subjects as `[TICKET-ID] - <title>`, scraping that token out of the source branch name, so a wrapper install has a ticket to name.
 
 State both bounds below in the message that carries the question, in your own words. Neither is a footnote — the first is what the user is actually choosing:
 

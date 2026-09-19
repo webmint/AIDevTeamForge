@@ -1184,7 +1184,8 @@ _SUBCOMMAND_REGISTRY = [
         "check-hygiene",
         (
             "Flag scope-creep (changed files outside planned touched_files) and "
-            "leftover artifacts (debug prints, bare TODOs, commented-out code) "
+            "leftover artifacts (debug prints, bare TODOs, commented-out code), "
+            "and (wrapper mode, with --install-root) framework mentions "
             "across the assembled diff (Phase 4)."
         ),
         cmd_check_hygiene,
