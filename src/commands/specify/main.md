@@ -352,6 +352,8 @@ Based on `$ARGUMENTS` + the Phase 1.5 findings, identify decision points and eit
 
 For each category, identify whether the request creates a decision point. If yes, record at least one `DecisionPoint`. If no, record **exactly one** terminal `no_DP_in_category` entry with a rationale (e.g., "Category X: no decision point — already determined by [constraint Y]") — that entry lands in §8 Open Questions of the rendered spec.
 
+**User-facing surfaces under `scope_boundaries`.** A user-facing surface is anywhere the user sees or triggers a feature. A surface shows the feature the user named only when at least one piece of user-visible identity evidence is cited for it: the same title or heading; the same label, translation key or menu item; the same route; or the same tab or mode constant that controls what the user sees. Shared code (a helper, use case, builder or request) and a shared data source are never identity evidence, just as they are never a reason to exclude a surface. Take each user-facing surface the Phase 1.5 findings name as showing, or possibly showing, the feature the user named, including findings drawn from the research report's `## Open Uncertainties` section. When the user has not settled that surface's inclusion in their own words, it is its own `scope_boundaries` decision point, with exactly two valid implementations: `cover <surface>` and `leave <surface> out`. Its `record-decision-point --description` cites the surface's identity evidence, or states that there is none and why the surface may still show the feature; step 2 of the per-decision-point protocol resolves the two cases differently. Record one decision point per surface, never one that lists several, so the user can cover one surface and leave another out. A surface that only shares code with the change and shows the user a different feature is not such a decision point. The user settled a surface in their own words only when their prompt, an intake rubric answer, a decision-point answer or a correction names that surface or a class that plainly contains it, or when they explicitly picked an offered option that named it. A `"one place"` answer to `/devforge:research`'s `scope` question names no surface: it says where the symptom sits, and it was given before research found any other surface, so it settles nothing research found afterwards.
+
 ### Mode detection
 
 ```bash
@@ -416,6 +418,13 @@ For each decision point (across all 7 categories), in priority order (**scope > 
 
    Then tell the user the value is your choice, not theirs. The rendered spec marks the entry `[default applied]` in §8 with a note that the user delegated the choice, the Step 5.1 approval summary lists it, and it resolves the decision point for the stop rule below exactly as an auto-mode default does.
 
+   **The value you supply for a surface.** On the auto path and the delegated path alike, your answer to a `scope_boundaries` decision point about a user-facing surface (the surfaces paragraph under the category list) depends on whether its description cites identity evidence:
+
+   - **Identity evidence cited.** The value is `cover <surface>`, unless you can name what the user would see differently because that surface is left out. A code path, request, use case or builder is never that reason. When you can name it, the value is `leave <surface> out`, and that reason goes into the surface's §6 entry at Step 4.5. Record either value with the `set-dp-default-applied` call shown above for your path (with `--delegated-reply` on the delegated path) so the Step 5.1 approval summary lists it under `**Defaults applied**:`. No other setter records it.
+   - **No identity evidence, but you suspect the surface shows the feature.** Neither cover it nor leave it out. Instead of the `set-dp-default-applied` call above, defer it to an open question: `set-dp-deferral --dp-id "<DP-id>" --deferral-kind open_question --reason "deferred by the model — why it may be the same feature: <reason>"`. Step 3 below describes where it renders and where its finding lands. On the delegated path, tell the user the deferral is yours, not their pick.
+
+   In interactive mode, a surface with no identity evidence is still asked like any other decision point. These two cases govern only your own answer, when the user hands it back or when no question is asked.
+
 3. **Deferral path** (either mode). When the user (or auto-mode rationale) explicitly punts the decision to §6 Out of Scope or §8 Open Questions:
 
    ```bash
@@ -425,7 +434,13 @@ For each decision point (across all 7 categories), in priority order (**scope > 
        --reason "<one-line rationale>"
    ```
 
-   Add `--increment-turn` when the deferral is the result of a follow-up exchange. The helper enforces a per-DP cap of 3 follow-ups: at the cap, the next `set-dp-deferral --increment-turn` auto-transitions the DP to `deferred_open_question` with `[exceeded cap]` visible in the §8 render.
+   Add `--increment-turn` when the deferral is the result of a follow-up exchange. The helper enforces a per-DP cap of 3 follow-ups: at the cap, the next `set-dp-deferral --increment-turn` auto-transitions the DP to `deferred_open_question`, rendered in §8 as `[deferred to open question]` with the reason `exceeded follow-up cap`.
+
+   For a `scope_boundaries` decision point about a user-facing surface (the surfaces paragraph under the category list), the rules below take the place of this step's opening sentence, which stays as written for every other decision point:
+
+   - Take `--deferral-kind OOS` only when the user's own words punt that surface to §6 Out of Scope; it is never your route. The deferral writes no §6 entry and renders in neither §6 nor §8, so a deferral you made would be an exclusion no reader of the spec sees. Record the user's exclusion as that surface's §6 entry at Step 4.5, without the marker that step defines for your own exclusions.
+   - Take `--deferral-kind open_question` on two routes: the user's, when their own words leave that surface an open question, and yours, for a surface whose description cites no identity evidence, on the auto path and the delegated path alike (step 2). The deferral itself renders the decision point in §8 Open Questions (Step 4.7) as `[deferred to open question]` with its reason, so no `record-open-question` call is needed for it. §8 is not one of the four buckets `verify-coverage` accepts, so land the Phase 1.5 finding that names the surface in §9 Risks with `record-risk --finding-ref` (Step 4.8). Step 4.4 already takes this route for a product question.
+   - Your own answer for a surface whose description cites identity evidence, on the auto path or the delegated path, goes through `set-dp-default-applied` under the value rule in step 2, never through `set-dp-deferral`.
 
 4. **No-decision-point-in-category**. When a category has no decision point at all, record **exactly one** terminal entry per category:
 
@@ -443,7 +458,8 @@ For each decision point (across all 7 categories), in priority order (**scope > 
 - Up to 5 questions per round.
 - Prioritization order across rounds: **scope > breaking changes > data flow > tooling > UX > edge cases** (v3 verbatim 6-item order; slot `existing_behavior` alongside `data flow` per the Per-DP protocol note above).
 - After each round, decide if more clarification is needed based on **whether all decision points have been covered, not on subjective sufficiency**.
-- Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings.
+- Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings. Whether a user-facing surface that shows, or may show, the feature the user named is in scope is a product question, never answerable from the codebase, so in interactive mode a `scope_boundaries` decision point about such a surface is always asked, whether or not its description cites identity evidence.
+- Decision points about separate surfaces are related, and none is conditionally dependent on another, so they qualify for the bundling rule in the per-decision-point protocol, which puts qualifying questions in one `AskUserQuestion` call.
 
 ### Coverage check + exit
 
@@ -657,6 +673,8 @@ Call once per row:
 
 For greenfield, list scaffolding needs explicitly (Impact = "Create new") so `/devforge:plan` and `/devforge:breakdown` see the surface area to bootstrap.
 
+**Covering a user-facing surface takes two entries.** A surface that shows the feature the user named is covered, whether the user included it in their own words or a Phase 2 decision point resolved to `cover <surface>`, only when this step records an affected-area row naming that surface AND Step 4.4 adds at least one acceptance criterion whose statement names it. An AC that names only another surface lets `/devforge:verify` pass while this one is untouched.
+
 ### Step 4.4 — §5 Acceptance Criteria (7 categorized subsections, EARS notation)
 
 Each AC must be testable and unambiguous. **Cover each category that applies. Mark non-applicable categories with "N/A — [reason]".**
@@ -664,6 +682,8 @@ Each AC must be testable and unambiguous. **Cover each category that applies. Ma
 **When `<feature_dir>/emission-matrix.md` exists (§1.8), re-read it before writing any AC in this step.** An acceptance criterion asserting that a value this change removes is still present — or still emitted — on some path may NOT be written from inferred intent; it requires product intent, quoted. "We did not intend to touch that file" is inferred intent and is not sufficient. Where the matrix shows a call site whose `Intersection with the removed set` is non-empty, that is a product question about what should happen on that path: surface it to the user as plain prose and record it under §8 Open Questions (Step 4.7), landing its Phase 1.5 finding in §9 Risks (Step 4.8), since §8 is not one of the four buckets `verify-coverage` accepts. Pinning it as an AC instead converts an assumption into a contract that `/devforge:verify` will enforce.
 
 **The same standard binds every AC entering §5.2 Behavior preservation (`behavior_preservation`), whether or not that matrix exists.** The trigger is the subsection an AC is added under, not how its statement is worded — framing a claim as preserved lane behavior rather than as a still-present value is no exit from it. Such an AC asserts that a state must be PRESERVED, so before adding it, show that state REACHABLE: cite the construction site that produces it — the code that builds or emits it — traced through the codebase-memory-mcp chain (Phase 3 Step 3), never asserted. One line carries the citation, inside either the AC's `--statement` or the Phase 1.5 finding it cites with `--finding-ref`. Where no construction site can be cited, the criterion is not a preservation criterion but a product question, and it takes the same route as above: §8 Open Questions (Step 4.7), with its Phase 1.5 finding in §9 Risks (Step 4.8); when that leaves §5.2 with nothing, mark the subsection N/A below rather than inventing a criterion to fill it. An AC whose subject state nothing constructs cannot be violated, so it guards nothing while still shaping the implementation — `/devforge:spec-check` will correctly find it consistent with everything, which is exactly why it must not enter §5.2. Two bounds keep the citation from being over-trusted: a preservation case counts only when its subject state is asserted reachable — the same standard under which downstream consistency checking can catch a clash at all — and reachability by static trace is bounded by dynamic dispatch, so a cited construction site shows the state IS reachable but never shows the citation exhausted every path. A citation is necessary; it is never proof of exhaustiveness.
+
+**Every covered surface needs its own AC.** Each user-facing surface covered per Step 4.3 needs at least one AC here whose `--statement` names that surface; its Step 4.3 row alone does not cover it.
 
 Every AC `statement` uses EARS notation (Easy Approach to Requirements Syntax, IEEE 29148-2018 / Kiro convention). Choose one of 5 variants; helper validates the statement matches the declared variant via regex. Malformed statements are rejected.
 
@@ -725,6 +745,8 @@ Record each OOS item with the Phase 1.5 cross-reference where applicable:
     --content "<NOT-included item>" \
     [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
+
+**Mark every exclusion that is not the user's own.** The user stated an exclusion in their own words only when their prompt, an intake rubric answer, a decision-point answer or a correction names it, or when they explicitly picked an offered option that named it. Record every other §6 entry with `--content` in exactly this form: `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`. The rule covers a `leave <surface> out` value you chose in Phase 2, an auto-mode default, and any exclusion you add while writing this section. The reason in the parentheses names what the user sees; a code path, request, use case or builder is never that reason. An entry the user stated in their own words carries no marker. A surface you deferred to §8 for lack of identity evidence is not excluded, so it gets no §6 entry. The marker comes first because `/devforge:plan`'s findings enumeration shows only the first 80 characters of a §6 entry, and the reason sits in parentheses because §6 appends ` — <finding id>` to an entry recorded with `--finding-ref`. A `verify-scope-coherence` warning (Step 4.9) whose overlap tokens are only the marker's own words (`excluded`, `model`, `user`, `sees`, `difference`) is a false positive of that heuristic: note it and proceed, and never drop or reword the marker to silence it.
 
 Be exhaustive on Out of Scope — this prevents scope creep during implementation. A §6 entry that contradicts a §5 AC / §4 affected-area (the spec both excludes and requires the same concern) is surfaced by `verify-scope-coherence` at Phase 4 Step 4.9 as a non-blocking warning for the author to reconcile.
 
@@ -789,10 +811,12 @@ Render labels: `nfr` → "Must satisfy NFR (<quantifier>)"; `constitution_anchor
 
 ### Step 4.7 — §8 Open Questions
 
-Two sources land here:
+Four sources land here:
 
 1. Genuine remaining uncertainties.
 2. Per-Phase-2-category "no decision point" rationales (the `no_DP_in_category` entries from Phase 2 — the helper auto-renders those in §8).
+3. Decision points resolved by a default, in auto mode or on a delegated reply (the `default_applied` entries from Phase 2 — the helper auto-renders each in §8 as `[default applied]` with its value, plus a note quoting the user's reply when they delegated the choice).
+4. Decision points deferred to an open question, whether the user deferred one, you deferred one, or the follow-up cap moved one there (the `deferred_open_question` entries from Phase 2 — the helper auto-renders each in §8 as `[deferred to open question]` with its reason).
 
 For genuine open questions, call:
 

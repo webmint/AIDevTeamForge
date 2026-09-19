@@ -76,7 +76,10 @@ contradiction)
   plan's happy-path flow omits, a state transition the design leaves undefined, an
   input shape the plan assumes away. Quote the plan section that defines the flow;
   name the unhandled state / input. Respect the spec's Out-of-Scope (§6): a
-  deliberately-excluded case is NOT an ignored edge case.
+  deliberately-excluded case is NOT an ignored edge case. A §6 entry marked
+  `[excluded by the model]` is not a deliberately-excluded case: when it leaves
+  out a user-facing surface that shows the feature the spec names, it is a
+  legitimate upstream signal to flag.
 
 
 Stale external claims  (Category: best_practice)

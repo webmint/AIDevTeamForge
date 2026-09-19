@@ -140,7 +140,7 @@ The setter is idempotent on `--statement`: re-recording the same statement overw
 
 #### Step 2 — Minimality challenge
 
-Compose the SIMPLEST change that satisfies the stated desired outcome ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest change — a guessed mechanism, an extra distinction, a new state — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal fix. The minimal fix states what changes; it states what the change leaves untouched only by quoting the prompt's own words. What the change does not touch is established later — by this command's investigation output (Phase 2.4c's caller enumeration and, when it fires, Phase 3's emission matrix) and by the user's own `unchanged_behavior` answer in Phase 1 — never by an intake assumption. Concretely for the trip-wire this gate exists to catch: a prompt whose desired outcome is "render an empty section plus an error toast on load failure, never leak the prior items" yields the minimal fix "branch the render on load-failure; show empty + toast" — with NO inline-items mechanism and NO empty-vs-failure split, because neither is in the stated desired outcome. `--minimal-fix` is optional on the setter (omit it on `hypothesis` statements — their minimal fix is "verify first", not a code change), but for the requirement statement carrying the desired outcome it is REQUIRED: it is the surface the user confirms or corrects.
+Compose the SIMPLEST change that satisfies the stated desired outcome ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest change — a guessed mechanism, an extra distinction, a new state — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal fix. The minimal fix states what changes; it states what the change leaves untouched only by quoting the prompt's own words. What the change does not touch is established later — by this command's investigation output (Phase 2.4c's caller enumeration, Phase 2.4e's feature-surface sweep and, when it fires, Phase 3's emission matrix) and by the user's own `unchanged_behavior` answer in Phase 1 — never by an intake assumption. Concretely for the trip-wire this gate exists to catch: a prompt whose desired outcome is "render an empty section plus an error toast on load failure, never leak the prior items" yields the minimal fix "branch the render on load-failure; show empty + toast" — with NO inline-items mechanism and NO empty-vs-failure split, because neither is in the stated desired outcome. `--minimal-fix` is optional on the setter (omit it on `hypothesis` statements — their minimal fix is "verify first", not a code change), but for the requirement statement carrying the desired outcome it is REQUIRED: it is the surface the user confirms or corrects.
 
 #### Step 3 — Echo-back + ONE confirmation
 
@@ -422,7 +422,7 @@ Phase 2.3 framing locks in. Without adversarial competition, Phase 2.4 / 2.4b / 
    - Same frame, two hypotheses (NOT what Phase 2.3b wants): primary frame "comparator field-name typo" → H1 "primary-id vs alternate-id mismatch" / H2 "type coercion drops the match". Both H1 + H2 live inside the same comparator-typo frame.
    - Different framings (what Phase 2.3b wants): primary "id-field mismatch (presentation-layer fix)" vs runner-up "shallow walk + missing structural classifier (cross-layer fix)". Different root causes, different fix layers, different surfaces.
 
-   **Surface-count frame (when the ticket names a specific surface).** When the ticket names a specific UI surface, screen, or tab (e.g. "on the 'Suggested' search", "in the dealer modal"), you MUST evaluate a surface-count frame as one of the candidates here: "the named surface is NOT the only entry point — other surfaces reach the same shared symbol," with falsifier = the inbound `trace_path` of that shared symbol. If a different framing wins the runner-up slot, that is fine — no second recorded frame is required, because the surface-count question is still mechanically probed downstream by Phase 2.4c's caller enumeration + Step 2b's per-caller surface trace.
+   **Surface-count frame (when the ticket names a specific surface).** When the ticket names a specific UI surface, screen, or tab (e.g. "on the 'Suggested' search", "in the dealer modal"), you MUST evaluate a surface-count frame as one of the candidates here: "the named surface is NOT the only entry point to this feature — other surfaces show the user the same feature, whether through the same shared symbol or through a different path," with falsifier = the inbound `trace_path` of that shared symbol AND Phase 2.4e's feature-surface sweep. If a different framing wins the runner-up slot, that is fine — no second recorded frame is required, because the surface-count question is still probed downstream: mechanically by Phase 2.4c's caller enumeration + Step 2b's per-caller surface trace, and by Phase 2.4e's sweep, a search step no check enforces.
 
 3. **Identify the CONCRETE FALSIFIER** — the specific evidence that would prove the alternative framing OVER the primary. Phase 2.4 / 2.4b / 2.4c searches will probe FOR this evidence.
 
@@ -441,7 +441,7 @@ Phase 2.3 framing locks in. Without adversarial competition, Phase 2.4 / 2.4b / 
 
 **MANDATORY — never skip, even when the bug looks unambiguous.** The phase exists specifically to challenge "looks unambiguous" framings: the regression class this phase guards against is the LLM that commits to the first plausible frame in Phase 2.3 and stops considering alternatives.
 
-**Downstream impact.** Phase 2.4 / 2.4b / 2.4c findings that support the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed). Phase 3's `verify` enforces two gates: check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b is mandatory and must execute before `verify` runs; check 12b (conditional on `runner_up_framing` set) rejects a report with zero `--framing runner-up` findings — at least one runner-up-tagged finding (positive or negative) must follow.
+**Downstream impact.** Phase 2.4 / 2.4b / 2.4c / 2.4e findings that support the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed). Phase 3's `verify` enforces two gates: check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b is mandatory and must execute before `verify` runs; check 12b (conditional on `runner_up_framing` set) rejects a report with zero `--framing runner-up` findings — at least one runner-up-tagged finding (positive or negative) must follow.
 
 ### Phase 2.4 — Parallel-pattern sweep (MANDATORY)
 
@@ -585,6 +585,10 @@ Then classify the caller:
 
 The `(helper_qn, caller_qn)` pair MUST already exist from Step 2 — the setter rejects an unrecorded pair with exit 2. `--surface` and `--justification` must be non-empty; `--scope` is exactly `in` or `out`. When an entry point WAS found, the `--justification` MUST cite it by name — that is what converts "X is a caller" into "X is reachable from surface Y, therefore in/out of scope."
 
+**What a scope justification rests on.** An `out` justification names what the user sees differently — for example `shows a different feature: <what the user sees there>`, `the user excluded it: '<their words>'`, or `no user-facing surface reaches it`. A caller whose surface shows the feature the user named is `in` unless the user excluded that surface in their own words, and an `in` justification that rests on the surface showing the feature cites that surface's identity evidence, as Phase 2.4e's **Identity evidence** paragraph defines it. A code path, request, use case or builder is never the justification: two surfaces that show the user the same feature through different requests, use cases or builders are both surfaces of that feature. A caller whose surface you suspect shows the feature, but for which you can cite no identity evidence, is `in`, and its justification says that no identity evidence was found and why it may be the same feature, in terms of what the user sees there; Phase 3 step 3b raises it when the recommended approach leaves it unchanged. This `in` keeps the caller in research's own trace and is not a coverage decision: step 3b routes it to the same open question as any unchanged surface, and `/devforge:specify` decides.
+
+The user excluded a surface only when the user's own words — the prompt, a rubric answer, an answer to a question this run asked, or a correction — name that surface or a class that plainly contains it, or when the user explicitly picked an offered option that named it. A rubric value you supplied on a delegated answer (the `Model inference — the user delegated: ` prefix) is your words, not theirs. A `scope` pick of `"one place"` names no surface: `set-scope`'s `--evidence` proves the symptom is localized to that single site — a claim about where the symptom sits, answered before this investigation surfaced any other surface — so it excludes nothing Step 2 or Phase 2.4e finds later.
+
 **Where the `--surface` value comes from.** Derive it from the caller's CONSTRUCTION SITES — the code that builds, mounts, or registers that caller, and the dependencies it is built with. The upward trace this step already runs supplies the hops, within the same 8-hop bound; the construction evidence is read at those hops through the CBM chain — `get_code_snippet` on the hop's `file:line`, plus `search_code` for a literal from it when the snippet leaves the construction relationship unclear. A label taken from the name of a lane, tab, route, or mode the caller RESEMBLES is not derived, it is a guess, and nothing downstream can tell the two apart: Phase 3's emission matrix reads this value as context for the row's Note, and every later stage that reads these caller rows inherits the label as a traced fact. When the construction sites do not surface within that bound, do not fall back to the nearest plausible name — take surface `"none"` per the rule above and record in the `--justification` what the trace covered and what blocked it, the same shape the not-reachable case uses.
 
 **Honesty bound.** This gate forces the classification + justification to EXIST for every caller; it cannot force the in/out call to be CORRECT. Likewise check 19 forces `--surface` to exist (non-empty); it cannot force the label to have been genuinely derived from construction sites rather than guessed. Correctness stays your judgment on both counts and is audited downstream — at `/devforge:plan`'s architect consult (sub-question 7) and by the human.
@@ -725,6 +729,64 @@ Either the `--relevance` or `--surface` text MUST contain the intermediate's qua
 `--intermediate-qns '[]'` is valid (direct handler→write-boundary call with no intermediates). The setter validates each intermediate_qn against existing findings; if any intermediate has no referencing Finding, the setter exits with code 2 — copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), record the missing Finding via `record-finding` first, then re-run `record-data-flow-chain`. Last-write-wins on subsequent calls.
 
 **Verify enforcement.** The helper's `verify` step adds check 15: when bug mode + presentation-layer primary symptom, `data_flow_chain` must be non-null. On non-zero exit from `verify` citing check 15, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4d Step 1 to complete the missing trace.
+
+### Phase 2.4e — Feature-surface sweep (MANDATORY — mode-independent)
+
+Phase 2.4 / 2.4b / 2.4c / 2.4d all start from code: the file the symptom sits in, the fix's solution pattern, the callers of the helpers the change touches, the handler behind the symptom. A surface that shows the user the same feature through a different request path never calls those helpers and never appears in that file, so none of those steps is built to reach it. Phase 2.4e starts from the feature instead. A user-facing surface is anywhere the user sees or triggers a feature; this phase looks for every one that shows the feature the user named.
+
+**MANDATORY — mode-independent.** This phase runs on EVERY `/devforge:research` run, bug or enhancement alike, and once per run rather than once per framing — it starts from the feature, not from either frame.
+
+**Starting point.** The feature the user named: the `symptom`, `desired` and `affected_area` answers (`memo.dimensions.<dimension>.value`) plus the verbatim prompt recorded at Phase 0.3. The feature is what the user sees, not the code that produces it.
+
+**Identity evidence.** A surface counts as showing the feature the user named only when at least one piece of user-visible identity evidence is cited beside it: the same title or heading; the same label, translation key or menu item; the same route; or the same tab or mode constant that controls what the user sees. Shared code — a helper, use case, builder or request — and a shared data source are never identity evidence, just as they are never a reason to exclude a surface. This is the one definition this phase's findings, Step 2b's `in` justifications and Phase 3 step 3b's gaps cite. The evidence is yours to cite and nothing checks it: citing it makes the call inspectable, not mechanical.
+
+**Step 1 — Probe from three directions.** Run all three probes:
+
+1. **The words the user sees.** The label, heading or message the named surface shows for the feature — read from its code — or the translation key that text is rendered from, searched project-wide:
+
+   ```
+   search_code(pattern="<label, heading or message text, or its translation key>")
+   ```
+
+2. **The data the feature shows.** The entity field or payload value the named surface displays. Locate it, then follow it to its readers:
+
+   ```
+   search_graph(name_pattern="<field or payload value name>")
+   trace_path(<field or payload value source>, mode=data_flow, direction=outbound)
+   ```
+
+   A reader on a different request path is not downstream of the source you traced, so cross-check with `search_code(pattern="<field or payload value name>")` project-wide. This probe finds candidates only: a shared field or payload value is not identity evidence on its own, so a surface this probe reaches counts as showing the feature only once evidence of a listed kind — typically the words probe 1 searches for, or a route probe 3 finds — is cited for it.
+
+3. **The names in the `affected_area` answer.** Every view, route or component name it contains, searched project-wide for the other places that mount, route to or render it:
+
+   ```
+   search_code(pattern="<view, route or component name>")
+   ```
+
+   A view or component name is shared code too: on a surface this probe reaches, the evidence is the route, or the title or label that view or component renders there.
+
+**Step 2 — Trace each hit to its surface.** Skip a hit that only defines the label, field or name, and a hit in test-only code. Trace every other hit UP to its user-facing entry point under Step 2b's rules: the same inbound walk — `trace_path(<qualified name of the function containing the hit>, mode=calls, direction=inbound)` — the same 8-hop bound, and a surface label derived from construction sites, never from the name of a lane, tab, route or mode the hit resembles. When no entry point surfaces within that bound, take surface `"none"` as Step 2b does, pass the hit's own `file:line` as `--file-line`, and say in `--relevance` how far the trace got, so an unresolved hit stays visible instead of vanishing.
+
+**Over-inclusion boundary.** Every surface the sweep reaches is one of three kinds, and only the first two are recorded:
+
+- **An evidenced surface** — identity evidence cited. It shows the feature the user named.
+- **A suspected surface** — no identity evidence can be cited, but what the user sees there suggests the named feature. Record it as suspected (Step 3), never as an evidenced surface and never by dropping it.
+- **Any other surface** — one that shows the user a different feature, including one whose only link to the named feature is shared code or a shared data source. It is not a feature surface: do not record it here. When it is one of Step 2's callers, Step 2b classifies it `out` with the justification `shows a different feature: <what the user sees there>`.
+
+**Step 3 — Record each distinct surface.** At Phase 2.6, record every distinct evidenced or suspected surface the sweep reached as its own finding — the surface the `affected_area` answer names included, so the sweep leaves a row even when it finds no other surface:
+
+```bash
+.devforge/lib/research_helper record-finding \
+    --surface "<surface label derived from construction sites>" \
+    --file-line "<path:line of the user-facing entry point>" \
+    --relevance "shows the named feature — identity: <evidence> — <reached through the changed code | a different path: …>" \
+    --framing "<primary|runner-up>" \
+    --rests-on-literal "<path:line>|none"
+```
+
+After `identity: `, name the kind of evidence from the **Identity evidence** list and the value both surfaces share — the title or heading text, the label, translation key or menu item, the route, or the tab or mode constant. For the surface the `affected_area` answer names, write `identity: named in the affected_area answer`. For a suspected surface, the `--relevance` reads `may show the named feature — no identity evidence found; why it may be the same feature: <what the user sees there> — <reached through the changed code | a different path: …>`, so a reader of the report, `/devforge:specify` included, can tell it from an evidenced surface; the rest of the call is the same. In `--relevance`, write `reached through the changed code` when the surface's trace passes through a fix-path helper Phase 2.4c recorded or through the symptom site, and `a different path: ` followed by the request or data path the surface takes when it does not. `--file-line` follows the Phase 2.3 grounding rule and Phase 2.6's pre-verification loop, as every finding's does. Answer `--rests-on-literal` as Phase 2.6 defines it. `--framing` is `runner-up` when the surface-count frame holds the runner-up slot in Phase 2.3b — every row this sweep records is then evidence for or against that frame — and `primary` otherwise. A surface Step 2b already reached as a caller's `--surface` is still recorded here, and that is not the re-record Phase 2.6 rules out: the caller row says the change reaches the surface, this finding says the surface shows the feature. Phase 3 step 3b raises each recorded surface the recommended approach leaves unchanged.
+
+**Honesty bound.** This is a SEARCH step, not a gate. Whether the sweep found every surface that shows the feature is your judgment: no check and no validator confirms its completeness, and `verify` cannot tell a sweep that missed a surface from one that found them all. The rows it records are ordinary findings, so the checks every finding passes apply to them; nothing checks what the sweep did not record.
 
 ### Phase 2.5 — Hypothesis enumeration (MANDATORY ≥2)
 
@@ -877,9 +939,9 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
 
 ### Phase 2.6 — Wire findings into helper
 
-After the CBM chain + parallel-pattern sweep + canonical-pattern search + helper-API surface enumeration (Phase 2.4c) + hypothesis enumeration complete, call helper setters in this order. Phase 2.4c state (`fix_path_helpers`, `inbound_callers`, `dead_siblings`, `consumer_chain`, `value_semantics`) is already recorded in the report by its own setters — do not re-record those surfaces via `record-finding`. Compose values from the in-context findings; do not re-shape.
+After the CBM chain + parallel-pattern sweep + canonical-pattern search + helper-API surface enumeration (Phase 2.4c) + feature-surface sweep (Phase 2.4e) + hypothesis enumeration complete, call helper setters in this order. Phase 2.4c state (`fix_path_helpers`, `inbound_callers`, `dead_siblings`, `consumer_chain`, `value_semantics`) is already recorded in the report by its own setters — do not re-record those surfaces via `record-finding`. Compose values from the in-context findings; do not re-shape.
 
-For each finding — one per code surface that bears on the symptom, including every parallel surface from Phase 2.4 AND every canonical-pattern row from Phase 2.4b. Apply the same `search_code` pre-verification loop to canonical rows. The `--file-line="(none)"` negative-result row from Phase 2.4b is exempt from `search_code` verification — `(none)` is the sentinel value, not a path to verify.
+For each finding — one per code surface that bears on the symptom, including every parallel surface from Phase 2.4, every canonical-pattern row from Phase 2.4b, AND every evidenced or suspected surface from Phase 2.4e (in the `--relevance` shapes its Step 3 defines). Apply the same `search_code` pre-verification loop to canonical rows. The `--file-line="(none)"` negative-result row from Phase 2.4b is exempt from `search_code` verification — `(none)` is the sentinel value, not a path to verify.
 
 ```bash
 .devforge/lib/research_helper record-finding \
@@ -1089,6 +1151,18 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    ```
 
    On argument duplication, the helper exits with code 2 and stderr `set-recommended-approach: --proposed-call-shape "<shape>" contains argument duplication ("<ident>" appears N times in the arg list). Same value passed multiple times in one call indicates the default-source belongs at a different layer (wrapper signature / state initialization / use-case default). Reconsider the fix layer and re-draft.` Recovery: escalate the default-source one layer up (wrapper signature, state-init factory, or use-case default), re-draft the approach so the call site no longer needs the duplicated arg, then re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Parser failure (nested calls, unsupported syntax) is fail-soft: helper emits a stderr advisory `research_helper: set-recommended-approach: --proposed-call-shape "<shape>" could not be fully parsed (nested calls / unsupported syntax); argument-duplication check skipped, shape stored verbatim.` and proceeds to exit 0. Check 18 mirrors the duplication check at verify time (catches state-mutation bypass) — same recovery applies.
+
+3b. **Uncovered feature surfaces** (runs after step 3 because it depends on the recommended approach). Take each surface Phase 2.4e recorded (suspected surfaces included; a `"none"` row names no surface and is not raised here), and each `in` caller's surface from Phase 2.4c Step 2b, that the recommended approach leaves unchanged and that the user did not exclude in their own words (as Step 2b defines them). Record each one as an open question, one call per surface:
+
+   ```bash
+   .devforge/lib/research_helper record-gap \
+       --dimension affected_area \
+       --description "<surface> also shows <feature> — identity: <evidence> (<what the user sees there>); the recommended approach leaves it unchanged — cover it or leave it out?"
+   ```
+
+   The description cites the surface's identity evidence as its Phase 2.4e finding or its Step 2b justification records it. For a suspected surface, which has none, the description says so instead: `<surface> may also show <feature> — no identity evidence found; why it may: <what the user sees there>; the recommended approach leaves it unchanged — cover it or leave it out?`.
+
+   Each gap renders under the report's `## Open Uncertainties`, which `/devforge:specify` reads as part of `research-report.md`. Research records the question and does not decide it — the scope decision is `/devforge:specify`'s. Put it in `record-gap`, never in `--rationale`: `/devforge:specify` sees the rationale only as an 80-character picker summary, and the hypothesis-suppression gate below token-matches the rationale against unverified hypotheses, so surface names written there can trip that gate. `record-gap` appends without dedupe and nothing removes a gap, so record each surface once; if a later `verify` retry re-calls `set-recommended-approach` with a different approach, add gaps only for surfaces not already recorded. When no surface meets both conditions, this step records nothing.
 
 4. **Constitution constraints** — read `constitution.md` for rules that bear on the affected area + recommended approach. For each rule that constrains or enables the change:
 
