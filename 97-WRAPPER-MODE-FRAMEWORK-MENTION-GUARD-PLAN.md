@@ -1,7 +1,7 @@
 # 97 — Wrapper-Mode Framework-Mention Guard Plan
 
 **Created**: 2026-09-18
-**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 DONE 2026-09-19 (three python-engineer → python-reviewer loops, all SHIP-READY after one Low and one Medium test-coverage fix; full `tests/lib` suite 11745 passed); Phase 2 DONE 2026-09-19 (two instruction-author → instruction-reviewer loops, both SHIP-READY after one Medium + four Info fixes); Phase 3 DONE 2026-09-19 — **✅ DONE (build)**: Phases 1–3 BUILT and build-verified; commits `7d85ee7` Phase 0 / `df536ad` Phase 1 / `b609b21` Phase 2 / the Phase-3 docs commit. **Phase 4 consumer e2e DEFERRED — user-driven HARD GATE, NOT run and NOT WAIVED** (build-verified, NOT consumer-validated; "done" never means Phase 4 passed). Drafted 2026-09-18; reviewed three times before ratification (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved 2026-09-18 via claude-code-guide.
+**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 DONE 2026-09-19 (three python-engineer → python-reviewer loops, all SHIP-READY after one Low and one Medium test-coverage fix; full `tests/lib` suite 11745 passed); Phase 2 DONE 2026-09-19 (two instruction-author → instruction-reviewer loops, both SHIP-READY after one Medium + four Info fixes); Phase 3 DONE 2026-09-19 — **✅ DONE (build), CLOSED 2026-09-19 by maintainer directive** (English paraphrase: *"I'll do it after the release — mark it done and commit"*): Phases 1–3 BUILT and build-verified; commits `7d85ee7` Phase 0 / `df536ad` Phase 1 / `b609b21` Phase 2 / `cc604fa` Phase 3 / plus the closure commit. **Phase 4 consumer e2e DEFERRED TO POST-RELEASE by maintainer decision 2026-09-19 — user-driven HARD GATE, NOT run and NOT WAIVED: a TIMING decision, and the maintainer intends to run it after the release (plan-86 / plan-91 / plan-96 pattern), so "done" means BUILT and build-verified and NEVER that Phase 4 passed** (build-verified, NOT consumer-validated). Drafted 2026-09-18; reviewed three times before ratification (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved 2026-09-18 via claude-code-guide.
 
 Extend wrapper mode's traceless guarantee from FILES and COMMIT ATTRIBUTION to FILE CONTENT and COMMIT SUBJECTS: in wrapper mode, nothing the framework writes into the client-owned source repo may name a framework artifact or quote its content, and the one permitted reference is the source repo's ticket ID.
 
@@ -258,6 +258,8 @@ Every D-item (D1–D8) and every OQ (OQ-1–OQ-6) above gets a recorded outcome 
 - The plan-96 index one-liner is byte-unchanged; the plan-97 one-liner is an append.
 
 ### Phase 4 — Consumer e2e — DEFERRED, user-driven HARD GATE, NOT run
+
+**Deferred to post-release by maintainer decision 2026-09-19** — a TIMING decision, NOT a waiver: the maintainer stated they will run it after the release, so the five anchors below stay the recipe and nothing about them is discharged.
 
 **Everything above is build-verified, NOT consumer-validated. "Done" never means Phase 4 passed.** Known-answer anchors, all in a WRAPPER install:
 
