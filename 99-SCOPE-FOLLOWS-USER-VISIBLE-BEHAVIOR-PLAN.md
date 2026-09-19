@@ -37,6 +37,7 @@ The first draft of this file (the "frame", 134 lines, same day) had the right pr
 - Plan 98 fixed the attribution half: a delegated reply is never the user's pick. This plan is the scope half.
 - Plan 98 left one interaction this plan must fix. On a reply that decides nothing, its `/devforge:plan` sub-question-6 escalation arm lets "the spec's §6 Out of Scope exclusion" stand. So an exclusion the model itself wrote into §6 at `/devforge:specify` gets entrenched by a delegated reply at `/devforge:plan` (D5).
 - On 2026-09-19 the benchmark operator's peer session recommended fixing that §6 entrenchment before plan 98's release, as a side effect of plan 98 rather than a new principle. D5's ship-alone option exists for that reason.
+- On 2026-09-19 the benchmark operator's peer session proposed the two parts of D10: identity needs user-visible evidence, and the model's default depends on that evidence.
 
 ### Verified structure (2026-09-19)
 
@@ -92,9 +93,13 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 
 **Placement.** Append item **17** to `src/CLAUDE.md` `### Always` — a pure append, with items 1–16 byte-identical. `### Always`, not `### Never`, because the rule is positive; plans 87 and 89 set the append precedent in this list. Item 3 (*"Minimal changes"*) stays as it is: it governs mechanism, and item 17's first sentence says so.
 
-**Proposed text:**
+**Proposed text** (amended by D10, 2026-09-19):
 
-> 17. **Scope follows what the user sees** — minimality limits the mechanism, never which user-facing surfaces (anywhere the user sees or triggers a feature) count. Each surface showing the feature the user named is covered, excluded in the user's own words, or raised with them, naming what they see there; no code path, request, use case or builder excludes one. A surface that only shares code is neither covered nor raised. When unsure whether a surface shows that feature, ask. Deciding yourself — handed back or never asked — cover it unless you can name what the user would see differently without it; record a surface you leave out as your exclusion, with that reason, and tell the user.
+> 17. **Scope follows what the user sees** — minimality limits the mechanism, never which user-facing surfaces (anywhere the user sees or triggers a feature) count. A surface shows the feature the user named only on cited user-visible evidence — the same title, label or translation key, route, or tab or mode; shared or different code, requests or data are never evidence or a reason to exclude. Each evidenced surface is covered, excluded in the user's own words, or raised with them, naming what they see there. Deciding it yourself — handed back or never asked — cover it unless you can name what the user would see differently without it; record any exclusion as yours, with that reason, and tell the user. A surface that only shares code is neither covered nor raised. Ask a present user about a surface you suspect but cannot evidence; deciding yourself, leave it an open question, never silently covered or excluded.
+
+- **Superseded 2026-09-19 by D10** — the ratified 115-word text, kept for history: ~~17. **Scope follows what the user sees** — minimality limits the mechanism, never which user-facing surfaces (anywhere the user sees or triggers a feature) count. Each surface showing the feature the user named is covered, excluded in the user's own words, or raised with them, naming what they see there; no code path, request, use case or builder excludes one. A surface that only shares code is neither covered nor raised. When unsure whether a surface shows that feature, ask. Deciding yourself — handed back or never asked — cover it unless you can name what the user would see differently without it; record a surface you leave out as your exclusion, with that reason, and tell the user.~~
+
+*Amended by D10, 2026-09-19: the sentence map and length note below describe the superseded 115-word text. D10 carries the new text's map and count.*
 
 **What each sentence carries** (so a reword cannot drop one):
 
@@ -146,17 +151,17 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
   - **Probe 2, the data the feature shows:** the entity field or payload value — its readers, through `search_graph` / `trace_path(mode=data_flow)`.
   - **Probe 3:** the view, route and component names in the `affected_area` answer.
   - **Trace each hit** up to its user-facing entry point under Step 2b's rules: the 8-hop bound, and a surface label derived from construction sites, never from resemblance.
-  - **Record each distinct surface** at Phase 2.6: `record-finding --surface "<surface>" --relevance "shows the named feature — <reached through the changed code | a different path: …>"`, with the usual `--file-line` grounding and `--rests-on-literal` answer.
+  - **Record each distinct surface** at Phase 2.6: `record-finding --surface "<surface>" --relevance "shows the named feature — <reached through the changed code | a different path: …>"`, with the usual `--file-line` grounding and `--rests-on-literal` answer. *(Amended by D10, 2026-09-19: the `--relevance` value also cites the surface's user-visible identity evidence.)*
   - **The honesty bound, stated in the emitted text:** this is a SEARCH step, not a gate. Completeness is model judgment, and there is no check number and no validator. (The plan-side reason, which stays out of the emitted text: plan 75's D1 spine and tripwire.)
 - **(c) Step 2b's `out` justification rule.**
   - An `out` justification names what the user sees differently. Examples: "shows a different feature: <what the user sees there>", "the user excluded it: '<their words>'", "no user-facing surface reaches it".
-  - A caller whose surface shows the feature the user named is `in` unless the user excluded that surface in their own words.
+  - A caller whose surface shows the feature the user named is `in` unless the user excluded that surface in their own words. *(Amended by D10, 2026-09-19: an `in` justification that rests on the surface showing the feature cites its user-visible identity evidence.)*
   - A code path, request, use case or builder is never the justification.
   - **"Own words" is defined at this site.** The user excluded a surface only when the user's own words — the prompt, a rubric answer, a decision-point answer, or a correction — name that surface or a class that plainly contains it, or when the user explicitly picked an offered option that named it.
   - **A `scope` pick of `"one place"` names no surface.** `set-scope` requires `--evidence` that *"proves the symptom is localized to that single site"*. That is a claim about where the symptom sits, answered before research surfaced any other surface, so it excludes nothing research later finds. This clause lands here at Step 2b, beside the definition it sharpens; 2.4e was the alternative placement considered.
 - **(d) New Phase 3 step `3b` — Uncovered feature surfaces.** A letter-suffixed setter step directly after step 3 (Recommended approach), because it depends on the approach. Setters 4–8 keep their numbers, and check 13's *"(see Phase 3 step 3)"* citation stays true.
   - **What it records:** each surface from 2.4e, and each `in` caller's surface, that the recommended approach leaves unchanged and that the user did not exclude in their own words.
-  - **How:** `record-gap --dimension affected_area --description "<surface> also shows <feature> (<what the user sees there>); the recommended approach leaves it unchanged — cover it or leave it out?"`. It renders under the report's `## Open Uncertainties`, which specify reads (F3).
+  - **How:** `record-gap --dimension affected_area --description "<surface> also shows <feature> (<what the user sees there>); the recommended approach leaves it unchanged — cover it or leave it out?"`. It renders under the report's `## Open Uncertainties`, which specify reads (F3). *(Amended by D10, 2026-09-19: the description also cites the surface's user-visible identity evidence, or states that there is none.)*
   - **Not in `--rationale`** — F3 gives three reasons.
 - **Bound:** research records; it does not decide scope. Specify is the decision seat (D4).
 
@@ -166,7 +171,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 
 ### D4 — Specify: the decision seat
 
-- **(a) Phase 2 `scope_boundaries`.** Take each user-facing surface that the Phase 1.5 findings name as showing the feature the user named, the research report's `## Open Uncertainties` included. When the user has not settled its inclusion in their own words, it is its own `scope_boundaries` decision point, with the two valid implementations `cover <surface>` / `leave <surface> out`.
+- **(a) Phase 2 `scope_boundaries`.** Take each user-facing surface that the Phase 1.5 findings name as showing the feature the user named, the research report's `## Open Uncertainties` included. When the user has not settled its inclusion in their own words, it is its own `scope_boundaries` decision point, with the two valid implementations `cover <surface>` / `leave <surface> out`. *(Amended by D10, 2026-09-19: the decision point's `--description` cites the surface's user-visible identity evidence, or states that there is none.)*
   - At the *"Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings."* line: whether such a surface is in scope is a product question, never answerable from the codebase.
   - Several such decision points bundle into one `AskUserQuestion` call under the existing bundling rule.
   - The "own words" definition from D3(c) is restated here, because commands load independently (plan 98's OQ-7 precedent).
@@ -175,6 +180,10 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
     - `set-dp-deferral --deferral-kind OOS` is taken only when the user's own words punt it to §6.
     - The model's answer, on the auto path or the delegated path, goes through `set-dp-default-applied` under the value rule above.
     - This narrows specify's deferral-path text, *"When the user (or auto-mode rationale) explicitly punts the decision to §6 Out of Scope or §8 Open Questions"*: its *"(or auto-mode rationale) explicitly punts"* arm no longer reaches such a decision point.
+  - *Amended by D10, 2026-09-19:*
+    - The value rule above now applies only to a surface with cited identity evidence.
+    - With no evidence, the model's route in BOTH modes — interactive-delegated included — is `set-dp-deferral --deferral-kind open_question`, neither covered nor excluded.
+    - `--deferral-kind OOS` stays user-only.
   - **Why the narrowing is needed.** `deferred_OOS` renders in neither §6 nor §8. `_specify/_render.py` renders `deferred_open_question` in §8 and has no branch for `deferred_OOS`, which appears only as a count in the `/devforge:plan` handoff block. A deferral by the model would therefore be an exclusion no reader of the spec sees.
 - **(c) "Cover" means both** a §4 affected-area row naming the surface AND at least one §5 AC whose statement names it. An AC naming only the first surface lets `/devforge:verify` pass while the second is untouched.
 - **(d) The §6 marker, at Step 4.5.** Every §6 entry the user did not state in their own words takes the form `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`.
@@ -187,7 +196,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
     - In auto mode every §6 entry carries the marker, and Step 5.1 gets longer.
     - `verify-scope-coherence` can add non-blocking warnings on the prefix's tokens `excluded` and `model` (F5).
     - The fixed `(user sees:` text adds two more non-stopword tokens, `user` and `sees`. "user" is common in EARS acceptance criteria, so every marked §6 entry can overlap with every AC or affected-area impact that mentions the user.
-- **(e) Unresolved — an explicit user punt** (`set-dp-deferral --deferral-kind open_question`). The surface goes to §8, and its Phase 1.5 finding lands in §9 through `record-risk --finding-ref` — the Step 4.4 precedent (F6).
+- **(e) Unresolved — an explicit user punt** (`set-dp-deferral --deferral-kind open_question`). The surface goes to §8, and its Phase 1.5 finding lands in §9 through `record-risk --finding-ref` — the Step 4.4 precedent (F6). *(Amended by D10, 2026-09-19: the same route is also the model's own route for a suspected surface with no identity evidence.)*
 - **(f) Named strengthening arm, NOT built.** A helper flag (`record-out-of-scope --origin user|model --reason …`) that renders the marker mechanically. Built only if Phase 3 observes the prefix skipped.
 
 **RECOMMEND (a) + (b) + (c) + (d)(i) + (e); (f) recorded, not built.**
@@ -253,6 +262,70 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 
 **RECOMMEND D9 as stated.**
 
+### D10 — Feature identity by user-visible evidence (post-ratification amendment, 2026-09-19)
+
+**Ratified 2026-09-19 by an explicit maintainer pick after the Phase 0 close** — see `## Phase 0 close record`.
+
+**Origin.** The benchmark operator's peer session proposed two parts (Origin & evidence). Both aim at the weakness D1's counter-argument names: "the same feature" is a judgment.
+- **The peer's context.** Under a blind protocol the operator answers every content question with a delegation and approves artifacts as they are.
+- **The consequence.** Every decision point is then model-answered and nobody reviews Step 5.1, so the over-inclusion risk has no human backstop there.
+
+**P1 — Identity needs evidence.**
+- **The rule.** A surface counts as showing "the feature the user named" only when at least one piece of USER-VISIBLE identity evidence is cited and recorded beside it:
+  - the same title or heading;
+  - the same label, translation key or menu item;
+  - the same route;
+  - or the same tab or mode constant that controls what the user sees.
+- **The symmetric ban.** Shared code — a helper, use case, builder or request — and a shared data source are never identity evidence, just as they are never a reason to exclude.
+- **Where the evidence is recorded:**
+  - research Phase 2.4e's `record-finding --relevance`;
+  - research Phase 3 step 3b's `record-gap` description;
+  - research Step 2b's `in` justification, when it rests on the surface showing the feature;
+  - specify's `scope_boundaries` decision-point description (`record-decision-point --description`).
+- **The full list above goes into the command sites** (research, specify). Item 17 carries a shorter form — title, label or translation key, route, tab or mode — to hold its length.
+
+**P2 — The model's default depends on the evidence** (delegated or auto path):
+- **Identity evidence cited** → cover, unless the model names what the user would see differently. That is the marked exclusion (D4(d)), unchanged.
+- **No identity evidence, but the model suspects the same feature** → neither covered nor excluded.
+  - The model defers it to an open question through the EXISTING `set-dp-deferral --dp-id … --deferral-kind open_question --reason "<deferred by the model — why it may be the same feature: …>"`.
+  - It renders in §8 as `[deferred to open question]`, with the reason.
+  - Its Phase 1.5 finding lands in §9 through `record-risk --finding-ref` — the Step 4.4 route (F6).
+  - No new marker.
+- **Interactive mode with a live user, no evidence** → ask, as before.
+
+**Rejected variant, recorded.**
+- **The peer's form** put the weak case into §6 and the PHASE 3 line, with a new `[unresolved by the model]` marker.
+- **Why declined:** §6 holds exclusions and §8 holds unresolved questions. `/devforge:plan` PHASE 1.5 already forces every §8 line to `[RESOLUTION: <decision>]` or `[RESOLUTION: carry-forward to /devforge:breakdown]`.
+- **Its cost, recorded:** a §8 deferral is not listed in specify's Step 5.1 summary — only defaults and §6 are. In the weak case, visibility at approval is therefore lower than under the peer's form.
+
+**Counter-argument, recorded:** the evidence list can be gamed — a label shared by two different features — and it can miss a real identity with no shared visible marker. The evidence is model-cited and nothing checks it. D10 makes the judgment inspectable, not mechanical.
+
+**Amends.** Each amended site carries a dated pointer; ratified text is not rewritten, except D1's proposed-text block.
+- **D1** — item 17 gains the identity clause and the evidence-dependent default. The new text is in D1's block, with the superseded text kept beside it; the map and count are below.
+- **D3(b), (c), (d)** — identity evidence is cited at 2.4e's `--relevance`, at Step 2b's `in` justification and in step 3b's gap description.
+- **D4(a), (b), (e)** — the decision-point description cites the evidence.
+  - (b)'s deferral binding keeps `--deferral-kind OOS` user-only.
+  - The `open_question` deferral becomes the model's route for the no-evidence case in BOTH modes, interactive-delegated included. The existing specify text *"When the user (or auto-mode rationale) explicitly punts"* did not cover that case.
+- **Phase 1a/1b/1c** element lists and Verify, and **Phase 3**'s anchors.
+- **Unchanged:** D9 holds — zero Python (every verb D10 names already exists), zero gates, zero validators.
+
+**The new item 17 — what each sentence carries:**
+1. The mechanism-versus-scope split and the one plain-words definition of "user-facing surface".
+2. The identity-evidence definition, and the symmetric ban: shared or different code, requests or data are never evidence and never a reason to exclude.
+3. The three user-facing arms for an evidenced surface — covered, excluded in the user's own words, or raised naming what the user sees there.
+4. The model's own decision on an evidenced surface (handed back or never asked): cover unless it can name a user-visible difference; any exclusion is recorded as the model's own, with that reason (the §6 marker), and told to the user.
+5. The over-inclusion clause: a surface that only shares code is neither covered nor raised.
+6. The no-evidence split: ask a present user; deciding yourself, leave it an open question (the §8 deferral), never silently covered or excluded.
+
+**Length note.**
+- **Count:** 152 words in six sentences, using D1's rule (bold title counted, hyphenated words as one, item number excluded). By sentence: 23 / 40 / 20 / 34 / 11 / 24.
+- **Against the target:** over the ≤ ~135 target set for this amendment by 17 words. It is the longest item in either list and the first six-sentence one.
+- **The growth over the 115-word text** is the evidence definition and the no-evidence split.
+- **Held near 150 by three compressions:**
+  - the emitted evidence list is the short form (see P1);
+  - "a code path, request, use case or builder" is folded into "shared or different code, requests or data";
+  - "record a surface you leave out as your exclusion" became "record any exclusion as yours".
+
 ### OQ-1 — The marker literal and its separator
 
 - **The literal.** `[excluded by the model]` (**RECOMMEND** — bracketed like `[default applied]`, in plan 98's "the model" vocabulary) vs `[model exclusion]` vs `[not the user's exclusion]`. Whatever is chosen appears byte-identical in `specify/main.md` and `devils-advocate.md`; `plan/main.md` names no literal (D5).
@@ -307,6 +380,12 @@ A testForge20 fixture with a feature visible on two surfaces through different r
 - 1a touches `src/CLAUDE.md` AND `src/constitution.md` (D2(a)).
 - 1d touches `src/commands/plan/main.md`, `src/agents/architect.md` and `src/agents/devils-advocate.md` (D5, D6, D7).
 
+**Post-ratification amendment — 2026-09-19.**
+- **D10** — RATIFIED 2026-09-19 by an explicit maintainer pick after the close, amending D1, D3 and D4.
+  - The pick was made through `AskUserQuestion`: *"both, P2 through §8 (recommended)"*. It is a pick, not a delegation.
+  - **Per-item deliberation:** the maintainer chose between four offered options.
+  - No file-scope change: D10 edits files 1a, 1b and 1c already touch.
+
 ---
 
 ## Phases
@@ -331,22 +410,29 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 
 **Route: instruction-author → instruction-reviewer, in small dispatches, committing by explicit path.** Instruction-only: no `.py` file changes in this phase or any other.
 
-- **1a — `src/CLAUDE.md` (D1) + `src/constitution.md` §6.1 (D2, if ratified).**
-- **1b — `src/commands/research/main.md` (D3).** It covers the 2.3b widening, the new Phase 2.4e, the Step 2b sentence with the own-words definition and the `"one place"` clause, and Phase 3 step 3b. Phase 2.6 records 2.4e's findings, so its two sentences that enumerate where findings come from name 2.4e as well — the house cross-check rule, not a new decision.
-- **1c — `src/commands/specify/main.md` (D4).** It covers the `scope_boundaries` sentence with the own-words definition, the product-question sentence at the *"Only ask questions you CANNOT answer…"* line, the model-value rule on both the auto and delegated paths, the deferral-path binding (a `scope_boundaries` decision point about a surface showing the named feature takes `set-dp-deferral --deferral-kind OOS` only on the user's own words), the cover-means-§4-and-§5 rule, the §6 marker rule at Step 4.5, and the unresolved route.
+- **1a — `src/CLAUDE.md` (D1) + `src/constitution.md` §6.1 (D2, if ratified).** *(Amended by D10, 2026-09-19: item 17 carries D10's 152-word text. The superseded 115-word text is present in `src/CLAUDE.md` as of this amendment, so 1a replaces item 17 in place.)*
+- **1b — `src/commands/research/main.md` (D3).** It covers the 2.3b widening, the new Phase 2.4e, the Step 2b sentence with the own-words definition and the `"one place"` clause, and Phase 3 step 3b. Phase 2.6 records 2.4e's findings, so its two sentences that enumerate where findings come from name 2.4e as well — the house cross-check rule, not a new decision. *Amended by D10, 2026-09-19:* 1b also carries P1's identity-evidence definition (the full list) and its recording at 2.4e's `--relevance`, at Step 2b's `in` justification and in step 3b's gap description.
+- **1c — `src/commands/specify/main.md` (D4).** It covers the `scope_boundaries` sentence with the own-words definition, the product-question sentence at the *"Only ask questions you CANNOT answer…"* line, the model-value rule on both the auto and delegated paths, the deferral-path binding (a `scope_boundaries` decision point about a surface showing the named feature takes `set-dp-deferral --deferral-kind OOS` only on the user's own words), the cover-means-§4-and-§5 rule, the §6 marker rule at Step 4.5, and the unresolved route. *Amended by D10, 2026-09-19:* 1c also carries P1's identity-evidence definition (the full list), its recording in the `scope_boundaries` decision-point description, and P2's evidence-dependent default.
+  - **Evidence cited:** the value rule.
+  - **No evidence** (auto or delegated): `set-dp-deferral --deferral-kind open_question --reason "deferred by the model — …"`, with the finding landed in §9 through `record-risk --finding-ref`.
+  - **No evidence, with a live user:** ask.
 - **1d — `src/commands/plan/main.md` (D5) + `src/agents/architect.md` (D6) + `src/agents/devils-advocate.md` (D7).** If the maintainer takes D5's option (b), D5's `plan/main.md` edit leaves this sub-phase and ships alone, ahead of the rest.
 - **Order:** 1a–1d are independent except that D7's devils-advocate sentence quotes the marker 1c defines — build 1c before that edit. D5 names no marker and D6 quotes none, so neither needs 1c.
 
 #### Verify
 
-- **1a:** `### Always` items 1–16 are byte-identical and item 17 is appended. If D2 is ratified, §6.1's existing text is byte-identical with one sentence appended, and its heading still reads `### 6.1 Minimal Changes [universal]`. `tests/lib/test_constitute_helper.py` is green. The live-spec tests are green: `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py`, `tests/scripts/test_claude_emitter.py`.
+- **1a:** `### Always` items 1–16 are byte-identical and item 17 is appended. *(Amended by D10, 2026-09-19: item 17 reads exactly D10's text — no sentence of the superseded 115-word text survives.)* If D2 is ratified, §6.1's existing text is byte-identical with one sentence appended, and its heading still reads `### 6.1 Minimal Changes [universal]`. `tests/lib/test_constitute_helper.py` is green. The live-spec tests are green: `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py`, `tests/scripts/test_claude_emitter.py`.
 - **1b:** the `### Phase 2.4e — Feature-surface sweep` heading exists, and its body states the search-step-not-a-gate bound.
   - 2.3b names 2.4e in both the frame and the downstream sentence, and "mechanically" stays attached to 2.4c and Step 2b only.
   - The Step 2b sentence, the own-words definition and the `"one place"` clause are present.
   - The Phase 3 step 3b calls `record-gap --dimension affected_area`.
   - Phase 2.6's finding-source sentences name 2.4e.
+  - *(Added by D10, 2026-09-19.)* P1's identity-evidence definition is present with its full list and its symmetric ban (shared code and a shared data source are never evidence). 2.4e's `--relevance`, Step 2b's `in` justification and step 3b's gap description each instruct citing that evidence.
   - `grep -ni "check 2[1-9]"` over `research/main.md` returns nothing, and the hypothesis-suppression gate still says it is *"not one of its 20 checks"*.
 - **1c:** every element listed for 1c is present — the deferral-path binding included: the per-decision-point protocol's deferral path states that a `scope_boundaries` decision point about a surface showing the named feature takes `set-dp-deferral --deferral-kind OOS` only on the user's own words — and Step 4.5 states the full marker format `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`, or OQ-1's ratified literal and separator.
+  - *(Added by D10, 2026-09-19.)* P1's definition and full list are present, and the `scope_boundaries` decision-point description cites the evidence.
+  - The no-evidence route is `set-dp-deferral --deferral-kind open_question` in both the auto and the interactive-delegated path, with its finding landed in §9. `--deferral-kind OOS` stays user-only.
+  - No new marker appears: `grep -rn "unresolved by the model" src/` returns nothing.
 - **1d:** the sub-question-6 text plan 98 shipped is intact except for the added clause.
   - The PHASE 3 `**Unconfirmed exclusions**:` line is conditional, and its instruction omits the entire line when none.
   - Its trigger is any sub-question-6 escalation that ended without a decision, not the marker.
@@ -383,19 +469,25 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 
 **Everything above is build-verified at best, never consumer-validated, until this phase runs.** Per OQ-5, the fixture is a testForge20 feature visible on two surfaces through different request paths. The anchors are known-answer cases, **scored in PAIRS**: a rule that pulls in everything passes the first half and fails the second.
 
-1. **A named feature visible on two surfaces through different request paths.** Research records the second surface — a 2.4e finding plus an `affected_area` gap — specify asks a `scope_boundaries` decision point, and an explicit user answer is honored. **PAIRED WITH 2.**
+1. **A named feature visible on two surfaces through different request paths.** Research records the second surface — a 2.4e finding plus an `affected_area` gap — specify asks a `scope_boundaries` decision point, and an explicit user answer is honored. *(Amended by D10, 2026-09-19: the finding cites the second surface's user-visible identity evidence.)* **PAIRED WITH 2.**
 2. **A different feature that merely shares code with the change.** It is NOT pulled in and NOT raised as a feature-surface gap. Its Step 2b row is `out`, with a user-visible "shows a different feature" justification.
+   - *Amended by D10, 2026-09-19:* the model cites NO user-visible identity evidence for it and does not cover it.
+   - **This anchor runs in delegated or auto mode — the blind protocol.** That is where the safeguard has to hold without a human backstop.
 3. **The user delegates that decision point.** The spec covers the surface (a §4 row plus an AC naming it), or excludes it with `[excluded by the model] <item> (user sees: <user-visible reason>)`. §8 shows `[default applied]` with the delegation, and Step 5.1 lists it. **PAIRED WITH 4.**
 4. **The user excludes the surface in their own words.** The §6 entry carries NO marker.
 5. **A plan escalation on a §6 exclusion, delegated twice — run once on a marked entry and once on an unmarked one.**
    - The exclusion stands both times, and PHASE 3's `**Unconfirmed exclusions**:` lists both.
    - The marked entry is listed with its prefix; neither shows a `(user sees: …)` clause.
 6. **(If D7 is ratified.)** The grill surfaces a marked exclusion of a feature surface as an upstream signal.
+7. **(Added by D10, 2026-09-19.) A surface the model suspects shows the feature but cannot evidence**, run in delegated or auto mode.
+   - Specify records it as a §8 `[deferred to open question]` entry, with a reason that says the model deferred it.
+   - It is neither covered (no §4 row or AC names it) nor excluded (no §6 entry names it).
+   - Its Phase 1.5 finding lands in §9.
 
 #### Verify
 
 - Every anchor is scored **explicitly** — stated, not summarized — with each pair scored together.
-- **If an anchor fails**, record the negative with the artifacts and name the mechanism before proposing any fix. A missed enumeration is a D3 finding; a wrong model answer is D1 / D4(b); an unmarked model exclusion is D4(d); over-inclusion is D1 / D3(c). **They have different fixes.**
+- **If an anchor fails**, record the negative with the artifacts and name the mechanism before proposing any fix. A missed enumeration is a D3 finding; a wrong model answer is D1 / D4(b); an unmarked model exclusion is D4(d); over-inclusion is D1 / D3(c). *(Added by D10, 2026-09-19: a cover or exclusion resting on no cited identity evidence, or an unevidenced surface covered or excluded instead of deferred, is a D10 finding.)* **They have different fixes.**
 - **A clean run shows the rules behave on planted fixtures, NEVER that the gap cost anything.** The only observed instance is on a frozen install, and it cannot be re-run.
 
 ---
@@ -431,7 +523,7 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 
 **Trap 6 — item 3 and §6.1 read as "which surfaces".** That reading is the reason D2 exists.
 
-**Trap 7 — "raised with the user" in auto mode.** There it means listed at the approval summary — Step 5.1's `**Defaults applied**:` and §6 in full — not a question.
+**Trap 7 — "raised with the user" in auto mode.** There it means listed at the approval summary — Step 5.1's `**Defaults applied**:` and §6 in full — not a question. *(Amended by D10, 2026-09-19: an unevidenced surface the model defers goes to §8 instead, which Step 5.1 does not list — the cost D10 records.)*
 
 **Trap 8 — reading a predicted site as observed.** ONE observed instance, every other site predicted, nothing measured; the frozen install cannot be re-run.
 
@@ -439,7 +531,7 @@ Every D-item (D1–D9) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phase 0
 
 **Trap 10 — a clobbered ledger edit.** Another session may be building in this checkout. F12 records plan 97 doing so while this plan was drafted; it has since closed. Before touching any ledger, re-read `git status`, then read the ledger live. Commit by explicit path.
 
-**Trap 11 — a model-made deferral to §6.** On a `scope_boundaries` decision point about a surface showing the named feature, `set-dp-deferral --deferral-kind OOS` is the USER's route only — their own words punt it to §6. `deferred_OOS` renders in neither §6 nor §8, so a model deferral there is an exclusion no reader of the spec sees. The model's answer goes through `set-dp-default-applied` under D4(b)'s value rule.
+**Trap 11 — a model-made deferral to §6.** On a `scope_boundaries` decision point about a surface showing the named feature, `set-dp-deferral --deferral-kind OOS` is the USER's route only — their own words punt it to §6. `deferred_OOS` renders in neither §6 nor §8, so a model deferral there is an exclusion no reader of the spec sees. The model's answer goes through `set-dp-default-applied` under D4(b)'s value rule. *(Amended by D10, 2026-09-19: that holds for a surface with cited identity evidence. With no evidence, the model's route is `set-dp-deferral --deferral-kind open_question`, never `OOS`.)*
 
 **Also remember:** the marker literal is defined once, in specify (1c), and quoted byte-identically in devils-advocate (1d, D7) — build 1c before that edit. `plan/main.md` names no literal. D5's `**Unconfirmed exclusions**:` line fires on EVERY sub-question-6 escalation that ended without a decision, marked or not, and never quotes a `(user sees: …)` clause.
 
