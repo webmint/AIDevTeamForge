@@ -2,17 +2,21 @@
 
 Public surface
 --------------
-  check_hygiene(changed_files, scope_baseline, source_root) -> dict
+  check_hygiene(changed_files, scope_baseline, source_root, install_root=None) -> dict
       Flag (a) scope-creep — files in ``changed_files`` but not in the
       declared scope baseline — and (b) leftover artifacts across the changed
-      files: debug prints, bare TODOs/FIXMEs, and obvious commented-out blocks.
+      files: debug prints, bare TODOs/FIXMEs, obvious commented-out blocks,
+      and (wrapper mode only) framework-artifact mentions leaking into the
+      client-owned source repo.
 
       Parameters
       ----------
       changed_files : list[str]
           File paths that changed during implementation (relative or absolute;
-          relative paths are resolved against ``source_root``).  Typically the
-          ``files_for_finders`` array from ``resolve-feature-scope``.
+          relative paths are resolved against ``source_root``, or against
+          ``install_root`` in wrapper mode — see "Wrapper path resolution"
+          below).  Typically the ``files_for_finders`` array from
+          ``resolve-feature-scope``.
       scope_baseline : list[str] or None
           The declared planned file set — the union of ``touched_files`` across
           all tasks in ``breakdown-handoff.json``.  Pass ``None`` or ``[]`` to
@@ -20,6 +24,16 @@ Public surface
       source_root : str
           Absolute path to the source tree.  Changed files are read from
           here.
+      install_root : str or None
+          Absolute path to the forge install root (where ``.devforge/``
+          lives).  ``None`` (the default) means standalone — every existing
+          behavior is byte-identical to the pre-``install_root`` contract.
+          Wrapper mode is detected when ``install_root`` is truthy AND
+          ``os.path.realpath(install_root) != os.path.realpath(source_root)``
+          — the same predicate ``_shared/feature_scope.py``'s
+          ``_prefix_paths`` uses.  Wrapper mode enables the ``framework_mention``
+          kind (see below) and the install-root-prefixed path resolution fix
+          (see "Wrapper path resolution" below).
 
       Returns
       -------
@@ -35,7 +49,9 @@ Public surface
               "line"    : int  — 1-based line number
               "kind"    : str  — one of "debug_print" | "debug_statement" |
                                  "bare_todo" | "bare_fixme" |
-                                 "commented_code_block"
+                                 "commented_code_block" | "framework_mention"
+                                 ("framework_mention" only ever appears in
+                                 wrapper mode — see below).
               "snippet" : str  — the flagged line, stripped
         "scope_creep_checked" : bool
             True when a scope baseline was supplied and the check ran.
@@ -132,6 +148,118 @@ Leftover-artifact patterns (conservative)
    independently.  The multi-rule requirement prevents prose comments like
    "// from the spec", "// return type is X", or "// class is immutable" from
    firing.
+
+5. ``framework_mention`` (wrapper mode ONLY, ADVISORY — plan 97 Phase 1 item 1):
+   In wrapper mode nothing written into the client-owned source repo may name
+   a framework artifact — comment, docstring, string literal, identifier, or
+   test name all count; the scanner tracks no quote state, so a mention
+   inside a string literal is flagged exactly like one in a comment.  This
+   kind is emitted ONLY when ``install_root`` puts ``check_hygiene`` in
+   wrapper mode (see the ``install_root`` parameter doc above); a standalone
+   run (``install_root=None`` or equal to ``source_root``) never produces it
+   — behavior there is byte-identical to before this kind existed.
+
+   The check is a ratified TOKEN list, never a stem match — "spec", "plan",
+   "task", "feature", and "forge" are deliberately NOT tokens (they are
+   ordinary English words far too common in legitimate source).  Every token
+   below is fixed; regexes may be refined for correctness but no token may be
+   added or removed without a fresh ratification.
+
+   Filename/path tokens are CASE-SENSITIVE (a real path segment has one true
+   case): ``spec.md``, ``plan.md``, ``specs/``, ``tasks/README.md``,
+   ``constitution.md``, ``CLAUDE.md``, ``.devforge``, ``.claude/``,
+   ``breakdown-handoff``, ``research-handoff``, ``discover-handoff``,
+   ``plan-handoff``, ``grill.md``, ``verification.md``, ``review.md``,
+   ``summary.md``, ``fix-seed``, ``grill-seed``.  Each is wrapped with a
+   negative lookbehind ``(?<![\\w-])`` so a token embedded inside a longer
+   identifier or filename does not fire (``myspecs/`` does NOT match
+   ``specs/``; ``my-spec.md`` does NOT match ``spec.md``); tokens NOT ending
+   in ``/`` additionally get a trailing negative lookahead ``(?![\\w-])`` so
+   ``specfile.md`` does not match ``spec.md``.  Tokens ending in ``/`` get NO
+   trailing lookahead — ``specs/2026/…`` must match, and the character after
+   the ``/`` is legitimately a word character.  ``.devforge`` still matches
+   ``.devforge/`` under the trailing lookahead because ``/`` is not
+   ``[\\w-]``.
+
+   Vocabulary tokens are word-bounded and case-INSENSITIVE, with two named
+   exceptions kept case-sensitive because a case-insensitive match would
+   erase a real discriminator (an all-caps acronym / a capitalized task
+   label): ``\\bdevforge\\b`` (i, refined — see below), ``(?<![\\w-])/devforge:``
+   (i), ``\\bTask \\d{3}\\b`` (case-sensitive), ``\\bAC-\\d+\\b``
+   (case-sensitive), ``\\bacceptance criteri`` (i — matches both "criteria"
+   and "criterion"), ``\\bspec criteria\\b`` (i), ``\\bDone When\\b`` (i),
+   ``\\bconstitution\\b`` (i).
+
+   Refinement recorded: the ratified ``\\bdevforge\\b`` vocabulary token, taken
+   literally, also fires inside a bare filename like ``cfg.devforge`` — ``.``
+   is a non-word character, so plain ``\\b`` sees a boundary right after it.
+   That would contradict the ratified false-negative for ``cfg.devforge``.
+   The regex is refined (token list unchanged) to
+   ``(?<![\\w.-])devforge(?![\\w-])`` — the lookbehind additionally excludes a
+   leading ``.`` so a dotted filename does not trigger the bare-word
+   vocabulary token, while a standalone mention ("the devforge framework",
+   "DevForge") still fires normally.
+
+   Combining case-sensitive and case-insensitive alternatives in one
+   pre-compiled pattern uses Python's scoped inline flag group ``(?i:...)``
+   per case-insensitive alternative (supported since Python 3.6) rather than
+   a module-level ``re.IGNORECASE`` flag, since that flag would also
+   silence the two case-sensitive exceptions.
+
+   At most ONE ``framework_mention`` finding is emitted per line even when
+   several tokens match that line — the finding says "this line needs a
+   look", not "here is every token".  The check is INDEPENDENT of the
+   existing-kind chain above: a line can carry both an existing-kind finding
+   (e.g. ``debug_print``) and a ``framework_mention`` finding, and when it
+   does the existing-kind finding is ordered first in ``leftover_artifacts``.
+
+   Four false-positive classes are RECORDED, not excluded — the posture is
+   the same as the rest of this module (prefer a documented false positive
+   the caller can dismiss on sight over a silent miss):
+     - ``AC-3`` as an audio codec or HVAC label (e.g. "// AC-3 audio track").
+     - ``Task 001`` as fixture data inside a task-management app (e.g. a
+       literal ``"Task 001"`` string in a test fixture).
+     - ``specs/`` as a project's own test-fixtures directory name (e.g.
+       ``"specs/fixtures/"``).
+     - "constitution" inside a legal-domain application (e.g. "the
+       constitution of the client").
+   A test name such as ``it('AC-3 paginates')`` and a string literal such as
+   ``"specs/"`` match by the same design — the scanner tracks no quote state
+   and reads test names as content.
+   None of these four are carved out of the token list — the caller reviews
+   the ``snippet`` field and nothing here blocks the verdict (the
+   ``leftover_artifacts`` channel is advisory end to end; see plan 34).
+
+Wrapper path resolution (install_root parameter — closes a pre-existing defect)
+--------------------------------------------------------------------------------
+``resolve-feature-scope`` emits ``files_for_finders`` INSTALL-ROOT-relative in
+wrapper mode (``_shared/feature_scope.py``'s ``_prefix_paths`` prefixes each
+source-relative path with ``os.path.relpath(source_root, install_root)``,
+e.g. ``my-project/src/main.py``).  Before this parameter existed,
+``check_hygiene`` always joined a relative changed path onto ``source_root``
+— in wrapper mode that read ``<source_root>/my-project/src/main.py``, a path
+that does not exist, so EVERY changed file landed in ``files_unreadable``.
+The scope-creep comparison had the mirror defect: it normalised the changed
+path against ``source_root`` while the baseline ``touched_files`` are
+source-relative, so every file read as creep.
+
+The fix (active ONLY when ``check_hygiene`` is in wrapper mode — see the
+``install_root`` parameter doc above): compute
+``rel_prefix = os.path.relpath(realpath(source_root), realpath(install_root))``,
+normalised to ``/`` separators.  For a RELATIVE changed path that starts with
+``rel_prefix + "/"``, its source-relative form is the remainder after that
+prefix, and the file is read from ``os.path.join(install_root, cf)``; a
+relative path that does NOT start with the prefix is resolved exactly as
+before (against ``source_root``) — the fix never guesses at an unrecognised
+shape.  Absolute paths are unchanged in every mode.  The reported ``"file"``
+value in every finding, and in ``scope_creep`` / ``files_unreadable``, is
+always EXACTLY the string given in ``changed_files`` — only the path used to
+OPEN the file and the path used for scope-creep NORMALISATION are affected.
+Scope-creep compares the source-relative form against the baseline
+normalised with the existing ``_normalise_path(p, source_root)``.  In
+standalone mode (``install_root`` ``None`` or realpath-equal to
+``source_root``) this whole block is inert — behavior is byte-identical to
+before ``install_root`` existed.
 
 Stdlib only.  Python 3.8+.
 """
@@ -265,6 +393,49 @@ _CODE_TERMINATOR_RE = re.compile(r"[:{})]$|;$")
 # Call-expression pattern: an identifier immediately followed by ( — signals a real
 # function call (e.g. compute(, fetchData(, doSomething() — NOT a parenthetical note).
 _IDENT_CALL_RE = re.compile(r"\w\s*\(")
+
+
+# ---------------------------------------------------------------------------
+# framework_mention — wrapper-mode-only, advisory (see module docstring for
+# the full design rationale, the ratified token list, and the recorded
+# false-positive classes).  ONE combined pattern; the case-sensitive
+# filename/path tokens sit at module level, the case-insensitive vocabulary
+# tokens are scoped with an inline (?i:...) group so the two case-sensitive
+# exceptions (Task NNN, AC-N) are not silenced by a blanket re.IGNORECASE.
+# ---------------------------------------------------------------------------
+_FRAMEWORK_MENTION_PATTERNS = [
+    # --- Filename / path tokens (CASE-SENSITIVE) ---
+    r"(?<![\w-])spec\.md(?![\w-])",
+    r"(?<![\w-])plan\.md(?![\w-])",
+    r"(?<![\w-])specs/",
+    r"(?<![\w-])tasks/README\.md(?![\w-])",
+    r"(?<![\w-])constitution\.md(?![\w-])",
+    r"(?<![\w-])CLAUDE\.md(?![\w-])",
+    r"(?<![\w-])\.devforge(?![\w-])",
+    r"(?<![\w-])\.claude/",
+    r"(?<![\w-])breakdown-handoff(?![\w-])",
+    r"(?<![\w-])research-handoff(?![\w-])",
+    r"(?<![\w-])discover-handoff(?![\w-])",
+    r"(?<![\w-])plan-handoff(?![\w-])",
+    r"(?<![\w-])grill\.md(?![\w-])",
+    r"(?<![\w-])verification\.md(?![\w-])",
+    r"(?<![\w-])review\.md(?![\w-])",
+    r"(?<![\w-])summary\.md(?![\w-])",
+    r"(?<![\w-])fix-seed(?![\w-])",
+    r"(?<![\w-])grill-seed(?![\w-])",
+    # --- Vocabulary tokens ---
+    # Refined boundary (module docstring "Refinement recorded"): excludes a
+    # leading "." too, so "cfg.devforge" does not fire via the bare word.
+    r"(?i:(?<![\w.-])devforge(?![\w-]))",
+    r"(?i:(?<![\w-])/devforge:)",
+    r"\bTask \d{3}\b",           # case-sensitive
+    r"\bAC-\d+\b",               # case-sensitive
+    r"(?i:\bacceptance criteri)",
+    r"(?i:\bspec criteria\b)",
+    r"(?i:\bDone When\b)",
+    r"(?i:\bconstitution\b)",
+]
+_FRAMEWORK_MENTION_RE = re.compile("|".join(_FRAMEWORK_MENTION_PATTERNS))
 
 
 def _is_commented_code(line_stripped):
@@ -430,8 +601,62 @@ def _check_file_artifacts(filepath, file_lines):
     return findings
 
 
-def check_hygiene(changed_files, scope_baseline, source_root):
-    # type: (List[str], Optional[List[str]], str) -> Dict
+def _check_framework_mentions(filepath, file_lines):
+    # type: (str, List[str]) -> List[Dict]
+    """Scan file_lines for framework-artifact mentions.  Wrapper-mode only.
+
+    Independent of _check_file_artifacts's existing-kind chain — this scans
+    EVERY line regardless of whether an existing-kind finding already fired
+    on it, so a single line may carry both.  At most one "framework_mention"
+    finding is produced per line even when several tokens match it.  See the
+    module docstring's "framework_mention" section for the ratified token
+    list and the recorded false-positive classes.
+    """
+    findings = []  # type: List[Dict]
+
+    for lineno, raw_line in enumerate(file_lines, start=1):
+        stripped = raw_line.rstrip("\n\r").strip()
+        if not stripped:
+            continue
+        if _FRAMEWORK_MENTION_RE.search(stripped):
+            findings.append({
+                "file": filepath,
+                "line": lineno,
+                "kind": "framework_mention",
+                "snippet": stripped[:200],
+            })
+
+    return findings
+
+
+def _merge_hygiene_findings(existing, mentions):
+    # type: (List[Dict], List[Dict]) -> List[Dict]
+    """Merge two per-file, line-ascending finding lists into one.
+
+    Both ``existing`` (from _check_file_artifacts) and ``mentions`` (from
+    _check_framework_mentions) carry at most one entry per line and are
+    already produced in ascending-line order.  On a line shared by both, the
+    existing-kind finding is ordered first, then the framework_mention
+    finding — a simple two-pointer merge with an existing-first tie-break
+    achieves this without re-sorting either input.
+    """
+    merged = []  # type: List[Dict]
+    i = 0
+    j = 0
+    while i < len(existing) and j < len(mentions):
+        if existing[i]["line"] <= mentions[j]["line"]:
+            merged.append(existing[i])
+            i += 1
+        else:
+            merged.append(mentions[j])
+            j += 1
+    merged.extend(existing[i:])
+    merged.extend(mentions[j:])
+    return merged
+
+
+def check_hygiene(changed_files, scope_baseline, source_root, install_root=None):
+    # type: (List[str], Optional[List[str]], str, Optional[str]) -> Dict
     """Flag scope-creep and leftover artifacts across the changed files.
 
     Parameters
@@ -443,7 +668,15 @@ def check_hygiene(changed_files, scope_baseline, source_root):
         ``None`` or ``[]`` skips scope-creep checking.
     source_root : str
         Absolute path to the source tree; relative paths in ``changed_files``
-        are resolved against this.
+        are resolved against this (except in wrapper mode — see below).
+    install_root : str or None
+        Absolute path to the forge install root.  ``None`` (default) means
+        standalone: byte-identical to the pre-``install_root`` contract.
+        Wrapper mode is ``install_root`` truthy AND its realpath differs
+        from ``source_root``'s — see the module docstring's "Wrapper path
+        resolution" section for the full resolution algorithm, and the
+        "framework_mention" section for the wrapper-only advisory kind this
+        enables.
 
     Returns
     -------
@@ -465,6 +698,36 @@ def check_hygiene(changed_files, scope_baseline, source_root):
     """
     source_root = source_root or os.getcwd()
 
+    wrapper = bool(install_root) and (
+        os.path.realpath(install_root) != os.path.realpath(source_root)
+    )
+
+    # rel_prefix is the source_root subdirectory name as seen from
+    # install_root (the same direction _shared/feature_scope.py's
+    # _prefix_paths computes) — only meaningful, and only computed, in
+    # wrapper mode.
+    rel_prefix = None  # type: Optional[str]
+    if wrapper:
+        try:
+            rel_prefix = os.path.relpath(
+                os.path.realpath(source_root), os.path.realpath(install_root)
+            ).replace(os.sep, "/")
+        except ValueError:
+            # Different drives on Windows — cannot compute a relative path;
+            # fall back to resolving every changed path against source_root
+            # (the pre-existing, non-wrapper-aware behavior).
+            rel_prefix = None
+
+    def _wrapper_source_relative(cf):
+        # type: (str) -> Optional[str]
+        """Return cf's source-relative form when it carries rel_prefix, else None."""
+        if not rel_prefix:
+            return None
+        prefix = rel_prefix + "/"
+        if cf.startswith(prefix):
+            return cf[len(prefix):]
+        return None
+
     # --- Scope-creep check ---
     # Non-code files are excluded from scope-creep reporting: they live in
     # forge-managed directories (specs/, docs/, …) that are never declared in
@@ -480,7 +743,13 @@ def check_hygiene(changed_files, scope_baseline, source_root):
         for cf in changed_files:
             if not _is_code_file(cf):
                 continue  # prose/data file — never scope-creep
-            norm = _normalise_path(cf, source_root)
+            if wrapper and not os.path.isabs(cf):
+                source_rel = _wrapper_source_relative(cf)
+                norm = _normalise_path(
+                    source_rel if source_rel is not None else cf, source_root
+                )
+            else:
+                norm = _normalise_path(cf, source_root)
             if norm not in baseline_set:
                 scope_creep.append(cf)
 
@@ -501,6 +770,10 @@ def check_hygiene(changed_files, scope_baseline, source_root):
         # Resolve the path to read.
         if os.path.isabs(cf):
             full_path = cf
+        elif wrapper and _wrapper_source_relative(cf) is not None:
+            # cf already carries the install-root prefix (e.g.
+            # "my-project/src/main.py") — join it straight onto install_root.
+            full_path = os.path.join(install_root, cf)
         else:
             full_path = os.path.join(source_root, cf)
 
@@ -513,6 +786,9 @@ def check_hygiene(changed_files, scope_baseline, source_root):
 
         files_checked += 1
         findings = _check_file_artifacts(cf, lines)
+        if wrapper:
+            mention_findings = _check_framework_mentions(cf, lines)
+            findings = _merge_hygiene_findings(findings, mention_findings)
         leftover_artifacts.extend(findings)
 
     return {

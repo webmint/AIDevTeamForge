@@ -141,7 +141,7 @@ _SUBCOMMAND_REGISTRY = [
             "Stage touched_files + task file + index ONLY (never git add -A), "
             "compose a commit message per wrapper/non-wrapper convention, "
             "commit, capture HEAD SHA, and clear wip.md. "
-            "Wrapper mode: '[TICKET-ID] - <title> (Task NNN)'. "
+            "Wrapper mode: '[TICKET-ID] - <title>'. "
             "Non-wrapper: '[WIP] task: <title> (Task NNN)'. "
             "Honors COMMIT_ATTRIBUTION from .devforge/project-config.json. "
             "Emits {committed, head_sha, message}."

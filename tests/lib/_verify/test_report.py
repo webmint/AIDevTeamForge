@@ -336,6 +336,18 @@ class TestRenderReport(unittest.TestCase):
         self.assertIn("does not block", content.lower())
         self.assertIn("1 flagged", content)
 
+    def test_hygiene_leftover_artifacts_line_names_framework_mentions(self):
+        """The leftover-artifacts line names framework mentions (plan 97's
+        wrapper-only framework_mention kind), alongside the pre-existing kinds."""
+        hygiene = _empty_hygiene()
+        hygiene["leftover_artifacts"] = [
+            {"file": "a.py", "line": 1, "kind": "framework_mention", "snippet": "# see spec.md"},
+        ]
+        content = self._build_report(hygiene=hygiene)
+        self.assertIn("framework mentions", content)
+        self.assertIn("advisory", content.lower())
+        self.assertIn("does not block", content.lower())
+
     def test_hygiene_flags_produce_approved_not_needs_work(self):
         """Hygiene flags alone must not flip the verdict to NEEDS WORK in the report."""
         hygiene = _empty_hygiene()

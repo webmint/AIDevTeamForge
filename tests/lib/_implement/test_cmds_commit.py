@@ -11,7 +11,7 @@ Coverage:
 
   _compose_message:
     Task mode (fix_mode=False, default):
-    - Wrapper mode: "[TICKET-ID] - <title> (Task NNN)".
+    - Wrapper mode: "[TICKET-ID] - <title>" (no Task suffix — plan 97 D7).
     - Non-wrapper mode: "[WIP] task: <title> (Task NNN)".
     - With attribution: attribution appended verbatim.
     - Empty attribution: no trailing newline/suffix.
@@ -28,7 +28,8 @@ Coverage:
   cmd_wip_commit (integration, real git tempdir):
     Task mode:
     - Non-wrapper: commit message format "[WIP] task: <title> (Task NNN)".
-    - Wrapper mode: commit message format "[TICKET-ID] - <title> (Task NNN)".
+    - Wrapper mode: commit message format "[TICKET-ID] - <title>" (no Task
+      suffix — plan 97 D7).
     - COMMIT_ATTRIBUTION honored (appended when present).
     - COMMIT_ATTRIBUTION absent → no attribution line in message.
     - ONLY named paths committed (critical safety assertion).
@@ -304,15 +305,25 @@ class TestComposeMessage(unittest.TestCase):
 
     def test_wrapper_with_ticket(self):
         msg = _compose_message(True, "PROJ-42", "Define types", "001", "")
-        self.assertEqual(msg, "[PROJ-42] - Define types (Task 001)")
+        self.assertEqual(msg, "[PROJ-42] - Define types")
 
     def test_wrapper_with_attribution(self):
         msg = _compose_message(True, "ABC-7", "Build form", "002", "\n\nCo-Author: Y")
-        self.assertEqual(msg, "[ABC-7] - Build form (Task 002)\n\nCo-Author: Y")
+        self.assertEqual(msg, "[ABC-7] - Build form\n\nCo-Author: Y")
 
     def test_wrapper_empty_attribution_no_suffix(self):
         msg = _compose_message(True, "X-1", "Title", "003", "")
         self.assertFalse(msg.endswith("\n"), "No trailing newline when attribution is empty")
+
+    def test_wrapper_task_mode_has_no_task_suffix(self):
+        """Plan 97 D7: wrapper task-mode subject carries no "(Task NNN)"
+        suffix, and is IDENTICAL to the wrapper fix-mode subject for the
+        same ticket/title -- the wrapper arm is now the same shape across
+        task, fix and final modes."""
+        msg_task = _compose_message(True, "ABC-99", "null guard", "001", "")
+        self.assertNotIn("(Task", msg_task)
+        msg_fix = _compose_message(True, "ABC-99", "null guard", "", "", fix_mode=True)
+        self.assertEqual(msg_task, msg_fix)
 
     # --- Fix mode (fix_mode=True) ---
 
@@ -535,7 +546,7 @@ class TestCmdWipCommit(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
         # The commit lands in the SOURCE repo.
         msg = _git_last_message(source_dir)
-        self.assertEqual(msg, "[PROJ-42] - Define types (Task 001)")
+        self.assertEqual(msg, "[PROJ-42] - Define types")
 
     def test_commit_attribution_appended(self):
         """COMMIT_ATTRIBUTION is appended when present in config."""
@@ -870,9 +881,11 @@ class TestCmdWipCommit(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
         # The commit lands in the SOURCE repo.
         msg = _git_last_message(source_dir)
-        # Message format: "[develop-no-ticket] - Define types (Task 001)"
+        # Message format: "[develop-no-ticket] - Define types" (plan 97 D7:
+        # no "(Task NNN)" suffix in the wrapper arm).
         self.assertIn("[develop-no-ticket]", msg)
-        self.assertIn("Define types (Task 001)", msg)
+        self.assertIn("Define types", msg)
+        self.assertNotIn("(Task", msg)
 
     def test_nothing_to_commit_returns_exit_findings(self):
         """Calling wip-commit with --files '[]' when task_file + index are already
@@ -1051,7 +1064,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
 
         msg = _git_last_message(source_dir)
         # bugfix/ABC-123 → ABC-123
-        self.assertEqual(msg, "[ABC-123] - Define types (Task 001)")
+        self.assertEqual(msg, "[ABC-123] - Define types")
 
     def test_wrapper_task_file_not_in_source_commit(self):
         """Wrapper mode: task_file (wrapper artifact) is NOT staged in the source repo.
@@ -1234,13 +1247,15 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         self.assertNotIn("Co-Author", msg,
                          "Source WIP commit must not contain any Co-Author trailer (D5)")
         # The subject line itself must be intact.
-        self.assertIn("[ABC-123] - Define types (Task 001)", msg)
+        self.assertIn("[ABC-123] - Define types", msg)
+        self.assertNotIn("(Task", msg)
 
     def test_wrapper_source_commit_traceless_real_git_fixture(self):
         """Phase 6 D5: real two-repo git fixture — wrapper source commit has NO attribution.
 
-        Verifies the exact format:  '[TICKET-ID] - <title> (Task NNN)' with nothing
-        after it, even when COMMIT_ATTRIBUTION is a non-empty string.
+        Verifies the exact format:  '[TICKET-ID] - <title>' (no "(Task NNN)"
+        suffix — plan 97 D7) with nothing after it, even when
+        COMMIT_ATTRIBUTION is a non-empty string.
         """
         attribution = "\n\nCo-Authored-By: Claude Opus <noreply@anthropic.com>"
         source_dir, task_rel, index_rel = self._setup_wrapper(
@@ -1260,8 +1275,8 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
 
         msg = _git_last_message(source_dir)
-        # Exact format: subject only, no trailer.
-        expected = "[FEAT-99] - Add widget (Task 003)"
+        # Exact format: subject only, no trailer, no "(Task NNN)" suffix.
+        expected = "[FEAT-99] - Add widget"
         self.assertEqual(msg, expected,
                          "Source WIP commit message must be exactly the traceless "
                          "subject line; got: {0!r}".format(msg))

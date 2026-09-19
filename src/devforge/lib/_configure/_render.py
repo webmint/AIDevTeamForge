@@ -81,12 +81,22 @@ _PROJECT_CONFIG_KEY_ORDER = (
 )
 
 # Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".
+# The second paragraph is the framework-mention rule (plan 97 D2c); the
+# heading must survive every edit — six preflights key wrapper detection on
+# it.
 _WRAPPER_MODE_TEMPLATE = (
     "## Wrapper Mode\n"
     "\n"
     "This project is configured as a wrapper workspace. Source code lives at\n"
     "`{project_root}/`. All `.devforge/`, `.claude/`, `CLAUDE.md`, and `specs/`\n"
-    "artifacts live at the install root (alongside this folder)."
+    "artifacts live at the install root (alongside this folder).\n"
+    "\n"
+    "Nothing written into `{project_root}/` may name a framework artifact or quote\n"
+    "its content: no comment, docstring, string literal, identifier, test name or\n"
+    "commit subject may mention `specs/`, `spec.md`, `plan.md`, task files,\n"
+    "`constitution.md`, `CLAUDE.md`, `.devforge/`, task numbers, acceptance-criteria\n"
+    "labels or their text. Where a reference is needed, use the source branch's\n"
+    "ticket ID — it is the one permitted reference."
 )
 
 # COMMIT_ATTRIBUTION block when ai_attribution == "Yes".

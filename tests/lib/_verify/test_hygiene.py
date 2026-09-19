@@ -50,6 +50,29 @@ Coverage:
     - missing --files → exit 2
     - missing --scope-baseline → exit 2
     - --files "-" reads from stdin (implicitly tested via file path)
+    - --install-root absent / equal to --source-root / different → framework_mention
+      kind absent / absent / present (plan 97 Phase 1 item 1)
+
+  framework_mention (wrapper mode only, plan 97 Phase 1 item 1):
+    - standalone (install_root omitted, or equal to source_root) → never emitted,
+      pre-existing assertions unaffected
+    - wrapper mode → each ratified token flagged once, on its own line
+    - negative lookbehind/lookahead cases (myspecs/, my-spec.md, cfg.devforge) → NOT flagged
+    - positive edge cases (specs/2026/…, .devforge/wip.md, Task 001 vs task 001,
+      AC-3 vs ac-3, DevForge, Acceptance Criterion) → case rules honoured
+    - ticket-only TODO line → zero findings of any kind
+    - four recorded false-positive classes → flagged (documents the advisory posture)
+    - .md file → skipped by the file-type gate, no findings
+    - a line with both an existing-kind hit and a mention → two findings,
+      existing-kind first
+
+  Wrapper path resolution (install_root parameter, plan 97 §4):
+    - relative changed path carrying the install-root prefix → resolved against
+      install_root, source-relative form used for scope-creep comparison
+    - the same call with install_root=None → resolves against source_root (today's
+      contract), documenting the standalone behavior
+    - a relative path NOT under the prefix in wrapper mode → resolved as today
+      (against source_root)
 """
 
 from __future__ import annotations
@@ -1141,6 +1164,432 @@ class TestScopeCreepFileTypeGate(unittest.TestCase):
 
         self.assertTrue(result["scope_creep_checked"])
         self.assertNotIn(md_path, result["scope_creep"])
+
+
+# ---------------------------------------------------------------------------
+# Tests — framework_mention (wrapper mode only, plan 97 Phase 1 item 1)
+# ---------------------------------------------------------------------------
+
+# One line per ratified token — filename/path tokens first, then vocabulary
+# tokens.  Order matches the module docstring's token list.
+_FRAMEWORK_MENTION_TOKEN_LINES = [
+    "# see spec.md for details",
+    "# see plan.md for details",
+    "# see specs/ directory",
+    "# read tasks/README.md now",
+    "# read constitution.md now",
+    "# read CLAUDE.md now",
+    "# check .devforge now",
+    "# check .claude/ dir",
+    "# see breakdown-handoff file",
+    "# see research-handoff file",
+    "# see discover-handoff file",
+    "# see plan-handoff file",
+    "# open grill.md now",
+    "# open verification.md now",
+    "# open review.md now",
+    "# open summary.md now",
+    "# apply fix-seed now",
+    "# apply grill-seed now",
+    "# uses devforge internally",
+    "# run /devforge:verify now",
+    "# see Task 001 for context",
+    "# see AC-7 for context",
+    "# read the acceptance criteria",
+    "# check spec criteria here",
+    "# review Done When lines",
+    "# read the constitution text",
+]
+
+
+class TestFrameworkMentionStandalone(unittest.TestCase):
+    """framework_mention is NEVER emitted in standalone mode (F1: install_root
+    omitted; F2: install_root realpath-equal to source_root)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        content = "\n".join(_FRAMEWORK_MENTION_TOKEN_LINES) + "\n"
+        self.path = _write_tmp(self.tmp_dir, "mentions.py", content)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def test_install_root_omitted_no_mentions(self):
+        """Every ratified token, present on its own line, with install_root
+        omitted entirely → zero framework_mention findings."""
+        result = check_hygiene([self.path], None, self.tmp_dir)
+        kinds = [a["kind"] for a in result["leftover_artifacts"]]
+        self.assertNotIn("framework_mention", kinds)
+
+    def test_install_root_equal_to_source_root_no_mentions(self):
+        """install_root == source_root is still standalone (not wrapper)."""
+        result = check_hygiene(
+            [self.path], None, self.tmp_dir, install_root=self.tmp_dir
+        )
+        kinds = [a["kind"] for a in result["leftover_artifacts"]]
+        self.assertNotIn("framework_mention", kinds)
+
+    def test_pre_existing_debug_print_assertion_still_holds(self):
+        """A representative pre-existing kind is unaffected by the new parameter."""
+        path = _write_tmp(self.tmp_dir, "plain.py", "print('x')\n")
+        result = check_hygiene([path], None, self.tmp_dir)
+        kinds = [a["kind"] for a in result["leftover_artifacts"]]
+        self.assertIn("debug_print", kinds)
+
+    def test_output_shape_unaffected_by_new_parameter(self):
+        """The required-keys shape is unchanged when install_root is omitted."""
+        result = check_hygiene([], None, self.tmp_dir)
+        required = {
+            "scope_creep", "leftover_artifacts",
+            "scope_creep_checked", "files_checked", "files_unreadable",
+            "files_skipped",
+        }
+        self.assertEqual(set(result.keys()), required)
+
+
+class _WrapperHygieneTestCase(unittest.TestCase):
+    """Shared wrapper-mode fixture: install/ wraps install/module/ as source_root."""
+
+    def setUp(self):
+        self.install_dir = tempfile.mkdtemp()
+        self.source_dir = os.path.join(self.install_dir, "module")
+        os.makedirs(self.source_dir, exist_ok=True)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.install_dir, ignore_errors=True)
+
+    def _mentions_for(self, content, filename="case.py"):
+        path = _write_tmp(self.source_dir, filename, content)
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        return [
+            a for a in result["leftover_artifacts"]
+            if a["kind"] == "framework_mention"
+        ], result
+
+
+class TestFrameworkMentionWrapper(_WrapperHygieneTestCase):
+    """framework_mention fires per ratified token, one per line, in wrapper mode."""
+
+    def test_one_finding_per_token_line(self):
+        content = "\n".join(_FRAMEWORK_MENTION_TOKEN_LINES) + "\n"
+        path = _write_tmp(self.source_dir, "mentions.py", content)
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        mention_findings = [
+            a for a in result["leftover_artifacts"] if a["kind"] == "framework_mention"
+        ]
+        self.assertEqual(len(mention_findings), len(_FRAMEWORK_MENTION_TOKEN_LINES))
+        for idx, finding in enumerate(mention_findings, start=1):
+            self.assertEqual(finding["line"], idx)
+            self.assertEqual(finding["file"], path)
+            self.assertEqual(finding["kind"], "framework_mention")
+            self.assertIn("snippet", finding)
+
+    # --- Negative lookbehind/lookahead cases ---
+
+    def test_myspecs_not_flagged(self):
+        mentions, _ = self._mentions_for("# myspecs/x is a dir\n")
+        self.assertEqual(mentions, [])
+
+    def test_my_spec_md_not_flagged(self):
+        mentions, _ = self._mentions_for("# my-spec.md is a file\n")
+        self.assertEqual(mentions, [])
+
+    def test_cfg_devforge_not_flagged(self):
+        mentions, _ = self._mentions_for("# cfg.devforge is a name\n")
+        self.assertEqual(mentions, [])
+
+    # --- Positive edge cases ---
+
+    def test_specs_path_with_ticket_and_slash_flagged(self):
+        mentions, _ = self._mentions_for("# see specs/2026/09/PROJ-7/spec.md\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_devforge_dotdir_with_slash_flagged(self):
+        mentions, _ = self._mentions_for("# check .devforge/wip.md now\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_task_001_uppercase_flagged(self):
+        mentions, _ = self._mentions_for("# Task 001 fixture\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_task_001_lowercase_not_flagged(self):
+        mentions, _ = self._mentions_for("# task 001 fixture\n")
+        self.assertEqual(mentions, [])
+
+    def test_ac_3_uppercase_flagged(self):
+        mentions, _ = self._mentions_for("# AC-3 label\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_ac_3_lowercase_not_flagged(self):
+        mentions, _ = self._mentions_for("# ac-3 label\n")
+        self.assertEqual(mentions, [])
+
+    def test_devforge_mixed_case_flagged(self):
+        mentions, _ = self._mentions_for("# DevForge does the work\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_acceptance_criterion_flagged(self):
+        mentions, _ = self._mentions_for("# Acceptance Criterion review\n")
+        self.assertEqual(len(mentions), 1)
+
+    # --- Merge-path coverage (reviewer finding: pins _merge_hygiene_findings) ---
+
+    def test_existing_kind_only_file_no_mentions_unchanged(self):
+        """A file with an existing-kind hit and NO framework token → the merge's
+        mentions=[] path returns the existing list untouched (one debug_print,
+        zero framework_mention)."""
+        path = _write_tmp(self.source_dir, "plain.py", "print('x')\n")
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        artifacts = result["leftover_artifacts"]
+        self.assertEqual(len(artifacts), 1)
+        self.assertEqual(artifacts[0]["kind"], "debug_print")
+        self.assertEqual(artifacts[0]["file"], path)
+        kinds = [a["kind"] for a in artifacts]
+        self.assertNotIn("framework_mention", kinds)
+
+    def test_two_files_merge_is_per_file(self):
+        """Two changed files in one call: each file's findings are merged
+        independently — line numbers restart per file and there is no
+        cross-file bleed between the existing-kind and mention lists."""
+        path_a = _write_tmp(self.source_dir, "a.py", "print('x')\n")
+        path_b = _write_tmp(self.source_dir, "b.py", "// see spec.md\n")
+        result = check_hygiene(
+            [path_a, path_b], None, self.source_dir, install_root=self.install_dir
+        )
+        artifacts = result["leftover_artifacts"]
+        self.assertEqual(len(artifacts), 2)
+
+        a_findings = [a for a in artifacts if a["file"] == path_a]
+        b_findings = [a for a in artifacts if a["file"] == path_b]
+        self.assertEqual(len(a_findings), 1)
+        self.assertEqual(a_findings[0]["kind"], "debug_print")
+        self.assertEqual(a_findings[0]["line"], 1)
+
+        self.assertEqual(len(b_findings), 1)
+        self.assertEqual(b_findings[0]["kind"], "framework_mention")
+        self.assertEqual(b_findings[0]["line"], 1)
+
+
+class TestFrameworkMentionTicketOnly(_WrapperHygieneTestCase):
+    """A ticket-referenced TODO must not be flagged by any kind, including
+    framework_mention — it stays un-flagged by bare_todo because
+    _TICKET_REF_RE matches (unchanged regex), and no token matches either."""
+
+    def test_ticket_only_todo_zero_findings(self):
+        path = _write_tmp(self.source_dir, "ticket.py", "// TODO(PROJ-7): fix later\n")
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        self.assertEqual(result["leftover_artifacts"], [])
+
+
+class TestFrameworkMentionFalsePositiveClasses(_WrapperHygieneTestCase):
+    """The four recorded false-positive classes ARE flagged — this documents
+    the advisory posture (the caller reviews the snippet; nothing blocks) and
+    is not a defect to fix."""
+
+    def test_ac3_audio_codec_flagged(self):
+        mentions, _ = self._mentions_for("// AC-3 audio track\n")
+        self.assertEqual(len(mentions), 1)
+
+    def test_task_001_fixture_literal_flagged(self):
+        mentions, _ = self._mentions_for('data = {"name": "Task 001"}\n')
+        self.assertEqual(len(mentions), 1)
+
+    def test_specs_fixtures_path_string_flagged(self):
+        mentions, _ = self._mentions_for('path = "specs/fixtures/"\n')
+        self.assertEqual(len(mentions), 1)
+
+    def test_constitution_legal_domain_flagged(self):
+        mentions, _ = self._mentions_for("# constitution of the client\n")
+        self.assertEqual(len(mentions), 1)
+
+
+class TestFrameworkMentionFileTypeGate(_WrapperHygieneTestCase):
+    """The file-type gate still applies in wrapper mode — a prose file is
+    skipped, never scanned for framework_mention."""
+
+    def test_md_file_skipped_no_mentions(self):
+        path = _write_tmp(self.source_dir, "notes.md", "spec.md plan.md devforge\n")
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        self.assertEqual(result["files_skipped"], 1)
+        self.assertEqual(result["leftover_artifacts"], [])
+
+
+class TestFrameworkMentionAdditivity(_WrapperHygieneTestCase):
+    """framework_mention is additive to, not a replacement for, the existing
+    per-line chain: a single line can carry both, existing-kind first."""
+
+    def test_debug_print_then_framework_mention_same_line(self):
+        path = _write_tmp(self.source_dir, "both.py", 'print("see spec.md")\n')
+        result = check_hygiene(
+            [path], None, self.source_dir, install_root=self.install_dir
+        )
+        artifacts = result["leftover_artifacts"]
+        self.assertEqual(len(artifacts), 2)
+        self.assertEqual(artifacts[0]["kind"], "debug_print")
+        self.assertEqual(artifacts[0]["line"], 1)
+        self.assertEqual(artifacts[1]["kind"], "framework_mention")
+        self.assertEqual(artifacts[1]["line"], 1)
+
+
+# ---------------------------------------------------------------------------
+# Tests — wrapper path resolution (install_root parameter, plan 97 §4)
+# ---------------------------------------------------------------------------
+
+class TestWrapperPathResolution(unittest.TestCase):
+    """install-root-prefixed relative changed paths resolve correctly."""
+
+    def setUp(self):
+        self.install_dir = tempfile.mkdtemp()
+        self.source_dir = os.path.join(self.install_dir, "module")
+        src_dir = os.path.join(self.source_dir, "src")
+        os.makedirs(src_dir, exist_ok=True)
+        with open(os.path.join(src_dir, "a.py"), "w", encoding="utf-8") as fh:
+            fh.write("# see spec.md here\n")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.install_dir, ignore_errors=True)
+
+    def test_wrapper_prefixed_relative_path_resolves_and_is_readable(self):
+        result = check_hygiene(
+            changed_files=["module/src/a.py"],
+            scope_baseline=["src/a.py"],
+            source_root=self.source_dir,
+            install_root=self.install_dir,
+        )
+        self.assertEqual(result["files_checked"], 1)
+        self.assertEqual(result["files_unreadable"], [])
+        mentions = [
+            a for a in result["leftover_artifacts"] if a["kind"] == "framework_mention"
+        ]
+        self.assertEqual(len(mentions), 1)
+        self.assertEqual(mentions[0]["file"], "module/src/a.py")
+
+    def test_scope_creep_empty_when_source_relative_form_in_baseline(self):
+        result = check_hygiene(
+            changed_files=["module/src/a.py"],
+            scope_baseline=["src/a.py"],
+            source_root=self.source_dir,
+            install_root=self.install_dir,
+        )
+        self.assertEqual(result["scope_creep"], [])
+
+    def test_scope_creep_flagged_when_source_relative_form_not_in_baseline(self):
+        result = check_hygiene(
+            changed_files=["module/src/a.py"],
+            scope_baseline=["src/other.py"],
+            source_root=self.source_dir,
+            install_root=self.install_dir,
+        )
+        self.assertEqual(result["scope_creep"], ["module/src/a.py"])
+
+    def test_standalone_contract_same_relative_path_is_unreadable(self):
+        """install_root=None documents the standalone contract: the relative
+        path resolves against source_root, which does not contain a
+        "module/" subdirectory of itself here."""
+        result = check_hygiene(
+            changed_files=["module/src/a.py"],
+            scope_baseline=None,
+            source_root=self.source_dir,
+            install_root=None,
+        )
+        self.assertEqual(result["files_unreadable"], ["module/src/a.py"])
+
+    def test_relative_path_not_under_prefix_resolves_against_source_root(self):
+        """A relative path NOT carrying the install-root prefix resolves as
+        today (against source_root), even in wrapper mode."""
+        with open(os.path.join(self.source_dir, "src", "b.py"), "w", encoding="utf-8") as fh:
+            fh.write("x = 1\n")
+        result = check_hygiene(
+            changed_files=["src/b.py"],
+            scope_baseline=None,
+            source_root=self.source_dir,
+            install_root=self.install_dir,
+        )
+        self.assertEqual(result["files_checked"], 1)
+        self.assertEqual(result["files_unreadable"], [])
+
+
+# ---------------------------------------------------------------------------
+# Tests — check-hygiene CLI: --install-root (plan 97 Phase 1 item 1)
+# ---------------------------------------------------------------------------
+
+class TestCheckHygieneCLIInstallRoot(unittest.TestCase):
+    """--install-root wiring: absent / equal / different → kind absent / absent / present."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.files_json = os.path.join(cls.tmp_dir, "files.json")
+        cls.clean_file = _write_tmp(cls.tmp_dir, "clean.py", "x = 1\n")
+        with open(cls.files_json, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps([cls.clean_file]))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp_dir, ignore_errors=True)
+
+    def test_install_root_absent_no_framework_mention_kind(self):
+        out, _, rc = _capture([
+            "check-hygiene",
+            "--files", self.files_json,
+            "--scope-baseline", "none",
+            "--source-root", self.tmp_dir,
+        ])
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        kinds = [a["kind"] for a in data["leftover_artifacts"]]
+        self.assertNotIn("framework_mention", kinds)
+
+    def test_install_root_equal_to_source_root_no_framework_mention_kind(self):
+        out, _, rc = _capture([
+            "check-hygiene",
+            "--files", self.files_json,
+            "--scope-baseline", "none",
+            "--source-root", self.tmp_dir,
+            "--install-root", self.tmp_dir,
+        ])
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        kinds = [a["kind"] for a in data["leftover_artifacts"]]
+        self.assertNotIn("framework_mention", kinds)
+
+    def test_install_root_different_enables_framework_mention_kind(self):
+        wrapper_install = tempfile.mkdtemp()
+        try:
+            wrapper_source = os.path.join(wrapper_install, "module")
+            os.makedirs(wrapper_source, exist_ok=True)
+            mention_file = _write_tmp(wrapper_source, "m.py", "# see spec.md now\n")
+            files_json = os.path.join(wrapper_install, "files.json")
+            with open(files_json, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps([mention_file]))
+            out, _, rc = _capture([
+                "check-hygiene",
+                "--files", files_json,
+                "--scope-baseline", "none",
+                "--source-root", wrapper_source,
+                "--install-root", wrapper_install,
+            ])
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            kinds = [a["kind"] for a in data["leftover_artifacts"]]
+            self.assertIn("framework_mention", kinds)
+        finally:
+            import shutil
+            shutil.rmtree(wrapper_install, ignore_errors=True)
 
 
 if __name__ == "__main__":

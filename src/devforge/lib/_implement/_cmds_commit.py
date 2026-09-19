@@ -9,7 +9,7 @@ Three modes
 TASK mode (/implement):   --files + --task-file + --index + --number + --title all present.
   Stages source touched_files + task_file + index (standalone) or only source
   touched_files (wrapper).  Message: "[WIP] task: <title> (Task NNN)" (standalone)
-  / "[TICKET-ID] - <title> (Task NNN)" (wrapper).
+  / "[TICKET-ID] - <title>" (wrapper; no "(Task NNN)" suffix — plan 97 D7).
 
 FIX mode (/fix):          --files + --title present; --task-file, --index, --number ALL absent.
   Stages ONLY the touched files in both standalone and wrapper mode (there is no
@@ -135,6 +135,12 @@ Design notes:
 - subprocess timeout: 30 s per git call. Generous but bounded.
 - git -C <path>: used for all source-repo operations in wrapper mode so the
   implementation never changes the process working directory.
+- Plan 97 D7 (task mode, wrapper arm): the wrapper subject carries no task
+  number, because the source repo is client-owned and a task number names a
+  framework artifact; on the happy path /devforge:finalize squashes the
+  per-task commits anyway, so this closes only the already-pushed edge where
+  they survive, and the empty "[checkpoint]" commit /devforge:implement
+  PHASE 2 creates is an orchestrator `git commit`, not this module's concern.
 
 Stdlib only. Python 3.8+.
 """
@@ -249,7 +255,11 @@ def _compose_message(is_wrapper, ticket_id, title, number, attribution,
     """Compose the commit message with optional attribution.
 
     Task mode (fix_mode=False, final_mode=False):
-      wrapper:     "[TICKET-ID] - <title> (Task NNN)"
+      wrapper:     "[TICKET-ID] - <title>" (no "(Task NNN)" suffix — plan 97
+                    D7: the source repo is client-owned and a task number
+                    names a framework artifact; the suffix was consumed by
+                    nothing — rollback uses the SHA in wip.md and
+                    /devforge:finalize's squash base is a merge-base)
       non-wrapper: "[WIP] task: <title> (Task NNN)"
 
     Fix mode (fix_mode=True, final_mode=False):
@@ -284,7 +294,7 @@ def _compose_message(is_wrapper, ticket_id, title, number, attribution,
             subject = "[WIP] fix: {0}".format(title)
     else:
         if is_wrapper:
-            subject = "[{0}] - {1} (Task {2})".format(ticket_id, title, number)
+            subject = "[{0}] - {1}".format(ticket_id, title)
         else:
             subject = "[WIP] task: {0} (Task {1})".format(title, number)
 
@@ -478,6 +488,7 @@ def cmd_wip_commit(args):
         - Ticket-id derived from the SOURCE repo branch (D2).
         - Stage ONLY source touched_files in the SOURCE repo (D1).
         - task_file and index are NOT staged (wrapper artifacts, left uncommitted per D1).
+        - Message: "[TICKET-ID] - <title>" (no task number — plan 97 D7).
         - Commit lands in the SOURCE repo.
         - wip.md is cleared in the INSTALL root.
         - Emitted head_sha is the SOURCE repo's new HEAD.

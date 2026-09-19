@@ -404,11 +404,19 @@ def cmd_check_hygiene(args):
                                 checking (only leftover artifacts are reported).
       --source-root <dir>     — absolute path to the source tree. Changed files
                                 are read from here. Default: CWD.
+      --install-root <dir>    — absolute path to the forge install root (where
+                                .devforge/ lives). Wrapper mode is detected when
+                                it differs from --source-root; it enables the
+                                advisory framework_mention kind and resolves
+                                install-root-prefixed changed paths. Default:
+                                same as --source-root.
 
     Emits JSON to stdout:
       {
         "scope_creep":         [...],   # changed files not in the planned scope
-        "leftover_artifacts":  [...],   # per-line findings
+        "leftover_artifacts":  [...],   # per-line findings; "kind" also takes
+                                         # "framework_mention" in wrapper mode
+                                         # (see --install-root above)
         "scope_creep_checked": bool,    # True when a baseline was used
         "files_checked":       int,
         "files_unreadable":    [...],
@@ -425,6 +433,8 @@ def cmd_check_hygiene(args):
     baseline_path = getattr(args, "scope_baseline", None) or "none"
     source_root = getattr(args, "source_root", None) or os.getcwd()
     source_root = os.path.realpath(source_root)
+    install_root = getattr(args, "install_root", None)
+    install_root = os.path.realpath(install_root) if install_root else None
 
     # Load the changed-files list.
     if not files_path:
@@ -482,6 +492,7 @@ def cmd_check_hygiene(args):
         changed_files=changed_files,
         scope_baseline=scope_baseline,
         source_root=source_root,
+        install_root=install_root,
     )
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return 0
@@ -1444,6 +1455,18 @@ def _register_subcommands(subparsers) -> None:
                 help=(
                     "Absolute path to the source tree.  Changed files are read from here. "
                     "Default: CWD."
+                ),
+            )
+            sp.add_argument(
+                "--install-root",
+                default=None,
+                dest="install_root",
+                metavar="DIR",
+                help=(
+                    "Absolute path to the forge install root (where .devforge/ lives). "
+                    "Wrapper mode is detected when it differs from --source-root; it "
+                    "enables the advisory framework_mention kind and resolves "
+                    "install-root-prefixed changed paths. Default: same as --source-root."
                 ),
             )
 

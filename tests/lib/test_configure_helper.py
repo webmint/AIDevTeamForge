@@ -3483,6 +3483,18 @@ class BuildProjectConfigTests(unittest.TestCase):
         self.assertIn("module", result["WRAPPER_MODE_SECTION"])
         self.assertIn("## Wrapper Mode", result["WRAPPER_MODE_SECTION"])
 
+    def test_wrapper_mode_section_carries_framework_mention_rule(self):
+        cfg = self._make_cfg()
+        init = self._make_init(workspace_mode="wrapper", project_root="module")
+        result = configure_helper._build_project_config(cfg, init, "")
+        section = result["WRAPPER_MODE_SECTION"]
+        self.assertTrue(section.startswith("## Wrapper Mode\n"))
+        self.assertIn("ticket ID", section)
+        self.assertIn("may name a framework artifact", section)
+        self.assertNotIn("{project_root}", section)
+        self.assertGreaterEqual(section.count("module/"), 2)
+        self.assertIn("This project is configured as a wrapper workspace.", section)
+
     def test_commit_attribution_no(self):
         cfg = self._make_cfg(ai_attribution="No")
         init = self._make_init()
@@ -3659,6 +3671,20 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
         self.assertIn("module", data["WRAPPER_MODE_SECTION"])
         self.assertIn("## Wrapper Mode", data["WRAPPER_MODE_SECTION"])
+
+    def test_wrapper_mode_section_carries_framework_mention_rule(self):
+        self._write_init_yaml(workspace_mode="wrapper", project_root="module")
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        section = data["WRAPPER_MODE_SECTION"]
+        self.assertTrue(section.startswith("## Wrapper Mode\n"))
+        self.assertIn("ticket ID", section)
+        self.assertIn("may name a framework artifact", section)
+        self.assertNotIn("{project_root}", section)
+        self.assertGreaterEqual(section.count("module/"), 2)
+        self.assertIn("This project is configured as a wrapper workspace.", section)
 
     def test_commit_attribution_no_is_empty(self):
         self._write_init_yaml()

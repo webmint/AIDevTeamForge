@@ -194,7 +194,8 @@ def render_report(
         out.append(
             "**Leftover artifacts** _(advisory — does not block the verdict)_: "
             "{0} flagged (debug prints / bare TODOs / "
-            "commented-out code)".format(len(leftover_artifacts))
+            "commented-out code / framework mentions in wrapper "
+            "mode)".format(len(leftover_artifacts))
         )
     else:
         out.append("**Leftover artifacts**: none detected")
