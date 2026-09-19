@@ -1,7 +1,7 @@
 # 97 — Wrapper-Mode Framework-Mention Guard Plan
 
 **Created**: 2026-09-18
-**Status**: DRAFT 2026-09-18 — awaiting Phase 0 ratification. Nothing built. Reviewed three times (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved the same day via claude-code-guide.
+**Status**: Phase 0 CLOSED 2026-09-19 by a single blanket maintainer directive (every item AS RECOMMENDED — see `## Phase 0 close record`); Phase 1 IN PROGRESS 2026-09-19. Drafted 2026-09-18; reviewed three times before ratification (instruction-reviewer: 1 Low, then 1 Medium + 1 Low — all fixed in place; third pass 0 findings); OQ-1 resolved 2026-09-18 via claude-code-guide.
 
 Extend wrapper mode's traceless guarantee from FILES and COMMIT ATTRIBUTION to FILE CONTENT and COMMIT SUBJECTS: in wrapper mode, nothing the framework writes into the client-owned source repo may name a framework artifact or quote its content, and the one permitted reference is the source repo's ticket ID.
 
@@ -160,7 +160,22 @@ D2(a) covers both lanes — PHASE 2 is shared (fact 4). The cold commit's `<titl
 
 ## Phase 0 close record
 
-**Pending — nothing ratified yet.** No D-item and no OQ has a RATIFIED arm (OQ-1 is RESOLVED outside ratification, 2026-09-18 — see its own section; it is a recorded fact, not a fork awaiting a pick); **no build phase may start.** When the maintainer closes Phase 0, this section records, per item, the ratified arm and **whether per-item deliberation was supplied** (plans 91 / 92 / 94 / 95 / 96 precedent). A blanket directive is a legitimate close and must be recorded as one rather than implying each counter-argument was answered.
+**CLOSED 2026-09-19 by a single blanket maintainer directive** — given in Ukrainian as the first message of the build session; English paraphrase: *"implement 97"*. **Every ratifiable item is ratified AS RECOMMENDED. No per-item deliberation was supplied**, and this record does not imply that any counter-argument was answered — each stays recorded at its decision (the plans 91 / 92 / 94 / 95 / 96 / 98 precedent). The orchestrator stated this reading of the directive to the maintainer at build start, naming it as its own interpretation, and proceeded under the autonomous-build convention.
+
+- **D1** — RATIFIED as recommended: ALL content (comments, docstrings, string literals, identifiers, test names / descriptions, commit subjects); the source branch's ticket ID is the ONE permitted reference; standalone untouched; paraphrase is a mention detectable by judgment only.
+- **D2** — RATIFIED as recommended: (a) + (b) + (c) + (d), with the dated 2026-09-18 amendment standing — (c) is a DIRECT carrier to every subagent and (a) is KEPT for its two named reasons.
+- **D3** — RATIFIED as recommended: `code-reviewer` check 11, High, keyed on the `## Wrapper Mode` section in the reviewer's own context; the two panel-brief companion edits stay DROPPED.
+- **D4** — RATIFIED as recommended: advisory `framework_mention` kind on the existing `leftover_artifacts` channel, wrapper-only, `_verdict.py` untouched; the strengthening arm recorded, not built. ⚠ *Build-time amendment 2026-09-19, recorded at D4 below: the same `install_root` parameter also resolves the install-root-prefixed changed paths, closing a pre-existing wrapper-mode read defect without which the kind could never fire.*
+- **D5** — RATIFIED as recommended: the token list as stated, kept a TOKEN list; Phase 1's regex refinements are recorded at D5 below.
+- **D6** — RATIFIED: NO constitution edit; §4.2 byte-identical.
+- **D7** — RATIFIED as recommended: (a) + (b); the `[checkpoint]` prefix KEPT; the `<title>` bound recorded, not mechanized.
+- **D8** — RATIFIED as recommended: no gate, no `verify-*` number, no validator, no config key, no 16/4 delta, no back-port, standalone byte-identical.
+- **OQ-1** — RESOLVED 2026-09-18 through the `claude-code-guide` agent, before ratification and outside it — a recorded fact, not a ratified arm; nothing about it is owed after this close.
+- **OQ-2** — ALL lines.
+- **OQ-3** — `--install-root` realpath inequality, mirroring `resolve-feature-scope`; no `--wrapper-mode` boolean.
+- **OQ-4** — NO for v1; recorded as the first step of D4's strengthening path.
+- **OQ-5** — NO-OP, verified.
+- **OQ-6** — D2(a) covers both `/devforge:fix` lanes; the bug-title bound stays under D7, not mechanized.
 
 ---
 
