@@ -192,7 +192,6 @@ def cmd_summary(args: argparse.Namespace) -> int:
             "spec_type_seeded_by_upstream", False,
         ),
         "status": state.get("status"),
-        "mode": state.get("mode"),
         "phase_finalized": {
             "phase1": bool(state.get("phase1_finalized")),
             "findings": bool(state.get("findings_finalized")),

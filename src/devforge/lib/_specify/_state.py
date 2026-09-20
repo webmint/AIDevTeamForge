@@ -58,7 +58,6 @@ def default_state() -> Dict[str, Any]:
         # --- Phase 2 — decision points -------------------------------------
         "decision_points": [],
         "dp_finalized": False,
-        "mode": None,
 
         # --- Phase 3 — codebase analysis -----------------------------------
         "mandatory_reads": [],

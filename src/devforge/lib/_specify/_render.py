@@ -373,12 +373,15 @@ def _approval_summary(state: Dict[str, Any]) -> str:
     user approves, so it must show everything the model supplied on the
     user's behalf. Two changes from the pre-plan-98 shape: (1) a
     "Defaults applied" bullet list enumerates every default_applied
-    decision point (auto-applied and delegated alike; the delegated ones
-    carry `_format_delegated_reply`'s suffix, same as the §8 render) --
-    omitted entirely when there are none, so a spec with no default-applied
-    DPs renders byte-identically to before; (2) the out-of-scope list is
-    no longer truncated to 3 items / 80 chars each -- every item renders
-    in full.
+    decision point -- one carrying a delegated_reply appends
+    `_format_delegated_reply`'s suffix, same as the §8 render, and one
+    recorded before every default_applied setter call required a
+    delegated reply (100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(c) -- an
+    in-flight or old spec's state may still carry that shape) renders
+    with no suffix -- omitted entirely when there are no default_applied
+    decision points at all, so a spec with none renders byte-identically
+    to before; (2) the out-of-scope list is no longer truncated to 3
+    items / 80 chars each -- every item renders in full.
     """
     overview = (state.get("overview") or "_(no overview)_").strip()
     if len(overview) > 240:

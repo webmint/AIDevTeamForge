@@ -105,7 +105,7 @@ def cmd_record_decision_point(args: argparse.Namespace) -> int:
 
 
 def cmd_set_dp_answer(args: argparse.Namespace) -> int:
-    """Interactive path. Sets DP.status=answered + user_answer.
+    """Sets DP.status=answered + user_answer, from the user's own reply.
 
     Drops a stale dp["delegated_reply"] (plan 98 python-reviewer finding
     2b): a DP that was previously a delegated default and is now answered
@@ -118,12 +118,6 @@ def cmd_set_dp_answer(args: argparse.Namespace) -> int:
         return _die(str(err), code=2)
     try:
         with _state_transaction(args.devforge_dir) as state:
-            if state.get("mode") == "auto":
-                return _die(
-                    "set-dp-answer: mode=auto rejects user-answer setter "
-                    "(use set-dp-default-applied)",
-                    code=2,
-                )
             dp = _find_dp(state, args.dp_id)
             if dp is None:
                 return _die(
@@ -146,24 +140,27 @@ def cmd_set_dp_answer(args: argparse.Namespace) -> int:
 
 
 def cmd_set_dp_default_applied(args: argparse.Namespace) -> int:
-    """Auto path. Sets DP.status=default_applied + default_applied.
+    """Sets DP.status=default_applied + default_applied, carrying the
+    user's reply that delegated this decision point.
 
-    Interactive path (98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md D3): a
-    non-empty --delegated-reply makes this setter legal in mode=interactive
-    too, recording the user's own verbatim delegation (e.g. "you decide")
-    on dp["delegated_reply"] alongside the applied default. Without it,
-    mode=interactive is rejected exactly as before -- the model must not
-    launder a delegation into set-dp-answer's user_answer field.
-    --delegated-reply is rejected in mode=auto: the auto path's own
-    default-applied trail already exists and needs no delegation marker.
+    100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(c): --delegated-reply is
+    required on every call -- every default_applied decision point now
+    carries the verbatim reply (e.g. "you decide") that delegated it,
+    recorded on dp["delegated_reply"] alongside the applied default. The
+    model must not launder a delegation into set-dp-answer's user_answer
+    field.
 
     State hygiene (plan 98 python-reviewer finding 2a): clears any stale
     user_answer back to record-decision-point's own empty-string initial
     value (not a pop, so the record's key shape stays constant across
-    every DP status transition) and drops a stale delegated_reply when
-    this call did not supply one -- a DP re-applied without
-    --delegated-reply must not keep citing an earlier delegation as if it
-    still holds.
+    every DP status transition).
+
+    A dp["default_applied"] entry recorded before --delegated-reply was
+    required carries no dp["delegated_reply"] key -- an in-flight or old
+    spec's state may still hold one (100-SCOPE-RULE-FOLLOW-UPS-PLAN.md
+    OQ-1: left in place, not migrated). This setter itself can no longer
+    produce that shape; only _render.py's render code still reads such a
+    pre-existing entry back, rendering it with no suffix.
     """
     try:
         default_applied = _validate_scalar(
@@ -173,33 +170,22 @@ def cmd_set_dp_default_applied(args: argparse.Namespace) -> int:
         return _die(str(err), code=2)
 
     delegated_reply_raw = getattr(args, "delegated_reply", None)
-    delegated_reply = ""
-    has_delegated_reply = False
-    if delegated_reply_raw is not None:
-        try:
-            delegated_reply = _validate_scalar(
-                delegated_reply_raw, "delegated_reply",
-            )
-        except ValueError as err:
-            return _die(str(err), code=2)
-        has_delegated_reply = True
+    if delegated_reply_raw is None:
+        return _die(
+            "set-dp-default-applied: --delegated-reply required (the "
+            "user's reply that delegated this decision point to you); "
+            "use set-dp-answer for a direct user answer",
+            code=2,
+        )
+    try:
+        delegated_reply = _validate_scalar(
+            delegated_reply_raw, "delegated_reply",
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
 
     try:
         with _state_transaction(args.devforge_dir) as state:
-            mode = state.get("mode")
-            if mode == "interactive" and not has_delegated_reply:
-                return _die(
-                    "set-dp-default-applied: mode=interactive rejects "
-                    "default-applied setter (use set-dp-answer)",
-                    code=2,
-                )
-            if mode == "auto" and has_delegated_reply:
-                return _die(
-                    "set-dp-default-applied: --delegated-reply is for "
-                    "mode=interactive only (mode=auto already records "
-                    "its own default-applied trail)",
-                    code=2,
-                )
             dp = _find_dp(state, args.dp_id)
             if dp is None:
                 return _die(
@@ -217,10 +203,7 @@ def cmd_set_dp_default_applied(args: argparse.Namespace) -> int:
             dp["status"] = "default_applied"
             dp["default_applied"] = default_applied
             dp["user_answer"] = ""
-            if has_delegated_reply:
-                dp["delegated_reply"] = delegated_reply
-            else:
-                dp.pop("delegated_reply", None)
+            dp["delegated_reply"] = delegated_reply
     except (OSError, json.JSONDecodeError) as err:
         return _die("set-dp-default-applied: {0}".format(err))
     return 0

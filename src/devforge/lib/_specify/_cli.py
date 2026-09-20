@@ -7,7 +7,6 @@ import sys
 from typing import List, Optional
 
 from ._cmds_phase01 import (
-    cmd_detect_mode,
     cmd_findings_finalize,
     cmd_mark_source_no_items_relevant,
     cmd_phase1_finalize,
@@ -172,20 +171,6 @@ def build_parser() -> argparse.ArgumentParser:
     # ----- Phase 2 ---------------------------------------------------------
 
     sp = sub.add_parser(
-        "detect-mode",
-        help="Resolve auto vs interactive mode from C-strict signals.",
-    )
-    sp.add_argument(
-        "--auto", action="store_true", default=False,
-        help="Force auto mode (one of three C-strict signals).",
-    )
-    sp.add_argument(
-        "--reminder-text", default="", dest="reminder_text",
-        help="Text of latest <system-reminder> block (orchestrator-supplied).",
-    )
-    sp.set_defaults(func=cmd_detect_mode)
-
-    sp = sub.add_parser(
         "record-decision-point",
         help="Record a Phase 2 DecisionPoint (≥2 valid_implementations).",
     )
@@ -205,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "set-dp-answer",
-        help="Interactive path: mark DP answered with user_answer.",
+        help="Mark DP answered with the user's own direct user_answer.",
     )
     sp.add_argument("--dp-id", required=True, dest="dp_id")
     sp.add_argument("--user-answer", required=True, dest="user_answer")
@@ -213,8 +198,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "set-dp-default-applied",
-        help="Auto path: mark DP default_applied with named default. "
-             "Interactive path with --delegated-reply (plan 98 D3).",
+        help="Mark DP default_applied with named default, carrying the "
+             "reply that delegated it (--delegated-reply required).",
     )
     sp.add_argument("--dp-id", required=True, dest="dp_id")
     sp.add_argument(
@@ -222,10 +207,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--delegated-reply", default=None, dest="delegated_reply",
-        help="mode=interactive only: the user's own verbatim reply "
-             "delegating this decision point (e.g. 'you decide'). "
-             "Makes this setter legal in interactive mode; rejected in "
-             "mode=auto.",
+        help="Required: the user's own verbatim reply delegating this "
+             "decision point (e.g. 'you decide').",
     )
     sp.set_defaults(func=cmd_set_dp_default_applied)
 

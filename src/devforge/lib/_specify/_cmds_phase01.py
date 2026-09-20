@@ -1,18 +1,15 @@
-"""Phase 0 + Phase 1 + Phase 1.5 cmd_* handlers + detect_mode helper."""
+"""Phase 0 + Phase 1 + Phase 1.5 cmd_* handlers."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._schema import (
-    AUTO_MODE_ENV_VAR,
-    AUTO_MODE_REMINDER_SUBSTRINGS,
     CONSTITUTION_POPULATE_GUARDS,
     LANDED_IN_DEFAULT,
     LANDED_IN_ENUM,
@@ -445,46 +442,4 @@ def cmd_findings_finalize(args: argparse.Namespace) -> int:
             state["findings_finalized"] = True
     except (OSError, json.JSONDecodeError) as err:
         return _die("findings-finalize: {0}".format(err))
-    return 0
-
-
-def detect_mode(
-    env: Dict[str, str],
-    auto_flag: bool,
-    reminder_text: str,
-) -> str:
-    """C-strict mode detection (Variance rule #8). Three signals:
-
-      - DEVFORGE_AUTO_MODE env var == "1"
-      - --auto flag set
-      - case-insensitive substring of any AUTO_MODE_REMINDER_SUBSTRINGS in
-        the supplied reminder_text
-
-    No LLM judgment — defaults to "interactive" when no signal fires.
-    """
-    if env.get(AUTO_MODE_ENV_VAR) == "1":
-        return "auto"
-    if auto_flag:
-        return "auto"
-    if reminder_text:
-        haystack = reminder_text.lower()
-        for needle in AUTO_MODE_REMINDER_SUBSTRINGS:
-            if needle in haystack:
-                return "auto"
-    return "interactive"
-
-
-def cmd_detect_mode(args: argparse.Namespace) -> int:
-    """Resolve mode from C-strict signals, persist, print to stdout."""
-    mode = detect_mode(
-        os.environ,
-        bool(args.auto),
-        args.reminder_text or "",
-    )
-    try:
-        with _state_transaction(args.devforge_dir) as state:
-            state["mode"] = mode
-    except (OSError, json.JSONDecodeError) as err:
-        return _die("detect-mode: {0}".format(err))
-    sys.stdout.write(mode + "\n")
     return 0

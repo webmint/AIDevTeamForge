@@ -207,15 +207,6 @@ class TestSchemaConstants(unittest.TestCase):
             ("follow", "not_break", "nfr", "constitution_anchor", "external_system"),
         )
 
-    def test_mode_detection_signals(self):
-        self.assertEqual(
-            specify_helper.AUTO_MODE_ENV_VAR, "DEVFORGE_AUTO_MODE",
-        )
-        self.assertEqual(
-            specify_helper.AUTO_MODE_REMINDER_SUBSTRINGS,
-            ("auto mode is active", "auto mode still active"),
-        )
-
     def test_preflight_prereqs_match_existing_helpers(self):
         rels = [r for r, _ in specify_helper.PREFLIGHT_PREREQS]
         self.assertEqual(
@@ -1578,128 +1569,19 @@ class TestStateAtomicity(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — detect-mode (C-strict, no LLM judgment).
+# Phase 2 — mode-detection verb removed (100-SCOPE-RULE-FOLLOW-UPS-PLAN.md
+# D1(b)).
 # ---------------------------------------------------------------------------
 
 
-class TestDetectModePure(unittest.TestCase):
-    """Unit-test pure detect_mode() — env / flag / reminder substring."""
-
-    def test_default_interactive(self):
-        self.assertEqual(
-            specify_helper.detect_mode({}, False, ""), "interactive",
-        )
-
-    def test_env_var_triggers_auto(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {"DEVFORGE_AUTO_MODE": "1"}, False, "",
-            ),
-            "auto",
-        )
-
-    def test_env_var_value_2_does_not_trigger(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {"DEVFORGE_AUTO_MODE": "2"}, False, "",
-            ),
-            "interactive",
-        )
-
-    def test_flag_triggers_auto(self):
-        self.assertEqual(
-            specify_helper.detect_mode({}, True, ""), "auto",
-        )
-
-    def test_reminder_substring_is_active(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {}, False, "AUTO MODE IS ACTIVE per project conventions",
-            ),
-            "auto",
-        )
-
-    def test_reminder_substring_still_active(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {}, False, "...auto mode still active...",
-            ),
-            "auto",
-        )
-
-    def test_reminder_case_insensitive(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {}, False, "Auto Mode Is Active",
-            ),
-            "auto",
-        )
-
-    def test_reminder_no_substring_stays_interactive(self):
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {}, False,
-                "User wants automation but no exact substring match.",
-            ),
-            "interactive",
-        )
-
-    def test_natural_language_prose_ignored(self):
-        # Per Variance rule #8 — only literal substrings count.
-        self.assertEqual(
-            specify_helper.detect_mode(
-                {}, False, "please run in auto mode for me",
-            ),
-            "interactive",
-        )
-
-
-class TestDetectModeSubcommand(unittest.TestCase):
-    def test_interactive_default_persisted(self):
+class TestModeDetectionVerbRemoved(unittest.TestCase):
+    def test_removed_verb_exits_2(self):
+        # The subparser is gone; argparse itself rejects the unknown verb.
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
             r = _run(["--devforge-dir", str(dev), "detect-mode"])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "interactive")
-            state = json.loads((dev / "specify-state.json").read_text())
-            self.assertEqual(state["mode"], "interactive")
-
-    def test_auto_via_env(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = Path(td) / ".devforge"
-            _run(["--devforge-dir", str(dev), "reset-state"])
-            env = os.environ.copy()
-            env["DEVFORGE_AUTO_MODE"] = "1"
-            r = _run(
-                ["--devforge-dir", str(dev), "detect-mode"], env=env,
-            )
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "auto")
-            state = json.loads((dev / "specify-state.json").read_text())
-            self.assertEqual(state["mode"], "auto")
-
-    def test_auto_via_flag(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = Path(td) / ".devforge"
-            _run(["--devforge-dir", str(dev), "reset-state"])
-            r = _run([
-                "--devforge-dir", str(dev), "detect-mode", "--auto",
-            ])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "auto")
-
-    def test_auto_via_reminder_text(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = Path(td) / ".devforge"
-            _run(["--devforge-dir", str(dev), "reset-state"])
-            r = _run([
-                "--devforge-dir", str(dev), "detect-mode",
-                "--reminder-text",
-                "...some context... auto mode is active ...end...",
-            ])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "auto")
+            self.assertEqual(r.returncode, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -1820,28 +1702,30 @@ class TestRecordDecisionPoint(unittest.TestCase):
 
 
 class TestSetDpSetters(unittest.TestCase):
-    def _setup_with_dp(self, td: Path, mode: str) -> Path:
+    def _setup_with_dp(self, td: Path, mode=None) -> Path:
         dev = td / ".devforge"
         _run(["--devforge-dir", str(dev), "reset-state"])
-        # Force mode by writing state directly via setter helper.
-        # detect-mode used so persisted mode matches.
-        if mode == "auto":
-            _run([
-                "--devforge-dir", str(dev), "detect-mode", "--auto",
-            ])
-        else:
-            _run(["--devforge-dir", str(dev), "detect-mode"])
         _run([
             "--devforge-dir", str(dev), "record-decision-point",
             "--category", "scope_boundaries",
             "--description", "narrow or broad?",
             "--valid-implementations", json.dumps(["narrow", "broad"]),
         ])
+        if mode is not None:
+            # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(b): the mode-detection
+            # verb is gone and no setter reads state["mode"] any more, so
+            # a state carrying a "mode" key is written directly here --
+            # the shape a pre-change or in-flight specify-state.json can
+            # still have (OQ-1: left in place, not migrated).
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["mode"] = mode
+            state_path.write_text(json.dumps(state), encoding="utf-8")
         return dev
 
-    def test_set_answer_interactive_ok(self):
+    def test_set_answer_ok(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-answer",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -1853,74 +1737,80 @@ class TestSetDpSetters(unittest.TestCase):
             self.assertEqual(dp["status"], "answered")
             self.assertEqual(dp["user_answer"], "narrow")
 
-    def test_set_answer_rejected_in_auto_mode(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "auto")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-answer",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--user-answer", "narrow",
-            ])
-            self.assertEqual(r.returncode, 2)
-            self.assertIn("auto", r.stderr)
+    def test_set_answer_ok_on_every_stale_mode_value(self):
+        # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(b): set-dp-answer's mode
+        # gate is removed -- a stale "mode" key (OQ-1: left inert, not
+        # migrated), whatever value it carries, no longer rejects it.
+        for mode in ("auto", "interactive"):
+            with self.subTest(mode=mode):
+                with tempfile.TemporaryDirectory() as td:
+                    dev = self._setup_with_dp(Path(td), mode=mode)
+                    r = _run([
+                        "--devforge-dir", str(dev), "set-dp-answer",
+                        "--dp-id", "DP-scope_boundaries-1",
+                        "--user-answer", "narrow",
+                    ])
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                    state = json.loads(
+                        (dev / "specify-state.json").read_text()
+                    )
+                    dp = state["decision_points"][0]
+                    self.assertEqual(dp["status"], "answered")
+                    self.assertEqual(dp["user_answer"], "narrow")
 
-    def test_set_default_applied_auto_ok(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "auto")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--default-applied", "narrow",
-            ])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            state = json.loads((dev / "specify-state.json").read_text())
-            dp = state["decision_points"][0]
-            self.assertEqual(dp["status"], "default_applied")
-            self.assertEqual(dp["default_applied"], "narrow")
+    def test_set_default_applied_requires_delegated_reply(self):
+        # D1(c): --delegated-reply is required on every call now, with no
+        # mode-dependence left -- true whether the state carries no
+        # "mode" key at all, or a stale "auto"/"interactive" one.
+        gate_message = (
+            "specify_helper: set-dp-default-applied: --delegated-reply "
+            "required (the user's reply that delegated this decision "
+            "point to you); use set-dp-answer for a direct user answer\n"
+        )
+        for mode in (None, "auto", "interactive"):
+            with self.subTest(mode=mode):
+                with tempfile.TemporaryDirectory() as td:
+                    dev = self._setup_with_dp(Path(td), mode=mode)
+                    r = _run([
+                        "--devforge-dir", str(dev), "set-dp-default-applied",
+                        "--dp-id", "DP-scope_boundaries-1",
+                        "--default-applied", "narrow",
+                    ])
+                    self.assertEqual(r.returncode, 2)
+                    self.assertEqual(r.stderr, gate_message)
+                    state = json.loads(
+                        (dev / "specify-state.json").read_text()
+                    )
+                    dp = state["decision_points"][0]
+                    self.assertEqual(dp["status"], "pending")
 
-    def test_set_default_applied_rejected_in_interactive(self):
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--default-applied", "narrow",
-            ])
-            self.assertEqual(r.returncode, 2)
-            self.assertIn("interactive", r.stderr)
-            # Plan 98 D3: byte-identical rejection message when the new
-            # --delegated-reply flag is absent — the pre-existing rejection
-            # is unchanged by the plan.
-            self.assertIn(
-                "specify_helper: set-dp-default-applied: mode=interactive "
-                "rejects default-applied setter (use set-dp-answer)\n",
-                r.stderr,
-            )
+    def test_set_default_applied_with_delegated_reply_ok(self):
+        # With --delegated-reply supplied, the setter succeeds regardless
+        # of any "mode" key the state does or does not carry.
+        for mode in (None, "auto", "interactive"):
+            with self.subTest(mode=mode):
+                with tempfile.TemporaryDirectory() as td:
+                    dev = self._setup_with_dp(Path(td), mode=mode)
+                    r = _run([
+                        "--devforge-dir", str(dev), "set-dp-default-applied",
+                        "--dp-id", "DP-scope_boundaries-1",
+                        "--default-applied", "narrow",
+                        "--delegated-reply", "you decide",
+                    ])
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                    state = json.loads(
+                        (dev / "specify-state.json").read_text()
+                    )
+                    dp = state["decision_points"][0]
+                    self.assertEqual(dp["status"], "default_applied")
+                    self.assertEqual(dp["default_applied"], "narrow")
+                    self.assertEqual(dp["delegated_reply"], "you decide")
 
-    def test_set_default_applied_interactive_with_delegated_reply_ok(self):
-        # Plan 98 D3: a non-empty --delegated-reply makes the setter legal
-        # in mode=interactive, recording the verbatim delegation alongside
-        # the applied default (never laundered into set-dp-answer).
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--default-applied", "narrow",
-                "--delegated-reply", "you decide",
-            ])
-            self.assertEqual(r.returncode, 0, r.stderr)
-            state = json.loads((dev / "specify-state.json").read_text())
-            dp = state["decision_points"][0]
-            self.assertEqual(dp["status"], "default_applied")
-            self.assertEqual(dp["default_applied"], "narrow")
-            self.assertEqual(dp["delegated_reply"], "you decide")
-
-    def test_set_default_applied_interactive_empty_delegated_reply_rejected(self):
+    def test_set_default_applied_empty_delegated_reply_rejected(self):
         # Empty/whitespace --delegated-reply is rejected via the module's
         # _validate_scalar style (exit 2), not silently treated as absent.
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-default-applied",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -1931,46 +1821,13 @@ class TestSetDpSetters(unittest.TestCase):
             self.assertIn("delegated_reply", r.stderr)
             self.assertIn("cannot be empty", r.stderr)
 
-    def test_set_default_applied_auto_with_delegated_reply_rejected(self):
-        # mode=auto WITH --delegated-reply: exit 2, message names the flag
-        # as interactive-only. mode=auto WITHOUT it stays byte-identical
-        # (test_set_default_applied_auto_ok, above).
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "auto")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--default-applied", "narrow",
-                "--delegated-reply", "you decide",
-            ])
-            self.assertEqual(r.returncode, 2)
-            self.assertIn("--delegated-reply", r.stderr)
-            self.assertIn("interactive", r.stderr)
-            state = json.loads((dev / "specify-state.json").read_text())
-            dp = state["decision_points"][0]
-            self.assertEqual(dp["status"], "pending")
-            self.assertNotIn("delegated_reply", dp)
-
-    def test_set_default_applied_auto_empty_delegated_reply_rejected(self):
-        # NIT: empty/whitespace --delegated-reply in mode=auto also exits 2
-        # (the value is validated before mode is even checked).
-        with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "auto")
-            r = _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-scope_boundaries-1",
-                "--default-applied", "narrow",
-                "--delegated-reply", "   ",
-            ])
-            self.assertEqual(r.returncode, 2)
-
     def test_answered_then_delegated_default_clears_user_answer(self):
         # python-reviewer finding 2a: set-dp-answer then a delegated
         # set-dp-default-applied clears the stale user_answer (reset to
         # "", record-decision-point's own initial value) and sets
         # delegated_reply.
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             _run([
                 "--devforge-dir", str(dev), "set-dp-answer",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -1994,7 +1851,7 @@ class TestSetDpSetters(unittest.TestCase):
         # python-reviewer finding 2b: a delegated default that is then
         # answered directly must not keep the stale delegated_reply key.
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             _run([
                 "--devforge-dir", str(dev), "set-dp-default-applied",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2015,10 +1872,9 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_delegated_default_reapplied_with_new_reply_overwrites(self):
         # A delegated default re-applied with a new --delegated-reply
-        # overwrites the prior reply (delegated -> plain auto default is
-        # not reachable across modes, per the mode gate above).
+        # overwrites the prior reply.
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             _run([
                 "--devforge-dir", str(dev), "set-dp-default-applied",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2042,7 +1898,7 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_set_answer_unknown_dp_rejected(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-answer",
                 "--dp-id", "DP-bogus-99",
@@ -2052,7 +1908,7 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_set_deferral_oos_basic(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-deferral",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2068,7 +1924,7 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_set_deferral_open_question_basic(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-deferral",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2083,7 +1939,7 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_increment_turn_bumps_counter(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-deferral",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2102,7 +1958,7 @@ class TestSetDpSetters(unittest.TestCase):
     def test_turn_cap_forces_open_question(self):
         # 3 increments → turns=3 == DP_TURN_CAP → forced open_question.
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             for i in range(3):
                 _run([
                     "--devforge-dir", str(dev), "set-dp-deferral",
@@ -2122,7 +1978,7 @@ class TestSetDpSetters(unittest.TestCase):
 
     def test_set_deferral_unknown_kind_rejected(self):
         with tempfile.TemporaryDirectory() as td:
-            dev = self._setup_with_dp(Path(td), "interactive")
+            dev = self._setup_with_dp(Path(td))
             r = _run([
                 "--devforge-dir", str(dev), "set-dp-deferral",
                 "--dp-id", "DP-scope_boundaries-1",
@@ -2141,7 +1997,6 @@ class TestDpAndRubricCoverage(unittest.TestCase):
     def _setup(self, td: Path) -> Path:
         dev = td / ".devforge"
         _run(["--devforge-dir", str(dev), "reset-state"])
-        _run(["--devforge-dir", str(dev), "detect-mode"])
         return dev
 
     def test_dp_coverage_emits_dp_id_status_map(self):
@@ -2247,7 +2102,6 @@ class TestDpAndRubricCoverage(unittest.TestCase):
 
 def _seed_all_categories_clear(dev: Path) -> None:
     _run(["--devforge-dir", str(dev), "reset-state"])
-    _run(["--devforge-dir", str(dev), "detect-mode"])
     for cat in specify_helper.DP_CATEGORY_ENUM:
         _run([
             "--devforge-dir", str(dev), "record-decision-point",
@@ -2275,7 +2129,6 @@ class TestVerifyDecisionCoverage(unittest.TestCase):
             # tooling_configuration with Partial coverage. Actually no —
             # NoDPInCategory wins. Easier: clear one cat, leave it Missing.
             _run(["--devforge-dir", str(dev), "reset-state"])
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             cats = list(specify_helper.DP_CATEGORY_ENUM)
             for cat in cats[:-1]:
                 _run([
@@ -2302,7 +2155,6 @@ class TestVerifyDecisionCoverage(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             r = _run([
                 "--devforge-dir", str(dev), "verify-decision-coverage",
             ])
@@ -2739,7 +2591,6 @@ class TestSummarySubcommand(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-input-read",
                 "--path", "constitution.md",
@@ -2769,7 +2620,17 @@ class TestSummarySubcommand(unittest.TestCase):
             self.assertEqual(
                 data["counts"]["decision_points_by_status"]["answered"], 1,
             )
-            self.assertEqual(data["mode"], "interactive")
+
+    def test_summary_output_has_no_mode_key(self):
+        # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(b): the summary verb's
+        # payload no longer carries a "mode" key at all.
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run(["--devforge-dir", str(dev), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(r.stdout)
+            self.assertNotIn("mode", data)
 
 
 # ---------------------------------------------------------------------------
@@ -4326,27 +4187,34 @@ class TestPhase4Render(unittest.TestCase):
             self.assertLess(pn, pnfr)
 
     def test_renders_dp_default_applied_in_open_questions(self):
+        # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(c): set-dp-default-applied
+        # now requires --delegated-reply on every call, so this pre-change
+        # shape (a default_applied entry with no delegated_reply key) can
+        # no longer be produced through the CLI -- but it survives in an
+        # in-flight or old spec's state (OQ-1: left in place, not
+        # migrated), and _render.py must still render it correctly.
+        # Written directly here, matching that pre-change shape (same
+        # convention as TestMemoryProbeGate's pre-fix-shape tests above).
         with tempfile.TemporaryDirectory() as td:
             dev = self._seed(td)
-            env = os.environ.copy()
-            env[specify_helper.AUTO_MODE_ENV_VAR] = "1"
-            _run(["--devforge-dir", str(dev), "detect-mode"], env=env)
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "tooling_configuration",
                 "--description", "package manager",
                 "--valid-implementations", json.dumps(["pnpm", "yarn"]),
             ])
-            _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-tooling_configuration-1",
-                "--default-applied", "pnpm",
-            ])
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            dp = state["decision_points"][0]
+            dp["status"] = "default_applied"
+            dp["default_applied"] = "pnpm"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
             r = _run(["--devforge-dir", str(dev), "render"])
             self.assertIn("[default applied]", r.stdout)
             self.assertIn("pnpm", r.stdout)
-            # Plan 98 D3: no delegated_reply key on this DP -- the §8 line
-            # renders byte-identically to the pre-plan-98 shape, no suffix.
+            # A pre-change default_applied entry with no delegated_reply
+            # key still renders byte-identically to the pre-plan-98 shape,
+            # no suffix.
             self.assertIn(
                 "- **DP-tooling_configuration-1** [default applied]: "
                 "package manager → default: pnpm\n",
@@ -4355,11 +4223,10 @@ class TestPhase4Render(unittest.TestCase):
             self.assertNotIn("you delegated this choice", r.stdout)
 
     def test_renders_dp_delegated_default_with_reply_suffix(self):
-        # Plan 98 D3: an interactive delegated default names the delegation
-        # in §8, appended after the byte-identical [default applied] prefix.
+        # Plan 98 D3: a delegated default names the delegation in §8,
+        # appended after the byte-identical [default applied] prefix.
         with tempfile.TemporaryDirectory() as td:
             dev = self._seed(td)
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "tooling_configuration",
@@ -4389,7 +4256,6 @@ class TestPhase4Render(unittest.TestCase):
         # see where the quoted reply ends in the raw file.
         with tempfile.TemporaryDirectory() as td:
             dev = self._seed(td)
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "tooling_configuration",
@@ -4415,7 +4281,6 @@ class TestPhase4Render(unittest.TestCase):
         # the reply cannot break out of the italic _(...)_ wrapper.
         with tempfile.TemporaryDirectory() as td:
             dev = self._seed(td)
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "tooling_configuration",
@@ -4509,32 +4374,35 @@ class TestPhase5RenderSummary(unittest.TestCase):
             self.assertNotIn("Defaults applied", r.stdout)
 
     def test_lists_every_default_applied_dp_incl_delegated(self):
-        # D6: every [default applied] decision point is listed — auto and
-        # delegated alike — each on its own bullet, the delegated one
-        # carrying the same delegation suffix as §8's render.
+        # D6: every [default applied] decision point is listed — a
+        # pre-change entry with no delegated_reply and a delegated one
+        # alike — each on its own bullet, the delegated one carrying the
+        # same delegation suffix as §8's render.
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
             _run(["--devforge-dir", str(dev), "assign-feature-name",
                   "--feature-name", "test-spec"])
 
-            env = os.environ.copy()
-            env[specify_helper.AUTO_MODE_ENV_VAR] = "1"
-            _run(["--devforge-dir", str(dev), "detect-mode"], env=env)
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "tooling_configuration",
                 "--description", "package manager",
                 "--valid-implementations", json.dumps(["pnpm", "yarn"]),
             ])
-            _run([
-                "--devforge-dir", str(dev), "set-dp-default-applied",
-                "--dp-id", "DP-tooling_configuration-1",
-                "--default-applied", "pnpm",
-            ])
+            # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D1(c): every
+            # set-dp-default-applied call now requires --delegated-reply,
+            # so this pre-change shape (no delegated_reply key) can no
+            # longer be produced through the CLI -- but it survives in an
+            # in-flight or old spec's state (OQ-1: left in place, not
+            # migrated). Written directly here.
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            dp = state["decision_points"][0]
+            dp["status"] = "default_applied"
+            dp["default_applied"] = "pnpm"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
 
-            # Flip to interactive for the second, delegated DP.
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "scope_boundaries",
@@ -4679,7 +4547,6 @@ class TestPhase5RenderPlanHandoff(unittest.TestCase):
             _run(["--devforge-dir", str(dev), "reset-state"])
             _run(["--devforge-dir", str(dev), "assign-feature-name",
                   "--feature-name", "test-spec"])
-            _run(["--devforge-dir", str(dev), "detect-mode"])
             _run([
                 "--devforge-dir", str(dev), "record-decision-point",
                 "--category", "scope_boundaries",
@@ -4826,7 +4693,6 @@ def _build_migration_fixture_state(td_path: Path) -> Path:
     _run(["--devforge-dir", str(dev), "findings-finalize"])
 
     # Phase 2
-    _run(["--devforge-dir", str(dev), "detect-mode"])
     _run([
         "--devforge-dir", str(dev), "record-decision-point",
         "--category", "scope_boundaries",
@@ -5078,10 +4944,14 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
         ])
     _run(["--devforge-dir", str(dev), "findings-finalize"])
 
-    # Phase 2 — auto-mode default-applied entries demo.
-    env = os.environ.copy()
-    env[specify_helper.AUTO_MODE_ENV_VAR] = "1"
-    _run(["--devforge-dir", str(dev), "detect-mode"], env=env)
+    # Phase 2 — pre-change default-applied entries demo. 100-SCOPE-RULE-
+    # FOLLOW-UPS-PLAN.md D1(c): set-dp-default-applied now requires
+    # --delegated-reply on every call, so this pre-change shape -- a
+    # default_applied entry with no delegated_reply key, which the
+    # committed golden fixture below still expects rendered with no
+    # suffix -- can no longer be produced through the CLI. It survives in
+    # an in-flight or old spec's state (OQ-1: left in place, not
+    # migrated), so it is written directly to state here instead.
     _run([
         "--devforge-dir", str(dev), "record-decision-point",
         "--category", "scope_boundaries",
@@ -5090,22 +4960,24 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
         json.dumps(["csv", "csv and json", "csv json parquet"]),
     ])
     _run([
-        "--devforge-dir", str(dev), "set-dp-default-applied",
-        "--dp-id", "DP-scope_boundaries-1",
-        "--default-applied", "csv and json",
-    ])
-    _run([
         "--devforge-dir", str(dev), "record-decision-point",
         "--category", "tooling_configuration",
         "--description", "Scheduler component to use",
         "--valid-implementations",
         json.dumps(["existing job runner", "new cron service"]),
     ])
-    _run([
-        "--devforge-dir", str(dev), "set-dp-default-applied",
-        "--dp-id", "DP-tooling_configuration-1",
-        "--default-applied", "existing job runner",
-    ])
+    state_path = dev / "specify-state.json"
+    state = json.loads(state_path.read_text())
+    for dp_id, default_applied in (
+        ("DP-scope_boundaries-1", "csv and json"),
+        ("DP-tooling_configuration-1", "existing job runner"),
+    ):
+        entry = next(
+            d for d in state["decision_points"] if d["dp_id"] == dp_id
+        )
+        entry["status"] = "default_applied"
+        entry["default_applied"] = default_applied
+    state_path.write_text(json.dumps(state), encoding="utf-8")
     for cat in (
         "existing_behavior", "data_flow_state",
         "edge_cases", "ui_ux_details", "breaking_changes",

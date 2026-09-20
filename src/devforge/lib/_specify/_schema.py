@@ -131,11 +131,6 @@ CONSTRAINT_KIND_ENUM: Tuple[str, ...] = (
     "external_system",
 )
 
-AUTO_MODE_ENV_VAR = "DEVFORGE_AUTO_MODE"
-AUTO_MODE_REMINDER_SUBSTRINGS: Tuple[str, ...] = (
-    "auto mode is active", "auto mode still active",
-)
-
 # Feature-slug validation regex + NNN spec-number allocation constants now
 # live in _shared/feature_alloc.py (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md
 # Phase 1) so /research and /discover can allocate their feature dir

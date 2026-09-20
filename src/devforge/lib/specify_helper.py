@@ -32,8 +32,6 @@ from _specify._schema import (  # noqa: E402,F401
     AC_FRAMING_LINE,
     AC_SUBSECTION_ENUM,
     AC_UBIQUITOUS_ONLY_SUBSECTIONS,
-    AUTO_MODE_ENV_VAR,
-    AUTO_MODE_REMINDER_SUBSTRINGS,
     CONFLICT_TYPE_ENUM,
     CONSTITUTION_POPULATE_GUARDS,
     CONSTRAINT_KIND_ENUM,
@@ -67,7 +65,6 @@ from _specify._topic import (  # noqa: E402,F401
     filename_matches_topic,
     source_origin_for_path,
 )
-from _specify._cmds_phase01 import detect_mode  # noqa: E402,F401
 
 
 if __name__ == "__main__":
