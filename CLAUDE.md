@@ -4,13 +4,11 @@ Spec-driven, agent-coordinated workflow framework for AI development. Generates 
 
 **Command naming (plan 63).** Emitted slash commands land at `.claude/commands/devforge/<name>.md` and are invoked as `/devforge:<name>`; their on-demand reference files land OUTSIDE the command scan at `.devforge/command-refs/<name>/`. Throughout this file a bare `/<name>` naming one of the emitted forge commands (e.g. `/plan`) is shorthand for the command whose source lives at `src/commands/<name>/` — the typed form in a consumer install is always `/devforge:<name>`. This repo's own maintainer commands (`.claude/commands/review-helper.md`, `.claude/commands/release.md`) are NOT emitted and stay un-namespaced.
 
-## Plan records — read before resuming work
+## Read before making changes
 
-When picking up work mid-stream, check the repo root for active plan files and **read the relevant plan in full before making any changes** — plans encode multi-session context that isn't in the conversation. The plan index and the full per-plan records live in `PLAN-STATUS-ARCHIVE.md` (repo root): `## Index` is the one-line-per-plan view, `## Entries` carries the full record and stays the authority. When a plan's status changes, amend BOTH its index line and its entry there — plan status is no longer recorded in this file.
+When picking up work mid-stream, check the repo root for active plan files and **read the relevant plan in full before making any changes** — plans encode multi-session context that isn't in the conversation.
 
-File-less findings — no plan file, no owner — live in `FINDINGS.md`; read the full finding before acting on it.
-
-Completed plan documents are archived at `done-plans/`. Re-read only if maintaining the named feature.
+Open problems with no plan file and no owner live in `FINDINGS.md` — you can walk into one while changing this framework. Read the full finding before acting on it.
 
 ## Conventions for ongoing work
 
@@ -27,7 +25,7 @@ Completed plan documents are archived at `done-plans/`. Re-read only if maintain
 
 ## Where to find what
 
-Compact router. Per-plan rationale and history live in `PLAN-STATUS-ARCHIVE.md`.
+Compact router.
 
 | Topic | Location |
 |---|---|
