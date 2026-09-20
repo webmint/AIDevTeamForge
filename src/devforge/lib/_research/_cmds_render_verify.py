@@ -179,7 +179,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
      11. If value_semantics has an invariant, recommended_approach.rationale
          cites a consumer_chain entry, invariant evidence, or dead-sibling QN.
      12. If runner_up_framing is set, at least one finding must be tagged
-         framing=runner-up (Phase 2.4 must probe the runner-up frame).
+         framing=runner-up (Phase 2.4 / 2.4b / 2.4c / 2.4e must probe the
+         runner-up frame).
      13. Cross-layer recommendation enforcement: when fix_path_helpers all
          resolve to the same package (single-layer), recommended_approach
          must carry single_layer_justification (non-empty) and cites (non-empty).
@@ -551,14 +552,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
         )
     else:
         # Check 12b: when runner_up_framing is set, at least one finding must
-        # be tagged framing=runner-up so Phase 2.4 probed the runner-up frame.
+        # be tagged framing=runner-up so Phase 2.4 / 2.4b / 2.4c / 2.4e
+        # probed the runner-up frame.
         findings = report.get("findings") or []
         runner_up_findings = [f for f in findings if f.get("framing") == "runner-up"]
         if len(runner_up_findings) < 1:
             violations.append(
                 "runner_up_framing is set but no findings tagged framing=runner-up; "
-                "Phase 2.4 must probe the runner-up frame with at least one finding "
-                "(record-finding --framing runner-up ...)"
+                "Phase 2.4 / 2.4b / 2.4c / 2.4e must probe the runner-up frame "
+                "with at least one finding (record-finding --framing runner-up ...)"
             )
 
     # Check 13: cross-layer recommendation enforcement. When fix_path_helpers

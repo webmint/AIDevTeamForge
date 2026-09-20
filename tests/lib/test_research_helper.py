@@ -4232,6 +4232,7 @@ class TestVerifyCheck12(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
             self.assertIn("runner_up_framing", r.stderr)
             self.assertIn("runner-up", r.stderr)
+            self.assertIn("2.4e", r.stderr)
 
     def test_verify_passes_when_runner_up_set_with_runner_up_finding(self):
         """Happy path: _build_bug_state already sets framing + tagged finding."""
