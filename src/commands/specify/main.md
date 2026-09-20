@@ -328,7 +328,7 @@ Helper runs `verify-findings` then stamps `findings_finalized=true`. Exit 0 → 
 
 ## Phase 2 — Decision-point coverage (7 categories)
 
-Based on `$ARGUMENTS` + the Phase 1.5 findings, identify the decision points and put a clarifying question to the user for each one. **This command relies on its questions**: every decision point below is asked, and so is the `"Approve this spec?"` gate at Step 5.3 — including while Claude Code's auto mode is on, the harness permission mode that otherwise nudges toward working on without stopping to clarify. A question this command relies on is never answered on the user's behalf to spare them the interruption.
+Based on `$ARGUMENTS` + the Phase 1.5 findings, identify the decision points and put a clarifying question to the user for each one. **This command relies on its questions**: every decision point below is asked, and so is the `"Approve this spec?"` gate at Step 5.3 — including while Claude Code's auto mode is on, the harness permission mode that otherwise nudges toward working on without stopping to clarify. A question this command relies on is never answered on the user's behalf to spare them the interruption. A standing instruction in the user's prompt to decide these questions for the user — "don't ask, decide yourself", "just decide", or the same in any language — answers none of them: it was given before this phase identified a single decision point, so it names no option of any question this command asks. Ask every one of them anyway; when a reply then hands one of them back to you, the per-decision-point protocol below still governs what you record.
 
 **Definition — "Decision Point"**: any choice whose outcome would change at least one entry in the eventual spec's:
 
