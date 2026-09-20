@@ -328,7 +328,7 @@ Helper runs `verify-findings` then stamps `findings_finalized=true`. Exit 0 → 
 
 ## Phase 2 — Decision-point coverage (7 categories)
 
-Based on `$ARGUMENTS` + the Phase 1.5 findings, identify decision points and either ask clarifying questions (interactive mode) or apply named defaults (auto mode).
+Based on `$ARGUMENTS` + the Phase 1.5 findings, identify the decision points and put a clarifying question to the user for each one. **This command relies on its questions**: every decision point below is asked, and so is the `"Approve this spec?"` gate at Step 5.3 — including while Claude Code's auto mode is on, the harness permission mode that otherwise nudges toward working on without stopping to clarify. A question this command relies on is never answered on the user's behalf to spare them the interruption.
 
 **Definition — "Decision Point"**: any choice whose outcome would change at least one entry in the eventual spec's:
 
@@ -354,18 +354,6 @@ For each category, identify whether the request creates a decision point. If yes
 
 **User-facing surfaces under `scope_boundaries`.** A user-facing surface is anywhere the user sees or triggers a feature. A surface shows the feature the user named only when at least one piece of user-visible identity evidence is cited for it: the same title or heading; the same label, translation key or menu item; the same route; or the same tab or mode constant that controls what the user sees. Shared code (a helper, use case, builder or request) and a shared data source are never identity evidence, just as they are never a reason to exclude a surface. Take each user-facing surface the Phase 1.5 findings name as showing, or possibly showing, the feature the user named, including findings drawn from the research report's `## Open Uncertainties` section. When the user has not settled that surface's inclusion in their own words, it is its own `scope_boundaries` decision point, with exactly two valid implementations: `cover <surface>` and `leave <surface> out`. Its `record-decision-point --description` cites the surface's identity evidence, or states that there is none and why the surface may still show the feature; step 2 of the per-decision-point protocol resolves the two cases differently. Record one decision point per surface, never one that lists several, so the user can cover one surface and leave another out. A surface that only shares code with the change and shows the user a different feature is not such a decision point. The user settled a surface in their own words only when their prompt, an intake rubric answer, a decision-point answer or a correction names that surface or a class that plainly contains it, or when they explicitly picked an offered option that named it. A `"one place"` answer to `/devforge:research`'s `scope` question names no surface: it says where the symptom sits, and it was given before research found any other surface, so it settles nothing research found afterwards.
 
-### Mode detection
-
-```bash
-.devforge/lib/specify_helper detect-mode --reminder-text "<latest <system-reminder> block text>"
-```
-
-Add `--auto` when the user passed `--auto` on the `/devforge:specify` invocation OR when the environment variable `DEVFORGE_AUTO_MODE=1` is set. The helper auto-detects via three C-strict signals — env var (`DEVFORGE_AUTO_MODE=1`), `--auto` flag, OR case-insensitive substring match for `"auto mode is active"` / `"auto mode still active"` in the supplied `--reminder-text`. No other signal counts. User natural-language prose is not a signal.
-
-The helper persists `mode` to state + prints `auto` or `interactive` to stdout.
-
-**When uncertain about mode → prefer interactive (the helper's default).** Asking and waiting is reversible; proceeding without input is not.
-
 ### Per-decision-point protocol
 
 For each decision point (across all 7 categories), in priority order (**scope > breaking changes > data flow > tooling > UX > edge cases**). The 6-item priority order is v3 verbatim; the 7th category `existing_behavior` slots between `data flow` and `tooling` (treat it on par with `data_flow_state` when ordering rounds — both surface state-related decisions). Per-DP loop body:
@@ -381,23 +369,11 @@ For each decision point (across all 7 categories), in priority order (**scope > 
 
    The helper auto-assigns a `dp_id` of the form `DP-<category>-<N>` and creates the entry with `status="pending"`.
 
-2. **Resolve the decision point** — auto path vs interactive path. Every wrong-mode call is a hard helper gate (exit 2): `set-dp-default-applied` in interactive mode without `--delegated-reply` emits `"set-dp-default-applied: mode=interactive rejects default-applied setter (use set-dp-answer)"`, `set-dp-default-applied --delegated-reply` in auto mode emits `"set-dp-default-applied: --delegated-reply is for mode=interactive only (mode=auto already records its own default-applied trail)"`, and `set-dp-answer` in auto mode emits `"set-dp-answer: mode=auto rejects user-answer setter (use set-dp-default-applied)"`. Interactive mode therefore accepts `set-dp-default-applied` only with `--delegated-reply` — the delegated-decision case at the end of the interactive path below. The orchestrator picks the setter that matches the mode `detect-mode` persisted in state; the helper enforces.
-
-   **Auto path** (mode=`auto`): draft the default from Phase 1.5 findings + model recommendation, then:
-
-   ```bash
-   .devforge/lib/specify_helper set-dp-default-applied \
-       --dp-id "<DP-id>" \
-       --default-applied "<named default>"
-   ```
-
-   The rendered spec marks the entry `[default applied]` in §8. The user reviews defaults at the Phase 5 approval gate.
-
-   **Interactive path** (mode=`interactive`): present the question to the user.
+2. **Resolve the decision point.** One hard helper gate (exit 2) guards how the outcome is recorded: `set-dp-default-applied` called without `--delegated-reply` emits `set-dp-default-applied: --delegated-reply required (the user's reply that delegated this decision point to you); use set-dp-answer for a direct user answer`. A default is therefore recordable only with the user's own reply that delegated the decision point to you, and a direct user answer goes through `set-dp-answer` — no setter records a value the user neither gave nor delegated. Present the question to the user:
 
    - **Preferred**: `AskUserQuestion` when the answer fits 2–4 mutually-exclusive options. Single-line question text, no multi-line markdown or blockquote. If paragraph-length context is needed, print the context as plain prose ABOVE the AskUserQuestion call and keep the question line short.
-   - **Fallback**: when `AskUserQuestion` is not available (older runtime, headless mode, or tool not loaded), use a numbered markdown list with one question per item. Each question lists explicit alternatives `(a)`, `(b)`, `(c)` and names the model's recommended default at the end.
-   - **Bundling**: when ≥4 related questions exist AND they are NOT conditionally dependent on each other, bundle them into a single `AskUserQuestion` call (the tool supports multiple questions per call) so the user submits once. Do NOT bundle decisions that are conditionally dependent (e.g., "What tool?" determines whether the cache-strategy question even applies).
+   - **Fallback**: when `AskUserQuestion` is not available (older runtime, headless mode, tool not loaded, or the session's permission settings deny the call — a denied call is unavailable too, though it does not read that way), use a numbered markdown list with one question per item. Each question lists explicit alternatives `(a)`, `(b)`, `(c)` and names the model's recommended default at the end. Put at most 4 questions in one list: with no tool call to make, nothing reports a call's capacity here, so this count is stated rather than read off the tool.
+   - **Bundling**: bundle every question that is NOT conditionally dependent on another into a single `AskUserQuestion` call — as many as one call accepts — so the user submits once. There is no minimum — two independent questions are bundled, never asked one at a time. Do NOT bundle decisions that are conditionally dependent (e.g., "What tool?" determines whether the cache-strategy question even applies); each of those waits for the round after the question it depends on.
 
    End the turn after presenting the question(s). The user's reply opens the next turn. Then persist:
 
@@ -416,16 +392,16 @@ For each decision point (across all 7 categories), in priority order (**scope > 
        --delegated-reply "<the user's reply, verbatim>"
    ```
 
-   Then tell the user the value is your choice, not theirs. The rendered spec marks the entry `[default applied]` in §8 with a note that the user delegated the choice, the Step 5.1 approval summary lists it, and it resolves the decision point for the stop rule below exactly as an auto-mode default does.
+   Then tell the user the value is your choice, not theirs. The rendered spec marks the entry `[default applied]` in §8 with a note that the user delegated the choice, the Step 5.1 approval summary lists it, and it resolves the decision point for the stop rule below.
 
-   **The value you supply for a surface.** On the auto path and the delegated path alike, your answer to a `scope_boundaries` decision point about a user-facing surface (the surfaces paragraph under the category list) depends on whether its description cites identity evidence:
+   **The value you supply for a surface.** When the user hands back a `scope_boundaries` decision point about a user-facing surface (the surfaces paragraph under the category list), the value you supply depends on whether its description cites identity evidence:
 
-   - **Identity evidence cited.** The value is `cover <surface>`, unless you can name what the user would see differently because that surface is left out. A code path, request, use case or builder is never that reason. When you can name it, the value is `leave <surface> out`, and that reason goes into the surface's §6 entry at Step 4.5. Record either value with the `set-dp-default-applied` call shown above for your path (with `--delegated-reply` on the delegated path) so the Step 5.1 approval summary lists it under `**Defaults applied**:`. No other setter records it.
-   - **No identity evidence, but you suspect the surface shows the feature.** Neither cover it nor leave it out. Instead of the `set-dp-default-applied` call above, defer it to an open question: `set-dp-deferral --dp-id "<DP-id>" --deferral-kind open_question --reason "deferred by the model — why it may be the same feature: <reason>"`. Step 3 below describes where it renders and where its finding lands. On the delegated path, tell the user the deferral is yours, not their pick.
+   - **Identity evidence cited.** The value is `cover <surface>`, unless you can name what the user would see differently because that surface is left out. A code path, request, use case or builder is never that reason. When you can name it, the value is `leave <surface> out`, and that reason goes into the surface's §6 entry at Step 4.5. Record either value with the `set-dp-default-applied` call shown above, carrying the user's delegating reply verbatim, so the Step 5.1 approval summary lists it under `**Defaults applied**:`. No other setter records it.
+   - **No identity evidence, but you suspect the surface shows the feature.** Neither cover it nor leave it out. Instead of the `set-dp-default-applied` call above, defer it to an open question: `set-dp-deferral --dp-id "<DP-id>" --deferral-kind open_question --reason "deferred by the model — why it may be the same feature: <reason>"`. Step 3 below describes where it renders and where its finding lands. Tell the user the deferral is yours, not their pick.
 
-   In interactive mode, a surface with no identity evidence is still asked like any other decision point. These two cases govern only your own answer, when the user hands it back or when no question is asked.
+   A surface with no identity evidence is still asked like any other decision point. These two cases govern only your own answer, after the user has handed the decision point back to you.
 
-3. **Deferral path** (either mode). When the user (or auto-mode rationale) explicitly punts the decision to §6 Out of Scope or §8 Open Questions:
+3. **Deferral path**. When the user explicitly punts the decision to §6 Out of Scope or §8 Open Questions:
 
    ```bash
    .devforge/lib/specify_helper set-dp-deferral \
@@ -439,8 +415,8 @@ For each decision point (across all 7 categories), in priority order (**scope > 
    For a `scope_boundaries` decision point about a user-facing surface (the surfaces paragraph under the category list), the rules below take the place of this step's opening sentence, which stays as written for every other decision point:
 
    - Take `--deferral-kind OOS` only when the user's own words punt that surface to §6 Out of Scope; it is never your route. The deferral writes no §6 entry and renders in neither §6 nor §8, so a deferral you made would be an exclusion no reader of the spec sees. Record the user's exclusion as that surface's §6 entry at Step 4.5, without the marker that step defines for your own exclusions.
-   - Take `--deferral-kind open_question` on two routes: the user's, when their own words leave that surface an open question, and yours, for a surface whose description cites no identity evidence, on the auto path and the delegated path alike (step 2). The deferral itself renders the decision point in §8 Open Questions (Step 4.7) as `[deferred to open question]` with its reason, so no `record-open-question` call is needed for it. §8 is not one of the four buckets `verify-coverage` accepts, so land the Phase 1.5 finding that names the surface in §9 Risks with `record-risk --finding-ref` (Step 4.8). Step 4.4 already takes this route for a product question.
-   - Your own answer for a surface whose description cites identity evidence, on the auto path or the delegated path, goes through `set-dp-default-applied` under the value rule in step 2, never through `set-dp-deferral`.
+   - Take `--deferral-kind open_question` on two routes: the user's, when their own words leave that surface an open question, and yours, for a surface whose description cites no identity evidence, after the user hands that decision point back to you (step 2). The deferral itself renders the decision point in §8 Open Questions (Step 4.7) as `[deferred to open question]` with its reason, so no `record-open-question` call is needed for it. §8 is not one of the four buckets `verify-coverage` accepts, so land the Phase 1.5 finding that names the surface in §9 Risks with `record-risk --finding-ref` (Step 4.8). Step 4.4 already takes this route for a product question.
+   - Your own answer for a surface whose description cites identity evidence — the one you supply after the user hands that decision point back to you — goes through `set-dp-default-applied` under the value rule in step 2, never through `set-dp-deferral`.
 
 4. **No-decision-point-in-category**. When a category has no decision point at all, record **exactly one** terminal entry per category:
 
@@ -455,11 +431,11 @@ For each decision point (across all 7 categories), in priority order (**scope > 
 
 ### Question rounds
 
-- Up to 5 questions per round.
-- Prioritization order across rounds: **scope > breaking changes > data flow > tooling > UX > edge cases** (v3 verbatim 6-item order; slot `existing_behavior` alongside `data flow` per the Per-DP protocol note above).
+- A round is ONE `AskUserQuestion` call, carrying as many questions as that call accepts. Rounds are not capped: they continue until every decision point is covered. The per-decision-point cap of 3 follow-ups (step 3 of the protocol above) is the only ceiling, and it bounds re-asking a single decision point, never the number of rounds.
+- Prioritization order across rounds: **scope > breaking changes > data flow > tooling > UX > edge cases** (v3 verbatim 6-item order; slot `existing_behavior` alongside `data flow` per the Per-DP protocol note above). This order decides which questions fill a round when more are pending than one call accepts.
 - After each round, decide if more clarification is needed based on **whether all decision points have been covered, not on subjective sufficiency**.
-- Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings. Whether a user-facing surface that shows, or may show, the feature the user named is in scope is a product question, never answerable from the codebase, so in interactive mode a `scope_boundaries` decision point about such a surface is always asked, whether or not its description cites identity evidence.
-- Decision points about separate surfaces are related, and none is conditionally dependent on another, so they qualify for the bundling rule in the per-decision-point protocol, which puts qualifying questions in one `AskUserQuestion` call.
+- Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings. Whether a user-facing surface that shows, or may show, the feature the user named is in scope is a product question, never answerable from the codebase, so a `scope_boundaries` decision point about such a surface is always asked, whether or not its description cites identity evidence.
+- Decision points about separate surfaces are never conditionally dependent on one another, so the bundling rule in the per-decision-point protocol applies to all of them: put them to the user in as few calls as the tool allows.
 
 ### Coverage check + exit
 
@@ -479,7 +455,7 @@ Then gate:
 
 Helper runs `verify-decision-coverage` then stamps `dp_finalized=true`. Exit 0 → every category is `Clear` or `NoDPInCategory`; advance to Phase 3. Exit 2 → at least one category is `Partial` or `Missing`; stderr enumerates the gaps. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), return to the per-decision-point protocol for the cited categories, then re-run `dp-finalize`.
 
-**Stop only when every decision point identified above has either (a) a user answer, or (b) an explicit "out of scope" / "open question" entry. Do not stop early based on subjective sufficiency.** In auto mode, a recorded default (`set-dp-default-applied`) also satisfies (a) for stop-rule purposes — the user reviews defaults at the Phase 5 approval gate.
+**Stop only when every decision point identified above has either (a) a user answer, or (b) an explicit "out of scope" / "open question" entry. Do not stop early based on subjective sufficiency.** A recorded default (`set-dp-default-applied`) — the value you supplied after the user handed that decision point back to you — also satisfies (a) for stop-rule purposes; the user reviews every such default at the Phase 5 approval gate.
 
 ## Phase 3 — Codebase analysis (spec-type classification + per-type reads)
 
@@ -746,7 +722,7 @@ Record each OOS item with the Phase 1.5 cross-reference where applicable:
     [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
 
-**Mark every exclusion that is not the user's own.** The user stated an exclusion in their own words only when their prompt, an intake rubric answer, a decision-point answer or a correction names it, or when they explicitly picked an offered option that named it. Record every other §6 entry with `--content` in exactly this form: `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`. The rule covers a `leave <surface> out` value you chose in Phase 2, an auto-mode default, and any exclusion you add while writing this section. The reason in the parentheses names what the user sees; a code path, request, use case or builder is never that reason. An entry the user stated in their own words carries no marker. A surface you deferred to §8 for lack of identity evidence is not excluded, so it gets no §6 entry. The marker comes first because `/devforge:plan`'s findings enumeration shows only the first 80 characters of a §6 entry, and the reason sits in parentheses because §6 appends ` — <finding id>` to an entry recorded with `--finding-ref`. A `verify-scope-coherence` warning (Step 4.9) whose overlap tokens are only the marker's own words (`excluded`, `model`, `user`, `sees`, `difference`) is a false positive of that heuristic: note it and proceed, and never drop or reword the marker to silence it.
+**Mark every exclusion that is not the user's own.** The user stated an exclusion in their own words only when their prompt, an intake rubric answer, a decision-point answer or a correction names it, or when they explicitly picked an offered option that named it. Record every other §6 entry with `--content` in exactly this form: `[excluded by the model] <item> (user sees: <what the user sees because of it, or "no difference">)`. The rule covers a `leave <surface> out` value you chose in Phase 2, any other exclusion recorded there as a default you supplied, and any exclusion you add while writing this section. The reason in the parentheses names what the user sees; a code path, request, use case or builder is never that reason. An entry the user stated in their own words carries no marker. A surface you deferred to §8 for lack of identity evidence is not excluded, so it gets no §6 entry. The marker comes first because `/devforge:plan`'s findings enumeration shows only the first 80 characters of a §6 entry, and the reason sits in parentheses because §6 appends ` — <finding id>` to an entry recorded with `--finding-ref`. A `verify-scope-coherence` warning (Step 4.9) whose overlap tokens are only the marker's own words (`excluded`, `model`, `user`, `sees`, `difference`) is a false positive of that heuristic: note it and proceed, and never drop or reword the marker to silence it.
 
 Be exhaustive on Out of Scope — this prevents scope creep during implementation. A §6 entry that contradicts a §5 AC / §4 affected-area (the spec both excludes and requires the same concern) is surfaced by `verify-scope-coherence` at Phase 4 Step 4.9 as a non-blocking warning for the author to reconcile.
 
@@ -815,7 +791,7 @@ Four sources land here:
 
 1. Genuine remaining uncertainties.
 2. Per-Phase-2-category "no decision point" rationales (the `no_DP_in_category` entries from Phase 2 — the helper auto-renders those in §8).
-3. Decision points resolved by a default, in auto mode or on a delegated reply (the `default_applied` entries from Phase 2 — the helper auto-renders each in §8 as `[default applied]` with its value, plus a note quoting the user's reply when they delegated the choice).
+3. Decision points resolved by a default you supplied on a delegated reply (the `default_applied` entries from Phase 2 — the helper auto-renders each in §8 as `[default applied]` with its value, plus a note quoting the user's reply that delegated the choice).
 4. Decision points deferred to an open question, whether the user deferred one, you deferred one, or the follow-up cap moved one there (the `deferred_open_question` entries from Phase 2 — the helper auto-renders each in §8 as `[deferred to open question]` with its reason).
 
 For genuine open questions, call:
@@ -936,7 +912,7 @@ Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (app
 .devforge/lib/specify_helper render-summary
 ```
 
-Stdout is the deterministic approval summary: four bullets, plus a `**Defaults applied**:` bullet between the acceptance-criteria and out-of-scope bullets when at least one decision point is `[default applied]`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path in its first line is the helper's own string, composed by `render-summary` from the feature directory this run wrote into — `specs/<YYYY>/<MM>/<leaf>` on Step 4.1's bucketed path, and `specs/<NNN>-<feature-name>` on the warm, cold and genuine-fallback paths, which carry a spec number; do not rewrite it here):
+Stdout is the deterministic approval summary: four bullets, plus two conditional bullets between the acceptance-criteria and out-of-scope bullets — a `**Defaults applied**:` bullet when at least one decision point is `[default applied]`, and after it a `**Deferred to open questions**:` bullet when at least one is `[deferred to open question]`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The summary form is (the path in its first line is the helper's own string, composed by `render-summary` from the feature directory this run wrote into — `specs/<YYYY>/<MM>/<leaf>` on Step 4.1's bucketed path, and `specs/<NNN>-<feature-name>` on the warm, cold and genuine-fallback paths, which carry a spec number; do not rewrite it here):
 
 ```
 I've created the specification at `specs/.../spec.md`. Key points:
@@ -945,12 +921,14 @@ I've created the specification at `specs/.../spec.md`. Key points:
 - **Acceptance criteria**: [count] testable criteria across [count of applicable subsections] AC categories
 - **Defaults applied**:
   - **[DP-id]**: [description] → default: [value]
+- **Deferred to open questions**:
+  - **[DP-id]**: [description] ([reason])
 - **Out of scope**: [every exclusion, in full]
 
 Please review and either approve or request changes. Once approved, run `/devforge:plan` to create the technical implementation plan.
 ```
 
-The `**Defaults applied**:` bullet lists every decision point that stands at `[default applied]` when the summary renders — auto-mode defaults and delegated ones alike, a delegated one followed by the user's own reply — and is omitted entirely when there are none. The `**Out of scope**:` bullet lists every §6 item in full, never a shortened selection.
+The `**Defaults applied**:` bullet lists every decision point that stands at `[default applied]` when the summary renders, each followed by the user's own reply that delegated it, and is omitted entirely when there are none. The `**Deferred to open questions**:` bullet lists every decision point that stands at `[deferred to open question]` — one the user punted, one you deferred for want of identity evidence, and one the follow-up cap moved there alike — each with the reason recorded for it, and is omitted entirely when there are none; it renders directly after the defaults bullet, or in its place when no decision point is `[default applied]`. The `**Out of scope**:` bullet lists every §6 item in full, never a shortened selection.
 
 ### Step 5.2 — Constitution recheck (re-run)
 
