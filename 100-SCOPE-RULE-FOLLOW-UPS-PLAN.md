@@ -1,7 +1,7 @@
 # 100 — Scope Rule Follow-Ups Plan
 
 **Created**: 2026-09-19
-**Status**: **Phase 0 CLOSED 2026-09-20** — every decision (D1–D14) and every open question (OQ-1–OQ-5) ratified as recommended by a single blanket maintainer directive, with no per-item deliberation supplied. Detailed plan written 2026-09-19; item 2's scope was picked by the maintainer 2026-09-19 via AskUserQuestion: (c). **✅ DONE (build) 2026-09-20** — Phases 1a, 1b, 2, 3a, 3b and 3c BUILT and reviewed (3d a VERIFIED NO-OP), and Phase 4's docs sweep run; the build order, the commit hashes and every swept site are in `#### Phase 4 build record`. **Phase 5 consumer e2e is DEFERRED, user-driven and NOT run — everything here is build-verified and NEVER consumer-validated.**
+**Status**: **Phase 0 CLOSED 2026-09-20** — every decision (D1–D14) and every open question (OQ-1–OQ-5) ratified as recommended by a single blanket maintainer directive, with no per-item deliberation supplied. Detailed plan written 2026-09-19; item 2's scope was picked by the maintainer 2026-09-19 via AskUserQuestion: (c). **✅ DONE (build) 2026-09-20, CLOSED 2026-09-20 by maintainer directive** (English paraphrase: *"I'll do that after the release. Mark the plan as done."*) — Phases 1a, 1b, 2, 3a, 3b and 3c BUILT and reviewed (3d a VERIFIED NO-OP), and Phase 4's docs sweep run; the build order, the commit hashes and every swept site are in `#### Phase 4 build record`. **Phase 5 consumer e2e is DEFERRED TO POST-RELEASE by maintainer decision 2026-09-20 — a user-driven HARD GATE, NOT run and NOT WAIVED: this is a TIMING decision and the maintainer intends to run it after the release** (the plan-86 / plan-91 / plan-96 / plan-97 pattern). So **"done" means BUILT and build-verified and NEVER that Phase 5 passed** — everything here is build-verified and NEVER consumer-validated, and the eight known-answer anchors below stay the recipe, scored in FOUR PAIRS exactly as recorded.
 
 ⚠ **Evidence class, to be repeated in every summary of this plan: NO incident. Items 1 and 3–6 are gaps found by reading during plan 99's build — predicted, nothing observed. Item 2 is a maintainer directive. Nothing was measured.**
 
@@ -682,7 +682,9 @@ Every decision (D1–D14) and every OQ (OQ-1–OQ-5) gets an outcome in `## Phas
 - **Phase 3d re-checked BY CONTENT during this sweep, which could not run `git diff`:** `grep -in "auto mode\|acceptance-criteria conflict\|AC conflicts\|Deferred to open questions\|delegated-reply"` returns ONE line in `src/agents/architect.md` — Rule 9's pre-existing rejected-alternative checkability step, whose *"escalate to the user per Rule 6 (the termination rule), naming the two ACs and the identical tuple"* is the F2 text that predates this plan — and ZERO lines in `src/CLAUDE.md`, whose `### Always` item 17 is plan 99's. That is consistent with D5's and D7's no-op; ⚠ **the byte-identity claim itself rests on Phase 3's own `git diff --stat` Verify, not on this sweep.**
 - ⚠ **Nothing in this sweep claims any phase is consumer-validated.** *"Built and reviewed"* is the ceiling in every line written here, in both ledgers, in `CHANGELOG.md` and in `DEVELOPMENT-STATUS.md`.
 
-### Phase 5 — Consumer e2e — DEFERRED, user-driven HARD GATE, NOT run
+### Phase 5 — Consumer e2e — DEFERRED TO POST-RELEASE, user-driven HARD GATE, NOT run
+
+⚠ **Deferred to post-release by maintainer decision 2026-09-20** (English paraphrase: *"I'll do that after the release. Mark the plan as done."*) — **a TIMING decision, NOT a waiver:** the maintainer intends to run it after the release, so the plan is closed on the BUILD only (the plan-86 / plan-91 / plan-96 / plan-97 pattern), **"done" never means Phase 5 passed**, and the eight anchors below stay the recipe in FOUR PAIRS with nothing about them discharged.
 
 **Everything above is build-verified at best, never consumer-validated, until this phase runs.**
 - **Fixture:** a testForge20 feature (plan 99's OQ-5 precedent).
