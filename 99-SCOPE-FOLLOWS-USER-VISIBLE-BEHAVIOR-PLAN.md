@@ -175,7 +175,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
   - At the *"Only ask questions you CANNOT answer by reading the codebase or Phase 1.5 findings."* line: whether such a surface is in scope is a product question, never answerable from the codebase.
   - Several such decision points bundle into one `AskUserQuestion` call under the existing bundling rule.
   - The "own words" definition from D3(c) is restated here, because commands load independently (plan 98's OQ-7 precedent).
-- **(b) The value the model supplies — on the auto path and on the delegated path alike.** The value is `cover <surface>`, unless the model can name what the user would see differently because the surface is left out. A code path, request, use case or builder is never that reason. It is recorded through the existing channels — auto: `set-dp-default-applied`; delegated: `set-dp-default-applied --delegated-reply` — so Step 5.1's `**Defaults applied**:` block already lists it. **No new channel.**
+- **(b) The value the model supplies — on the auto path and on the delegated path alike.** The value is `cover <surface>`, unless the model can name what the user would see differently because the surface is left out. A code path, request, use case or builder is never that reason. It is recorded through the existing channels — auto: `set-dp-default-applied`; delegated: `set-dp-default-applied --delegated-reply` — so Step 5.1's `**Defaults applied**:` block already lists it. **No new channel.** *(Note added 2026-09-20 — plan 100's D1, and it governs this bullet's sub-bullets too: `/devforge:specify` no longer branches on Claude Code's auto mode, every decision point is asked, and `set-dp-default-applied` requires `--delegated-reply` on every call — so the one surviving channel is the delegated one and "the auto path" names a route the command no longer has.)*
   - **The value rule binds the deferral path too** (added 2026-09-19, after review). This applies to a `scope_boundaries` decision point about a surface showing the named feature.
     - `set-dp-deferral --deferral-kind OOS` is taken only when the user's own words punt it to §6.
     - The model's answer, on the auto path or the delegated path, goes through `set-dp-default-applied` under the value rule above.
@@ -193,7 +193,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
   - **Option (i), broad — every model-authored §6 entry. RECOMMEND.** The incident's exclusion was framed in code terms ("a different request path"). A marker scoped to "exclusions of a surface" lets a code-framed exclusion escape classification. The broad rule forces the model to write the user-visible consequence of every exclusion it makes, which turns the incident's reason into a visibly false statement.
   - **Option (ii), narrow — only §6 entries that exclude a surface showing the feature.** Less noise, but it relies on the same judgment the rule is trying to discipline.
   - **Counter-argument to (i), recorded:** noise.
-    - In auto mode every §6 entry carries the marker, and Step 5.1 gets longer.
+    - In auto mode every §6 entry carries the marker, and Step 5.1 gets longer. *(Note added 2026-09-20 — plan 100's D1: specify has no auto branch left, so the marker rule fires on every run the user did not state the exclusion in their own words. The noise cost stands; what changed is that no mode triggers it.)*
     - `verify-scope-coherence` can add non-blocking warnings on the prefix's tokens `excluded` and `model` (F5).
     - The fixed `(user sees:` text adds two more non-stopword tokens, `user` and `sees`. "user" is common in EARS acceptance criteria, so every marked §6 entry can overlap with every AC or affected-area impact that mentions the user.
 - **(e) Unresolved — an explicit user punt** (`set-dp-deferral --deferral-kind open_question`). The surface goes to §8, and its Phase 1.5 finding lands in §9 through `record-risk --finding-ref` — the Step 4.4 precedent (F6). *(Amended by D10, 2026-09-19: the same route is also the model's own route for a suspected surface with no identity evidence.)*
@@ -292,11 +292,12 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
   - Its Phase 1.5 finding lands in §9 through `record-risk --finding-ref` — the Step 4.4 route (F6).
   - No new marker.
 - **Interactive mode with a live user, no evidence** → ask, as before.
+- *(Note added 2026-09-20 — plan 100's D1 and D2: none of the three commands branches on Claude Code's auto mode any more, so specify asks every `scope_boundaries` decision point and "delegated or auto path" above now names the delegated path alone. The "live user" arm is the ordinary path, and the model supplies a value only on a reply that hands the question back.)*
 
 **Rejected variant, recorded.**
 - **The peer's form** put the weak case into §6 and the PHASE 3 line, with a new `[unresolved by the model]` marker.
 - **Why declined:** §6 holds exclusions and §8 holds unresolved questions. `/devforge:plan` PHASE 1.5 already forces every §8 line to `[RESOLUTION: <decision>]` or `[RESOLUTION: carry-forward to /devforge:breakdown]`.
-- **Its cost, recorded:** a §8 deferral is not listed in specify's Step 5.1 summary — only defaults and §6 are. In the weak case, visibility at approval is therefore lower than under the peer's form.
+- **Its cost, recorded:** a §8 deferral is not listed in specify's Step 5.1 summary — only defaults and §6 are. In the weak case, visibility at approval is therefore lower than under the peer's form. *(Note added 2026-09-20 — plan 100's D12 RETIRES this cost: Step 5.1 now renders a conditional `**Deferred to open questions**:` bullet listing every `deferred_open_question` decision point with its reason, so a model deferral is visible at approval. Risks are still not listed there.)*
 
 **Counter-argument, recorded:** the evidence list can be gamed — a label shared by two different features — and it can miss a real identity with no shared visible marker. The evidence is model-cited and nothing checks it. D10 makes the judgment inspectable, not mechanical.
 
@@ -305,7 +306,7 @@ Nothing below was ratified when drafted (ratified 2026-09-19 — see `## Phase 0
 - **D3(b), (c), (d)** — identity evidence is cited at 2.4e's `--relevance`, at Step 2b's `in` justification and in step 3b's gap description.
 - **D4(a), (b), (e)** — the decision-point description cites the evidence.
   - (b)'s deferral binding keeps `--deferral-kind OOS` user-only.
-  - The `open_question` deferral becomes the model's route for the no-evidence case in BOTH modes, interactive-delegated included. The existing specify text *"When the user (or auto-mode rationale) explicitly punts"* did not cover that case.
+  - The `open_question` deferral becomes the model's route for the no-evidence case in BOTH modes, interactive-delegated included. The existing specify text *"When the user (or auto-mode rationale) explicitly punts"* did not cover that case. *(Note added 2026-09-20 — plan 100's D6: that specify sentence no longer carries "(or auto-mode rationale)" — the deferral path is written delegated-only, so "BOTH modes" now reads as the single path the command has.)*
 - **Phase 1a/1b/1c** element lists and Verify, and **Phase 3**'s anchors.
 - **Unchanged:** D9 holds — zero Python (every verb D10 names already exists), zero gates, zero validators.
 
@@ -571,14 +572,14 @@ These are the choices the build made where the plan text was silent or said some
 1. **A named feature visible on two surfaces through different request paths.** Research records the second surface — a 2.4e finding plus an `affected_area` gap — specify asks a `scope_boundaries` decision point, and an explicit user answer is honored. *(Amended by D10, 2026-09-19: the finding cites the second surface's user-visible identity evidence.)* **PAIRED WITH 2.**
 2. **A different feature that merely shares code with the change.** It is NOT pulled in and NOT raised as a feature-surface gap. Its Step 2b row is `out`, with a user-visible "shows a different feature" justification.
    - *Amended by D10, 2026-09-19:* the model cites NO user-visible identity evidence for it and does not cover it.
-   - **This anchor runs in delegated or auto mode — the blind protocol.** That is where the safeguard has to hold without a human backstop.
+   - **This anchor runs in delegated or auto mode — the blind protocol.** That is where the safeguard has to hold without a human backstop. *(Note added 2026-09-20 — plan 100: specify asks the decision point even with Claude Code's auto mode on, so this anchor is run by DELEGATING the reply; auto mode no longer names a path on which the question is skipped.)*
 3. **The user delegates that decision point.** The spec covers the surface (a §4 row plus an AC naming it), or excludes it with `[excluded by the model] <item> (user sees: <user-visible reason>)`. §8 shows `[default applied]` with the delegation, and Step 5.1 lists it. **PAIRED WITH 4.**
 4. **The user excludes the surface in their own words.** The §6 entry carries NO marker.
 5. **A plan escalation on a §6 exclusion, delegated twice — run once on a marked entry and once on an unmarked one.**
    - The exclusion stands both times, and PHASE 3's `**Unconfirmed exclusions**:` lists both.
    - The marked entry is listed with its prefix; neither shows a `(user sees: …)` clause.
 6. **(If D7 is ratified.)** The grill surfaces a marked exclusion of a feature surface as an upstream signal.
-7. **(Added by D10, 2026-09-19.) A surface the model suspects shows the feature but cannot evidence**, run in delegated or auto mode.
+7. **(Added by D10, 2026-09-19.) A surface the model suspects shows the feature but cannot evidence**, run in delegated or auto mode. *(Note added 2026-09-20 — plan 100: the decision point is asked in either case, so this anchor is run by delegating the reply.)*
    - Specify records it as a §8 `[deferred to open question]` entry, with a reason that says the model deferred it.
    - It is neither covered (no §4 row or AC names it) nor excluded (no §6 entry names it).
    - Its Phase 1.5 finding lands in §9.
@@ -593,12 +594,12 @@ These are the choices the build made where the plan text was silent or said some
 
 ## Residuals (found during the build, not fixed)
 
-Each item below was found during the build and deliberately left unfixed. ⚠ Line digits drift — grep the quoted text.
+Each item below was found during the build and deliberately left unfixed. ⚠ Line digits drift — grep the quoted text. *(Note added 2026-09-20: all six items were taken up by `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md`, which owns them — item N there is residual N here; each item below whose text this falsified carries its own note. That plan is build-verified only; its consumer e2e has not run.)*
 
 1. **Two sibling escalations have no non-decision arm (pre-existing).** The plan template's Rule 5 AC-conflict escalation in `plan/main.md`, and architect Rule 9's rejected-alternative step, have no arm for a reply that decides nothing. Sub-question 6's escalations have one; these siblings do not.
-2. **Auto mode is unaddressed at sub-question 6.** Nothing says whether a sub-question-6 escalation pauses in auto mode, and both escalation directions — the §6 one and the uncovered-surface one — inherit that ambiguity.
+2. **Auto mode is unaddressed at sub-question 6.** Nothing says whether a sub-question-6 escalation pauses in auto mode, and both escalation directions — the §6 one and the uncovered-surface one — inherit that ambiguity. *(Note added 2026-09-20 — plan 100's item 2 dissolves the question rather than answering it in place: no branch of `/devforge:plan` depends on auto mode any longer, so a sub-question-6 escalation is put to the user whichever permission mode is on.)*
 3. **`plan/main.md` PHASE 2.5 step 4 is a seam.** It reads *"does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning"*. An uncovered surface's files could therefore enter File Impact without the sub-question-6 escalation.
-4. **A model's no-evidence deferral is not visible at spec approval.** Specify's Step 5.1 summary lists neither §8 deferrals nor Risks — the cost D10 records for declining the peer's `[unresolved by the model]` variant.
+4. **A model's no-evidence deferral is not visible at spec approval.** Specify's Step 5.1 summary lists neither §8 deferrals nor Risks — the cost D10 records for declining the peer's `[unresolved by the model]` variant. *(Note added 2026-09-20 — plan 100's item 4 closes the §8 half: Step 5.1 now carries a conditional `**Deferred to open questions**:` bullet listing every `deferred_open_question` decision point. The Risks half stands — Risks are still not listed there.)*
 5. **OQ-4's "bundled per call" rides the existing bundling threshold.** The bundling rule applies at ≥4 qualifying questions; below it, surface decision points may be asked separately.
 6. **Research check 12b's stderr.** In `_research/_cmds_render_verify.py`, check 12b's message says Phase 2.4 must probe the runner-up frame. Phase 2.4e rows tagged `--framing runner-up` now also satisfy check 12b. The message is not falsified, and the Python stays untouched.
 
@@ -637,7 +638,7 @@ One further build finding is not listed here because Phase 2's docs sweep correc
 
 **Trap 6 — item 3 and §6.1 read as "which surfaces".** That reading is the reason D2 exists.
 
-**Trap 7 — "raised with the user" in auto mode.** There it means listed at the approval summary — Step 5.1's `**Defaults applied**:` and §6 in full — not a question. *(Amended by D10, 2026-09-19: an unevidenced surface the model defers goes to §8 instead, which Step 5.1 does not list — the cost D10 records.)*
+**Trap 7 — "raised with the user" in auto mode.** There it means listed at the approval summary — Step 5.1's `**Defaults applied**:` and §6 in full — not a question. *(Amended by D10, 2026-09-19: an unevidenced surface the model defers goes to §8 instead, which Step 5.1 does not list — the cost D10 records.)* *(Note added 2026-09-20 — plan 100: both halves of this trap moved. Specify asks every decision point whichever permission mode is on, so "raised with the user" is a question again rather than a listing; and Step 5.1 now lists every `[deferred to open question]` entry, retiring D10's cost.)*
 
 **Trap 8 — reading a predicted site as observed.** ONE observed instance, every other site predicted, nothing measured; the frozen install cannot be re-run.
 

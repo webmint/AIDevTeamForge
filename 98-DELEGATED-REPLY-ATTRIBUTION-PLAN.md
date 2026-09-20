@@ -122,7 +122,7 @@ Nothing below is ratified. Each item states the decision, its options where they
 **Counter-arguments, recorded:**
 
 - **Detection is judgment.** Classifying a free-text reply as "hands the decision back" is itself model judgment. Nothing mechanical detects a delegation in natural language, so **this rule narrows the laundering path without closing it.**
-- **The re-ask is friction.** Re-asking a user who has just explicitly delegated is friction. At an approval gate, a user who delegates twice gets a stall, and the work sits uncommitted. The answer offered — which does not retire the counter — is that the pick at an approval gate is precisely what this rule makes non-delegable, and that auto mode already does not bypass approval gates: `/devforge:plan` PHASE 3 in auto mode still asks *"Approve this plan?"*. ⚠ Since D5's resolution (2026-09-18), that answer protects the gate's PICK only. The `Approved` status can still arise when the next command is invoked.
+- **The re-ask is friction.** Re-asking a user who has just explicitly delegated is friction. At an approval gate, a user who delegates twice gets a stall, and the work sits uncommitted. The answer offered — which does not retire the counter — is that the pick at an approval gate is precisely what this rule makes non-delegable, and that auto mode already does not bypass approval gates: `/devforge:plan` PHASE 3 in auto mode still asks *"Approve this plan?"*. *(Note added 2026-09-20 — plan 100's D1 and OQ-5: PHASE 3 has no mode branch left to qualify that claim, and each of the three commands now states in one sentence that it asks its clarifying questions AND its approval question while Claude Code's auto mode is on.)* ⚠ Since D5's resolution (2026-09-18), that answer protects the gate's PICK only. The `Approved` status can still arise when the next command is invoked.
 
 ### D2 — Class A sites: one per-site sentence naming the arm
 
@@ -187,9 +187,9 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 | research | mode flip / ambiguous mode | keep auto-detection when it produced a mode; otherwise the model picks and says so (the `<user's choice>` placeholder gains a sibling) |
 | research | Phase 2.4d write-boundary / intermediates prompts | the model traces the chain itself and records it as model-traced, never "user-supplied" |
 | research / discover | design-reference prompt | a delegation is `none` — the model never names a reference on the user's behalf |
-| specify | Phase 2 decision points (interactive) | `set-dp-default-applied` becomes legal in interactive mode WITH a required `--delegated-reply "<verbatim reply>"` (Python, D8); §8 renders it `[default applied]` naming the delegation; auto mode byte-unchanged |
+| specify | Phase 2 decision points (interactive) | `set-dp-default-applied` becomes legal in interactive mode WITH a required `--delegated-reply "<verbatim reply>"` (Python, D8); §8 renders it `[default applied]` naming the delegation; auto mode byte-unchanged *(Note added 2026-09-20 — plan 100's D1: there is no auto mode in specify any more; `set-dp-default-applied` requires `--delegated-reply` on every call, so this row's "(interactive)" scope is the command's only path)* |
 | specify | design source | the first option `None…` (already the stated default) — ⚠ *Amended 2026-09-18 (build): this arm writes `set-design-source`; see D2's note on the count of THREE* |
-| plan | PHASE 3 interactive decision points | `[default applied]` marker in interactive mode too, listed under "Decision Points Resolved" exactly as auto mode lists it |
+| plan | PHASE 3 interactive decision points | `[default applied]` marker in interactive mode too, listed under "Decision Points Resolved" exactly as auto mode lists it *(Note added 2026-09-20 — plan 100's D1: PHASE 3's three mode bullets collapsed into one mode-independent bullet, which now DEFINES "Decision Points Resolved" in place rather than by reference to an auto bullet that no longer exists)* |
 | setup (D9) | init / configure / constitute questions | see D9 |
 
 **RECOMMEND.**
@@ -226,7 +226,7 @@ Each OPEN-BINDING class-A site gets ONE sentence in its command spec, in the sha
 ### D6 — Approval summaries show everything the model supplied
 
 - **`/devforge:specify` Step 5.1:** list every `[default applied]` decision point, delegated ones included, and every out-of-scope item in full. The 3-item / 80-char truncation goes (`_specify/_render.py`, Python).
-- **`/devforge:plan` PHASE 3 summary:** add a `**Defaults applied**:` line listing each `[default applied]` decision, auto and delegated alike. The line is omitted when there are none.
+- **`/devforge:plan` PHASE 3 summary:** add a `**Defaults applied**:` line listing each `[default applied]` decision, auto and delegated alike. The line is omitted when there are none. *(Note added 2026-09-20 — plan 100's D6: the line's bracket no longer says "whether applied in auto mode or on a decision point the user handed back to you" — every `[default applied]` entry it lists is now a hand-back, since the command applies no default without one.)*
 - **`/devforge:breakdown` PHASE 4 summary:** add a `**Grill**:` line naming the report's disposition and what happened at grill 7.2 — picked X, not picked, or a clean run with no question.
   - ⚠ **Amended 2026-09-18 (build):** nothing records what the user picked at grill 7.2 — `grill-state.json` has no pick field (fact 7) — so the line cannot show it. What shipped names three recorded facts and never the pick: the report's RECOMMENDED disposition, whether the run was clean (read from `grill.md`'s `## Summary` counts), and whether `grill-seed.json` exists.
 - **`/devforge:grill` 7.2:** the description of the matching re-entry option shows the seed inputs it would commit (`must_satisfy`, `prior_conclusion`).
@@ -579,7 +579,7 @@ Each item below was found during the build and deliberately left unfixed. All of
 - **Per-site sentences at OPEN-LOW points.** D1 covers them; its second default ends the turn there with nothing written.
 - **Relocating or relabelling the implicit Approved flip** — accepted by the maintainer 2026-09-18 (D5).
 - **Changing who owns any disposition, or any gate predicate** (presence / freshness / adversary status).
-- **Auto-mode semantics.** Unchanged; auto mode already marks its defaults.
+- **Auto-mode semantics.** Unchanged; auto mode already marks its defaults. *(Note added 2026-09-20 — plan 100's D1 changed them, on a maintainer directive: `/devforge:specify`, `/devforge:plan` and `/devforge:breakdown` carry no auto-mode branch at all now, so the non-goal held for this plan and no longer describes the tree.)*
 - **FINDINGS.md finding 2's per-dimension justification.** It stays open.
 - **Provenance and picker fields.** No provenance field on `plan-handoff.json`'s `DecisionRow`, and no picker field on `ReEntrySeed`. Under D2 a seed exists only after an explicit pick.
 - **Pre-displaying text before Stage B.** Not for `/devforge:implement` / `/devforge:fix` Completion Notes or fix-notes, and not for spec-check / fix seed text, which is composed from material the user was just shown.
