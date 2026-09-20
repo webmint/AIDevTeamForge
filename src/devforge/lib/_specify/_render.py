@@ -358,9 +358,10 @@ def _canonicalize_for_compare(b: bytes) -> bytes:
 
 def _approval_summary(state: Dict[str, Any]) -> str:
     """Compose v3 4-bullet summary (Variance rule #9, verbatim shape), plus
-    a conditional "Defaults applied" block (98-DELEGATED-REPLY-ATTRIBUTION-
-    PLAN.md D6, below) present only when a decision point is
-    default-applied, and out-of-scope items rendered in full.
+    two conditional blocks -- "Defaults applied" (98-DELEGATED-REPLY-
+    ATTRIBUTION-PLAN.md D6, below) and "Deferred to open questions"
+    (100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D12, below) -- and out-of-scope
+    items rendered in full.
 
     The `specs/.../spec.md` literal below is `_feature_dir_display(state)`
     -- see that function's docstring for why the plain
@@ -382,6 +383,22 @@ def _approval_summary(state: Dict[str, Any]) -> str:
     decision points at all, so a spec with none renders byte-identically
     to before; (2) the out-of-scope list is no longer truncated to 3
     items / 80 chars each -- every item renders in full.
+
+    100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D12: a conditional "Deferred to
+    open questions" bullet list, placed directly after the "Defaults
+    applied" block (or directly after the acceptance-criteria bullet
+    when there is no "Defaults applied" block -- both are the same slot,
+    since the defaults block renders as "" on that path) and before
+    "Out of scope". It lists EVERY `deferred_open_question` decision
+    point, not model deferrals only (F18/D12: the model-only set would
+    make the free-text `deferred by the model` reason prefix
+    load-bearing, and the reason text already names who deferred).
+    Entries mirror §8's `deferred_open_question` render
+    (`_render_open_questions_section`) minus its `[deferred to open
+    question]` tag, which is redundant under this block's own heading:
+    `  - **<DP-id>**: <description> (<reason>)`. Omitted entirely when
+    there are no `deferred_open_question` decision points, so a spec
+    with none renders byte-identically to before this change.
     """
     overview = (state.get("overview") or "_(no overview)_").strip()
     if len(overview) > 240:
@@ -425,6 +442,21 @@ def _approval_summary(state: Dict[str, Any]) -> str:
             dp_lines.append(entry)
         defaults_block = "\n".join(dp_lines) + "\n"
 
+    deferred_dps = [
+        d for d in state["decision_points"]
+        if d.get("status") == "deferred_open_question"
+    ]
+    deferred_block = ""
+    if deferred_dps:
+        dp_lines = ["- **Deferred to open questions**:"]
+        for d in deferred_dps:
+            dp_lines.append("  - **{0}**: {1} ({2})".format(
+                d.get("dp_id", ""),
+                d.get("description", ""),
+                d.get("deferral_reason", ""),
+            ))
+        deferred_block = "\n".join(dp_lines) + "\n"
+
     return (
         "I've created the specification at "
         "`{fd}/spec.md`. Key points:\n"
@@ -433,6 +465,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         "- **Acceptance criteria**: {acc} testable criteria across "
         "{sc} AC categories\n"
         "{db}"
+        "{defb}"
         "- **Out of scope**: {oos}\n"
         "\n"
         "Please review and either approve or request changes. Once "
@@ -441,6 +474,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
     ).format(
         fd=_feature_dir_display(state), ov=overview, fc=file_count, ac=area_count,
         acc=ac_count, sc=subsection_count, oos=oos_all, db=defaults_block,
+        defb=deferred_block,
     )
 
 

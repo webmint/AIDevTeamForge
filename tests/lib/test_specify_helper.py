@@ -4455,6 +4455,256 @@ class TestPhase5RenderSummary(unittest.TestCase):
                 self.assertIn(content, r.stdout)
             self.assertNotIn("…", r.stdout)
 
+    def test_no_deferred_block_when_none_byte_identical(self):
+        # 100-SCOPE-RULE-FOLLOW-UPS-PLAN.md D12: no deferred_open_question
+        # decision point at all -> the summary is byte-identical to the
+        # pre-D12 shape. Full equality (not assertIn), on the exact same
+        # fixture as test_emits_4_bullets_and_persists above.
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(Path(td) / "specs"),
+            ])
+            _run(["--devforge-dir", str(dev), "set-overview",
+                  "--content", "Migrate the thing."])
+            _run([
+                "--devforge-dir", str(dev), "record-affected-area",
+                "--area", "Tooling",
+                "--files", json.dumps(["a.json", "b.json"]),
+                "--impact", "rewrite",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The thing shall change.",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "Unrelated stuff",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render-summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            expected = (
+                "I've created the specification at "
+                "`specs/001-test-spec/spec.md`. Key points:\n"
+                "- **What changes**: Migrate the thing.\n"
+                "- **Files affected**: 2 files across 1 areas\n"
+                "- **Acceptance criteria**: 1 testable criteria across "
+                "1 AC categories\n"
+                "- **Out of scope**: Unrelated stuff\n"
+                "\n"
+                "Please review and either approve or request changes. Once "
+                "approved, run `/devforge:plan` to create the technical "
+                "implementation plan.\n"
+            )
+            self.assertEqual(r.stdout, expected)
+            self.assertNotIn("Deferred to open questions", r.stdout)
+
+    def test_deferred_bullet_between_defaults_and_oos_all_provenances(self):
+        # D12: the bullet lists EVERY deferred_open_question DP -- a
+        # model deferral, a user punt, and a follow-up-cap transition --
+        # sitting between "Defaults applied" and "Out of scope".
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+
+            # A default_applied DP so the "Defaults applied" block renders.
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "tooling_configuration",
+                "--description", "package manager",
+                "--valid-implementations", json.dumps(["pnpm", "yarn"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-default-applied",
+                "--dp-id", "DP-tooling_configuration-1",
+                "--default-applied", "pnpm",
+                "--delegated-reply", "you decide",
+            ])
+
+            # Provenance 1: a model deferral (specify step 2's no-evidence
+            # surface route).
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "does the admin panel show this too?",
+                "--valid-implementations", json.dumps(["yes", "no"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "open_question",
+                "--reason",
+                "deferred by the model — why it may be the same "
+                "feature: shares the header component",
+            ])
+
+            # Provenance 2: a user punt, in free text.
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "ui_ux_details",
+                "--description", "which empty-state copy?",
+                "--valid-implementations", json.dumps(["A", "B"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-ui_ux_details-1",
+                "--deferral-kind", "open_question",
+                "--reason", "ask design post-spec",
+            ])
+
+            # Provenance 3: the follow-up-cap's automatic transition --
+            # 3 increments force deferred_open_question with
+            # DP_TURN_CAP_REASON regardless of the supplied kind.
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "data_flow_state",
+                "--description", "which retry policy?",
+                "--valid-implementations", json.dumps(["linear", "expo"]),
+            ])
+            for i in range(3):
+                _run([
+                    "--devforge-dir", str(dev), "set-dp-deferral",
+                    "--dp-id", "DP-data_flow_state-1",
+                    "--deferral-kind", "OOS",
+                    "--reason", "round {0}".format(i),
+                    "--increment-turn",
+                ])
+
+            # Negative control: a DP deferred to OOS (no --increment-turn,
+            # so it settles at deferred_OOS per _DEFERRAL_KIND_TO_STATUS,
+            # never reaching the cap) must NOT appear in this block -- the
+            # filter is an exact == "deferred_open_question", not any
+            # "deferred*" match.
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "edge_cases",
+                "--description", "what happens when the queue is full?",
+                "--valid-implementations", json.dumps(["drop", "block"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-edge_cases-1",
+                "--deferral-kind", "OOS",
+                "--reason", "post-v1 scope",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            oos_dp = next(
+                d for d in state["decision_points"]
+                if d["dp_id"] == "DP-edge_cases-1"
+            )
+            self.assertEqual(oos_dp["status"], "deferred_OOS")
+
+            r = _run(["--devforge-dir", str(dev), "render-summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(
+                "  - **DP-scope_boundaries-1**: does the admin panel "
+                "show this too? (deferred by the model — why it may be "
+                "the same feature: shares the header component)\n",
+                r.stdout,
+            )
+            self.assertIn(
+                "  - **DP-ui_ux_details-1**: which empty-state copy? "
+                "(ask design post-spec)\n",
+                r.stdout,
+            )
+            self.assertIn(
+                "  - **DP-data_flow_state-1**: which retry policy? "
+                "({0})\n".format(specify_helper.DP_TURN_CAP_REASON),
+                r.stdout,
+            )
+            # Ordering: Defaults applied -> Deferred to open questions ->
+            # Out of scope.
+            idx_defaults = r.stdout.index("- **Defaults applied**:")
+            idx_deferred = r.stdout.index(
+                "- **Deferred to open questions**:"
+            )
+            idx_oos = r.stdout.index("- **Out of scope**:")
+            self.assertLess(idx_defaults, idx_deferred)
+            self.assertLess(idx_deferred, idx_oos)
+
+            # A deferred_OOS DP must be absent from the "Deferred to open
+            # questions" block specifically -- sliced between its own
+            # heading and "Out of scope" so a legitimate §6 out-of-scope
+            # mention of the same DP elsewhere in the summary can't mask
+            # a filter that has been over-widened (e.g. to
+            # status.startswith("deferred") or an "in (...)" tuple).
+            deferred_slice = r.stdout[idx_deferred:idx_oos]
+            self.assertNotIn("DP-edge_cases-1", deferred_slice)
+            self.assertNotIn(
+                "what happens when the queue is full?", deferred_slice,
+            )
+
+            # §8's own render of the same 3 DPs is unchanged by this work
+            # -- same tag, same field order, minus nothing.
+            r2 = _run(["--devforge-dir", str(dev), "render"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn(
+                "- **DP-scope_boundaries-1** [deferred to open "
+                "question]: does the admin panel show this too? "
+                "(deferred by the model — why it may be the same "
+                "feature: shares the header component)\n",
+                r2.stdout,
+            )
+            self.assertIn(
+                "- **DP-ui_ux_details-1** [deferred to open question]: "
+                "which empty-state copy? (ask design post-spec)\n",
+                r2.stdout,
+            )
+            self.assertIn(
+                "- **DP-data_flow_state-1** [deferred to open question]: "
+                "which retry policy? ({0})\n".format(
+                    specify_helper.DP_TURN_CAP_REASON,
+                ),
+                r2.stdout,
+            )
+
+    def test_deferred_bullet_directly_after_ac_when_no_defaults(self):
+        # D12: with a deferred_open_question DP but no default_applied
+        # DP, the bullet sits directly after the acceptance-criteria
+        # bullet -- the "Defaults applied" slot renders as "" so both
+        # placements are the same slot.
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "narrow or broad?",
+                "--valid-implementations", json.dumps(["narrow", "broad"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "open_question",
+                "--reason", "needs PM input post-spec",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render-summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("Defaults applied", r.stdout)
+            lines = r.stdout.splitlines()
+            ac_idx = next(
+                i for i, ln in enumerate(lines)
+                if ln.startswith("- **Acceptance criteria**:")
+            )
+            self.assertEqual(
+                lines[ac_idx + 1], "- **Deferred to open questions**:",
+            )
+            self.assertEqual(
+                lines[ac_idx + 2],
+                "  - **DP-scope_boundaries-1**: narrow or broad? "
+                "(needs PM input post-spec)",
+            )
+
 
 class TestPhase5SetStatus(unittest.TestCase):
     def test_accepts_each_status(self):

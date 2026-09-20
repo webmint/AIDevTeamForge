@@ -14,8 +14,10 @@ from ._validators import _die, _utc_timestamp, _validate_enum, _validate_scalar
 
 def cmd_render_summary(args: argparse.Namespace) -> int:
     """Emit approval summary (4 bullets, plus a conditional "Defaults
-    applied" block when any decision point is default-applied; out-of-
-    scope items listed in full); persist to state.approval_summary.
+    applied" block when any decision point is default-applied, and a
+    conditional "Deferred to open questions" block when any decision
+    point is deferred to an open question; out-of-scope items listed in
+    full); persist to state.approval_summary.
     """
     try:
         state = _load_state(args.devforge_dir)

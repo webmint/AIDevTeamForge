@@ -656,8 +656,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "render-summary",
         help="Emit approval summary (4 bullets, plus a conditional "
-             "Defaults applied block when any DP is default-applied; "
-             "out-of-scope items listed in full); persist to state.",
+             "Defaults applied block when any DP is default-applied, "
+             "and a conditional Deferred to open questions block when "
+             "any DP is deferred to an open question; out-of-scope "
+             "items listed in full); persist to state.",
     )
     sp.set_defaults(func=cmd_render_summary)
 
