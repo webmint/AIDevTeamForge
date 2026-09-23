@@ -244,7 +244,7 @@ Before writing any task file, invoke the `architect` agent via the Task tool to 
 2. For each consultation request: invoke the named specialist via the Task tool with the architect's sub-question + context, capture the specialist's response, then **re-invoke the `architect`** with the relayed response so the architect can synthesize it into its validation. The architect never invokes the specialist — the orchestrator relays both directions.
 3. The orchestrator MAY also consult a specialist directly when this spec calls for it, not only on the architect's request.
 
-Any decomposition-relevant specialist may be named: `architect`, `frontend-engineer`, `backend-engineer`, `mobile-engineer`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `devops-engineer`, `qa-engineer`, `runtime-debugger`.
+Any decomposition-relevant specialist may be named: `architect`, `frontend-engineer`, `backend-engineer`, `mobile-engineer`, `game-engineer`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `devops-engineer`, `qa-engineer`, `runtime-debugger`.
 
 **Brief shape (pass file paths, NOT inlined content):**
 
@@ -301,6 +301,7 @@ Assign exactly ONE agent per task by the file's owning package/stack (see `## Pa
 | API endpoints, controllers, middleware, services, server-side logic — and the backend stack's domain models, types, interfaces, contracts, and business/state logic | backend-engineer |
 | UI components, styles, routes, composables, stores — and the frontend stack's domain models, types, interfaces, and state management (BLoC / Redux / Pinia) | frontend-engineer |
 | Mobile screens, navigation, native modules, platform-specific code, app lifecycle — and the mobile stack's domain models, types, and state | mobile-engineer |
+| Gameplay code, engine components and scripts, scenes and prefabs, editor tooling — and the game stack's domain models, types, and state | game-engineer |
 | Non-server host / runtime-entrypoint code — Electron main process, desktop-app `main`, CLI entrypoint, Tauri core — i.e. the app's host process, NOT a backend server | the owning package's stack implementer per `## Packages` / `PACKAGE_STACKS` (the app's primary implementer — e.g. the frontend/app engineer that owns the rest of the codebase) — NOT `backend-engineer` by default |
 | Bug investigation with runtime symptoms | runtime-debugger |
 | Performance-critical path or optimization task | owning stack engineer (backend/frontend/mobile-engineer, per the file's layer) — `performance-analyst` diagnoses and recommends during `/devforge:review`, it never implements |

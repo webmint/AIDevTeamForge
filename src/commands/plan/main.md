@@ -387,7 +387,7 @@ Before drafting the Phase 2 plan.md tables (Layer Map, Key Design Decisions, Fil
 2. For each consultation request: invoke the named specialist via the Task tool with the architect's sub-question + context, capture the specialist's response, then **re-invoke the `architect`** with the relayed response so the architect can synthesize it into its decision. The architect never invokes the specialist — the orchestrator relays both directions.
 3. The orchestrator MAY also consult a specialist directly when this spec calls for it, not only on the architect's request.
 
-Any planning-relevant specialist may be named: `architect`, `frontend-engineer`, `backend-engineer`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `devops-engineer`, `qa-engineer`.
+Any planning-relevant specialist may be named: `architect`, `frontend-engineer`, `backend-engineer`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `game-engineer`, `devops-engineer`, `qa-engineer`.
 
 **Brief shape (pass file paths, NOT inlined content):**
 
