@@ -105,6 +105,15 @@ PACKAGE_STACKS JSON shape (as produced by `configure_helper render-config`):
     "BUILD_COMMANDS": ["npm run build", ...]
     "TEST_COMMANDS": ["npm test", ...]
   [0] of each array is the fallback for files outside any detected package.
+  "COMMAND_TIMEOUT": "1200"  # optional string scalar (101-NON-WEB-STACK-
+    READINESS-PLAN.md D1) -- a per-project seconds ceiling for every
+    command this module runs. Resolved by _resolve_command_timeout: a
+    positive-integer string bounds both the timeout= argument to
+    subprocess.run AND the "Command timed out after {0}s: {1}" message
+    (the only text a repairing agent receives on a timeout). Absent,
+    None, unparseable, zero, or negative all fall back to the module
+    constant _CMD_TIMEOUT (120) -- a helper invoked outside a configured
+    install behaves exactly as before this key existed.
 
 Design notes:
 - Longest-path-prefix match: sort packages by path length (desc); first match
@@ -114,8 +123,10 @@ Design notes:
   command naturally resolves relative paths correctly.  shell=True is still
   used so commands with shell operators (&&, pipes) work without further
   processing.
-- subprocess timeout: 120 s per command (reasonable for tsc/eslint/build).
-  This is intentionally generous; short timeouts cause false self-repair cycles.
+- subprocess timeout: 120 s per command by default (reasonable for tsc/
+  eslint/build), overridable per-project via the COMMAND_TIMEOUT config key
+  (see _resolve_command_timeout). This default is intentionally generous;
+  short timeouts cause false self-repair cycles.
 - All commands are captured (stdout+stderr combined to output) so the
   orchestrator can relay the failure text to the repairing agent.
 - An empty touched-files list → no type-check/lint runs, build still runs once.
@@ -360,8 +371,45 @@ def _collect_build_commands(touched_files, package_stacks, primary_build):
 # ---------------------------------------------------------------------------
 
 
-def _run_command(cmd, cwd, extra_paths=None):
-    # type: (str, str, Optional[List[str]]) -> Tuple[int, str]
+def _resolve_command_timeout(config):
+    # type: (dict) -> int
+    """Resolve the per-project command-timeout ceiling from project config.
+
+    COMMAND_TIMEOUT (101-NON-WEB-STACK-READINESS-PLAN.md D1) is a string
+    scalar holding a positive decimal integer (e.g. "1200"). Absent, None,
+    unparseable, zero, negative, or out of the range a float (and in turn
+    subprocess.run's timeout=) can represent, all fall back to the module
+    constant _CMD_TIMEOUT (120) -- the same value a helper invoked outside
+    a configured install already used before this key existed.
+
+    `str(raw).strip()` can never raise TypeError (str() accepts any
+    object), so the surrounding try/except narrows to the one exception
+    `int()` can actually raise on a malformed digit string: ValueError.
+    """
+    raw = config.get("COMMAND_TIMEOUT")
+    if raw is None:
+        return _CMD_TIMEOUT
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        return _CMD_TIMEOUT
+    if value <= 0:
+        return _CMD_TIMEOUT
+    try:
+        # subprocess.run's timeout= is eventually used in float arithmetic;
+        # an integer too large to represent as a float (roughly 309+
+        # decimal digits) raises OverflowError there instead of at parse
+        # time -- catch it here so an absurd value degrades to the module
+        # constant exactly like any other invalid value, rather than
+        # crashing the run.
+        float(value)
+    except OverflowError:
+        return _CMD_TIMEOUT
+    return value
+
+
+def _run_command(cmd, cwd, extra_paths=None, timeout=_CMD_TIMEOUT):
+    # type: (str, str, Optional[List[str]], int) -> Tuple[int, str]
     """Run a shell command and return (returncode, combined_output).
 
     shell=True: required because stored commands may contain `cd X && ...`
@@ -375,6 +423,13 @@ def _run_command(cmd, cwd, extra_paths=None):
     requiring global installation.  os.environ is NEVER mutated; a copy is
     made.  When extra_paths is None or empty, env is unchanged (subprocess
     inherits os.environ as-is).
+
+    timeout: seconds before the command is killed.  Defaults to the module
+    constant _CMD_TIMEOUT (120) so direct callers (and every existing test)
+    keep working unchanged.  cmd_verify_touched passes the per-project
+    value resolved by _resolve_command_timeout instead.  On expiry, the
+    message names THIS value, not the module constant -- per D1, it is the
+    only ceiling a repairing agent is told about.
     """
     env = None
     if extra_paths:
@@ -393,12 +448,12 @@ def _run_command(cmd, cwd, extra_paths=None):
             stderr=subprocess.STDOUT,
             text=True,
             check=False,
-            timeout=_CMD_TIMEOUT,
+            timeout=timeout,
             env=env,
         )
         return result.returncode, result.stdout
     except subprocess.TimeoutExpired:
-        return 1, "Command timed out after {0}s: {1}".format(_CMD_TIMEOUT, cmd)
+        return 1, "Command timed out after {0}s: {1}".format(timeout, cmd)
     except OSError as exc:
         return 1, "OS error running command: {0}".format(exc)
 
@@ -534,6 +589,9 @@ def cmd_verify_touched(args):
     primary_build = build_commands[0] if build_commands else None
     primary_test = test_commands[0] if test_commands else None
 
+    # --- Resolve the per-project command-timeout ceiling ---
+    command_timeout = _resolve_command_timeout(config)
+
     # --- Wrapper-isolation check (wrapper mode ONLY) ---
     # Run BEFORE the type-check/lint/build commands so a pollution failure is
     # surfaced immediately, before burning time on further verification.
@@ -595,7 +653,9 @@ def cmd_verify_touched(args):
     failed_output = None
 
     for cmd in all_cmds:
-        rc, output = _run_command(cmd, source_root_str, extra_paths=_bin_dirs_ordered)
+        rc, output = _run_command(
+            cmd, source_root_str, extra_paths=_bin_dirs_ordered, timeout=command_timeout
+        )
         if rc != 0:
             # Tooling-unavailable check comes FIRST — a missing binary cannot be
             # fixed by re-running the implementing agent, so skip self-repair entirely.

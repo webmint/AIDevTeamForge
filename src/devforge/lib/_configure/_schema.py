@@ -111,6 +111,20 @@ FIELD_SCHEMA = (
     # to the earlier fields.
     ("claude_tier_security",   "scalar"),
     ("claude_effort_security", "scalar"),
+
+    # Toolchain ceiling (101-NON-WEB-STACK-READINESS-PLAN.md D1): a
+    # per-project seconds ceiling for the type-check / lint / build / test
+    # commands `implement_helper verify-touched` runs. A string scalar
+    # holding a decimal integer (F10) rather than a typed field — enforced
+    # at set-time by the setter's own positive-integer check (D1: no sixth
+    # shared validator; _validators.py stays at five). Read by exactly ONE
+    # consumer, `_implement/_cmds_verify.py`, which keeps its own module
+    # constant as the fallback when the key is absent or unparseable.
+    # DEFAULT-ONLY (OQ-2): no /devforge:configure prompt, no detection —
+    # the operator sets it with `configure_helper set-command-timeout`
+    # when their toolchain needs a longer ceiling than 120s. Appended
+    # last, after claude_effort_security, per the byte-stability rule.
+    ("command_timeout",        "scalar"),
 )
 
 # Enum-restricted scalars; key = field name, value = allowed set.
@@ -197,6 +211,15 @@ FIELD_DEFAULTS = {
     # verify's own absence above — see that field's own FIELD_SCHEMA
     # comment.
     "claude_effort_security": "default",
+    # "120" (101-NON-WEB-STACK-READINESS-PLAN.md D1, OQ-1): today's
+    # behaviour preserved exactly — the module constant `_CMD_TIMEOUT` the
+    # one consumer already falls back to. A non-None default keeps this
+    # field out of _cmds_verify.py's null-scalar check with no exemption
+    # needed, on a fresh install AND on an existing configure.yaml written
+    # before this field existed (F11) — the mandatory half of D1's
+    # decision: without this entry, every existing install would fail
+    # `configure_helper verify` on the null-scalar check.
+    "command_timeout": "120",
 }
 
 # package_stack_array record field order — locked so emit is deterministic.

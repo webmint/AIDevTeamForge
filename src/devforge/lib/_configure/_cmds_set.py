@@ -671,6 +671,73 @@ def cmd_set_e2e_command(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Command timeout scalar setter (1).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_command_timeout(args: argparse.Namespace) -> int:
+    """Set command_timeout scalar: a positive integer, in seconds.
+
+    Bounds the type-check / lint / build / test commands
+    `implement_helper verify-touched` runs (101-NON-WEB-STACK-READINESS-
+    PLAN.md D1). Validation lives HERE, inside the setter — no sixth
+    shared validator is added to _validators.py, which already defines
+    five. Rejects a non-integer, zero, negative, or out-of-range value
+    (exit 2, naming the field and the rule, mirroring every other
+    setter's _die shape). "Integer" is whatever Python's own `int()`
+    accepts after stripping -- a leading "+", Unicode decimal digits
+    (e.g. full-width or Arabic-Indic digits), and underscore-grouped
+    literals (e.g. "1_200") all parse -- and a positive integer is
+    always stored as its canonical ASCII decimal string (e.g. "0120" ->
+    "120", "٣٠٠" -> "300"), mirroring cmd_set_e2e_command's persist
+    pattern. "Out-of-range" rejects a value too large to be represented
+    as a float (roughly 309+ decimal digits) -- the same ceiling
+    `_implement/_cmds_verify.py`'s consumer falls back on, so an
+    absurd value is refused here rather than reaching the consumer at
+    all.
+    """
+    try:
+        stripped = _validate_scalar(args.value, "command_timeout")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        parsed = int(stripped)
+    except ValueError:
+        return _die(
+            "command_timeout: value must be a positive integer, got {0!r}".format(
+                stripped
+            ),
+            code=2,
+        )
+    if parsed <= 0:
+        return _die(
+            "command_timeout: value must be a positive integer, got {0!r}".format(
+                stripped
+            ),
+            code=2,
+        )
+    try:
+        # See _implement/_cmds_verify.py's _resolve_command_timeout: a
+        # value too large to represent as a float (roughly 309+ decimal
+        # digits) makes subprocess.run(timeout=...) raise an unhandled
+        # OverflowError downstream. Reject it here instead, at set-time.
+        float(parsed)
+    except OverflowError:
+        return _die(
+            "command_timeout: value must be a positive integer within a "
+            "representable range, got {0!r} (out of range)".format(stripped),
+            code=2,
+        )
+    value = str(parsed)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["command_timeout"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-command-timeout: {0}".format(err))
+    return 0
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     """Write a fresh defaults yaml. Idempotent: byte-identical on re-run."""
     try:

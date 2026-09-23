@@ -176,12 +176,15 @@ class SchemaTests(unittest.TestCase):
     def test_field_schema_ends_with_effort_trio_then_security_pair(self):
         """The original effort trio (claude_effort_think/do/verify) is
         immediately followed by the security pair (94-MODEL-OVERRIDE-AND-
-        NO-DEFAULTS-PLAN.md D3), appended last as claude_tier_security
-        then claude_effort_security -- NOT clustered beside
-        claude_tier_verify/claude_effort_verify."""
+        NO-DEFAULTS-PLAN.md D3), appended as claude_tier_security then
+        claude_effort_security -- NOT clustered beside claude_tier_verify/
+        claude_effort_verify. NOT asserted as the last five overall -- a
+        later plan (101-NON-WEB-STACK-READINESS-PLAN.md D1) appends
+        command_timeout after this pair."""
         names = [name for name, _kind in configure_helper.FIELD_SCHEMA]
+        idx = names.index("claude_effort_think")
         self.assertEqual(
-            names[-5:],
+            names[idx: idx + 5],
             [
                 "claude_effort_think",
                 "claude_effort_do",
@@ -227,12 +230,15 @@ class SchemaTests(unittest.TestCase):
     def test_effort_keys_and_security_pair_follow_require_ticket_in_order(self):
         """CLAUDE_EFFORT_THINK/_DO/_VERIFY immediately follow REQUIRE_TICKET,
         followed immediately by CLAUDE_TIER_SECURITY then
-        CLAUDE_EFFORT_SECURITY -- the last two keys overall
-        (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md D3)."""
+        CLAUDE_EFFORT_SECURITY (94-MODEL-OVERRIDE-AND-NO-DEFAULTS-PLAN.md
+        D3). NOT asserted as the last keys overall -- a later plan
+        (101-NON-WEB-STACK-READINESS-PLAN.md D1) appends COMMAND_TIMEOUT
+        after this pair, so this test pins the five-key run starting
+        right after REQUIRE_TICKET, not what (if anything) follows it."""
         keys = list(configure_helper._PROJECT_CONFIG_KEY_ORDER)
         idx_rt = keys.index("REQUIRE_TICKET")
         self.assertEqual(
-            keys[idx_rt + 1:],
+            keys[idx_rt + 1: idx_rt + 6],
             [
                 "CLAUDE_EFFORT_THINK",
                 "CLAUDE_EFFORT_DO",
@@ -241,7 +247,6 @@ class SchemaTests(unittest.TestCase):
                 "CLAUDE_EFFORT_SECURITY",
             ],
         )
-        self.assertEqual(keys[-2:], ["CLAUDE_TIER_SECURITY", "CLAUDE_EFFORT_SECURITY"])
 
 
 # ---------------------------------------------------------------------------
@@ -349,11 +354,14 @@ class RealProducerRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(data["CLAUDE_EFFORT_VERIFY"], "xhigh")
 
         # The three effort keys are immediately followed by the security
-        # pair (unset in this test, so null/"default") -- five keys total
-        # from this point to the end of the emitted JSON.
+        # pair (unset in this test, so null/"default") -- five keys in a
+        # row. NOT asserted as the last five overall: a later plan
+        # (101-NON-WEB-STACK-READINESS-PLAN.md D1) appends COMMAND_TIMEOUT
+        # after CLAUDE_EFFORT_SECURITY.
         keys = list(data.keys())
+        idx_effort_think = keys.index("CLAUDE_EFFORT_THINK")
         self.assertEqual(
-            keys[-5:],
+            keys[idx_effort_think: idx_effort_think + 5],
             [
                 "CLAUDE_EFFORT_THINK",
                 "CLAUDE_EFFORT_DO",
@@ -524,7 +532,11 @@ class RealProducerRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
 
 
 class SecurityTierRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
-    def test_security_pair_round_trips_through_render_config_as_last_two_keys(self):
+    def test_security_pair_round_trips_through_render_config_adjacent_pair(self):
+        """CLAUDE_TIER_SECURITY is immediately followed by
+        CLAUDE_EFFORT_SECURITY. NOT asserted as the last two keys overall --
+        a later plan (101-NON-WEB-STACK-READINESS-PLAN.md D1) appends
+        COMMAND_TIMEOUT after this pair."""
         self._write_full_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         _run_configure(self.devforge_dir, "set-claude-tier-security", "opus")
@@ -538,13 +550,20 @@ class SecurityTierRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(data["CLAUDE_EFFORT_SECURITY"], "high")
 
         keys = list(data.keys())
-        self.assertEqual(keys[-2:], ["CLAUDE_TIER_SECURITY", "CLAUDE_EFFORT_SECURITY"])
+        idx_tier_security = keys.index("CLAUDE_TIER_SECURITY")
+        self.assertEqual(
+            keys[idx_tier_security: idx_tier_security + 2],
+            ["CLAUDE_TIER_SECURITY", "CLAUDE_EFFORT_SECURITY"],
+        )
 
     def test_security_pair_renders_null_tier_default_effort_when_unset(self):
         """render-config emits CLAUDE_TIER_SECURITY=null (never "inherit"
         or any other sentinel -- claude_tier_security has no FIELD_DEFAULTS
         entry) and CLAUDE_EFFORT_SECURITY="default" when neither setter was
-        ever called, and both remain the LAST two keys in that order."""
+        ever called, and CLAUDE_EFFORT_SECURITY immediately follows
+        CLAUDE_TIER_SECURITY. NOT asserted as the last two keys overall --
+        a later plan (101-NON-WEB-STACK-READINESS-PLAN.md D1) appends
+        COMMAND_TIMEOUT after this pair."""
         self._write_full_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         # No set-claude-tier-security / set-claude-effort-security calls.
@@ -557,7 +576,11 @@ class SecurityTierRoundTripTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(data["CLAUDE_EFFORT_SECURITY"], "default")
 
         keys = list(data.keys())
-        self.assertEqual(keys[-2:], ["CLAUDE_TIER_SECURITY", "CLAUDE_EFFORT_SECURITY"])
+        idx_tier_security = keys.index("CLAUDE_TIER_SECURITY")
+        self.assertEqual(
+            keys[idx_tier_security: idx_tier_security + 2],
+            ["CLAUDE_TIER_SECURITY", "CLAUDE_EFFORT_SECURITY"],
+        )
 
     def test_load_backfills_default_for_effort_security_on_legacy_yaml(self):
         """_load() back-fills 'default' for claude_effort_security when a

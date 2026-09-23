@@ -53,6 +53,7 @@ from ._cmds_set import (
     cmd_set_claude_tier_security,
     cmd_set_claude_tier_think,
     cmd_set_claude_tier_verify,
+    cmd_set_command_timeout,
     cmd_set_dev_commands,
     cmd_set_e2e_command,
     cmd_set_error_handlings,
@@ -403,6 +404,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("value", help="E2E command.")
     sp.set_defaults(func=cmd_set_e2e_command)
+
+    # ------------------------------------------------------------------
+    # Command timeout scalar setter.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "set-command-timeout",
+        help=(
+            "Set command_timeout scalar (positive integer seconds) -- bounds "
+            "implement_helper verify-touched's type-check/lint/build/test "
+            "commands. Default: 120."
+        ),
+    )
+    sp.add_argument("value", help="Command timeout in seconds (positive integer).")
+    sp.set_defaults(func=cmd_set_command_timeout)
 
     # ------------------------------------------------------------------
     # Step 3: render-config / verify / summary.

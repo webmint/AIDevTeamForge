@@ -115,6 +115,29 @@ fields lives in tests/lib/_configure/test_effort_fields.py, which this
 deliverable extended in place, per this repo's real-producer-round-trip
 rule and to keep this already-large file from growing further.
 
+Plan 101 Phase 1 coverage (101-NON-WEB-STACK-READINESS-PLAN.md D1 — the
+`command_timeout` field, a per-project seconds ceiling for the type-
+check/lint/build/test commands `implement_helper verify-touched` runs;
+the counts above are now one field / one key further behind, hence the
+FOUR count-pin tests renamed to 38/38/46/46 in this pass; ENUM_FIELDS'
+size stays 9 — a string scalar, not an enum): command_timeout is a
+FIELD_SCHEMA scalar APPENDED LAST, with a FIELD_DEFAULTS baseline of
+"120" (a non-None default, same mechanism as e2e_command / require_ticket
+/ claude_effort_* above — this loop's null-scalar check never fires for
+it, on a fresh install or on an existing configure.yaml written before
+this field existed). The setter (set-command-timeout) validates a
+positive integer INSIDE itself — no sixth shared validator is added to
+_validators.py, which stays at five. Its position is the last key in
+_PROJECT_CONFIG_KEY_ORDER, after CLAUDE_EFFORT_SECURITY. This file
+carries only what the new field mechanically touches — the four count
+pins, FIELD_SCHEMA's locked-order list, and the all-fields-set round-trip
+fixture; unlike claude_tier_security, command_timeout's FIELD_DEFAULTS
+baseline means no "populate all fields, expect exit 0" fixture needed a
+new setter call. The full setter/round-trip/verify/consumer surface lives
+in tests/lib/_configure/test_command_timeout.py, per this repo's real-
+producer-round-trip rule and to keep this already-large file from
+growing further.
+
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
 
@@ -222,14 +245,13 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_37_fields(self):
-        # 35 + claude_tier_security/claude_effort_security (plan 94 Phase 1
-        # Deliverable 6).
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 37)
+    def test_field_schema_has_38_fields(self):
+        # 37 + command_timeout (101-NON-WEB-STACK-READINESS-PLAN.md D1).
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 38)
 
-    def test_default_state_has_37_keys(self):
+    def test_default_state_has_38_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 37)
+        self.assertEqual(len(state), 38)
 
     def test_default_state_scalars_are_none(self):
         # Fields listed in FIELD_DEFAULTS have non-None defaults and are
@@ -307,6 +329,7 @@ class SchemaTests(unittest.TestCase):
             "claude_effort_verify",
             "claude_tier_security",
             "claude_effort_security",
+            "command_timeout",
         ]
         self.assertEqual(names, expected)
 
@@ -601,7 +624,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 37 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket, claude_effort_*, claude_tier_security, claude_effort_security)."""
+        """All 38 fields populated — comprehensive round-trip (incl. e2e_command, require_ticket, claude_effort_*, claude_tier_security, claude_effort_security, command_timeout)."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -651,6 +674,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "claude_effort_verify": "xhigh",
             "claude_tier_security": "Opus",
             "claude_effort_security": "low",
+            "command_timeout": "1200",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -3451,13 +3475,12 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_45_keys_present(self):
-        # 43 + CLAUDE_TIER_SECURITY/CLAUDE_EFFORT_SECURITY (plan 94 Phase 1
-        # Deliverable 6).
+    def test_all_46_keys_present(self):
+        # 45 + COMMAND_TIMEOUT (101-NON-WEB-STACK-READINESS-PLAN.md D1).
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 45)
+        self.assertEqual(len(result), 46)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3621,15 +3644,14 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_45_keys_with_defaults(self):
-        # 43 + CLAUDE_TIER_SECURITY/CLAUDE_EFFORT_SECURITY (plan 94 Phase 1
-        # Deliverable 6).
+    def test_renders_46_keys_with_defaults(self):
+        # 45 + COMMAND_TIMEOUT (101-NON-WEB-STACK-READINESS-PLAN.md D1).
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 45)
+        self.assertEqual(len(data), 46)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -3997,6 +4019,22 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
         ac_section = out.split("### AC verification", 1)[1]
         self.assertIn("e2e_command", ac_section)
         self.assertIn("npx playwright test", ac_section)
+
+    def test_command_timeout_rendered_under_per_package_group(self):
+        """command_timeout (101-NON-WEB-STACK-READINESS-PLAN.md D1) renders
+        in the 'Per-package' group, directly after test_commands -- it
+        bounds exactly those commands (and their type-check/lint/build
+        siblings), so it joins that group rather than a new one-field
+        group.
+        """
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-command-timeout", "900")
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        per_package_section = out.split("### Per-package", 1)[1].split("### ", 1)[0]
+        self.assertIn("command_timeout", per_package_section)
+        self.assertIn("900", per_package_section)
 
 
 # ---------------------------------------------------------------------------

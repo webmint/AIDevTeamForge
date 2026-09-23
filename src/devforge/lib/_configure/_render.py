@@ -12,11 +12,11 @@ from typing import Dict, List, Optional, Tuple
 
 
 # Ordered list of keys in project-config.json.
-# 37 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 38 from configure.yaml (FIELD_SCHEMA, uppercased) +
 # 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
 #                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
 # 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
-# Total: 45 keys.
+# Total: 46 keys.
 _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (identity)
     "PROJECT_NAME",
@@ -78,6 +78,8 @@ _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (fourth tier, security — plan 94 D3)
     "CLAUDE_TIER_SECURITY",
     "CLAUDE_EFFORT_SECURITY",
+    # From configure.yaml (toolchain ceiling — plan 101 D1)
+    "COMMAND_TIMEOUT",
 )
 
 # Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".
@@ -147,7 +149,7 @@ def _build_project_config(
     uppercase project-config.json keys). Computes the 3 derived fields.
     Returns an ordered dict whose keys follow _PROJECT_CONFIG_KEY_ORDER.
 
-    configure.yaml fields: all 37 FIELD_SCHEMA entries.
+    configure.yaml fields: all 38 FIELD_SCHEMA entries.
     init.yaml fields: workspace_mode, project_root, project_state,
                       default_branch, packages_detected.
     Derived: WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST.

@@ -32,6 +32,14 @@ _SUMMARY_GROUPS = (
             "type_check_commands",
             "lint_commands",
             "test_commands",
+            # command_timeout (101-NON-WEB-STACK-READINESS-PLAN.md D1) joins
+            # here, directly after test_commands, because it bounds exactly
+            # those commands (and their type-check/lint/build siblings
+            # above) -- joining an existing group rather than opening a new
+            # single-field one, the same precedent e2e_command (plan 90 D1)
+            # and require_ticket (plan 91 D4) each follow elsewhere in
+            # this table.
+            "command_timeout",
             "package_stacks",
         ),
     ),

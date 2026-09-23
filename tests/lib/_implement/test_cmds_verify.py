@@ -43,6 +43,14 @@ Coverage:
     - Empty --files list + no primary commands → pass immediately.
     - De-duplication: two files in the same package → command runs once, not twice.
 
+  _resolve_command_timeout (101-NON-WEB-STACK-READINESS-PLAN.md D1):
+    - COMMAND_TIMEOUT present + a valid positive integer → that value.
+    - Key absent, None, unparseable, zero, or negative → _CMD_TIMEOUT (120).
+    - cmd_verify_touched integration: the resolved value reaches every
+      _run_command call as its timeout= argument.
+    - _run_command's own timeout= argument: on expiry, the message names
+      the value PASSED IN, not the module constant.
+
 Design notes:
 - Commands in the fixture config use 'true' (always-pass) and 'false'
   (always-fail) so no real tsc/eslint/npm is required.
@@ -60,6 +68,7 @@ Stdlib only. Python 3.8+.
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -78,6 +87,9 @@ from _implement._cmds_verify import (  # noqa: E402
     _collect_commands,
     _collect_build_commands,
     _is_tooling_unavailable,
+    _resolve_command_timeout,
+    _run_command,
+    _CMD_TIMEOUT,
     cmd_verify_touched,
     SELF_REPAIR_CAP,
     EXIT_OK,
@@ -611,7 +623,7 @@ class TestCmdVerifyTouched(unittest.TestCase):
 
         commands_called = []
 
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             commands_called.append(cmd)
             return 0, ""
 
@@ -1311,7 +1323,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_missing_command_rc127_tooling_unavailable(self):
         """A command returning rc=127 with 'command not found' → tooling_unavailable, exit 2."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 127, "/bin/sh: vue-tsc: command not found\n"
 
         config = {
@@ -1330,7 +1342,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_missing_command_windows_signal_tooling_unavailable(self):
         """Windows 'not recognized' output → tooling_unavailable, exit 2."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 1, (
                 "'vue-tsc' is not recognized as an internal or external command,\r\n"
                 "operable program or batch file.\r\n"
@@ -1350,7 +1362,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_tooling_unavailable_does_not_self_repair(self):
         """tooling_unavailable must NOT enter the self_repair path even at iteration=0."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 127, "sh: missing-linter: command not found\n"
 
         config = {
@@ -1370,7 +1382,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
         """When the first command is tooling-unavailable, remaining commands must NOT run."""
         commands_called = []
 
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             commands_called.append(cmd)
             if cmd == "bad-tool --check":
                 return 127, "sh: bad-tool: command not found\n"
@@ -1392,7 +1404,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_genuine_code_failure_still_self_repairs(self):
         """tsc exit 1 with real TS diagnostics must still produce self_repair (not tooling_unavailable)."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 1, (
                 "src/widget.ts(5,10): error TS2304: Cannot find name 'MyWidget'\n"
                 "Found 1 error.\n"
@@ -1419,7 +1431,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
         It must go through the self-repair path so the implementing agent can
         fix the config, not be short-circuited as tooling_unavailable.
         """
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 1, "Error: Loader: not found for .vue files\n"
 
         config = {
@@ -1439,7 +1451,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_vite_plugin_not_found_diagnostic_is_self_repair(self):
         """Vite 'Plugin: not found' diagnostic (rc=1) → self_repair, NOT tooling_unavailable."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 1, "Plugin: not found: @vitejs/plugin-vue\nError: Build failed.\n"
 
         config = {
@@ -1458,7 +1470,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_genuine_code_failure_at_cap_fails_not_tooling_unavailable(self):
         """tsc exit 2 with real diagnostics at cap → failed (not tooling_unavailable)."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 2, "Found 3 errors in 2 files.\n"
 
         config = {
@@ -1477,7 +1489,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_all_pass_unchanged_after_feature(self):
         """All-pass case is unaffected by the new tooling_unavailable path."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = {
@@ -1958,7 +1970,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_pass_payload_includes_test_commands_run(self):
         """Pass payload must include test_commands_run key."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = self._pass_config_with_test("npm test")
@@ -1971,7 +1983,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_per_package_test_command_in_test_commands_run(self):
         """Per-package test_command appears in test_commands_run."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = self._pass_config_with_test("pytest services/api/")
@@ -1982,7 +1994,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_primary_test_command_fallback_for_non_package_file(self):
         """File outside any package → TEST_COMMANDS[0] fallback appears in test_commands_run."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = {
@@ -2012,7 +2024,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_na_test_command_skipped_pass_with_empty_test_commands_run(self):
         """'N/A' test_command → skipped; test_commands_run is empty."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = self._pass_config_with_test("N/A")
@@ -2027,7 +2039,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
         """Two files in the same package → test_command runs once (de-duped)."""
         commands_called = []
 
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             commands_called.append(cmd)
             return 0, ""
 
@@ -2079,7 +2091,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_failing_test_command_at_iteration_0_self_repair(self):
         """Failing test_command at iteration=0 → self_repair, exit 0."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             if cmd == "pytest services/api/":
                 return 1, "FAILED test_widget.py::test_add - AssertionError\n"
             return 0, ""
@@ -2097,7 +2109,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_failing_test_command_at_cap_produces_failed(self):
         """Failing test_command at iteration=SELF_REPAIR_CAP → failed, exit 2."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             if cmd == "pytest services/api/":
                 return 1, "FAILED test_widget.py::test_add - AssertionError\n"
             return 0, ""
@@ -2115,7 +2127,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_missing_test_runner_rc127_tooling_unavailable(self):
         """test_command that returns rc=127 → tooling_unavailable, exit 2."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             if cmd == "missing-test-runner":
                 return 127, "sh: missing-test-runner: command not found\n"
             return 0, ""
@@ -2139,7 +2151,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
         """
         commands_called = []
 
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             commands_called.append(cmd)
             if cmd == "build-fail":
                 return 1, "Build error: missing module\n"
@@ -2198,7 +2210,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
         This is the backward-compatibility case: projects without test config
         must behave exactly as before Phase 2 (no test runs, no failure).
         """
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = {
@@ -2224,7 +2236,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
 
     def test_empty_test_commands_array_backward_compatible(self):
         """Empty TEST_COMMANDS array + no per-package test_command → no test runs, pass."""
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             return 0, ""
 
         config = {
@@ -2254,7 +2266,7 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
         """Confirm test_command is called AFTER build_command in the all-pass case."""
         call_order = []
 
-        def mock_run(cmd, cwd, extra_paths=None):
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
             call_order.append(cmd)
             return 0, ""
 
@@ -2296,6 +2308,210 @@ class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
             "build_command must run before test_command; "
             "call_order={0!r}".format(call_order),
         )
+
+
+# ---------------------------------------------------------------------------
+# _resolve_command_timeout (101-NON-WEB-STACK-READINESS-PLAN.md D1)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCommandTimeout(unittest.TestCase):
+    """Pure-function tests for _resolve_command_timeout(config)."""
+
+    def test_present_valid_integer_string(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": "1200"}), 1200
+        )
+
+    def test_absent_key_falls_back(self):
+        self.assertEqual(_resolve_command_timeout({}), _CMD_TIMEOUT)
+
+    def test_none_value_falls_back(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": None}), _CMD_TIMEOUT
+        )
+
+    def test_unparseable_value_falls_back(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": "abc"}), _CMD_TIMEOUT
+        )
+
+    def test_zero_falls_back(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": "0"}), _CMD_TIMEOUT
+        )
+
+    def test_negative_falls_back(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": "-5"}), _CMD_TIMEOUT
+        )
+
+    def test_float_string_falls_back(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": "1.5"}), _CMD_TIMEOUT
+        )
+
+    def test_whitespace_padded_valid_value(self):
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": " 300 "}), 300
+        )
+
+    def test_huge_digit_string_falls_back_not_overflow_error(self):
+        """A digit string too large to convert to float (roughly 309+
+        digits) falls back to the module constant instead of propagating
+        an unhandled OverflowError all the way to subprocess.run."""
+        huge = "9" * 400
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": huge}), _CMD_TIMEOUT
+        )
+
+    def test_large_but_convertible_value_resolves_to_itself(self):
+        """A large value that IS representable as a float (well under the
+        float-overflow boundary) is NOT treated as out of range."""
+        self.assertEqual(
+            _resolve_command_timeout({"COMMAND_TIMEOUT": str(10 ** 18)}),
+            10 ** 18,
+        )
+
+
+# ---------------------------------------------------------------------------
+# _run_command's timeout= argument (101-NON-WEB-STACK-READINESS-PLAN.md D1)
+# ---------------------------------------------------------------------------
+
+
+class TestRunCommandTimeoutArgument(unittest.TestCase):
+    """_run_command's new timeout= parameter: default + message on expiry."""
+
+    def test_default_timeout_used_when_not_passed(self):
+        """Callers that omit timeout= keep the module constant (regression)."""
+        captured = {}
+
+        def fake_subprocess_run(*args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+            raise subprocess.TimeoutExpired(cmd="slow-cmd", timeout=kwargs.get("timeout"))
+
+        with patch("subprocess.run", side_effect=fake_subprocess_run):
+            rc, output = _run_command("slow-cmd", "/tmp")
+        self.assertEqual(captured["timeout"], _CMD_TIMEOUT)
+        self.assertIn("Command timed out after {0}s: slow-cmd".format(_CMD_TIMEOUT), output)
+
+    def test_custom_timeout_reaches_subprocess_run(self):
+        """An explicit timeout= is the value subprocess.run actually receives."""
+        captured = {}
+
+        def fake_subprocess_run(*args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+
+            class _Result:
+                returncode = 0
+                stdout = ""
+
+            return _Result()
+
+        with patch("subprocess.run", side_effect=fake_subprocess_run):
+            rc, output = _run_command("fast-cmd", "/tmp", timeout=7)
+        self.assertEqual(captured["timeout"], 7)
+        self.assertEqual(rc, 0)
+
+    def test_timeout_message_names_resolved_value_not_module_constant(self):
+        """On expiry, the message names the value PASSED IN, not _CMD_TIMEOUT."""
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="slow-cmd", timeout=7),
+        ):
+            rc, output = _run_command("slow-cmd", "/tmp", timeout=7)
+        self.assertEqual(rc, 1)
+        self.assertIn("Command timed out after 7s: slow-cmd", output)
+        self.assertNotIn("120s", output)
+
+
+# ---------------------------------------------------------------------------
+# cmd_verify_touched integration: COMMAND_TIMEOUT reaches every _run_command
+# call (101-NON-WEB-STACK-READINESS-PLAN.md D1).
+# ---------------------------------------------------------------------------
+
+
+class TestCommandTimeoutIntegration(unittest.TestCase):
+
+    def test_configured_timeout_reaches_run_command(self):
+        """COMMAND_TIMEOUT in project-config.json bounds every _run_command call."""
+        received_timeouts = []
+
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
+            received_timeouts.append(timeout)
+            return 0, ""
+
+        config = dict(_FIXTURE_CONFIG)
+        config["COMMAND_TIMEOUT"] = "300"
+
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+        try:
+            tmpdir = tempfile.mkdtemp()
+            _write_config(tmpdir, config)
+            cmd_verify_touched(
+                FakeArgs(files=json.dumps([]), root=tmpdir, iteration=0)
+            )
+        finally:
+            verify_mod._run_command = original
+
+        self.assertTrue(received_timeouts, "expected at least one _run_command call")
+        for t in received_timeouts:
+            self.assertEqual(t, 300)
+
+    def test_absent_command_timeout_falls_back_to_120(self):
+        """No COMMAND_TIMEOUT key in project-config.json → module constant."""
+        received_timeouts = []
+
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
+            received_timeouts.append(timeout)
+            return 0, ""
+
+        config = dict(_FIXTURE_CONFIG)  # no COMMAND_TIMEOUT key
+
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+        try:
+            tmpdir = tempfile.mkdtemp()
+            _write_config(tmpdir, config)
+            cmd_verify_touched(
+                FakeArgs(files=json.dumps([]), root=tmpdir, iteration=0)
+            )
+        finally:
+            verify_mod._run_command = original
+
+        self.assertTrue(received_timeouts, "expected at least one _run_command call")
+        for t in received_timeouts:
+            self.assertEqual(t, _CMD_TIMEOUT)
+
+    def test_unparseable_command_timeout_falls_back_to_120(self):
+        """An unparseable COMMAND_TIMEOUT value → module constant."""
+        received_timeouts = []
+
+        def mock_run(cmd, cwd, extra_paths=None, timeout=None):
+            received_timeouts.append(timeout)
+            return 0, ""
+
+        config = dict(_FIXTURE_CONFIG)
+        config["COMMAND_TIMEOUT"] = "not-a-number"
+
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+        try:
+            tmpdir = tempfile.mkdtemp()
+            _write_config(tmpdir, config)
+            cmd_verify_touched(
+                FakeArgs(files=json.dumps([]), root=tmpdir, iteration=0)
+            )
+        finally:
+            verify_mod._run_command = original
+
+        self.assertTrue(received_timeouts, "expected at least one _run_command call")
+        for t in received_timeouts:
+            self.assertEqual(t, _CMD_TIMEOUT)
 
 
 if __name__ == "__main__":
