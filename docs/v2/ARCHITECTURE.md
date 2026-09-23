@@ -257,7 +257,7 @@ The `*.md.skeleton` files are transient — `init-doc` writes them, setters edit
 
 ## 4. `/configure` — populate config + substitute templates + prune agents
 
-`/configure` consumes the artifacts emitted by `/init-forge` + `/generate-docs`, fills 36 of 37 configuration fields, renders `.devforge/project-config.json` (45-key substitution map), prunes non-applicable agent files based on the project's natures, and substitutes `{{KEY}}` placeholders across `CLAUDE.md` + the surviving `.claude/agents/*.md` files. Single helper module + single command spec.
+`/configure` consumes the artifacts emitted by `/init-forge` + `/generate-docs`, fills 36 of 38 configuration fields, renders `.devforge/project-config.json` (46-key substitution map), prunes non-applicable agent files based on the project's natures, and substitutes `{{KEY}}` placeholders across `CLAUDE.md` + the surviving `.claude/agents/*.md` files. Single helper module + single command spec.
 
 ### 4.1 Helper architecture
 
@@ -276,14 +276,14 @@ Subcommand surface (~32 subcommands grouped by role):
 | Verbatim docs (3) | `set-project-structure --text` / `set-dev-commands --text` / `set-architecture-details --text` | Multi-line scalar |
 | User prefs (10) | `set-workflow-enforcement` / `set-ai-attribution` / `set-claude-tier-think` / `-do` / `-verify` / `-security` / `set-claude-effort-think` / `-do` / `-verify` / `-security` | Scalar (Q11 tiers are non-enum to allow custom model aliases; the four `claude_effort_*` siblings ARE enum-restricted) |
 | AC verification (4) | `set-ac-verification-mode` / `set-ac-runtime-url` / `set-ac-runtime-api-base` / `set-ac-runtime-cli-command` | Scalar |
-| Render | `render-config` | Atomic JSON write of project-config.json (45 keys) |
+| Render | `render-config` | Atomic JSON write of project-config.json (46 keys) |
 | Apply | `apply-models` (alias `apply-agent-models`, one release) | Rewrites `model:` / `effort:` frontmatter of `.claude/agents/*.md` **and of the eight mapped `.claude/commands/devforge/*.md`** from `CLAUDE_TIER_*` / `CLAUDE_EFFORT_*` (setup Phase 5.4; in `update.sh` after the promoted-command re-emit, plus a pre-merge snapshot normalization). No framework default: an unconfigured tier leaves `model: inherit` on an agent and no `model:` line on a command |
 | Prune | `prune-agents [--apply]` | Walk agents/, delete mismatches (or dry-run JSON) |
 | Substitute | `substitute-templates` | `{{KEY}}` replacement across CLAUDE.md + agents |
 | Verify | `verify` | Required-field + round-trip identity check |
 | Summary | `summary` | Verbatim-echo report (mirrors `init_helper summary`) |
 
-Schema: `FIELD_SCHEMA` carries 37 fields (locked order; emit walks list for diff stability). Three field kinds: `scalar`, `string_array`, `package_stack_array` (the only record kind; 8 fixed subfields). `ENUM_FIELDS` carries 9 entries (`workflow_enforcement` / `ai_attribution` / `ac_verification_mode` / `regression_gate` / `require_ticket` / `claude_effort_think` / `claude_effort_do` / `claude_effort_verify` / `claude_effort_security`); `claude_tier_*` deliberately NOT in ENUM_FIELDS — accepts free-text scalars so users can name custom Claude routes via the Q11 `Other` branch, though the tier setters normalize the four Claude Code aliases (`opus` / `sonnet` / `haiku` / `fable`, matched case-insensitively) to lowercase and pass anything else through unchanged as a pinned model ID.
+Schema: `FIELD_SCHEMA` carries 38 fields (locked order; emit walks list for diff stability). Three field kinds: `scalar`, `string_array`, `package_stack_array` (the only record kind; 8 fixed subfields). `ENUM_FIELDS` carries 9 entries (`workflow_enforcement` / `ai_attribution` / `ac_verification_mode` / `regression_gate` / `require_ticket` / `claude_effort_think` / `claude_effort_do` / `claude_effort_verify` / `claude_effort_security`); `claude_tier_*` deliberately NOT in ENUM_FIELDS — accepts free-text scalars so users can name custom Claude routes via the Q11 `Other` branch, though the tier setters normalize the four Claude Code aliases (`opus` / `sonnet` / `haiku` / `fable`, matched case-insensitively) to lowercase and pass anything else through unchanged as a pinned model ID.
 
 Validation helpers (private):
 - `_validate_scalar` — non-empty after strip
@@ -321,14 +321,14 @@ Phase 6 — lint-ignore             (dry-run → bulk-confirm → lint-ignore --
                                    excludes framework folders from the consumer's
                                    linters by config-file presence; NON-FATAL,
                                    default-SKIP on ambiguous reply)
-Phase 7 — Verify + summary        (verify cross-checks 37-field configure.yaml + 45-key
+Phase 7 — Verify + summary        (verify cross-checks 38-field configure.yaml + 46-key
                                    project-config.json + round-trip identity; summary echoes
                                    field-by-field report verbatim)
 ```
 
 Retry budgets: 3 per setter on validation failure; 3 per bulk-prompt parse failure; on 4th surface-failure-and-continue. Stop discipline: Phase 3 + Phase 5.2 + Phase 6 echoes MUST end assistant turn (plain prose has no harness wait-for-user affordance; explicit "do not advance" directive in spec).
 
-### 4.3 Field-source map (37 configure.yaml + 5 init.yaml + 3 derived = 45 project-config.json keys)
+### 4.3 Field-source map (38 configure.yaml + 5 init.yaml + 3 derived = 46 project-config.json keys)
 
 Detection-derived (24 fields composed in Phase 2):
 - Identity (3): PROJECT_NAME / PROJECT_DESCRIPTION / PROJECT_TYPE
@@ -340,6 +340,8 @@ Detection-derived (24 fields composed in Phase 2):
 
 User-only (12 fields via Phase 4 sequential prompts): WORKFLOW_ENFORCEMENT (Q9) / AI_ATTRIBUTION (Q10) / CLAUDE_TIER_THINK / CLAUDE_TIER_DO / CLAUDE_TIER_VERIFY / CLAUDE_TIER_SECURITY / CLAUDE_EFFORT_THINK / CLAUDE_EFFORT_DO / CLAUDE_EFFORT_VERIFY / CLAUDE_EFFORT_SECURITY (Q11 — four calls, each carrying a tier's model question and its effort question) / AC_VERIFICATION_MODE (Q12) / REQUIRE_TICKET (Q13). (AC runtime triple is a conditional follow-up to Q12, only when mode == runtime-assisted, and is counted with the detection-derived group above.)
 
+Setter-only (2 fields no phase sets — default-only, no prompt, no detection; changed only with their setters, then `render-config`): REGRESSION_GATE (default `full`; `set-regression-gate`) / COMMAND_TIMEOUT (default `120`; `set-command-timeout`).
+
 From `init.yaml` (5 keys, read-through): WORKSPACE_MODE / PROJECT_ROOT / PROJECT_STATE / DEFAULT_BRANCH / PACKAGES_DETECTED.
 
 Derived at render time (3): WRAPPER_MODE_SECTION (preset block; populated only when workspace_mode=wrapper) / COMMIT_ATTRIBUTION (preset block; populated only when ai_attribution=Yes) / AGENT_LIST (alphabetical bullet list of `.claude/agents/*.md` basenames at render time).
@@ -348,7 +350,7 @@ PACKAGE_STACKS record's `framework` field is derived from `_derive_framework_hin
 
 ### 4.4 Agent pruning system
 
-Source agent files at `src/agents/*.md` carry `applies_to: [...]` frontmatter — atomic project-nature values matching the same vocabulary as `project_natures`. The "all" sentinel marks universal-fit agents (architect / code-reviewer / qa-engineer / etc.). Specific atomic values (`web` / `backend` / `mobile`) restrict to those natures.
+Source agent files at `src/agents/*.md` carry `applies_to: [...]` frontmatter — atomic project-nature values matching the same vocabulary as `project_natures`. The "all" sentinel marks universal-fit agents (architect / code-reviewer / qa-engineer / etc.). Specific atomic values (`web` / `backend` / `mobile` / `game`) restrict to those natures.
 
 `scripts/generate-agents.py` propagates `applies_to` through to the installed Claude-Code-native frontmatter (`---` delimited). `_parse_agent_frontmatter` accepts BOTH source ```yaml fence form AND installed `---` form; without the dual-form parser, `prune-agents` would fail on every installed agent (frontmatter format mismatch was an empirical bug surfaced + fixed during testForge20 run).
 
@@ -366,7 +368,7 @@ Source agent files at `src/agents/*.md` carry `applies_to: [...]` frontmatter �
 
 | Category | Count | Source |
 |---|---|---|
-| (A) Direct project-config.json keys | 12 | Verbatim from the 45-key map |
+| (A) Direct project-config.json keys | 12 | Verbatim from the 46-key map |
 | (B) Singular aliases of plural arrays | 10 | `{{FRAMEWORK}}` → comma-join `FRAMEWORKS`, etc. (10 fields: FRAMEWORK / LANGUAGE / BUILD_TOOL / BUILD_COMMAND / TYPE_CHECK_COMMAND / LINT_COMMAND / ERROR_HANDLING / API_LAYER / TESTING / ARCHITECTURE) |
 | (C) Composed | 2 | `{{PACKAGE_STACKS_SECTION}}` markdown table (4 cols: Package \| Language \| Framework \| Build Tool); `{{PROJECT_PATHS}}` comma-join `path` from `packages_detected[]` |
 | (D) Identity passthrough | 1 | `{{UPPERCASE}}` substitutes to literal `{{UPPERCASE}}` (preserves prose explanation of placeholder syntax in CLAUDE.md's "Placeholder Convention" section) |
@@ -385,9 +387,9 @@ Known limitation (cosmetic): substitute engine matches all `{{[A-Z_]+}}` markers
 
 ```
 .devforge/
-  configure.yaml            # canonical 37-field state — single source of truth
+  configure.yaml            # canonical 38-field state — single source of truth
   configure.yaml.lock       # fcntl LOCK_EX sidecar
-  project-config.json       # 45-key render artifact (regenerated each run)
+  project-config.json       # 46-key render artifact (regenerated each run)
 .claude/agents/             # pruned by Phase 5.2 (16 → 12 in testForge20 web case);
                             # surviving agents substituted in place by Phase 5.3
 CLAUDE.md                   # substituted in place

@@ -1,7 +1,7 @@
 # 101 — Non-Web Stack Readiness Plan
 
 **Created**: 2026-09-20
-**Status**: **Phase 0 CLOSED 2026-09-23 by DELEGATION — D8 DECLINED, every other decision and open question ratified as recommended; build phases may start** (`## Phase 0 close record`). Drafted 2026-09-20. ⚠ **Re-verified against the tree on 2026-09-23 and corrected in place, before the close:** each correction is recorded in the text — a *corrected 2026-09-23* marker, or a note naming what the 2026-09-20 draft said — F33–F37 were added, D8's recommendation changed to DECLINE, and D9 and OQ-5 were added. **Phase 5 is a user-driven consumer e2e HARD GATE, DEFERRED and NOT run** — so nothing this plan proposes is consumer-validated, and nothing may later be summarized as if it were. ⚠ **The close changes no evidence class.**
+**Status**: **✅ DONE (build) 2026-09-23 — Phase 0 CLOSED 2026-09-23 by DELEGATION (D8 DECLINED, every other decision and open question ratified as recommended; `## Phase 0 close record`), and Phases 1, 1c, 2, 2b, 3 and 4 BUILT. Phase 1b is NOT built — D8 is declined.** Each built phase carries a `#### Phase N build record — 2026-09-23` directly after its `#### Verify`: its commit, how each Verify line was met, its review outcome where one is on record, and every departure. The build commits ran Phase 2 → 3 → 1 → 1c → 2b, and Phase 4's docs sweep is committed together with its own record. **Phase 5 is a user-driven consumer e2e HARD GATE, DEFERRED and NOT run** — no Unity project exists to run it against — so **"built and build-verified" is the ceiling of every claim here: nothing this plan ships is consumer-validated, and nothing may later be summarized as if it were.** Drafted 2026-09-20. ⚠ **Re-verified against the tree on 2026-09-23 and corrected in place, before the close:** each correction is recorded in the text — a *corrected 2026-09-23* marker, or a note naming what the 2026-09-20 draft said — F33–F37 were added, D8's recommendation changed to DECLINE, and D9 and OQ-5 were added. ⚠ **Neither the close nor the build changes the evidence class: NO consumer incident, none claimed, nothing measured.**
 
 ⚠ **Evidence class, to be repeated in every summary of this plan: NO consumer incident, none claimed, nothing measured.** This is a predicted-gap plan in plan 87's class. **The purpose is a capability, not a port:** the framework should be able to drive Unity work as ongoing work, and the first Unity project it meets is the FIRST CONSUMER and Phase 5's subject — not the reason the plan exists. **No such project exists yet (verified 2026-09-20)**, so Phase 5 is runnable in principle and unrunnable today. ⚠ **A broader purpose is not evidence.** A clean Phase 5 would show the mechanisms behave on planted cases; it would never show that any gap here cost anything.
 
@@ -418,6 +418,30 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - The targeted suite, then the full `tests/lib` suite, is green.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
 
+#### Phase 1 build record — 2026-09-23
+
+**Commit `0786013`. python-reviewer: three passes, 6 findings plus 1 follow-up, all fixed.** ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built.** `command_timeout` / `COMMAND_TIMEOUT` as D1, OQ-1 and OQ-2 ratified it:
+- `_schema.py` — the `FIELD_SCHEMA` scalar and the `FIELD_DEFAULTS` entry `"120"`, both appended last.
+- `_cmds_set.py` / `_cli.py` — `configure_helper set-command-timeout`. The positive-integer check sits inside `cmd_set_command_timeout`, after the existing `_validate_scalar` call, and `_validators.py` still defines five validators. A non-integer, zero, negative or float-unrepresentable value exits 2 with a message naming the field.
+- `_render.py` — the key last in `_PROJECT_CONFIG_KEY_ORDER`, and its three count sites at *"# 38 from configure.yaml"*, *"# Total: 46 keys."* and *"configure.yaml fields: all 38 FIELD_SCHEMA entries."*. `_configure/_cmds_verify.py` — its two count comments, both carrying `38 configure.yaml fields`.
+- `src/devforge/lib/_implement/_cmds_verify.py` — `_resolve_command_timeout` reads the key. `_run_command` gained a `timeout=` parameter defaulting to `_CMD_TIMEOUT`, the signature change D1 left open, and `cmd_verify_touched` passes the resolved value. Both the `timeout=` argument and the *"Command timed out after {0}s: {1}"* message use it. An absent, unparseable, zero, negative or float-unrepresentable value resolves to `_CMD_TIMEOUT` (120).
+
+**Verify, line by line:**
+- **Legacy install** — (a) is pinned by `LegacyUpgradeTests.test_legacy_configure_yaml_backfills_and_passes_verify` in `tests/lib/_configure/test_command_timeout.py`. (b) is pinned in two halves: `test_legacy_project_config_json_reports_exactly_one_violation` asserts the one new `verify` line, *"verify: project-config.json missing key COMMAND_TIMEOUT"*, and `TestCommandTimeoutIntegration.test_absent_command_timeout_falls_back_to_120` in `tests/lib/_implement/test_cmds_verify.py` asserts the consumer's fallback. The post-update WARN is `forge_check_config_completeness` listing that violation (F11). No test names `COMMAND_TIMEOUT` under `tests/scripts/`, and `_LEGACY_MISSING_KEYS` did not gain it (Trap 23).
+- **Round-trip** — `RealProducerRoundTripTests`: the value round-trips through `render-config` as the last key, and `verify` exits 0.
+- **Setter validation** — `SetCommandTimeoutTests`: a non-integer, zero, a negative, a float string, an empty value and an out-of-range digit string are rejected; a positive integer is accepted.
+- **Consumer** — `TestResolveCommandTimeout`, `TestRunCommandTimeoutArgument` (including `test_timeout_message_names_resolved_value_not_module_constant`) and `TestCommandTimeoutIntegration` (key present, absent, unparseable).
+- **Counts** — `FIELD_SCHEMA` 38, `FIELD_DEFAULTS` 8, `_PROJECT_CONFIG_KEY_ORDER` 46, and `ENUM_FIELDS` **9, unchanged** — checked by the orchestrator against the commit. `_cmds_render.py`'s `cmd_render_config` docstring still reads *"with 37 keys"*. It is residual 11 and was left untouched: a grep for `\b(37|45)\b` over `src/devforge/lib/_configure/` returns that one line alone.
+- **Untouched** — ⚠ **the six `git diff`s are not restated here**, because this record was written without `git`. By content, `_cmds_gate.py` still reads `_CMD_TIMEOUT = 120`, `_regression.py` reads `_WORKTREE_TIMEOUT = 120` and `_TEST_TIMEOUT = 600`, `_e2e.py` reads `_E2E_TIMEOUT = 1800`, and `index_helper.py` carries none of `Library`, `Temp`, `Logs` or `UserSettings`.
+- **No second literal** — the key is read at ONE site, `_resolve_command_timeout`'s `config.get("COMMAND_TIMEOUT")`. Its only other appearance under `src/devforge/lib/` is the key-order entry in `_render.py`. Beside the two `_CMD_TIMEOUT` constants of F1 and F5, every hit of `grep -rn "TIMEOUT\s*=" src/` is in a file outside this phase's seven.
+- **Suites** — the full `tests/lib` + `tests/scripts` run: **11825 passed, 0 failures.**
+
+**Departures, recorded:**
+1. **`_summary.py`: the key joins the existing `Per-package` display group**, directly after `test_commands`. That puts a per-project key under a per-package heading, because it bounds exactly the commands the group lists. The phase text named no group, only that the key join an existing one (plan 90's precedent). The reason is in the code comment at that entry.
+2. **The consumer's tests are in `tests/lib/_implement/test_cmds_verify.py`, beside the module they exercise.** The phase text puts them in the per-plan file. `tests/lib/_configure/test_command_timeout.py` carries the schema, setter, round-trip and legacy tests.
+
 ### Phase 1b — Python: the index walk exclusion
 
 ⚠ **NOT BUILT — Phase 0 DECLINED D8 on 2026-09-23 (F33, F34).** The text below is kept as drafted, as the record of the ratified arm Phase 0 did not take; no builder runs it.
@@ -461,6 +485,20 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - **No detection for the new key (OQ-3):** the `git diff` on `src/commands/configure/main.md` shows the four moved sites and nothing else — at `:348`, the count move plus the additions named above — and no probe, timing or detection instruction for `command_timeout` is added anywhere in the file.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
+#### Phase 1c build record — 2026-09-23
+
+**Commit `f47538a`**, the commit directly after Phase 1's `0786013` and in the same working session, as the phase requires. Instruction-only: its one `src/` file is `src/commands/configure/main.md`. ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**Verify, read against the tree on 2026-09-23:**
+- **The four moved sites**, each by its own text: *"38 fields"* in the canonical-state sentence; *"46 keys: 38 from configure.yaml"*; the setter-only paragraph, now naming `regression_gate` and `command_timeout` with *"38 fields"* in its schema clause; and *"all 46 keys"*.
+- **The six unmoved sentences are present by their own text:** *"fills 36 configuration fields"*; *"24 detection-derived values"*, twice; *"apply all 24 Phase 2 values via setters"*; *"These twelve fields"*; *"fully populated (36 fields set)"*; and, on the `all 46 keys` line, *"The 36 configuration fields are persisted"*. ⚠ Their byte-identity rests on the commit's `git diff`, which this record did not run.
+- **No detection for the new key (OQ-3):** `command_timeout` appears on one line of the file, the setter-only paragraph, and no probe, timing or detection instruction names it.
+- **The widened `:348` site**, as recorded at that bullet: the key's description and the closing sentence *"Re-running this command resets both keys to these defaults"* document **residual 15, found during this build**. They fix nothing, and OQ-2's and OQ-3's outcomes stand.
+
+**Departure, recorded:** this plan's own amendments rode in the same commit. They are residual 15; residuals 16 and 17, found during the Phase 3 build and review, which was committed first; and D5's five-line enumeration, made explicit. So the commit touches this plan file beside the spec, and the Verify line *"`git diff --stat` shows exactly one file changed by this phase"* holds for the phase's own edit, not for the commit.
+
+**Review:** instruction-reviewer, **one pass — 0 findings, SHIP-READY.** It covered `src/commands/configure/main.md` and the plan amendment: this phase's scope, residual 15, the matching Honest-bounds bullet, and the counts. It checked every sentence of the two-key paragraph against the Phase 1 code and against the three callers of `verify-touched`.
+
 ### Phase 2 — the `game-engineer` agent
 
 **Route: instruction-author → instruction-reviewer.** ⚠ **Invoke `claude-code-guide` before writing the source** — an agent source becomes a file in a target project's `.claude/agents/`, which is the repo's standing rule for every Claude-Code-integration surface. **(Run 2026-09-23 and DISCHARGED — the results are in `## Phase 0 close record`.)** Commit by explicit path (F30).
@@ -485,6 +523,27 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - **Counts:** `src/agents-AUTHORING.md` reads 20 / 18 / Builders (9), with `game-engineer` in alphabetical position in the membership list; **the pure-reviewer count (6), the Actor (1) and the Specials (2) are byte-identical**, recorded explicitly.
 - `grep -rn "unity-engineer" src/` returns nothing.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
+
+#### Phase 2 build record — 2026-09-23
+
+**Commit `7d188fb`, the first build commit after the close (`99ce1c4`).** The `claude-code-guide` check ran first and is discharged (`## Phase 0 close record`). **instruction-reviewer: one finding, fixed** — the source's `## Boundaries & Handoffs` was brought to the fleet's shape. ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built:**
+- `src/agents/game-engineer.md`.
+- In `src/commands/breakdown/main.md`: the ONE engine-code Agent Assignment row, *"Gameplay code, engine components and scripts, scenes and prefabs, editor tooling — and the game stack's domain models, types, and state | game-engineer"*, and the relay availability line.
+- In `src/commands/plan/main.md`: the relay line.
+- In `src/agents-AUTHORING.md`: the three count sites.
+
+**Verify, read against the tree on 2026-09-23:**
+- **Reachability** — the live-`src/` gates, `tests/lib/test_agent_reachability.py` and `tests/lib/test_memory_lane.py`, are inside both later full `tests/lib` + `tests/scripts` runs: 11825 passed after Phase 1 and 11837 after Phase 2b, each with 0 failures, and both on a tree carrying this phase. ⚠ The standalone `python3 scripts/verify-agent-reachability.py` run and the `generate-agents.py` scratch render are not restated here.
+- **`RELAY_ONLY_ALLOWLIST`** still reads `frozenset()` in `scripts/lib/agent_reachability.py`.
+- **One table row (OQ-4)** — `game-engineer` appears in `src/commands/breakdown/main.md` on the row above and the relay line only. The perf row (*"Performance-critical path or optimization task"*) and the accessibility row (*"Accessibility, design-system compliance, visual-fidelity work on UI files"*) name no `game-engineer`.
+- **Shape** — a fenced ```yaml block carrying `name`, `description`, `model_tier: do` and `applies_to: ["game"]`, with no `tools:`, `model:`, `effort:` or `model_pin` line. The headings run `## Core Expertise` → `## Project Paths` (exactly `{{PROJECT_PATHS}}`) → `## Approach` → `## Boundaries & Handoffs` → `## Rules`. `## Rules` closes with the constitution-and-memory line, the minimal-scope line and the grounding rule.
+- **`## Output` is ABSENT — as a choice** (D4, Trap 20).
+- **Nature match** — `applies_to: ["game"]`, lowercase.
+- **No version-specific API migration table.** `## Approach` states engine-generic obligations and sends version specifics to the constitution, or to existing code when the constitution is silent (D4).
+- `grep -n "\.claude/memory"` over the source and `grep -rn "unity-engineer" src/` each return nothing.
+- **Counts** — *"The roster is **20** agents"*, *"name **18** of them"* and *"### Builders (9)"*, with `game-engineer` between `frontend-engineer` and `migration-engineer` in the membership list. *"### Pure read-only reviewers (6)"*, *"### Actor (1)"* and *"### Specials (2)"* are unmoved (D6).
 
 ### Phase 2b — Python + shell: the new-agent nature filter
 
@@ -513,6 +572,37 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - The targeted suite, then the full `tests/lib` suite, is green.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
 
+#### Phase 2b build record — 2026-09-23
+
+**Commit `33bacb2`, the last build commit. Route as specified: python-engineer → python-reviewer, clean**, as the commit message records. ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built:**
+- **The verb.** `configure_helper decide-agent --file <agent.md>`: `cmd_decide_agent` in `_configure/_cmds_render.py`, beside `cmd_prune_agents`, with its subparser in `_cli.py`. It prints `keep` or `drop` by calling `_parse_agent_frontmatter` and `_decide_agent`. With no `configure.yaml` or no natures it answers `keep`; an unreadable file or a malformed `configure.yaml` exits 1.
+- **The call.** In `update.sh`, ONE call inside the block *"# NEW agents: in the current roster (src/agents/*.md) but NOT in the snapshot."*. A candidate is left out only on an exact `drop` with exit 0; any other outcome keeps it — **fail open**.
+
+**Verify:**
+- **The verb's cases** — `tests/lib/_configure/test_decide_agent.py` holds 13 tests, on the SOURCE form:
+  - KEEP for `["all"]`, for an overlapping `applies_to`, and for a missing or an unparseable one;
+  - DROP for no overlap;
+  - KEEP with no `configure.yaml`, and with `project_natures` unset;
+  - a missing file exits non-zero, and a malformed `configure.yaml` exits 1;
+  - one installed `---`-form case;
+  - the real sources: `game-engineer.md` is dropped for `web` and kept for `game`, and `devils-advocate.md` is kept for `web`.
+- **Exactly ONE call.** `grep -n "decide-agent" update.sh` returns the block's comment and the one call, both inside the `NEW_AGENTS` computation. The preview loop, the `AGENT_WORK` trigger and the execute loop read the filtered set, and the commit message records them as unchanged. D9's single call site held; the two-loop call of D9's first 2026-09-23 wording is its rejected alternative and was not built.
+- **The first-write comment stays true.** An `["all"]` agent is a KEEP, pinned by the `devils-advocate.md` case.
+- **Fail-open, and a DROP writes neither file** — shown by scratch update runs in the session scratchpad, never on a consumer install and never on the frozen benchmark install:
+  - web-nature target → `game-engineer.md` is not previewed, not installed and not in the snapshot;
+  - verb failing (`configure.yaml` unreadable) → delivered;
+  - game-nature target → delivered.
+
+  The commit message records these outcomes, and this file does not reproduce the runs' raw output. ⚠ **This is `update.sh` glue: shown by those runs and by review, never claimed as tested.** The no-Python path is stated, not run.
+- **One rule, one owner** — `def _decide_agent` (`_configure/_render.py`) and `def _parse_agent_frontmatter` (`_configure/_md_parsers.py`) each have ONE definition under `src/devforge/lib/`.
+- **Plan 75's tripwire** — `decide-agent` is no `verify-*` gate, carries no check number, and is no hard-fail validator.
+- **The two `~32 subcommands` sites in `docs/v2/ARCHITECTURE.md`** are PRE-EXISTING staleness and were not edited (Phase 4's build record).
+- **Residual 11** — `cmd_render_config`'s docstring still reads *"with 37 keys"*.
+- **Same release as Phase 2** — both phases sit in the one `## [Unreleased]` entry of `CHANGELOG.md`, so they ship together if that section ships as one release.
+- **Suites** — the full `tests/lib` + `tests/scripts` run: **11837 passed, 0 failures.**
+
 ### Phase 3 — convention sites
 
 **Route: instruction-author → instruction-reviewer.** Consistency edits with **no gate behind them** (D5) — the plan says so rather than implying a mechanism.
@@ -529,6 +619,28 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - **Nothing in this phase is load-bearing:** `python3 scripts/verify-agent-reachability.py` still PASSES, and it passed before this phase ran — which is the point. Record that it was already satisfied by Phase 2.
 - No file in this phase **gains** a severity vocabulary, an `## Output` section or a `tools:` line. ⚠ **`performance-analyst.md` is a pure reviewer that already carries all three** — the assertion is that this phase ADDS none, never that the file has none.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
+
+#### Phase 3 build record — 2026-09-23
+
+**Commit `81a7bbb`**, directly after Phase 2's `7d188fb`, whose agent it names. ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built:**
+- `src/agents/architect.md` — `game-engineer` in the list of specialist engineers that own `/devforge:implement`, and a consult bullet: *"engine object-model/lifecycle choice, scene/prefab structure, engine-serialized data, headless/batch build and test constraints, engine-version-specific API"*.
+- `src/agents/performance-analyst.md` and `src/agents/devops-engineer.md` — each `## Boundaries & Handoffs` deferral line now names `game-engineer`.
+- `src/agents/design-auditor.md` is **excluded by decision** (D5).
+
+**Verify, read against the tree on 2026-09-23:**
+- `grep -rn "game-engineer" src/agents src/commands` returns the Phase 2 sites — `game-engineer.md`, two lines of `breakdown/main.md` and one of `plan/main.md` — plus exactly `architect.md` (two lines), `performance-analyst.md` and `devops-engineer.md`.
+- **`design-auditor.md`** carries no `game` at all. ⚠ Its byte-identity, and the absence of any gained severity vocabulary, `## Output` or `tools:` line in the three edited files, are `git diff` checks, which this record did not run.
+- **Nothing here is load-bearing.** Phase 2's row already satisfies reachability, and the live gate test passed in both later full-suite runs (Phase 2's build record).
+
+**Review, and the residuals it produced — instruction-reviewer, two passes:**
+- **First pass: 1 Low finding, in the PLAN, not in the agent files.** D5's `owning engineer` grep sentence read as an undercount. The author judged the sentence ambiguous: *"two other lines of `performance-analyst.md`"* plus `ac-verifier.md`'s line makes three. The fix spelled the lines out as D5's *"⚠ Made explicit 2026-09-23 — FIVE lines in all"* enumeration, and the reviewer accepted that reading.
+- **The same pass ruled two coverage gaps residuals, not findings**, each one level away from the sentence this phase added. They are **residual 16**, `performance-analyst` naming `game-engineer` with no engine-specific method, and **residual 17**, `devops-engineer` deferring to it with no engine build step.
+- **The three agent-file edits had no findings.**
+- **Second pass**, on the D5 enumeration and residuals 16–17: **0 findings, SHIP-READY.**
+
+The D5 enumeration and residuals 16–17 were committed with Phase 1c.
 
 ### Phase 4 — docs sweep
 
@@ -571,6 +683,88 @@ No code. Every decision (D1–D9) and every open question (OQ-1–OQ-5) gets an 
 - **The `## Entries` entry and the one-line `## Index` entry AGREE with each other** — same phase states, same deferral, same evidence class. Quote one against the other rather than writing each from memory; the archive's own text demands the sync (*"amend BOTH its line here and its entry below"*), and nothing mechanical checks it.
 - ⚠ **No tracked file this sweep writes names a consumer path or a specific product** — not a client, a client component, a client ticket, a benchmark path, a directory or a named project. The subject is Unity work as a capability, and that is how the ledgers name it. ⚠ **This plan file names no consumer path and no specific product either**, so a ledger line that named one would be the first in the set.
 - **Every path this phase did not write — tracked or untracked, other plans' untracked documents included — is unchanged after the commit** (F30): `git status --short` taken before and after the commit agrees on every such path, and the commit names only paths this phase wrote.
+
+#### Phase 4 build record — 2026-09-23
+
+**Docs only — no file under `src/`, `tests/` or `scripts/` was touched.** The sweep ran as two passes, and one commit carries both, together with this record:
+- **Pass one** — `CHANGELOG.md`, `DEVELOPMENT-STATUS.md` and `docs/v2/ARCHITECTURE.md`.
+- **Pass two** — this plan's Status line, its build records, `## Context for next session`, `## When resuming work`, `PLAN-STATUS-ARCHIVE.md`'s two sites, and one clause in each of two `DEVELOPMENT-STATUS.md` lines (recorded under the Verify below). Pass two read every site below LIVE on 2026-09-23, pass one's included.
+
+⚠ **This block records a DOCS SWEEP over a BUILD, not a consumer observation — Phase 5 stays DEFERRED and NOT run.** ⚠ **The sweep moved line digits, so each site is cited by its quoted text first and its digits second.**
+
+**Every site, as an EDIT or an explicit VERIFIED NO-OP:**
+
+1. **`CHANGELOG.md` — EDIT.** `## [Unreleased]` was absent, and the file opened with `## [2.0.12] - 2026-09-20`. It is CREATED directly above that heading, with `### Changed` and ONE entry, `feat(configure,implement,agents,update): …`. The entry runs:
+   - the evidence class FIRST — *"NO consumer incident, none claimed, and nothing measured"*;
+   - the delegated close;
+   - the gap;
+   - what shipped, including Phase 2b's delivery filter, `configure_helper decide-agent` (D9);
+   - the honest bounds, closing on *"Build-verified, NOT consumer-validated"* and the DEFERRED, NOT-run consumer e2e.
+   - **The released plan-94 count line — VERIFIED NO-OP, a deliberate exclusion.** It was drafted as `:40` and is now `:45`, pushed down by the new section. `grep -n "the schema is 37 fields, the render map 45 keys, the enum set 9" CHANGELOG.md` returns it verbatim: a frozen released record (F20's reasoning, Trap 18).
+2. **`DEVELOPMENT-STATUS.md` — EDIT, six changes.** This is live status prose, classified on its own terms:
+   - the heading *"### Agent Templates (20 sources in `src/agents/`"*;
+   - `game-engineer` on the *"By project type:"* line;
+   - Decision 14's *"do — the ten implementation agents"*;
+   - a **New-agent delivery** bullet under `### Update System`;
+   - a sub-bullet under Decision 5, *"The same keep/drop rule applies at delivery since 2026-09-23"*;
+   - Decision 22, *"The project sets its command ceiling, and its natures decide which agents land"*, closing with the evidence class and *"Build-verified, NOT consumer-validated"*.
+
+   A grep for a `36` / `37` / `38` / `45` / `46` field or key count in the file returns nothing.
+   - ⚠ **Found and NOT edited — pre-existing, not this plan's.** The **Three-way merge** bullet under `### Update System` names *".claude/agents/.baseline/"* and *".claude/.baseline/"* as the baseline snapshots, while `update.sh` keeps the agent snapshot under `.devforge/template/` (`AGENTS_SNAP_DIR`, F21). This plan did not cause that staleness (residual 10's class). It is recorded here so that an edit beside the New-agent delivery bullet is a recognised departure, never a drive-by.
+3. **`docs/v2/ARCHITECTURE.md` — EDIT, the EIGHT count sites, each named:**
+   - *"fills 36 of 38 configuration fields"* and *"(46-key substitution map)"* — `:260`, two moves;
+   - *"Atomic JSON write of project-config.json (46 keys)"* — `:279`;
+   - *"`FIELD_SCHEMA` carries 38 fields"* — `:286`;
+   - *"verify cross-checks 38-field configure.yaml + 46-key"* — `:324`, two moves;
+   - *"### 4.3 Field-source map (38 configure.yaml + 5 init.yaml + 3 derived = 46 project-config.json keys)"* — `:331`, two moves, with the `5` and the `3` untouched;
+   - *"| (A) Direct project-config.json keys | 12 | Verbatim from the 46-key map |"* — `:371`, drafted as `:369`;
+   - *"configure.yaml            # canonical 38-field state"* — `:390`, drafted as `:388`;
+   - *"project-config.json       # 46-key render artifact"* — `:392`, drafted as `:390`.
+
+   **The five greps.**
+   - On the swept file, the four drafted value patterns `45-key`, `45 keys`, `37-field` and `37 fields` return **zero lines**, and so do `37 configure.yaml` and `45 project-config`.
+   - Their new-value forms return: `46-key` → `:260`, `:324`, `:371`, `:392`; `46 keys` → `:279`; `38-field` → `:324`, `:390`; `38 fields` → `:286`.
+   - `Field-source map` → `:331`.
+   - **Their union is exactly the eight.**
+
+   **Two NO-MOVES:** *"`ENUM_FIELDS` carries 9 entries"* on the `:286` line, and the direct-keys `12` on the `:371` line.
+
+   **Two further EDITS that no planned grep reached** — Trap 21's third class, the lesson residual 10 records:
+   - **(a) §4.3 gained one line** — *"Setter-only (2 fields no phase sets — default-only, no prompt, no detection; changed only with their setters, then `render-config`): REGRESSION_GATE (default `full`; `set-regression-gate`) / COMMAND_TIMEOUT (default `120`; `set-command-timeout`)."* (`:343`). The section's three groups — 24 detection-derived, 12 user-only, 2 setter-only — now sum to its heading's 38. This line and its blank line pushed the last three count sites down two lines each.
+   - **(b) §4.4 gained `game`** — *"Specific atomic values (`web` / `backend` / `mobile` / `game`) restrict to those natures."* (`:353`). Phase 2's `applies_to: ["game"]` had falsified that sentence, and pass one found it by reading.
+   - **`_FILE_WALK_SKIP_DIRS` prose (drafted `:81`) — VERIFIED NO-OP** (D8 declined; Phase 1b never built). The constant-NAME sweep, `grep -n "_FILE_WALK_SKIP_DIRS" docs/v2/ARCHITECTURE.md`, returns `:81` alone, still naming the sixteen and none of `Library`, `Temp`, `Logs` or `UserSettings`.
+   - **`:80`, *"capped at 500 files"* — NOT edited:** residual 10, pre-existing.
+   - **The two `configure_helper` verb-count sites — VERIFIED NO-OP, PRE-EXISTING staleness,** as Phase 2b's Verify classifies them: *"Subcommand surface (~32 subcommands grouped by role):"* (`:266`) and *"`/configure`'s helper surface is one file with ~32 subcommands"* (`:571`, drafted `:569`).
+   - ⚠ The byte-identity of the lines around `:81`, and of every unedited line, rests on the commit's `git diff`, which pass two did not run.
+4. **Trap 21's constant-NAME sweep for Phase 1's constants — run by this sweep, and classified.**
+   - `grep -n "FIELD_SCHEMA\|_PROJECT_CONFIG_KEY_ORDER"` over `docs/` returns six lines of `docs/v2/ARCHITECTURE.md` and no `_PROJECT_CONFIG_KEY_ORDER` hit.
+     - `:286` is `/configure`'s count, an EDIT above.
+     - `:56` and `:100` are `init_helper`'s own `FIELD_SCHEMA`.
+     - `:446` and `:572` are `constitute_helper`'s.
+     - `:571` names the constant in a reading-order item that states no count and no members.
+   - Over `src/**/*.md` the same grep returns nothing.
+   - §4.3's field groups mirror `FIELD_SCHEMA`'s members without naming it, so this sweep could not reach them either; item 3(a) is that site.
+5. **Repo `CLAUDE.md` — VERIFIED NO-OP; it must stay byte-identical.** A grep for `101`, `PLAN-STATUS-ARCHIVE` or `game-engineer` in it returns nothing. Its byte-identity rests on the commit's `git diff`.
+6. **`PLAN-STATUS-ARCHIVE.md` — EDIT, two sites, one status.**
+   - `## Index`: ONE line appended to the "Currently active" list, directly after the `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md` line.
+   - `## Entries`: this plan's entry, directly after plan 100's.
+   - Nothing else in the file moved.
+   - The two were quoted against each other. They carry the same phase states, the same deferral and the same evidence class, and both call the close a DELEGATION.
+   - **No agent-roster count outside `src/` was edited** (F20). The roster digits in `CHANGELOG.md` and `PLAN-STATUS-ARCHIVE.md` are unchanged; the 20 each new entry states is new text.
+7. **`grep -rn "101-NON-WEB" --include=*.md .` — every hit classified:**
+   - this plan file — its Phase 4 Verify and this record's own quotes of the pattern;
+   - the ledgers — `CHANGELOG.md` (the new entry), `DEVELOPMENT-STATUS.md` ×3 (the New-agent delivery bullet, Decision 5's sub-bullet, Decision 22) and `PLAN-STATUS-ARCHIVE.md` ×2 (the index line and the entry);
+   - `FINDINGS.md` entry 7 — `AGENT_LIST` rendered before prune — which cites this plan as the recorder of F37 / residual 13, not as its owner;
+   - `106-INTAKE-PROVENANCE-CONTINUITY-PLAN.md` ×2, `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` ×1 and `109-REENTRY-CHAIN-CONTINUITY-PLAN.md` ×1, which cite this plan for checkout concurrency and are left alone.
+
+**Verify — the remaining lines:**
+- **"Built and build-verified" is the ceiling of every line this sweep wrote.**
+- **Every ledger line this sweep wrote that cites this plan** names Phase 5 DEFERRED and NOT run, and repeats the evidence class. Those lines are the `CHANGELOG.md` entry; `DEVELOPMENT-STATUS.md`'s New-agent delivery bullet, Decision 5's sub-bullet and Decision 22; this plan's Status line; and the archive's index line and entry.
+- ⚠ **Found and FIXED during this sweep:** as pass one left them, the **New-agent delivery** bullet and Decision 5's sub-bullet cited this plan without naming Phase 5 or restating the evidence class. Pass two appended one short clause to each in its own style: *"no consumer incident, nothing measured, and the consumer e2e on a first real Unity project DEFERRED and NOT run"* inside the bullet's closing parenthesis, and *"No consumer incident, nothing measured, and the consumer e2e on a first real Unity project is DEFERRED and NOT run."* before the sub-bullet's closing *"Build-verified, NOT consumer-validated"*.
+- **The close is called a DELEGATION** everywhere this sweep wrote it, and never a pick.
+- **No file this sweep wrote names a consumer path or a specific product.** The subject is Unity work as a capability.
+- ⚠ **F30's before-and-after `git status --short`**, and the commit naming only the paths this sweep wrote, are checked at commit time, by the session that commits.
+- **Review:** instruction-reviewer, one pass over all five files, **0 findings, SHIP-READY** (2026-09-23). The reviewer had no git tool, so the orchestrator ran the git-dependent checks at commit time: all eight SHAs cited above resolve to the subjects named; `git diff` on `PLAN-STATUS-ARCHIVE.md` adds two lines and removes none; `CHANGELOG.md` removes no line, so every released section is byte-identical; `docs/v2/ARCHITECTURE.md`'s hunks are exactly the eight count sites, the §4.3 Setter-only insertion and the §4.4 `game` edit — `:80` and `:81` are untouched; the repo `CLAUDE.md` has no diff.
 
 ### Phase 5 — Consumer e2e on the first real Unity project — user-driven HARD GATE, DEFERRED, NOT run
 
@@ -669,7 +863,7 @@ The anchors are known-answer cases. **Anchors 1 and 2 are scored as a PAIR.**
 - **No change to the CBM discovery-gate hook.** The briefing suggested exempting non-code extensions from it. ⚠ **The premise is wrong** (F32): the hook fires ONCE per session and applies no extension filter of any kind, so a project with many non-code text files pays exactly one block, the same as any other project. **There is nothing to exempt.** ⚠ **Recorded as REFUTED, not deferred** — it carries no trigger, nothing would revive it, and a future session must not re-raise it as unfinished business.
 - **A new AC runtime channel.** A screenshot or CLI-assertion channel is a separate plan with its own evidence bar; F28 records the gap, and recording it is the whole of this plan's claim there.
 - **An implementer for the other six ownerless natures** (F15). Each needs its own domain knowledge and its own consumer; `game` has a stated purpose behind it and they do not.
-- **Back-porting into shipped installs.** They arrive via `install.sh` / `update.sh` (F21). On upgrade the consumer's behaviour is unchanged — the key is absent from the old `project-config.json`, so the module constant applies — while the post-update check WARNs `project-config.json missing key COMMAND_TIMEOUT` until `/devforge:configure` re-renders (F11). ⚠ **The upgrade is NOT silent**; the 2026-09-20 draft said the back-fill made it so. ⚠ **And a new agent arrives via `update.sh` UNPRUNED** — every `src/agents/*.md` source absent from the install's snapshot, with no `applies_to` check — **until Phase 2b lands the filter Phase 0 ratified (D9, 2026-09-23); after it, an install with no natures set still receives a new agent unpruned** (F21, D9).
+- **Back-porting into shipped installs.** They arrive via `install.sh` / `update.sh` (F21). On upgrade the consumer's behaviour is unchanged — the key is absent from the old `project-config.json`, so the module constant applies — while the post-update check WARNs `project-config.json missing key COMMAND_TIMEOUT` until `/devforge:configure` re-renders (F11). ⚠ **The upgrade is NOT silent**; the 2026-09-20 draft said the back-fill made it so. ⚠ **And a new agent arrives via `update.sh` UNPRUNED** — every `src/agents/*.md` source absent from the install's snapshot, with no `applies_to` check — **until Phase 2b lands the filter Phase 0 ratified (D9, 2026-09-23); after it, an install with no natures set still receives a new agent unpruned** (F21, D9). *(Phase 2b landed on 2026-09-23, `33bacb2`.)*
 - **Any change to `/devforge:verify`'s verdict inputs.** D3 turns a gate off through an existing key; it adds no status, no reason and no blocker.
 - **Anything that touches the frozen benchmark install,** and **any consumer path or specific product in a tracked file** — no client, component, ticket, benchmark path, directory or named project, here or in anything this plan writes.
 
@@ -679,7 +873,7 @@ The anchors are known-answer cases. **Anchors 1 and 2 are scored as a PAIR.**
 
 ⚠ **Evidence class, repeated: NO consumer incident, none claimed, nothing measured.** The purpose is a Unity CAPABILITY, not one port, and **no Unity project exists yet to run Phase 5 against.** ⚠ **A broader purpose is not evidence.** ⚠ **All line digits drift — grep the quoted text, never the digits.**
 
-⚠ **A short index line is not a short plan.** Once Phase 4 writes them, this plan's entry in `PLAN-STATUS-ARCHIVE.md`'s `## Index` "Currently active" list is ONE LINE — by convention and by the one-line constraint Phase 4 records — while this file carries **37 facts (F1–F37), 9 decisions (D1–D9), 5 open questions, 9 phases, 24 traps and 17 residuals**, and the full status record lives in that same file's `## Entries`. ⚠ **Neither exists yet:** on 2026-09-23 `PLAN-STATUS-ARCHIVE.md` names no plan 101, so until Phase 4 runs, this file is the whole record. The `## Index` preamble states it in its own words — of `## Entries`, *"each entry there is the full record and stays the authority"*, and on a status change, *"amend BOTH its line here and its entry below"*. **Read the `## Entries` entry and this file — never the index line alone.**
+⚠ **A short index line is not a short plan.** Phase 4 wrote this plan's line into the "Currently active" list of `PLAN-STATUS-ARCHIVE.md`'s `## Index` on 2026-09-23, and its full status record into the same file's `## Entries`. The line is ONE LINE, by convention and by the one-line constraint Phase 4 records. This file carries **37 facts (F1–F37), 9 decisions (D1–D9), 5 open questions, 9 phases, 24 traps and 17 residuals**, plus a `#### Phase N build record — 2026-09-23` for each built phase. The `## Index` preamble states the rule in its own words: of `## Entries`, *"each entry there is the full record and stays the authority"*, and on a status change, *"amend BOTH its line here and its entry below"*. **Read the `## Entries` entry, this file and its build records — never the index line alone.**
 
 **The one sentence that governs everything here:** a project whose toolchain is measured in minutes and whose language is not on the web path gets a timeout it can configure and a builder that can own its code — a builder `update.sh` withholds from existing installs whose natures exclude `game` (D9), fixed not as a prediction but because delivering it to every install is a certain side effect of this plan's own Phase 2, the ground on which Phase 4 fixes what this plan's own phases falsify — and everything else the framework does badly there — including, since Phase 0 declined D8, the index walk's engine-cache item, which never reaches the codebase graph (F33, F34) — is RECORDED with a trigger rather than guessed at, on one line: **fix what breaks before it can be observed; record what can be observed as it happens.**
 
@@ -729,7 +923,7 @@ The anchors are known-answer cases. **Anchors 1 and 2 are scored as a PAIR.**
 
 **Trap 23 — reading `_LEGACY_MISSING_KEYS` as a schema-drift guard, or believing a `FIELD_DEFAULTS` entry makes an upgrade silent.** `tests/scripts/test_post_update_checks.py`'s `_LEGACY_MISSING_KEYS` is a FIXTURE of the keys observed missing on a real 2.0.9 consumer: a new key WITH a `FIELD_DEFAULTS` entry fails nothing in that file, and appending `COMMAND_TIMEOUT` to it would falsify its *"observed on a real 2.0.9 consumer run"* comment. An entry fills the LOADED state only, so every `project-config.json` rendered before the change reports the key missing, and the post-update check WARNs, until `/devforge:configure` re-renders (F11). ⚠ **The 2026-09-20 draft carried both beliefs** — in Phase 1's test list, in D1's "Why." and in the back-porting non-goal — so a claim that an upgrade is silent is re-derived from the tree before it is repeated.
 
-**Trap 24 — treating `update.sh`'s new-agent install as nature-scoped, or reading `AGENT_LIST` as the post-prune roster.** `update.sh` installs every `src/agents/*.md` source absent from the install's snapshot, and nothing in the file checks `applies_to` or `project_natures` (F21) — so, until Phase 2b lands (D9, ratified at Phase 0 on 2026-09-23), `game-engineer.md` reaches every existing install of every nature — and after it lands, every install with no natures set still receives it (D9). ⚠ **Phase 2b filters ONCE, where `NEW_AGENTS` is computed, over the SOURCE form** — a filter placed in the preview or the execute loop instead is D9's rejected alternative, not an equivalent. And `render-config` reads `.claude/agents/` BEFORE `prune-agents` deletes anything, with no re-render after, so `project-config.json`'s `AGENT_LIST` — and the `{{AGENT_LIST}}` substituted from it — name agents prune has already dropped (F37). ⚠ **`/devforge:configure`'s own Phase 5 intro states the opposite** — that pruning after the render keeps `{{AGENT_LIST}}` from advertising dropped agents — so read the code, not that sentence.
+**Trap 24 — treating `update.sh`'s new-agent install as nature-scoped for every install, or reading `AGENT_LIST` as the post-prune roster.** Before Phase 2b, `update.sh` installed every `src/agents/*.md` source absent from the install's snapshot, and nothing in the file checked `applies_to` or `project_natures` (F21). ⚠ **Phase 2b landed on 2026-09-23 (`33bacb2`).** The `NEW_AGENTS` computation now asks `configure_helper decide-agent` once per candidate, so an install whose natures exclude `game` no longer receives `game-engineer.md`. **Every install with no natures set still receives it, and a verb error keeps it** (D9, fail-open). ⚠ **Phase 2b filters ONCE, where `NEW_AGENTS` is computed, over the SOURCE form** — a filter placed in the preview or the execute loop instead is D9's rejected alternative, not an equivalent. And `render-config` reads `.claude/agents/` BEFORE `prune-agents` deletes anything, with no re-render after, so `project-config.json`'s `AGENT_LIST` — and the `{{AGENT_LIST}}` substituted from it — name agents prune has already dropped (F37). ⚠ **`/devforge:configure`'s own Phase 5 intro states the opposite** — that pruning after the render keeps `{{AGENT_LIST}}` from advertising dropped agents — so read the code, not that sentence.
 
 **File anchors:**
 
@@ -752,8 +946,8 @@ The anchors are known-answer cases. **Anchors 1 and 2 are scored as a PAIR.**
 - `src/commands/breakdown/main.md` — the Agent Assignment table, its not-generated arm, the relay line, `verify-agent-roster`.
 - `src/commands/plan/main.md` — the relay line.
 - `src/commands/configure/main.md` — **Phase 1c's ONLY file**: four sites move — the `:348` paragraph widened during the build (residual 15) — six do not; `:116` is the `PROJECT_TYPE == "game"` → `game` composition rule D4 rests on (read-only).
-- `docs/v2/ARCHITECTURE.md` — **Phase 4, EIGHT falsified count sites** (`:260`, `:279`, `:286`, `:324`, `:331`, `:369`, `:388`, `:390`), with the `ENUM_FIELDS` 9 at `:286` and the direct-keys `12` at `:369` byte-unchanged — ⚠ **and `:81` SEPARATELY**: the prose enumeration of `_FILE_WALK_SKIP_DIRS`'s members, falsified by **Phase 1b** rather than by Phase 1, reached by no count grep — and, Phase 1b never built (D8 declined), recorded by Phase 4 as a VERIFIED NO-OP (Trap 21).
-- `CHANGELOG.md:40` — **read-only, never edited**: a released entry's frozen count record (Phase 4, F20's reasoning).
+- `docs/v2/ARCHITECTURE.md` — **Phase 4, EIGHT falsified count sites** (`:260`, `:279`, `:286`, `:324`, `:331`, `:369`, `:388`, `:390`), with the `ENUM_FIELDS` 9 at `:286` and the direct-keys `12` at `:369` byte-unchanged — ⚠ **and `:81` SEPARATELY**: the prose enumeration of `_FILE_WALK_SKIP_DIRS`'s members, falsified by **Phase 1b** rather than by Phase 1, reached by no count grep — and, Phase 1b never built (D8 declined), recorded by Phase 4 as a VERIFIED NO-OP (Trap 21). ⚠ **Digits as drafted.** After Phase 4, the last three count sites read `:371`, `:390` and `:392`: §4.3's new Setter-only line pushed them down two. Phase 4 also edited §4.4's natures sentence. Both are in Phase 4's build record.
+- `CHANGELOG.md:40` — **read-only, never edited**: a released entry's frozen count record (Phase 4, F20's reasoning). ⚠ It is `:45` after Phase 4 added the `## [Unreleased]` section above it. Grep its text: *"the schema is 37 fields, the render map 45 keys, the enum set 9"*.
 - `scripts/verify-agent-reachability.py`, `scripts/generate-agents.py` — run, never edited.
 
 ---
@@ -761,15 +955,21 @@ The anchors are known-answer cases. **Anchors 1 and 2 are scored as a PAIR.**
 ## When resuming work
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation.
-2. **Read `## Phase 0 close record` first.** It reads CLOSED 2026-09-23, by DELEGATION: D8 declined, every other item ratified as recommended. **The record — not the decisions above it — says which phases are to be built, in what order, and which are never built.**
-3. **Re-verify F1–F37 against the live tree.** Grep the quoted text, never the digits: `_CMD_TIMEOUT`, `Command timed out after`, `SELF_REPAIR_CAP`, `Stop at first failure`, `not recognized as an internal or external command`, `_WORKTREE_TIMEOUT`, `_DEP_DIRS`, `baseline-failing`, `_E2E_TIMEOUT`, `FIELD_DEFAULTS`, `_PROJECT_CONFIG_KEY_ORDER`, `two independent config readers`, `applies_to`, `The roster is`, `### Builders (`, `_FILE_WALK_SKIP_DIRS`, `_MAX_FILES_PER_PACKAGE`, `_list_package_files`, `packages_detected`, `_SKIP_EXTENSIONS`, `prefer false negatives over false positives`, `files_for_finders`, `cbm-code-discovery-gate`, `AC_RUNTIME_CLI_COMMAND`, `_run_index_repository`, `_enumerate_concerns`, `NEW_AGENTS`, `_read_agent_list`, `_parse_agent_frontmatter`, `configure.yaml fields: all 37 FIELD_SCHEMA entries`, `project-config.json with 37 keys`, `Closed vocabulary`, `` `"game"` → `game` `` — the last two re-verify F14 and Trap 3's pairing in `src/commands/configure/main.md`. ⚠ **The composition rule is greppable only in that form:** the file writes it inside the bullet that opens `PROJECT_TYPE == "data pipeline"`, so `PROJECT_TYPE == "game"` — this plan's paraphrase of it — matches nothing.
-4. **Re-run the two counts rather than quoting F10 and F15.** Both were obtained by EXECUTING modules on 2026-09-20; another session's landed work moves them.
-5. **Build order: 1 → 1c → 2 → 2b → 3 → 4.** Phase 1 and Phase 2 are mutually independent. **Phase 1b is never built — Phase 0 declined D8 on 2026-09-23.** **Phase 1c follows Phase 1 and must land in the same working session as it**: it states the counts Phase 1 creates, so between the two the command spec is false. Phase 3 follows Phase 2 (it names the agent Phase 2 creates). **Phase 2b — D9 ratified — follows Phase 2 and lands in the same release as it** — its scratch-update Verify needs the agent Phase 2 creates, and a release carrying Phase 2 without it delivers `game-engineer.md` to every existing install. Phase 4 runs last, because it records what the earlier phases did.
+2. **Read the Status line, then each build record.** Phases 1, 1c, 2, 2b, 3 and 4 each carry a `#### Phase N build record — 2026-09-23` directly after their `#### Verify`: the commit, how each Verify line was met, the review outcome where one is on record, and every departure and residual the build produced. **`## Phase 0 close record` says which phases were in scope and why.** It reads CLOSED 2026-09-23, by DELEGATION: D8 declined, every other item ratified as recommended.
+3. **Re-verify F1–F37 against the live tree.** ⚠ **Nine facts describe the tree BEFORE the build, and the build changed each of them by design:** F1, F2, F9 and F10 (Phase 1); F15, F16, F19 and F20 (Phase 2); and F21 (Phase 2b). A mismatch in one of those is the build, not drift, so read that phase's build record before treating it as drift. Grep the quoted text, never the digits: `_CMD_TIMEOUT`, `Command timed out after`, `SELF_REPAIR_CAP`, `Stop at first failure`, `not recognized as an internal or external command`, `_WORKTREE_TIMEOUT`, `_DEP_DIRS`, `baseline-failing`, `_E2E_TIMEOUT`, `FIELD_DEFAULTS`, `_PROJECT_CONFIG_KEY_ORDER`, `two independent config readers`, `applies_to`, `The roster is`, `### Builders (`, `_FILE_WALK_SKIP_DIRS`, `_MAX_FILES_PER_PACKAGE`, `_list_package_files`, `packages_detected`, `_SKIP_EXTENSIONS`, `prefer false negatives over false positives`, `files_for_finders`, `cbm-code-discovery-gate`, `AC_RUNTIME_CLI_COMMAND`, `_run_index_repository`, `_enumerate_concerns`, `NEW_AGENTS`, `_read_agent_list`, `_parse_agent_frontmatter`, `configure.yaml fields: all 38 FIELD_SCHEMA entries` (`37` before Phase 1), `project-config.json with 37 keys` (residual 11, untouched), `Closed vocabulary`, `` `"game"` → `game` `` — the last two re-verify F14 and Trap 3's pairing in `src/commands/configure/main.md`. ⚠ **The composition rule is greppable only in that form:** the file writes it inside the bullet that opens `PROJECT_TYPE == "data pipeline"`, so `PROJECT_TYPE == "game"` — this plan's paraphrase of it — matches nothing.
+4. **Re-run the two counts rather than quoting F10 and F15.** Both were obtained by EXECUTING modules on 2026-09-20; another session's landed work moves them, and this plan's own build moved both (the Phase 1 and Phase 2 build records).
+5. **The build order is history now.** The plan listed 1 → 1c → 2 → 2b → 3 → 4. The commits ran 2 (`7d188fb`) → 3 (`81a7bbb`) → 1 (`0786013`) → 1c (`f47538a`) → 2b (`33bacb2`), then Phase 4's docs commit. That order honours every dependency the plan states:
+   - Phase 1c directly after Phase 1, in the same working session;
+   - Phase 3 and Phase 2b after Phase 2;
+   - Phase 4 last;
+   - Phase 2b in the same `## [Unreleased]` release section as Phase 2.
+
+   **Phase 1b is never built — Phase 0 declined D8 on 2026-09-23.**
 6. **Route every edit through the house flow:**
    - python-engineer → python-reviewer for every Python edit (Phases 1 and 2b **only** — Phase 1b is never built, D8 declined; Phase 2b's `update.sh` edit rides the same route), with a test per function, run in the same turn;
    - instruction-author → instruction-reviewer for every markdown edit — **including Phase 1c, which is instruction-only despite its letter**;
    - `claude-code-guide` for every new Claude-Code-integration fact — the check owed before Phase 2 writes the agent source was run on 2026-09-23 and is discharged (`## Phase 0 close record`).
 7. **Commit by explicit path, never `git add -A`.** Re-read `git status` first (F30).
 8. **After each phase, cross-check.** Grep every key, verb, constant and heading touched — `COMMAND_TIMEOUT`, `command_timeout`, `game-engineer`, `Builders (`, `RELAY_ONLY_ALLOWLIST`, and D9's verb once Phase 2b names it — and fix any dangling reference in the SAME change. ⚠ **For the count move, grep FIVE patterns, not one** — `37 fields`, `37-field`, `45 keys`, `45-key` **and `Field-source map`** — and classify every hit as a site that moves, a site that does not, or a frozen historical record that is never touched (Phase 1c, Phase 4, Trap 18). ⚠ **Then run a SECOND sweep of a different KIND: grep the NAME of every constant a phase edited** — `FIELD_SCHEMA`, `_PROJECT_CONFIG_KEY_ORDER` (and `_FILE_WALK_SKIP_DIRS` only had Phase 1b been built — D8 declined, so no phase edits it) — across `docs/` and `src/`, **because a doc that mirrors a constant's MEMBERS rather than its count is falsified by an edit no value-grep can see** (`docs/v2/ARCHITECTURE.md:81` is the worked example; Trap 21).
-9. **Run Phases 1, 1c, 2, 2b, 3 and 4 — never Phase 1b, which Phase 0 declined with D8 — then leave Phase 5 to the maintainer**, and leave every D7 observation undecided until that run produces it.
+9. **The next action is Phase 5, and it is the maintainer's.** Phases 1, 1c, 2, 2b, 3 and 4 are BUILT (2026-09-23), and Phase 1b is never built, because Phase 0 declined it with D8. Phase 5 is user-driven. It runs when the framework meets its first real Unity project — none exists — and never on the frozen benchmark install. Leave every D7 observation undecided until that run produces it. A fix proposed from a RECORDED observation re-enters at Phase 0 as a new decision; a failed SCORED anchor is a defect of the phase it scores (Phase 5's Verify).
 10. **Keep the evidence class attached.** Any summary of this plan repeats it: NO consumer incident, none claimed, nothing measured — and no Unity project existed to run Phase 5 against when the plan was written. ⚠ **The plan's purpose is a capability, not a port, and the purpose is not evidence.**
