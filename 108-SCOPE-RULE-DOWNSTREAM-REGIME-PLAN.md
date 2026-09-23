@@ -1,0 +1,592 @@
+# 108 — Scope Rule Downstream Regime Plan
+
+**Created**: 2026-09-21
+**Status**: **Phase 0 CLOSED 2026-09-21 by a blanket maintainer directive — D1–D7 and OQ-2 ratified as recommended, OQ-1 MOOT by D2's outcome. Build phases MAY start. NOTHING IS BUILT.** Every decision and both open questions keep their recommendation and their strongest counter-argument, unshortened; see `### Phase 0 close record`. ⚠ **The maintainer works the open plans in NUMERIC ORDER, and 101, 102, 104, 105, 106 and 107 are open and lower-numbered, so this plan's build comes after theirs. Every `file:line` here was verified on 2026-09-21 and WILL have drifted by then — `## When resuming work` step 3's re-verification is the FIRST action of any build session, not an optional one.** ⚠ **Numbered 108 because 100, 101, 102, 104, 105, 106 and 107 are taken in this checkout as of 2026-09-21 and the gap at 103 was vacated by an earlier renumbering — 103 is not a missing plan.** ⚠ **Other sessions work in this same checkout and may take 108 first; a resuming session re-checks the number before trusting it.**
+
+An always-on rule in the emitted `CLAUDE.md` sets a universal default that one lifecycle stage structurally cannot execute, and the command at that stage says the opposite in its own text. **The fix moves the RULE, not the command** — and it moves it by giving the fact a single owner rather than by adding a second regime, because the rule restating a per-command outcome is what produced the clash in the first place (`### Root cause`).
+
+---
+
+## Origin & evidence
+
+⚠ **Evidence class, to be repeated in every summary of this plan: a contradiction read directly out of two files in THIS tree — NO consumer incident, NO measurement, NO run.** The clash was surfaced by a consumer pipeline run relayed from outside this repo; everything below was re-derived here by grep on 2026-09-21. **This plan names no client, install, repo, branch, ticket or product from that run.** The shape, and only the shape: a run reached the `/devforge:plan` surface arm, read the emitted `CLAUDE.md` rule beside it, and could not satisfy both.
+
+⚠ **Line digits drift — grep the quoted text, never the digits.** Every `file:line` below was read against this tree on 2026-09-21.
+
+### The verified anchors (2026-09-21)
+
+**Anchor A — the always-on default.** `src/CLAUDE.md:230`, `## Key Rules` → `### Always` item 17, **Scope follows what the user sees**. Its last three sentences, verbatim:
+
+> Deciding it yourself — handed back or never asked — cover it unless you can name what the user would see differently without it; record any exclusion as yours, with that reason, and tell the user. A surface that only shares code is neither covered nor raised. Ask a present user about a surface you suspect but cannot evidence; deciding yourself, leave it an open question, never silently covered or excluded.
+
+The first of those three is the sentence that matters: **the model deciding alone — handed back or never asked — covers the surface.**
+
+**Anchor B — the command's opposite outcome.** `src/commands/plan/main.md:413`, Phase 1.3 sub-question 6, **the surface arm — the SECOND non-decision arm in that sub-question.** ⚠ **The FIRST non-decision arm in the same sub-question concerns a §6 entry and is NOT in conflict; see the trap.** Verbatim:
+
+> A reply to that escalation that decides nothing — one that hands the decision back to you, or free text that neither covers the surface nor leaves it out — is not a decision: ask once more, and if the second reply again decides nothing, the surface stays uncovered — tell the user that the surface stays uncovered and that covering it needs a revision of the spec, add it to the plan's Risk Assessment as: "<surface> (<what the user sees there>) shows the feature, but the spec does not cover it — left uncovered; the user did not decide it", and list it on the Phase 3 approval summary's `**Unconfirmed exclusions**:` line.
+
+### The three divergences — three, not one
+
+They are stated as three because a fix that closes one leaves the other two standing.
+
+1. **Default.** `cover it` (Anchor A) versus `the surface stays uncovered` (Anchor B).
+2. **Attribution.** `record any exclusion as yours` (Anchor A) versus `the user did not decide it` (Anchor B).
+3. **Reason.** Item 17 requires a **named user-visible difference** behind any exclusion the model makes; the `/devforge:plan` arm requires **none** — it records the non-decision itself as the reason.
+
+### Why the clash cannot be resolved by reading harder
+
+**Anchor C — the other always-on rule points the other way.** `src/CLAUDE.md:239`, `### Never` item 7, **Never record your choice as the user's**, says:
+
+> At a question that decides what the run does, ask the same question once more, and on a second such reply take the option the command names for that reply; where the command names none, end the turn having written nothing.
+
+**That sentence has two branches, and `/devforge:plan` is in the first: it names an option for that reply, and the option it names is `uncovered`.** ⚠ **The second branch — *"where the command names none"* — governs a command that names no outcome, and D2's reason 3 under the "Why (c)" list is where that case matters; it is stated there once and nowhere else.** **So `Never` 7 points at the command while `Always` 17 points at `cover`. Two rules of equal authority in the same emitted file point in opposite directions** — there is no reading of `CLAUDE.md` that satisfies both, and a reader who "resolves" it by leaning on one has simply picked a side without saying so.
+
+**Anchor D — the constitution does not arbitrate.** `src/constitution.md:238`, `### 6.1 Minimal Changes [universal]`, ends:
+
+> Which user-facing surfaces a change covers is set by what the user sees, never by the code that reaches them: a bug fix changes the bug everywhere the user sees it, a feature changes every surface that shows it, and "as little code as possible" governs how each of those surfaces is changed, never which of them count.
+
+That sentence sets **WHICH surfaces count**, never **what to do on a non-decision**. `### Always` item 2 makes the constitution outrank `CLAUDE.md` (*"Constitution is law"*), and outranking settles nothing here, because §6.1 carries no hand-back default to outrank the conflicting one with.
+
+### The structural reason `/devforge:plan` cannot simply obey item 17
+
+**Anchor E.** Sub-question 6 states the limit in its own text, in the sentence that introduces the surface escalation:
+
+> the spec defines what the feature covers, and this command adds no affected area and no acceptance criterion to `spec.md`
+
+Covering a surface the approved spec does not cover therefore requires a revision of that spec. **"Cover it" is not an action available at that stage.** This is the whole reason the fix moves the rule rather than the command: obeying item 17 at `/devforge:plan` would mean writing into an artifact the command is forbidden to write into.
+
+### The second hole, in the OPPOSITE direction — and the strongest argument for this plan
+
+**Anchor F.** `grep -rln "user-facing surface\|shows the feature" src/commands/breakdown src/commands/implement src/commands/fix src/commands/review src/commands/verify` returns **no hits** (verified 2026-09-21; each of the five directories greps to zero independently). **Those five commands carry no surface rule of their own, so a surface met there is governed by the always-on rule ALONE — and the always-on rule currently says `cover it`.** At `/devforge:implement` that reads as a mandate to build a surface the approved spec does not cover.
+
+⚠ **Label this honestly in every summary: PREDICTED from the text, never observed. Nothing was measured.**
+
+**The shipped record already recognizes the exposure, which is what makes the prediction more than a reading.** `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:297`, inside its D5, states:
+
+> Item 17's "never asked" arm still governs the commands that decide without asking: research's Step 2b classification, `/devforge:implement`, `/devforge:fix`, `/devforge:review` and `/devforge:verify`.
+
+And `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md:248`, inside its D8, states the same disposition as a deliberate non-edit — *"discovering a new surface there rides the always-on rule alone"* — with a named revisit trigger at `:249`: *"an observed exclusion at one of those stages."* ⚠ **That trigger has NOT fired, and this plan is not it firing.** No exclusion was observed at any of those stages. What was found is that **the rule those commands ride contradicts itself**, and it was found at a different command entirely — `/devforge:plan`, which plan 99's D8 list does not name because that command has an arm of its own.
+
+⚠ **Two different lists.** Plans 99 and 100 name **four** commands (`/devforge:implement`, `/devforge:fix`, `/devforge:review`, `/devforge:verify`). Anchor F's grep covers **five**, adding `/devforge:breakdown`, which greps to zero as well and which neither plan's list names. **Do not conflate the lists when re-deriving this.**
+
+### Provenance — both sides landed in the same build
+
+**Anchor G.** `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`'s `**What landed:**` list records them as items 1 and 5 of one build:
+
+- Item 1 (`:458`): *"**1a — `src/CLAUDE.md` (D1, as amended by D10).** `### Always` item 17, **Scope follows what the user sees**: D10's text, 152 words in six sentences, the longest item in either list. Items 1–16 are byte-identical."*
+- Item 5 (`:487`, third bullet at `:492`): *"no decision → ask once more; on a second reply that again decides nothing, the surface stays uncovered, with a Risk Assessment row, an entry on the PHASE 3 line, and the user told."*
+
+`100-SCOPE-RULE-FOLLOW-UPS-PLAN.md`'s D10 escalation table re-recorded the arm at `:375` — *"the surface stays uncovered; a Risk row and `**Unconfirmed exclusions**:` (plan 99)"* — and its D5 (`:293`) separately decided **NO edit** to item 17, for an unrelated reason (how "a present user" reads), recording at `:299` that *"`src/CLAUDE.md` stays byte-identical; Phase 3's Verify checks it."*
+
+**Neither plan names the clash.** Plan 99's `## Residuals (found during the build, not fixed)` lists six items and this is not among them; plan 100's decisions run D1–D14 and none of them is this. ⚠ **Both plans are DONE and CLOSED: this plan amends neither of them and edits neither file.**
+
+### The contradiction also shipped inside ONE changelog entry
+
+**Anchor H.** `CHANGELOG.md:14`, the plan-99 entry under `## [2.0.12]`, carries both halves:
+
+> when the model decides it, the surface is covered unless the model can name what the user would see differently without it, and any exclusion is recorded as the model's own
+
+and, later in the same entry:
+
+> no decision after one re-ask → the surface stays uncovered, with a Risk Assessment row, the PHASE 3 line and a word to the user
+
+⚠ **That entry is the historical record of what shipped and is NOT rewritten by this plan.** `PLAN-STATUS-ARCHIVE.md:256`, inside the plan-99 entry under `## Entries`, carries the same cover-default half (*"evidenced → cover unless it names what the user would see differently"*) and is likewise NOT rewritten.
+
+### The derivative that DOES get amended
+
+**Anchor I.** `DEVELOPMENT-STATUS.md:114`, numbered item **20**, repeats the universal default:
+
+> when the model decides it, the surface is covered unless the model can name what the user would see differently
+
+⚠ **Item 20 there, item 17 in the emitted file — do not conflate the two numbers.** It must move in the same change or it becomes the next session's ground truth.
+
+### The emission path
+
+**Anchor J.** `src/manifest.json:26-28` maps the source to the target — the three lines of that object, quoted as they read: `"source": "generated:coreLLM"`, `"target": "CLAUDE.md"`, and
+
+> "description": "Sourced from src/CLAUDE.md. Three-way merge against .devforge/template/CLAUDE.md preserves project customizations."
+
+So the contradiction is **live in consumer installs**, and the fix reaches an install only through `update.sh`'s three-way merge.
+
+### Root cause
+
+**The defect is not a wrong word in item 17. It is an always-on rule restating a per-command outcome, with no single owner for the fact.**
+
+Item 17's `cover it` is **a restatement of `/devforge:specify`'s default.** The command carries it at `src/commands/specify/main.md:399` (*"The value is `cover <surface>`, unless you can name what the user would see differently because that surface is left out"*), and item 17 carries a second copy of the same norm. **Two copies agreed for as long as `/devforge:specify` was the only stage that met a surface.** They stopped agreeing the moment a third stage appeared with an arm of its own (Anchor B) — not because either copy was written badly, but because a copy has no way to know the other one has grown a case it does not have.
+
+**The prevention is single ownership: the rule owns the invariant and the definition; the command owns the outcome.** `## Honest bounds` already records that nothing mechanical will ever catch a violation of item 17, and the same is true of a semantic contradiction between a rule and a command arm — **no check can be written for it.** De-duplication IS the prevention here, and it is the only one available.
+
+⚠ **This is what disqualifies D2's candidates (a) and (b), and it disqualifies them on principle rather than on taste.** Both restate `/devforge:plan`'s OUTCOME inside item 17 — *"leave it uncovered, record that no one decided it, say a spec revision is needed"*. Adopting either would leave item 17 restating **`/devforge:specify`'s default AND `/devforge:plan`'s outcome**: three copies of one norm and **two** independent drift seams where there is one today. **A fix that adds a copy is a fix that schedules its own recurrence.** ⚠ **A future session must not read (a) and (b) as merely "less preferred wording" — they are rejected for reproducing the cause.**
+
+---
+
+## The fix
+
+**Give the fact a single owner: the rule owns the invariant and the definition; the command owns the outcome.** Item 17 states what covering IS and therefore which stage can do it, and says nothing about what any stage does when it cannot. `/devforge:plan` keeps its outcome — the re-ask, the Risk Assessment row, the `**Unconfirmed exclusions**:` entry — in its own file, and `/devforge:specify` keeps its default in its own file. **Neither command is edited.** The rule's `Deciding it yourself …` sentence is replaced by a sentence that derives the limit from the definition of covering instead of restating anyone's outcome. **This is Option SINGLE-OWNER below; its wording is D2 candidate (c), and D2 is where those exact words are ratified.**
+
+**FOUR options were weighed. All three rejected ones are recorded with their reasons, so that a future session does not rediscover any of them as a fresh idea:**
+
+⚠ **A departure from house form, flagged rather than left to be noticed:** this plan labels its options by NAME where plans 99 and 100 labelled theirs by letter, because capital letters are already spoken for here by Anchor A–J and a second capital-letter series in the same document is a collision.
+
+- **Option MOVE-THE-COMMAND** — move `/devforge:plan` to the rule: make the second non-decision take the cover branch as the model's own choice. **Rejected** because "cover" at `/devforge:plan` is not plan-local (Anchor E); because the outcome would stop being an exclusion — the `**Unconfirmed exclusions**:` line lists *"a §6 exclusion left standing, or a surface left uncovered"* (`CHANGELOG.md:14`), and a covered surface is neither, so this option leaves the outcome with no home on the approval summary, and plan 100's D8 already declined to widen that line, recording at `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:352` that *"That line's definition covers sub-question 6's non-decisions only"*; and because it effectively bounces the pipeline back to `/devforge:specify` on a user's silence. ⚠ **Recorded as rejected-but-coherent: this is the option that keeps rule 17 strongest, and a maintainer who values that above pipeline flow should pick it deliberately rather than let D1 pass by default.**
+- **Option ESCAPE-CLAUSE** — move the rule to the command: add "where a command names the outcome, it stands". **Rejected under this repo's zero-escape-hatch policy** (`CLAUDE.md`, `## Meta-discipline`), which names "if X except Y" and any equivalent slip-path as the thing to close before adopting a rule. That clause is a textbook escape hatch: every future command could name an outcome and exit the rule.
+- **Option LIFECYCLE-REGIME** — make rule 17 lifecycle-aware: keep the `cover it` default where covering is available and **append one sentence** naming a second regime — after a spec is approved, covering a surface it does not cover takes a revision of that spec, so a downstream command raises the surface and, on a reply that decides nothing, leaves it uncovered, records that no one decided it, and says covering it takes a spec revision. **This was the first option briefed for this plan, and it is rejected in favour of Option SINGLE-OWNER** for the reason `### Root cause` gives: it makes item 17 restate `/devforge:plan`'s outcome on top of the `/devforge:specify` default it already restates — three copies, two seams. ⚠ **Option LIFECYCLE-REGIME's wordings are D2's candidates (a) and (b); ratifying either of those ratifies this option, and the two records point at each other.** ⚠ **Recorded as rejected-but-coherent as well: it is a pure append and therefore the smallest possible blast radius on a file another session is editing, which is the one thing it has over Option SINGLE-OWNER.**
+- **Option SINGLE-OWNER — RECOMMENDED.** The shape described above: item 17 states what covering IS and which stage can therefore do it, and restates no command's outcome. ⚠ **Its wording is D2 candidate (c), and only (c)** — the other two candidates belong to Option LIFECYCLE-REGIME. **The argument for it is made in D2, not here.**
+
+---
+
+## Decisions to ratify
+
+Nothing below is ratified. **(Drafting-time text, kept as drafted — Phase 0 CLOSED 2026-09-21; D1–D7 and OQ-2 ratified as recommended, OQ-1 moot by D2's outcome; see `### Phase 0 close record`.)** Each item states the decision, a recommendation, and **the strongest counter-argument, recorded honestly rather than answered away.** Proposed emitted wording is **the object of ratification**, not a description of it — D2 carries full text for exactly that reason. **No emitted sentence may name plan vocabulary** ("D1", "plan 108", "Phase 0"); the plan-99 build recorded *"no plan vocabulary entered `src/`"* as an invariant and this plan keeps it.
+
+### D1 — Which side moves
+
+**The decision.** The rule, or the command.
+
+**RECOMMEND the rule** — `src/CLAUDE.md` `### Always` item 17. **`/devforge:plan` is not edited at all**, in this plan or by it. ⚠ **D1 decides only WHICH SIDE moves; whether the edit is an append or a replacement of one sentence is D2's, and the two candidate shapes differ on exactly that.**
+
+**Why.** Anchor E: the command's outcome is forced by what the command may write. A rule whose default an entire lifecycle stage cannot execute is the broken half.
+
+**COUNTER, at full strength.** **This weakens the rule exactly downstream, where silent dropping is most likely.** Upstream there is a human at a question and a spec still being written; downstream there is a model with a task list. A reader who takes away only the half that says you cannot cover it there may read it as licence to drop surfaces at `/devforge:breakdown` or `/devforge:implement`. ⚠ **The consequence for the wording is binding, on every candidate: it must keep "raise it" MANDATORY and must never authorise an exclusion.** A draft that reads as "downstream, leave it out" has failed D1 even if D1 is ratified.
+
+### D2 — The exact wording: three candidates, in two different shapes
+
+**The decision.** Which words go into item 17. All three candidates are given in full so ratification is on words, not on a description of words.
+
+⚠ **The candidates are not three wordings of one edit — they are two different EDITS.** **(a) and (b) are an INSERTION**, added after item 17's `Deciding it yourself …` sentence and leaving it standing. **(c) REPLACES that sentence in place** and adds nothing anywhere else. Phase 1's deliverable and its Verify differ accordingly, and Phase 1 as written below is (c)'s shape.
+
+#### (c) — RECOMMENDED
+
+**What it replaces**, quoted from `src/CLAUDE.md:230`:
+
+> Deciding it yourself — handed back or never asked — cover it unless you can name what the user would see differently without it; record any exclusion as yours, with that reason, and tell the user.
+
+**The replacement, three sentences:**
+
+> Covering a surface takes an affected area and an acceptance criterion in the spec that name it, so only the command writing that spec covers one. Deciding it yourself — handed back or never asked — cover it there, unless you can name what the user would see differently without it; anywhere else you cannot cover it, so raise it and leave it neither covered nor excluded. Record any exclusion as yours, with that reason, and tell the user.
+
+**Why (c):**
+
+1. **It restates no command's outcome.** No Risk Assessment row, no approval-summary line, no "spec revision" phrasing — all of those stay owned by `src/commands/plan/main.md:413`. **Nothing in item 17 can drift against that arm, because item 17 no longer says anything about it.**
+2. **It is derived, not declared.** *"Only the command writing that spec covers one"* follows from the definition of covering that `/devforge:specify` already carries at `src/commands/specify/main.md:652`: *"**Covering a user-facing surface takes two entries.** A surface that shows the feature the user named is covered … only when this step records an affected-area row naming that surface AND Step 4.4 adds at least one acceptance criterion whose statement names it."* **The rule states a definition the tree already holds, rather than a second opinion about an outcome.**
+3. **It closes Anchor F by definition rather than by enumeration.** `/devforge:implement` cannot cover a surface because covering takes a §4 row and a §5 AC it does not write — **not because a lifecycle clause says so.** Any future command is covered without touching item 17, which is the property (a) and (b) lack.
+   - ⚠ **A check on that generalization, read from the record rather than measured.** `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:297` names **`/devforge:research`'s Step 2b classification** as a sixth site governed by item 17's `never asked` arm, and `/devforge:research` writes no `spec.md` either — so under (c) it too "cannot cover it". **That matches what the command already does:** `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md:476` records that its *"**Phase 3 step `3b`** records each uncovered surface through `record-gap --dimension affected_area`"*, which is a surface left neither covered nor excluded. **Under the current `cover it` text, item 17 tells `/devforge:research` to do something that command cannot do; under (c) it does not.** ⚠ **This is a reading of two plan records and one command's documented step, NOT a run and NOT a measurement — and `/devforge:research` is NOT edited by this plan.**
+   - ⚠ **A second contradiction site, this one between the two always-on rules themselves — recorded at a stated width, and it must not be read wider.** Anchor C's sentence has a second branch: *"where the command names none, end the turn having written nothing."* **For a command that names no outcome, `Never` 7 says write nothing and item 17 says `cover it` — write something.** Candidate (c) agrees with `Never` 7, because *"anywhere else you cannot cover it, so raise it"* writes no artifact; **(a) and (b) leave that contradiction standing**, since neither touches the case where no outcome is named. ⚠ **The width.** `Never` 7 governs **a reply that picks nothing** — a hand-back, or free text naming none of the options offered. **Item 17's `never asked` arm is a DIFFERENT case**, and `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:297` assigns the Anchor-F commands to that arm, not to this one, **so this second site does NOT cover the never-asked case and must not be written as though it does.** It is reachable only where a downstream command ASKS about a surface and the reply decides nothing — and **no downstream command carries a rule that asks**, which is what Anchor F's grep shows. ⚠ **What this is NOT is `Never` 7 being silent downstream.** That rule closes with *"A question the command does not classify decides what the run does"*, so **an unclassified question falls into the run-deciding branch by the rule's own words**: a command that classifies no surface question does not thereby escape `Never` 7, and **where such a question IS asked, the branch applies and the contradiction with item 17's `cover it` fires.** ⚠ **Whether it is ever reached in practice is NOT established here: the contradiction is between two always-on rules as written, and nothing in this plan observes it firing.** **It is recorded because it is what stops a future session dismissing Anchor F with *"`Never` 7 already covers downstream"* — it does not, and where it does apply it contradicts item 17 rather than rescuing it.**
+4. **It resolves COUNTER 2 outright.** There is no "two defaults inside one item" to reconcile: the single `Deciding it yourself` sentence states both cases in one breath, and no meta-sentence is needed to say which displaces which.
+5. **It keeps every D1 obligation.** *"raise it"* stays mandatory; *"leave it neither covered nor excluded"* authorises no exclusion; the attribution clause survives verbatim as its own third sentence.
+
+**COUNTER to (c), at full strength.** **(c) edits a sentence that plans 99 and 100 both left standing** — plan 100's D5 deliberately (`:293`, `:299`) — **so it is a heavier touch than an append, and a builder who mis-splices it damages a rule that is currently correct upstream.** Phase 1's sentence-by-sentence Verify is what contains that risk, and **a maintainer who prefers the smaller blast radius of a pure append should pick (a) deliberately**, on a file another session is editing concurrently (Trap 1). ⚠ **Also recorded: (c) still leaves `cover it` stated in two places — item 17 and `src/commands/specify/main.md:399`. It takes the seam count from two to ONE, not to zero.** See the Tripwires item on why zero is refused.
+
+#### (a) — NOT recommended. 46 words, inserted
+
+> After a spec is approved, covering a surface it does not cover takes a revision of that spec: raise the surface, and on a reply that decides nothing leave it uncovered, record that no one decided it, and say that covering it takes a spec revision.
+
+#### (b) — NOT recommended. 60 words, inserted
+
+The same as (a), with the "the default above does not apply downstream" clause spelled out and the attribution stated as its own clause.
+
+> The default above does not apply once a spec is approved: after that, covering a surface the spec does not cover takes a revision of it, so raise the surface, and on a reply that decides nothing leave it uncovered and say that covering it takes a spec revision. Record that no one decided it, never as your own exclusion.
+
+**COUNTER to (a) and (b) — the root-cause objection, and it is why they are not recommended.** Both **restate `/devforge:plan`'s outcome inside item 17**. Item 17 already restates `/devforge:specify`'s default, so either candidate leaves **three copies of one norm and two independent drift seams** where there is one today, and `### Root cause` records that a rule restating a per-command outcome is what produced this clash in the first place. ⚠ **They are rejected for reproducing the cause, not for reading worse.** ⚠ **(a) and (b) ARE Option LIFECYCLE-REGIME's wordings in `## The fix`; ratifying either ratifies that option, and (c) is Option SINGLE-OWNER's only wording.**
+
+**COUNTER 1 to (a) and (b) — length.** Item 17 is already the longest item in either list by a wide margin, and an insertion makes it longer than a replacement does. An always-on rule that no one finishes reading is not always-on in practice. ⚠ **Recorded and NOT argued away: the maintainer weighs it.**
+
+**COUNTER 2 to (a) — two defaults inside one item.** (a) adds a second regime without saying that it displaces the first, so item 17 would then contain *"cover it unless you can name what the user would see differently without it"* and *"leave it uncovered"* with nothing between them but a lifecycle clause the reader must apply correctly. **(b) says outright that the default above does not apply**, at the cost of spending words describing its own other sentences. **(c) has neither problem** (reason 4 above).
+
+#### Length, counted rather than estimated
+
+Item 17 is **152 words** today — `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md:322` records both the count and the counting rule (*"bold title counted, hyphenated words as one, item number excluded"*), and `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:301` repeats it as *"already the longest item in either list, at 152 words."* No candidate contains a hyphenated word, so the same rule gives:
+
+| Candidate | Shape | Words added | Item 17 after |
+|---|---|---|---|
+| **(c)** | replaces a 34-word sentence with 77 words | **+43** | **195** |
+| (a) | inserts 46 words | +46 | 198 |
+| (b) | inserts 60 words | +60 | 212 |
+
+⚠ **The 34 is not this plan's own arithmetic: `99-…:322` gives item 17's per-sentence breakdown as *"23 / 40 / 20 / 34 / 11 / 24"*, and 34 is the fourth sentence — the one (c) replaces.** **So (c) is the shortest of the three despite being the largest edit**, which is a consequence of replacing rather than appending and not an argument for it.
+
+### D3 — Command-agnostic, or `/devforge:plan`-named
+
+**The decision.** Whether the new sentence names `/devforge:plan`.
+
+**RECOMMEND command-agnostic**, and **all three D2 candidates are written that way.**
+
+**Why.** Anchor F: five commands ride the always-on rule alone. **Naming only `/devforge:plan` would leave `/devforge:implement` still reading `cover it`**, which is the hole this plan exists to close in both directions.
+
+⚠ **Under (c) this stops being a choice about phrasing.** (c) names no command and no stage at all — it names the definition of covering — so **the command-agnostic property falls out of the shape** rather than being selected. Under (a) or (b) it remains a live phrasing decision, because both need a clause that picks out which stage they apply to.
+
+**COUNTER.** A command-agnostic sentence is **vaguer at the one site where a concrete route exists.** At `/devforge:plan` there is a Risk Assessment row, an `**Unconfirmed exclusions**:` line and a re-ask, all named in the command's own text; a general sentence makes the reader map the rule onto that specific machinery, and a reader who maps it wrong has an inconsistency the plan claims to have removed.
+
+**The answer to that counter, under (c), is the single-owner principle itself:** the concrete route is **not vague — it is owned by `/devforge:plan`**, stated once, in that command's file, where a model running that command reads it. **The reader is not asked to derive the route from the rule; the rule does not have one.** ⚠ **That answer is available to (c) only. Under (a) or (b) the counter stands unanswered, because those candidates do carry a route and it is a paraphrase of the command's.**
+
+### D4 — Where the downstream record lands for a command with no artifact slot
+
+**The decision.** Whether the rule requires an artifact.
+
+**RECOMMEND: the rule requires RAISING the surface and requires NO artifact.** Raising it is how the user learns of it, and under (c) that is the whole obligation — *"raise it and leave it neither covered nor excluded"*. ⚠ **(c)'s third sentence, *"Record any exclusion as yours, with that reason, and tell the user"*, does NOT attach to this case: the outcome is not an exclusion.** **Only `/devforge:plan` has a slot** — the Risk Assessment row plus the `**Unconfirmed exclusions**:` line, both named at `src/commands/plan/main.md:413`. Adding routes to `/devforge:breakdown`, `/devforge:implement`, `/devforge:fix`, `/devforge:review` and `/devforge:verify` — **Anchor F's five, none of which has a slot** — is a **NON-GOAL** of this plan and is listed as one.
+
+**COUNTER, at full strength.** **"Tell the user" with no artifact is the weakest possible record.** It leaves nothing for a later session to read, nothing for `/devforge:verify` to reconcile, and nothing that survives the conversation. A surface raised and left uncovered at `/devforge:implement` is, after the turn ends, indistinguishable from one never noticed. ⚠ **Name this as a known residual in the close record, never as coverage.**
+
+### D5 — `/devforge:specify` edit, or not
+
+**The decision.** Whether the authoring-stage default is restated at its command.
+
+**RECOMMEND NO edit.** `src/commands/specify/main.md:399` already implements the authoring-stage default in the same terms the rule uses, inside numbered step 2 (**Resolve the decision point**) of the decision-point block. A mirrored sentence would be a second site to drift.
+
+**COUNTER.** **A reader of `specify` alone never learns the downstream regime.** The answer is that an always-on `CLAUDE.md` rule is exactly what that reader also loads — but ⚠ that answer is only as good as the rule's reach, and Anchor J says the rule reaches an existing install only through `update.sh`.
+
+### D6 — Docs sweep scope
+
+**The decision.** Which records move and which stay.
+
+**RECOMMEND:**
+- **Amend** `DEVELOPMENT-STATUS.md` item 20 (Anchor I) in the same change.
+- **Add a NEW `CHANGELOG.md` entry** under whatever section is in flight at build time — read the top of the file live; no version is hardcoded anywhere in this plan.
+- **Leave byte-intact:** the plan-99 `CHANGELOG.md` entry (Anchor H), the plan-99 `PLAN-STATUS-ARCHIVE.md` entry (`:256`), and plan files 98, 99 and 100.
+
+**COUNTER.** **Leaving Anchor H unrewritten means the shipped changelog keeps carrying both halves of the contradiction**, and a future session reading `## [2.0.12]` meets the same clash with no note beside it. **Accept it: rewriting shipped history is worse.** A released version block is never edited — the new entry is where the correction is recorded.
+
+### D7 — Whether `src/constitution.md` §6.1 gets a sentence too
+
+**The decision.** Whether the constitution moves with the rule.
+
+**RECOMMEND NO.** Anchor D: §6.1 carries no hand-back default, so **there is nothing there to contradict.** A sentence added there would be new rule text, not a correction.
+
+**The cost avoided, stated because it is the practical half of the recommendation.** §6.1 is a `[universal]` section. `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md:460` records what happened the last time it was touched: *"`constitute_helper verify-universal-defaults` and the WARN-only update-time drift check report §6.1 drift for installs constituted earlier — the third such finding, after plans 86 and 89."* **On that record, touching it again produces a fourth.** ⚠ **That is plan 99's account of the 2026-09-19 build, not a behavior re-verified here; a builder who wants to lean on this cost re-checks what those two checks do today before quoting it.**
+
+**COUNTER.** **The constitution outranks `CLAUDE.md`** (`### Always` item 2), and `CLAUDE.md` is three-way merged into a project the user may edit (Anchor J). **A rule that lives only in `CLAUDE.md` can be overridden by a project's own edits to it**, where a constitution sentence could not be — so declining D7 leaves the amended regime on the weaker of the two carriers.
+
+### OQ-1 — What the new sentence keys on — **MOOT if D2 ratifies (c), OPEN otherwise**
+
+**The question exists only for (a) and (b)**, because only they need a phrase to select which regime applies. Two candidate triggers, and they are not the same:
+
+- **"after a spec is approved"** — a lifecycle fact.
+- **"where covering the surface takes a spec revision"** — a capability fact.
+
+They agree at `/devforge:plan` and may diverge for any run that meets a surface with no approved spec in hand.
+
+**The record, applying ONLY if (a) or (b) is ratified. RECOMMEND the lifecycle phrase**, which is what both of those candidates use: it is checkable by the model without reasoning about its own write permissions, and it reads as a regime rather than as a self-assessment. **Alternative:** the capability phrase states the actual reason and therefore travels correctly to any future command, at the cost of asking the model to judge what it may write — a judgment it gets wrong exactly when it is already confused about scope. ⚠ **D3's command-agnostic recommendation makes that trigger phrase load-bearing under (a)/(b): it is the ONLY thing selecting which regime applies.**
+
+**Under (c) there is no trigger phrase at all.** (c) keys on **the definition of covering plus which command is running** — a fact the model reads off its own invocation, not a judgment about its write permissions and not a lifecycle clause it must apply correctly. ⚠ **That is why OQ-1 is recorded as moot rather than deleted: the question is real, it is answered by the SHAPE of (c) rather than by a decision, and it comes back the moment (a) or (b) is picked instead.**
+
+### OQ-2 — Whether the rule names the re-ask
+
+`/devforge:plan`'s arm re-asks **once** before landing on `uncovered`, and `### Never` item 7 supplies that single re-ask as an always-on rule (Anchor C). **No D2 candidate names the re-ask** — (c)'s replacement is as silent about it as (a) and (b) are — so all three read, in isolation, like a one-strike rule.
+
+**RECOMMEND relying on `Never` 7** and adding no re-ask clause: it is already always-on, it is already in the same emitted file, and restating it in item 17 creates two sites that must agree about how many times to ask. ⚠ **Under (c) this is not an independent judgment call but a direct consequence of the single-owner principle: the rule does not restate what another always-on site already owns.** **Alternative:** name it ("ask once more, then …") so the sentence is correct read alone — at the cost of the duplication, and of words D2's COUNTER 1 already objects to. ⚠ **This applies to ALL THREE candidates equally; it is not a reason to prefer one over another.**
+
+### Phase 0 close record
+
+**CLOSED 2026-09-21.** **D1–D7 and OQ-2 are ratified as recommended. OQ-1 is MOOT by D2's outcome and is NOT ratified.** Nothing was amended, nothing was declined, no item is left open, and **build phases may start.** ⚠ **Nothing is built.**
+
+Every statement in this record is dated 2026-09-21 unless it names another date.
+
+**What this record was required to contain, and does:** each of D1–D7, OQ-1 and OQ-2 named with its outcome; whether per-item deliberation was supplied; whether the close was an explicit pick or a delegation; which files the outcomes put in scope; D2's chosen candidate with its text in full and its edit shape; whether the single-ownership principle was endorsed or only the sentence; D4's residual named explicitly; and D1's answer on whether `/devforge:plan` is edited.
+
+**How it closed — 2026-09-21.**
+
+- A **single blanket maintainer directive**, given in the maintainer's own words, in Ukrainian. English paraphrase: *"as for the verdicts — OK, fix all the problems."*
+- **No per-item deliberation was supplied, and this record says so.** The precedent is the close records of plans 91, 92, 94, 95, 96, 97, 98, 99 and 100, which state the same.
+- **It is a PICK, not a delegation** (plan 98's D1 distinction): it states an outcome rather than handing the decision back. ⚠ **But it names no option per item.** The outcomes below are **this plan's own recommendations, taken under a blanket approval — not nine separate maintainer choices**, and no sentence here may be read as the maintainer having weighed any individual counter-argument.
+- **Every decision keeps its counter-argument.** Nothing under `## Decisions to ratify` is deleted, shortened or answered away by this close, because **a ratified decision with its counter-argument deleted cannot be re-opened honestly.** That section's drafting-time lead-in keeps its original opening sentence, *"Nothing below is ratified."*, with a dated parenthetical beside it naming this close — the pre-close text is preserved as the record of the pre-close state.
+- ⚠ **Ratification changes no evidence class: a contradiction read out of this tree, nothing measured, no run.** A blanket approval of a reading is still a reading.
+
+#### Outcomes — 2026-09-21
+
+| Item | Outcome (2026-09-21) | What it settles |
+|---|---|---|
+| **D1** | Ratified as recommended | **The rule moves, not the command.** `src/CLAUDE.md` `### Always` item 17 is the only rule text edited, and **`/devforge:plan` is NOT edited — not in this plan and not by it.** Option MOVE-THE-COMMAND stays rejected. |
+| **D2** | Ratified as recommended | **Candidate (c)** — Option SINGLE-OWNER's only wording, quoted in full beneath this table. **The shape is a REPLACEMENT IN PLACE** of item 17's `Deciding it yourself …` sentence, **NOT an append**; candidates (a) and (b), which are Option LIFECYCLE-REGIME's wordings, are declined with it. **The count: item 17 goes 152 → 195 words.** |
+| **D3** | Ratified as recommended | **Command-agnostic wording.** ⚠ Under (c) this is not a separate wording choice — (c) names no command and no stage at all, so the command-agnostic property **falls out of the shape** rather than being selected. |
+| **D4** | Ratified as recommended | **The downstream obligation is RAISE IT**, and **no artifact route is added** to Anchor F's five (`/devforge:breakdown`, `/devforge:implement`, `/devforge:fix`, `/devforge:review`, `/devforge:verify`). ⚠ **The residual, named as the close record demanded: outside `/devforge:plan` NOTHING records the surface beyond the raise itself** — no Risk row, no summary line, nothing a later session can read. **This is the plan's weakest joint and it is ratified WITH its weakness, not despite it.** |
+| **D5** | Ratified as recommended | **`src/commands/specify/main.md` is NOT edited.** It already carries the authoring-stage default (`:399`) and the definition (c) derives from (`:652`); both stay byte-identical. |
+| **D6** | Ratified as recommended | **`DEVELOPMENT-STATUS.md` item 20 is amended to match**, and a **NEW `CHANGELOG.md` entry** goes under whichever section is in flight at build time, read live. **Plan 99's `CHANGELOG.md` entry, `PLAN-STATUS-ARCHIVE.md:256` and plan files 98, 99 and 100 stay BYTE-INTACT.** |
+| **D7** | Ratified as recommended | **`src/constitution.md` §6.1 is NOT edited**, so no fourth `verify-universal-defaults` / update-time drift finding is created for installs constituted earlier. |
+| **OQ-1** | **MOOT by D2's outcome — NOT ratified** | ⚠ **The one row that is not a blanket "as recommended".** OQ-1's recommendation was the **lifecycle phrase**, which is a trigger only candidates (a) and (b) need. **D2 ratified (c), which keys on neither trigger**, so the question is REMOVED rather than answered. **Its recommendation and its counter-argument stay in the document as history and are NOT ratified by this close.** They return live only if D2 is ever re-opened onto (a) or (b). |
+| **OQ-2** | Ratified as recommended | **Rely on `### Never` item 7 for the re-ask.** Item 17 gains **no re-ask clause**, so the two always-on sites never have to agree about how many times to ask. |
+
+**D2's ratified text, in full — the three sentences that replace item 17's `Deciding it yourself …` sentence:**
+
+> Covering a surface takes an affected area and an acceptance criterion in the spec that name it, so only the command writing that spec covers one. Deciding it yourself — handed back or never asked — cover it there, unless you can name what the user would see differently without it; anywhere else you cannot cover it, so raise it and leave it neither covered nor excluded. Record any exclusion as yours, with that reason, and tell the user.
+
+**The single-ownership principle — 2026-09-21.**
+
+**The principle is ratified by ratifying Option SINGLE-OWNER**, which is the principle's name in this plan: the rule owns the invariant and the definition, the command owns the outcome. ⚠ **No separate statement about the principle was given by the maintainer, and this record says so.** A blanket directive is not upgraded here into a considered endorsement of a principle — what was approved is the plan's recommendations, and Option SINGLE-OWNER is one of them.
+
+**What the outcomes put in scope — 2026-09-21.**
+
+Each ratified item is checked here **by NAME, never against a range**, and the phase that carries it is named. ⚠ **This accounting exists because `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md:657` records a HIGH finding of exactly the opposite: an item ratified by a blanket close, covered in that plan's item map only as part of a RANGE, dropped from every hand-enumerated per-phase list, and shipped NOWHERE while two ledgers claimed it had.**
+
+- **Phase 1 — `src/CLAUDE.md` item 17.** Carries **D1** (the rule is the side that moves), **D2** (the ratified text and its replace-in-place shape), **D3** (the sentence names no command), **D4**'s obligation half (*"raise it"*, and no artifact) and **OQ-2** (no re-ask clause).
+- **Phase 2 — cross-check sweep.** Carries **D5** and **D7** as verified no-ops — `src/commands/specify/main.md` and `src/constitution.md` byte-unchanged — and **D1** as the check that `src/commands/plan/main.md` is byte-unchanged.
+- **Phase 3 — docs sweep.** Carries **D6**'s two targets (`DEVELOPMENT-STATUS.md` item 20; a new `CHANGELOG.md` entry) and **D4**'s residual half, which the changelog entry's honest-bounds section must state.
+- **Phase 4 — live-spec tests.** Carries **no D-item**, and that is stated rather than left to be inferred: it pins that nothing else in the tree moved.
+- **OQ-1 is carried by NO phase, and that is its correct disposition, not an omission** — a moot question has nothing to build. It is recorded here so a later reader does not go looking for the phase that lost it.
+
+**Build sequencing — 2026-09-21.**
+
+- **Phase 0 is CLOSED and build phases MAY start.** The sequencing below is **the maintainer's**, not a gate this plan imposes.
+- The maintainer stated today that the open plans are worked **in numeric order**. **101, 102, 104, 105, 106 and 107 are open and lower-numbered, so this plan's build comes after them.**
+- ⚠ **The consequence, stated as a warning and not an aside: every `file:line` in this plan was verified on 2026-09-21, and the lower-numbered plans edit `src/commands/specify/main.md`, `src/commands/research/main.md` and `src/commands/verify/main.md` among others. By the time this plan builds, its anchors WILL have drifted.** `## When resuming work` step 3's re-verification is **the FIRST action of any build session**, not an optional one.
+- ⚠ **One cross-plan interaction to re-check, verified today.** `107-SURFACE-PATH-PROOF-PLAN.md` carries a D7 titled *"Whether `/devforge:plan` gets a rule too"* whose recommendation is **NO**. **As recommended it does not collide with this plan's D1** — both leave `/devforge:plan` unedited. **But if plan 107 closes that D7 the other way, a build session here must re-check D1 before touching anything.** ⚠ **That plan is OPEN and is being edited in this checkout: its D7 moved from line 168 to line 187 between two reads on 2026-09-21. Find it by its title, never by its digits.**
+
+**What this record does NOT close — 2026-09-21.**
+
+- **Nothing is built.** Phases 1–4 have not started.
+- **No evidence class changed.** This plan still rests on a contradiction read out of this tree — **no consumer incident is recorded here, nothing was measured, no run was scored** — and Anchor F's opposite-direction hole is still PREDICTED and never observed.
+- **No mechanical check was created and none is possible.** `## Honest bounds` stands unaltered: nothing will ever catch a violation of item 17, and (c) takes the drift seam count from two to one, never to zero.
+- **No per-item deliberation happened**, so every counter-argument in this plan is live for re-opening on its own merits.
+
+---
+
+## Phases
+
+**Phase 0 is the `## Decisions to ratify` section above. Its `### Phase 0 close record` reads CLOSED 2026-09-21, so the gate is satisfied and the phases below MAY start.** ⚠ **None of them has started, and the maintainer's numeric-order sequencing puts this plan's build after plans 101, 102, 104, 105, 106 and 107 — see the record's `**Build sequencing**` block.**
+
+**Build order.** Phase 2 needs Phase 1, because it reads other files against the amended rule. Phase 3 needs Phase 1, because it copies the ratified wording's substance into `DEVELOPMENT-STATUS.md`. Phase 4 runs last and pins that nothing else moved.
+
+### Phase 0 — Ratification gate
+
+D1–D7, OQ-1 and OQ-2 go to the maintainer. **NO build phase may start before a close record exists.** **(CLOSED 2026-09-21 — the record exists and every Verify bullet below is satisfied by it: D1–D7 and OQ-2 ratified as recommended, OQ-1 moot by D2's outcome. Drafting-time text kept as drafted.)**
+
+#### Verify
+
+- The `### Phase 0 close record` section names **each** of D1–D7, OQ-1 and OQ-2 with an explicit disposition, checked **by NAME, never against a range** — an item with no Verify line cannot fail.
+- **D2's record names (a), (b) or (c), carries the chosen text verbatim, says whether the edit is an insertion or a replacement, and says whether the single-ownership principle was endorsed or only the sentence.**
+- **D1's record says explicitly that `/devforge:plan` is or is not edited**, because Option MOVE-THE-COMMAND is the coherent opposite and a silent close leaves it ambiguous which was picked.
+- **OQ-1's record reads "moot" only where D2 ratified (c)**; under (a) or (b) it carries an answer.
+- It states whether per-item deliberation was supplied, and whether the close was an explicit pick or a delegation.
+- **Every counter-argument above is still present, unshortened** — including `### Root cause`'s objection to (a) and (b), which is the reason they are not recommended and not a preference.
+- The record says what the outcomes put in scope: **D1 and D2 decide whether Phase 1 exists and what it does**, **D5 and D7 decide that no phase touches `src/commands/specify/main.md` or `src/constitution.md`**, and **D6 decides Phase 3's site list.**
+- ⚠ **Phase 1 below is written for (c), a replacement. If the close ratifies (a) or (b), Phase 1's deliverable becomes an insertion after the `Deciding it yourself …` sentence and before *"A surface that only shares code is neither covered nor raised."*, and its Verify drops the sentence-splice items and keeps that sentence byte-identical instead.** **(RESOLVED 2026-09-21: the close ratified (c), so Phase 1 builds as written and this fallback does not apply.)**
+
+### Phase 1 — `src/CLAUDE.md` item 17
+
+**Route: instruction-author → instruction-reviewer.** Instruction-only: **no `.py` changes.** ⚠ **The dirty-file trap is in force for this phase's commit — see `### Traps`.**
+
+**Written for D2 candidate (c) — a REPLACE-IN-PLACE.** **(Confirmed by the close: D2 ratified (c) on 2026-09-21, so this is the shape that builds and the (a)/(b) fallback below is dead text kept as the record of the pre-close state.)**
+
+**Ratified items this phase carries: D1, D2, D3, D4's obligation half, OQ-2.**
+
+#### Deliverables
+
+- `src/CLAUDE.md` `### Always` item 17 — **the `Deciding it yourself …` sentence is REPLACED by (c)'s three sentences. Nothing is inserted anywhere else, and no other file changes.** (**D1** — the rule is the side that moves; **D2** — the ratified text and its shape.)
+
+#### Verify
+
+**What stays byte-identical, enumerated sentence by sentence.** ⚠ **Every string below was read from `src/CLAUDE.md:230` on 2026-09-21; re-read the line live and diff against the tree, not against this list.**
+
+- **`### Always` items 1–16**, byte-identical.
+- **`### Never` items 1–7**, byte-identical.
+- **Item 17's bold title and first sentence** — *"**Scope follows what the user sees** — minimality limits the mechanism, never which user-facing surfaces (anywhere the user sees or triggers a feature) count."*
+- **Item 17's identity-evidence sentence** — *"A surface shows the feature the user named only on cited user-visible evidence — the same title, label or translation key, route, or tab or mode; shared or different code, requests or data are never evidence or a reason to exclude."*
+- **Item 17's disposition sentence** — *"Each evidenced surface is covered, excluded in the user's own words, or raised with them, naming what they see there."*
+- **Item 17's shared-code sentence** — *"A surface that only shares code is neither covered nor raised."*
+- **Item 17's closing sentence** — *"Ask a present user about a surface you suspect but cannot evidence; deciding yourself, leave it an open question, never silently covered or excluded."*
+
+**What changes, and the false-removal trap it sets.**
+
+- **The replaced sentence's own tail survives as (c)'s third sentence with only its leading capital changed:** `record any exclusion as yours, with that reason, and tell the user` becomes `Record any exclusion as yours, with that reason, and tell the user`. ⚠ **A sweep that greps the lower-case form will report a false removal. Grep case-insensitively, or grep `any exclusion as yours`, which is unchanged.**
+- **`grep -rn "cover it unless you can name" src/` goes from 1 hit to 0, BY DESIGN.** ⚠ **Verified 2026-09-21: that string's single hit in `src/` is `src/CLAUDE.md` — `src/commands/specify/main.md:399` does NOT contain it, because that command's default is worded *"The value is `cover <surface>`, unless you can name …"*. A zero here is the built state, not a deletion of the upstream default.**
+- **The string that must NOT change count is `unless you can name what the user would see differently`: `grep -rc` over `src/` returns 2 before and 2 after** — one in `src/CLAUDE.md` (now inside (c)'s second sentence, as `cover it there, unless you can name …`) and one at `src/commands/specify/main.md:399`, which this plan does not edit. ⚠ **Re-verify both counts live before relying on them.**
+- **The new words grep in exactly one place in `src/`.**
+- **No plan vocabulary entered `src/`** — the new sentences name no D-number, no plan number and no phase.
+
+**Per-item Verify for the ratified items this phase carries** — one line each, because an item with no Verify line cannot fail:
+
+- **D1** — `src/commands/plan/main.md` is byte-unchanged by this phase; `git diff` on that path is empty.
+- **D2** — the text in item 17 matches the close record's quoted three sentences **verbatim**, and the edit is a replacement: the `Deciding it yourself …` sentence does not survive alongside the new one.
+- **D3** — the new sentences **name no command and no lifecycle stage**; a grep of the added words for `/devforge:` returns nothing.
+- **D4** — the new sentences make **raising mandatory** (*"raise it"*) and require **no artifact**: they name no Risk row, no summary line and no file to write.
+- **OQ-2** — the new sentences contain **no re-ask clause**; nothing in them says how many times to ask.
+- **Item 17's sentence count goes 6 → 8.** ⚠ **The 6 is not this plan's arithmetic: `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md:322` gives the breakdown as *"23 / 40 / 20 / 34 / 11 / 24"*, six figures, and the five surviving sentences listed above are figures 1, 2, 3, 5 and 6.** (c) replaces figure 4 with three sentences. The diff shows no other structural change inside the item.
+- **The staged diff for this phase's commit lists `src/CLAUDE.md` alone, and its hunk set is the item-17 edit alone.** ⚠ **`git diff --stat` on the working tree will list other files: `src/CLAUDE.md` is dirty with another session's hunks and several ledgers are modified. Check `git diff --cached --stat` after staging, never the unstaged view.**
+- instruction-reviewer returns SHIP-READY, or every finding is fixed.
+
+### Phase 2 — Cross-check sweep
+
+**Route: instruction-author → instruction-reviewer.** ⚠ **Expected NO-OP. An edit in this phase is a FINDING, not routine** — it means the amended rule contradicts something the sweep was supposed to confirm, and the finding is recorded before it is fixed.
+
+**Ratified items this phase carries: D5 and D7 as verified no-ops, D1 as a byte-unchanged check.**
+
+#### Deliverables
+
+Re-read each site below against the amended rule:
+
+- `src/commands/plan/main.md` sub-question 6 — **both** non-decision arms — and the `**Unconfirmed exclusions**:` line the surface arm feeds.
+- `src/commands/specify/main.md` — numbered step 2 (**Resolve the decision point**, the *"The value you supply for a surface"* paragraph) and numbered step 3 (**Deferral path**) of the surface rules.
+- `src/agents/architect.md` Rule 9's **Out-of-scope-respect forcing step** — the uncovered-surface direction, which is the escalation `/devforge:plan` routes.
+- `src/agents/devils-advocate.md` Rule 6.
+- `src/commands/grill/references/design-attack-checklist.md` — the `[excluded by the model]` entry.
+- `src/constitution.md` §6.1.
+
+**One named check, with its verdict pre-declared.** ⚠ **The `**Unconfirmed exclusions**:` line's TITLE and (c)'s wording do not use the same word for the same thing, and this is expected.** (c) says a surface met where you cannot cover it is left *"neither covered nor excluded"*, while `/devforge:plan` lists it on a line titled `**Unconfirmed exclusions**:`. **The line's BODY distinguishes the two cases correctly** — `src/commands/plan/main.md:640`:
+
+> say that each stays as the spec left it (the exclusion standing, the surface uncovered) and that the user did not decide it here
+
+**Verdict, declared in advance: the title is a loose name over a correct body, and renaming that line is NOT in this plan's scope.** ⚠ **If the cross-check finds the BODY itself ambiguous — not the title — that is a finding to write into this plan, not something to fix in passing.**
+
+#### Verify
+
+- **Each site is consistent with the amended rule**, recorded as a verified no-op with the sentence that was read, or as an edit.
+- **The `**Unconfirmed exclusions**:` check above is recorded with its outcome**, whether that is the pre-declared verdict or a finding about the body.
+- **Every inconsistency found is either fixed in THIS phase or written into this plan as a new finding — never left.**
+
+**Per-item Verify for the ratified items this phase carries:**
+
+- **D1** — **`src/commands/plan/main.md` is byte-unchanged.** D1 was ratified as recommended on 2026-09-21, so a diff on that file contradicts the close and stops the phase.
+- **D5** — **`src/commands/specify/main.md` is byte-unchanged**, `:399` and `:652` included; `git diff --stat` on that path is empty. Recorded as a **verified no-op**, with the sentence that was read.
+- **D7** — **`src/constitution.md` is byte-unchanged**; `git diff --stat` on that path is empty. Recorded as a **verified no-op**.
+- instruction-reviewer returns SHIP-READY, or every finding is fixed.
+
+### Phase 3 — Docs sweep
+
+**Route: instruction-author → instruction-reviewer. Docs only.** ⚠ **Other sessions are building in this checkout and several ledger files are already modified by other work. Re-read `git status`, read each ledger LIVE, re-derive every edit from what is there, and commit by explicit path — never `git add -A`. Never touch another session's plan file.**
+
+**Ratified items this phase carries: D6's two targets, and D4's residual half.**
+
+#### Deliverables
+
+- **D6, target 1 —** `DEVELOPMENT-STATUS.md` item 20, amended to match the ratified rule. ⚠ **Under (c) that means item 20 stops describing the cover default as unconditional and carries what covering takes and which command can do it; it does NOT gain `/devforge:plan`'s outcome, for the same single-ownership reason the rule does not.**
+- **D6, target 2 —** `CHANGELOG.md`, one new entry, **with the evidence class FIRST and the honest bounds LAST**, placed into whichever section is in flight at build time. ⚠ **Read the top of the file live; a released version block is never edited, and no version number is hardcoded in this plan.**
+- **D4's residual, inside that entry's honest-bounds half** — that outside `/devforge:plan` nothing records the surface beyond the raise itself. ⚠ **It is written as a residual the change accepts, never as coverage.**
+
+#### Verify
+
+- **`grep -rn "what the user would see differently"` across the repo returns only sites consistent with the amended rule.** The inventory below was taken on 2026-09-21, **before this plan file existed** — this file now carries the phrase itself in its anchor quotes, and so will the new changelog entry. **10 hits in 7 files at that moment:**
+  - `src/CLAUDE.md` ×1 — the amended rule (Phase 1).
+  - `src/commands/specify/main.md` ×1 — the authoring-stage default (D5: NOT edited).
+  - `DEVELOPMENT-STATUS.md` ×1 — item 20 (this phase).
+  - `CHANGELOG.md` ×1, `PLAN-STATUS-ARCHIVE.md` ×1, `99-…` ×4, `100-…` ×1 — **records, all byte-intact.**
+  - ⚠ **After the build the count rises by this plan file's own quotations and by the new changelog entry. A raw count is not the check; the per-file disposition is.**
+- **`grep -rn "the surface stays uncovered"` returns its 4 pre-existing hits** — `src/commands/plan/main.md`, `CHANGELOG.md`, `99-…`, `100-…` — **unchanged**, plus this plan file and the new entry.
+- **Plans 98, 99 and 100, the plan-99 `CHANGELOG.md` entry and the plan-99 `PLAN-STATUS-ARCHIVE.md` entry are byte-intact** — `git diff` on those paths is empty.
+- **No ledger sentence claims any phase is consumer-validated.** "Built and build-verified" is the ceiling in every line.
+- **No tracked file names a client, install, repo, branch, ticket or product.**
+
+**Per-item Verify for the ratified items this phase carries:**
+
+- **D6** — **both** targets are edited, not one: `DEVELOPMENT-STATUS.md` item 20 **and** a new `CHANGELOG.md` entry. ⚠ **And the byte-intact half is checked too: `git diff` is empty on plan files 98, 99 and 100, and the plan-99 entries in `CHANGELOG.md` and `PLAN-STATUS-ARCHIVE.md` are unchanged.**
+- **D4** — the new `CHANGELOG.md` entry **names the no-artifact residual in its honest-bounds half, in words**. An entry that describes the raise without the residual has not carried D4.
+- instruction-reviewer returns SHIP-READY, or every finding is fixed.
+
+### Phase 4 — Live-spec tests
+
+**No route: this phase runs tests and records the result.**
+
+**Ratified items this phase carries: NONE, and that is stated rather than inferred.** No D-item and no OQ lands here; the phase exists to pin that nothing else in the tree moved.
+
+#### Deliverables
+
+- A run of `tests/lib/test_constitute_helper.py`, `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py` and `tests/scripts/test_claude_emitter.py`.
+
+#### Verify
+
+- **All four are green, and the passing count is recorded in this plan when the build closes.**
+- ⚠ **This plan changes no Python. A red test here means something else in the tree moved** — investigate before attributing it to this change, and do not "fix" it inside this plan's commits.
+
+### Ledger indexing
+
+**Index this plan in `PLAN-STATUS-ARCHIVE.md` ONLY when it closes.** Open plans in this repo are indexed nowhere: verified 2026-09-21, `101-NON-WEB-STACK-READINESS-PLAN.md`, `102-SPECIFY-IN-PLACE-REVISION-PLAN.md`, `104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, `105-HYPOTHESIS-SUPPRESSION-PRECISION-PLAN.md`, `106-INTAKE-PROVENANCE-CONTINUITY-PLAN.md` and `107-SURFACE-PATH-PROOF-PLAN.md` are named in no ledger file (`PLAN-STATUS-ARCHIVE.md`'s `## Index` and `## Entries` both stop at plan 100), only in `FINDINGS.md` and in each other.
+
+---
+
+## Honest bounds
+
+⚠ **These are the plan's ceiling. Any summary that drops one overstates the plan.**
+
+- **Zero Python, zero gates, zero validators, zero new `verify-*` verbs. Nothing mechanical will ever catch a violation of rule 17** — before this change or after it. The rule is read by a model and checked by nobody.
+- **The clash was read out of the tree; the cost of it was never measured.** No run was scored and no incident is re-readable here. The consumer run that surfaced it is not evidence this repo holds.
+- **Anchor F's opposite-direction hole is PREDICTED from the text alone and was never observed.** Plan 99's D8 named the revisit trigger for those commands as *"an observed exclusion at one of those stages"*, and that trigger has not fired.
+- **The emitted `CLAUDE.md` reaches an install through `update.sh`'s three-way merge** (Anchor J), so an install that is not updated keeps the contradiction, and **an install that customised item 17 may not take the amendment at all.**
+- **Whether a surface "shows the same feature" stays model judgment**, exactly as plan 99 recorded. **This change re-homes a default; it does not touch the decision procedure**, the identity-evidence definition, or anything that decides which surfaces count.
+- **This plan makes the downstream record weaker than the upstream one on purpose** (D4): all five commands in Anchor F get a raise and no artifact, so a surface raised and left uncovered at one of them survives only as long as the turn does.
+- **De-duplication is the only prevention available, and it is partial.** `### Root cause` names single ownership as the fix; **(c) takes the seam count from two to one, not to zero** (see `## Tripwires`), and nothing stops a future change from copying a command's outcome back into item 17. **The principle is a rule for humans, enforced by nothing.**
+- **No consumer e2e is proposed.** There is nothing mechanical to exercise; a fixture run would show a model reading amended prose, which is not a result.
+
+---
+
+## Tripwires
+
+- **If a phase finds itself editing `src/commands/plan/main.md`, STOP.** That is Option MOVE-THE-COMMAND arriving under another name — return to D1 and ratify it explicitly or not at all.
+- **If a draft of the new sentence lets a command's own named outcome decide whether the rule applies — "where a command names the outcome", "except where the command says otherwise", or any equivalent — STOP.** That is Option ESCAPE-CLAUSE, and the zero-escape-hatch policy in `CLAUDE.md` refuses it. ⚠ **The test is the clause's effect, not its words: item 17 already contains an "unless" that is a condition on the default, not an exit from the rule.**
+- **If the new sentence can be read as authorising an exclusion rather than requiring a raise, STOP and rewrite.** D1's counter-argument names this as the failure mode of the recommended option.
+- **If Phase 2 produces an edit anywhere, STOP the sweep and record the finding first.** An expected no-op that edits something means the amended rule has a second consequence nobody predicted, and the rest of the sweep must be re-read against that.
+- **If a phase reaches for `src/constitution.md`, STOP** — D7 declined it, and a `[universal]` edit costs a fourth drift finding for installs constituted earlier.
+- **If a session proposes removing the `cover it` default from item 17 altogether — leaving it only at `src/commands/specify/main.md:399` — STOP. That is refused, and it is refused here so nobody attempts it as a cleanup.** (c) accepts one residual seam: `cover it` stays stated in **two** places, item 17 and `/devforge:specify`, and **they agree today.** Deleting item 17's half would take the seam count to zero, **and it would stop item 17 being an always-on rule about surfaces at all** — the whole point of an always-on rule is that a command which never loads `/devforge:specify`'s text still knows the norm. ⚠ **Two seams is the bug, one seam is the fix, zero seams is a different and worse thing.**
+- **If a commit in any phase stages a file this plan does not name, STOP and unstage.** `src/CLAUDE.md` is dirty with another session's work.
+
+---
+
+## Non-goals
+
+- **No edit to `/devforge:plan`** (D1). Its surface arm, its Risk Assessment row and its `**Unconfirmed exclusions**:` line are untouched.
+- **No edit to `/devforge:specify`** (D5). It is the one command already compliant.
+- **No edit to `src/constitution.md`** (D7), and no back-port for installs constituted earlier.
+- **No new artifact route at `/devforge:breakdown`, `/devforge:implement`, `/devforge:fix`, `/devforge:review` or `/devforge:verify`** — Anchor F's five (D4). The rule requires telling the user and nothing more.
+- **No mechanical detector, no `verify-*` verb, no gate and no Python.**
+- **No rewrite of shipped history** — the plan-99 `CHANGELOG.md` entry, the plan-99 `PLAN-STATUS-ARCHIVE.md` entry and plan files 98, 99 and 100 stay byte-intact (D6).
+- **No change to the identity-evidence definition, the feature-surface sweep, or anything that decides which surfaces count.**
+- **No back-port into shipped installs.** They arrive via `install.sh` / `update.sh`.
+- **No touch of any external install, and no client, install, repo, branch, ticket or product identifier in any tracked file.**
+
+---
+
+## Context for next session
+
+⚠ **Evidence class, repeated: a contradiction read directly out of two files in THIS tree on 2026-09-21 — NO consumer incident recorded here, NO measurement, NO run.** The clash was surfaced by a relayed consumer run whose artifacts are not readable from this repo and which is named nowhere. ⚠ **All line digits drift — grep the quoted text, never the digits.**
+
+**The one sentence that governs everything here: an always-on rule must not set a default that a lifecycle stage structurally cannot execute, and where it does, the rule moves.**
+
+⚠ **Phase 0 is the gate and nothing below it may start.**
+
+### Traps
+
+**Trap 1 — `src/CLAUDE.md` is dirty in this checkout.** Verified 2026-09-21: the file carries **UNCOMMITTED** hunks from other work — the `### Format` commit-subject correction (the corrected `[WIP] task: <title> (Task NNN)` / `[checkpoint] pre-task NNN` / `[WIP] <label>` subjects and the wrapper variants) and a `### Crash Recovery` line, described in `CHANGELOG.md`'s `### Fixed` entry under `## [2.0.12]`. **Those hunks are NOT this plan's.** ⚠ **`git add src/CLAUDE.md` would sweep another session's work into this plan's commit.** Two acceptable routes, and no third:
+  1. **Wait** until those hunks are committed by whoever owns them, then stage the file normally.
+  2. **Stage only the item-17 hunk with a patch** — `git diff -U0 -- src/CLAUDE.md > <scratch>/item17.patch`, edit the patch down to the single hunk, then `git apply --cached <scratch>/item17.patch`.
+⚠ **`git add -i` and `git add -p` are not available: both require an interactive terminal, and this harness runs shell commands non-interactively.** ⚠ **Re-read `git status` before assuming the file is still dirty — another session may have committed since.**
+
+**Trap 2 — the two item numbers.** The rule is item **17** in `src/CLAUDE.md` `### Always` and item **20** in `DEVELOPMENT-STATUS.md`. **A sweep that greps one number misses the other.** Grep the rule's words, not its number.
+
+**Trap 3 — sub-question 6 has TWO non-decision arms.** The **first** concerns a §6 entry (*"free text that neither keeps nor lifts the exclusion"* → *"the spec's §6 Out of Scope exclusion stands"*) and is **NOT in conflict** with item 17: a standing §6 exclusion is an exclusion the user stated in their own words, which item 17 already permits. **Only the second — the surface arm (Anchor B) — is in conflict.** ⚠ **An edit that touches both breaks a correct arm.**
+
+**Trap 4 — the `Never` item 7 pointer.** `Never` 7 says to take the option the command names (Anchor C). **Anyone "fixing" this clash by leaning on `Never` 7 has picked Option ESCAPE-CLAUSE without noticing** — they have made the command's named outcome win by rule, which is exactly the escape hatch that option was rejected for.
+
+**Trap 5 — rewriting history.** `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`, `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md`, the plan-99 `CHANGELOG.md` entry and the plan-99 `PLAN-STATUS-ARCHIVE.md` entry carry the old text **by design.** They are the record of what shipped, not a bug list, and a sweep that "corrects" them destroys the only account of how the clash arose. `98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md` is the record of `### Never` item 7 (Anchor C), which this plan does not edit either — **all three plan files stay byte-intact.**
+
+**Trap 6 — line digits drift.** Every `file:line` in this plan was true on 2026-09-21. **Grep the quoted text, never the digits.**
+
+**Trap 7 — assuming `/devforge:specify` needs the same sentence.** It is the one command **already compliant** (`src/commands/specify/main.md:399`), and under (c) it is also the **owner of the definition the rule derives from** (`:652`). **Editing either paragraph is how this fix grows the drift site back.**
+
+**Trap 8 — the two downstream lists.** Plans 99 and 100 name **four** commands riding the rule alone; Anchor F's grep covers **five**, adding `/devforge:breakdown`. **Re-derive the grep rather than copying either list.**
+
+**Trap 9 — reading plan 100's D5 as settling this.** Plan 100 D5 decided **NO edit** to item 17 — for an unrelated reason (how *"a present user"* reads against the command rule), not for this clash, which it never names. **It is not a prior rejection of this plan's D1.**
+
+### File anchors
+
+- **`src/CLAUDE.md`** — `### Always` item 17 (**the only file Phase 1 edits**); `### Always` item 2 (*"Constitution is law"*); `### Never` item 7 (read-only, Anchor C).
+- **`src/commands/plan/main.md`** — Phase 1.3 sub-question 6, both non-decision arms; the `**Unconfirmed exclusions**:` line on the Phase 3 approval summary (`:640`, the Phase 2 named check). **Read-only in every phase** (D1).
+- **`src/commands/specify/main.md`** — the `**Covering a user-facing surface takes two entries.**` paragraph in Step 4.3 (`:652`, **the definition (c) derives from**); the *"The value you supply for a surface"* paragraph in numbered step 2 (`:399`, the surviving `cover it` default); numbered step 3 (**Deferral path**). **Read-only** (D5).
+- **`src/constitution.md`** — `### 6.1 Minimal Changes [universal]`, last sentence. **Read-only** (D7).
+- **`src/agents/architect.md`** — Rule 9's **Out-of-scope-respect forcing step**, uncovered-surface direction. Phase 2 sweep, read-only unless a finding.
+- **`src/agents/devils-advocate.md`** Rule 6 and **`src/commands/grill/references/design-attack-checklist.md`** — the `[excluded by the model]` entries. Phase 2 sweep, read-only unless a finding.
+- **`src/manifest.json`** — the `generated:coreLLM` → `CLAUDE.md` mapping (Anchor J). Read-only.
+- **`DEVELOPMENT-STATUS.md`** — numbered item 20. **Phase 3 edits it.**
+- **`CHANGELOG.md`** — the plan-99 entry under `## [2.0.12]` (byte-intact) and the in-flight section (Phase 3 appends).
+- **Read-only records:** `PLAN-STATUS-ARCHIVE.md` (`## Entries`, the plan-99 entry), `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md` (D8, D10, `**What landed:**`, `## Residuals`), `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md` (D5, D10).
+- **Tests:** `tests/lib/test_constitute_helper.py`, `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py`, `tests/scripts/test_claude_emitter.py`.
+
+---
+
+## When resuming work
+
+1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation.
+2. **Read `### Phase 0 close record` first** — it sits at the end of `## Decisions to ratify` and **reads CLOSED 2026-09-21**: D1–D7 and OQ-2 ratified as recommended, **OQ-1 moot by D2's outcome and NOT ratified**. Build phases may start, and **the record — not the decisions above it — is what says what each phase must do.** ⚠ **The close was a single blanket directive with no per-item deliberation, so every counter-argument in this plan is still live on its own merits.**
+3. **Re-verify every anchor by grepping the quoted strings**, never the digits: `Scope follows what the user sees`, `Deciding it yourself`, `cover it unless you can name`, `any exclusion as yours`, `the surface stays uncovered`, `Never record your choice as the user's`, `adds no affected area and no acceptance criterion`, `` The value is `cover <surface>` ``, `Covering a user-facing surface takes two entries`, `the exclusion standing, the surface uncovered`, `Which user-facing surfaces a change covers is set by what the user sees`, and Anchor F's `user-facing surface\|shows the feature` across the five command directories. ⚠ **After Phase 1 the `src/CLAUDE.md` hits have changed BY DESIGN: under (c), `Deciding it yourself` survives, `cover it unless you can name` goes to ZERO in `src/`, and `any exclusion as yours` survives with a capitalised lead-in. A changed hit there is the built state, not a regression — and a zero on the middle string is the expected outcome, not a deletion of the upstream default.**
+4. **Re-check the plan number.** 100, 101, 102, 104, 105, 106 and 107 were taken in this checkout on 2026-09-21 and 103 was vacated by an earlier renumbering. **Another session may have taken 108 since.** ⚠ **Find a sibling plan by its TITLE, never by assuming a number.**
+5. **Route every markdown edit through instruction-author → instruction-reviewer**, and every Python edit through python-engineer → python-reviewer. ⚠ **This plan expects NO Python; a phase that needs some has left its scope.**
+6. **Commit by explicit path, never `git add -A`**, with **Trap 1 (the dirty `src/CLAUDE.md`) in force.** Re-read `git status` first and read every shared ledger live. **Never touch another session's plan file.**
+7. **After each phase, cross-check.** Grep the amended wording and every string this plan quotes, and **fix any dangling reference in the SAME change.**
+8. **Keep the evidence class attached.** Any summary of this plan repeats it: **a contradiction read out of this tree; no consumer incident recorded here; nothing measured.**
+9. **Keep the root-cause finding attached to the fix.** The defect was **an always-on rule restating a per-command outcome**, and the fix is **single ownership** — the rule owns the invariant and the definition, the command owns the outcome. ⚠ **A summary that reports only "item 17 got a better sentence" has dropped the part that prevents the next recurrence**, and `### Phase 0 close record` states how the principle stands: **ratified by ratifying Option SINGLE-OWNER, with NO separate maintainer statement about the principle itself.**
