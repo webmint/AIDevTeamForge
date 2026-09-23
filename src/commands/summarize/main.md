@@ -217,7 +217,7 @@ Keep it concise: this is a summary, not a report. Deduplicate — group files by
 
 Write the composed summary to `<feature_dir>/summary.md` with the Write tool (idempotent overwrite — re-running `/devforge:summarize` replaces any prior `summary.md`; D6). There is NO `write-summary` helper verb — the orchestrator writes the prose directly, because the synthesis is inline (D6).
 
-Then make a single `[WIP]` commit adding `summary.md`, following the Commit Convention in `CLAUDE.md` (the `[WIP] Type: description` shape; `[WIP]` commits are squashed into the final feature commit by `/devforge:finalize`):
+Then make a single `[WIP]` commit adding `summary.md`, following the Commit Convention in `CLAUDE.md` (the artifact-commit shape `[WIP] <label>`; `[WIP]` commits are squashed into the final feature commit by `/devforge:finalize`):
 
 ```bash
 git add <feature_dir>/summary.md && git commit -m "[WIP] Feature summary: <feature-dir-name>"

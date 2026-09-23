@@ -246,8 +246,9 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
   - `fix(scope):` — bug fix
   - `refactor(scope):` — behavior-preserving restructuring
   - `docs:` — documentation only
-- **WIP commits**: `[WIP] Type: description — phase detail` (squashed into final commit)
-- **Checkpoint commits**: `[checkpoint] Pre-type: description` (squashed into final commit)
+- **WIP commits**: `[WIP] task: <title> (Task NNN)` per task, `[WIP] fix: <title>` for an in-window `/devforge:fix`; in wrapper mode both are `[TICKET-ID] - <title>`. Artifact commits are `[WIP] <label>` and always land in the install repo, unchanged by wrapper mode (each squashed into its own repo's final commit)
+- **Checkpoint commits**: an empty pre-task commit marking the rollback target — `[checkpoint] pre-task NNN`, in wrapper mode a bare `[checkpoint]` (squashed with the rest); keep the `[checkpoint]` prefix in both modes — `/devforge:finalize`'s preflight counts `[WIP]` / `[checkpoint]` commits by it
+- **In wrapper mode**: the task, fix and checkpoint commits above go into the source repo, never the install root; that repo must carry no framework trace, so their subjects name no task number and the source branch's ticket ID is the one permitted reference
 
 ### Attribution
 {{COMMIT_ATTRIBUTION}}
@@ -317,7 +318,7 @@ If context is compacted or a new session starts, session-state.md ensures the ne
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/devforge:implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command was interrupted; if you run a different command while a marker exists, it detects the mismatch and asks you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/devforge:finalize` when the feature is approved.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/devforge:implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command was interrupted; if you run a different command while a marker exists, it detects the mismatch and asks you to resolve the previous session first. The pre-task checkpoint commits (`[checkpoint]` prefix) are empty markers to roll back to; the `[WIP]` commits hold the partial work, and `/devforge:finalize` squashes both into a clean feature commit when the feature is approved.
 
 ## References
 
