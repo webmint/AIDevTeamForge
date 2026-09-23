@@ -4,7 +4,8 @@ Dispatcher-only. All cmd_* handler bodies live in sibling modules:
   _cmds_set    — all 29 cmd_set_* + cmd_reset + cmd_add_package_stack
                  + cmd_set_package_stacks
   _cmds_read   — read-init / read-docs / read-manifests / read-configs
-  _cmds_render — render-config / substitute-templates / substitute-file / prune-agents
+  _cmds_render — render-config / substitute-templates / substitute-file /
+                 prune-agents / decide-agent
   _cmds_agent_models — apply-models (alias: apply-agent-models, plan 94 OQ-1)
   _cmds_verify — verify / summary
 """
@@ -26,6 +27,7 @@ from ._cmds_read import (
 )
 from ._cmds_lint_ignore import cmd_lint_ignore
 from ._cmds_render import (
+    cmd_decide_agent,
     cmd_prune_agents,
     cmd_render_config,
     cmd_substitute_file,
@@ -498,6 +500,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actually delete dropped agent files (default: dry-run).",
     )
     sp.set_defaults(func=cmd_prune_agents)
+
+    # ------------------------------------------------------------------
+    # Step 5a2: decide-agent (plan 101 D9) -- one-file keep/drop decision,
+    # called by update.sh's NEW_AGENTS computation.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "decide-agent",
+        help=(
+            "Decide keep/drop for ONE candidate agent file (--file) against "
+            "project_natures. Prints 'keep' or 'drop' to stdout; exit 0. "
+            "Unlike prune-agents, empty/unset project_natures (or no "
+            "configure.yaml) decides 'keep'. Exit 1 if --file is "
+            "missing/unreadable or configure.yaml cannot be loaded."
+        ),
+    )
+    sp.add_argument(
+        "--file",
+        required=True,
+        help="Path to the candidate agent markdown file (source or installed form).",
+    )
+    sp.set_defaults(func=cmd_decide_agent)
 
     # ------------------------------------------------------------------
     # Step 5b: apply-models (renamed from apply-agent-models, kept as an

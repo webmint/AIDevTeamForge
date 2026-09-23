@@ -504,13 +504,24 @@ AGENTS_SNAP_DIR="$TARGET_DIR/.devforge/template/$AGENTS_TGT_DIR"
 # NEW agents: in the current roster (src/agents/*.md) but NOT in the snapshot.
 # An agent absent from the snapshot was not installed last time → if it is also
 # absent from the live target it is genuinely new (the user could not have
-# pruned what never shipped). Install it.
+# pruned what never shipped). Install it -- unless configure_helper
+# decide-agent says the candidate's applies_to doesn't match this target's
+# project_natures (plan 101 D9). A name is left out ONLY on an exact "drop"
+# with exit 0; any other outcome (non-zero exit, empty output) keeps it --
+# fail OPEN, so a filter bug costs at most today's over-delivery, which
+# /devforge:configure's own prune-agents step corrects later.
 NEW_AGENTS=""
 if [ -d "$TEMPLATE_DIR/src/agents" ]; then
   NEW_AGENTS="$(for af in "$TEMPLATE_DIR/src/agents/"*.md; do
     [ -f "$af" ] || continue
     name="$(basename "$af")"
     if [ ! -f "$AGENTS_SNAP_DIR/$name" ]; then
+      decision="$("$PYTHON3_CMD" "$TEMPLATE_DIR/src/devforge/lib/configure_helper.py" \
+        --devforge-dir "$TARGET_DIR/.devforge" --install-root "$TARGET_DIR" \
+        decide-agent --file "$af" 2>/dev/null)" || decision=""
+      if [ "$decision" = "drop" ]; then
+        continue
+      fi
       echo "$name"
     fi
   done)"

@@ -1,4 +1,5 @@
-"""Render handlers: render-config + substitute-templates + substitute-file + prune-agents."""
+"""Render handlers: render-config + substitute-templates + substitute-file +
+prune-agents + decide-agent."""
 
 from __future__ import annotations
 
@@ -440,5 +441,63 @@ def cmd_prune_agents(args: argparse.Namespace) -> int:
         "decisions": decisions,
     }
     sys.stdout.write(json.dumps(report, indent=2))
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_decide_agent(args: argparse.Namespace) -> int:
+    """Decide keep/drop for ONE candidate agent file against project_natures.
+
+    update.sh's NEW_AGENTS computation (plan 101 D9) calls this verb once
+    per candidate `src/agents/*.md` file so the keep/drop rule has one
+    Python-tested owner instead of a shell re-implementation. Reads
+    project_natures from configure.yaml the same way cmd_prune_agents does
+    (_load(args.devforge_dir)), parses --file's applies_to via
+    _parse_agent_frontmatter (tolerates both the source fenced ```yaml
+    form and the installed --- form), and decides with _decide_agent --
+    the same two functions cmd_prune_agents calls, never copied.
+
+    Output: exactly one word on stdout, "keep" or "drop". Exit 0.
+
+    Unlike prune-agents (which exits 2 when project_natures is unset),
+    an empty/unset project_natures -- including no configure.yaml at all,
+    since _load() returns default_state() with project_natures=[] then --
+    decides "keep" here: a target with no natures yet keeps today's
+    install-everything behaviour, and /devforge:configure's own
+    prune-agents step prunes later (plan 101 D9).
+
+    Exit 1 (no stdout) if --file is missing/unreadable or configure.yaml
+    cannot be loaded. update.sh's call site treats any non-zero exit the
+    same as "keep" -- fail open (plan 101 D9).
+    """
+    file_path = Path(args.file)
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "configure_helper decide-agent: cannot read {0}: {1}\n".format(
+                file_path, err
+            )
+        )
+        return 1
+
+    try:
+        state = _load(args.devforge_dir)
+    except (OSError, YamlParseError) as err:
+        sys.stderr.write(
+            "configure_helper decide-agent: cannot load configure.yaml: {0}\n".format(
+                err
+            )
+        )
+        return 1
+
+    project_natures = state.get("project_natures") or []
+    if not project_natures:
+        sys.stdout.write("keep\n")
+        return 0
+
+    applies_to = _parse_agent_frontmatter(text)
+    status = _decide_agent(applies_to, project_natures, file_path.stem)
+    sys.stdout.write(status)
     sys.stdout.write("\n")
     return 0
