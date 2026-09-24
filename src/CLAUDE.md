@@ -126,7 +126,7 @@ One-time brownfield doc generation (second command in the 4-command setup chain)
 Third command in the 4-command setup chain — populates `.devforge/project-config.json` and substitutes the file templates, from `/devforge:init-forge` state + `/devforge:generate-docs` output.
 
 #### `/devforge:constitute`
-One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns. Its Section 3.5 forcing-functions config-capture offers the `design_token_provenance` rule (the build-time half of the Design Fidelity principle) for UI projects with a design source.
+One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns. Its Forcing Functions config block — captured after the Section 3 (Code Quality Standards) confirmation and stored in `.devforge/constitute.json`, not a numbered section of `constitution.md` — offers the `design_token_provenance` rule (the build-time half of the Design Fidelity principle) for UI projects with a design source.
 
 #### `/devforge:audit [--full | --uncommitted | --top N | path] [--passes N]`
 **NOT part of any workflow chain** — invoke manually after several specs ship. `--top N` defaults to 25; `--passes N` (clamped 1–3) defaults to 2 for the broad and hotspot scopes and 1 for narrow.

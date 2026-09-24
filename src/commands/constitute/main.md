@@ -232,9 +232,9 @@ For string-array fields whose values contain literal commas (e.g., TypeScript ge
 
 For `add-table` calls with cell content containing internal commas (TS generics, multi-clause sentences), use the JSON-array form for `--columns` and `--rows-json` — see `references/empirical-bugs.md` § "JSON-array setter form" for the escape mechanism.
 
-### Section 3.5 echo template (Forcing Functions — config block, not a constitution.md sub-section)
+### Forcing Functions config block echo template (stored in .devforge/constitute.json, not a numbered constitution.md sub-section)
 
-Section 3.5 captures the consumer's `forcing_functions` config block in `.devforge/constitute.json`. It is emitted as a **separate echo block in its own turn** — only AFTER Section 3's reply is parsed and Section 3's `add-section` / `add-rule` / `add-table` / `add-code-example` setters apply. Stop discipline applies per Phase 3 (end the assistant turn after emitting; wait for the user reply). The rules (`magic_enum_duplication`, `cross_layer_imports`, `any_with_generated_available`, and — for UI projects with a design source — `design_token_provenance`) are mechanical detectors backing the Code Quality Standards material and the Design Fidelity principle of the constitution; each rule is independently opt-in. This block targets the top-level `forcing_functions` key in `.devforge/constitute.json` and does NOT add a numbered sub-section to the rendered `constitution.md` — the config is read by `constitute_helper verify-magic-enum` / `verify-cross-layer-imports` / `verify-any-leak` / `verify-design-tokens` (each rule's `enabled` flag gates whether its detector runs).
+The Forcing Functions config block captures the consumer's `forcing_functions` configuration in `.devforge/constitute.json`. It has no section number — never label it with one; the `3.x` numbers belong to Section 3's own sub-sections. It is emitted as a **separate echo block in its own turn** — only AFTER Section 3's reply is parsed and Section 3's `add-section` / `add-rule` / `add-table` / `add-code-example` setters apply. Stop discipline applies per Phase 3 (end the assistant turn after emitting; wait for the user reply). The rules (`magic_enum_duplication`, `cross_layer_imports`, `any_with_generated_available`, and — for UI projects with a design source — `design_token_provenance`) are mechanical detectors backing the Code Quality Standards material and the Design Fidelity principle of the constitution; each rule is independently opt-in. This block targets the top-level `forcing_functions` key in `.devforge/constitute.json` and does NOT add a numbered sub-section to the rendered `constitution.md` — the config is read by `constitute_helper verify-magic-enum` / `verify-cross-layer-imports` / `verify-any-leak` / `verify-design-tokens` (each rule's `enabled` flag gates whether its detector runs).
 
 `design_token_provenance` is offered ONLY when the project has a design source — when `design/styles.css` and/or `design/reference.html` exists at install root. When neither file exists (non-UI projects have no design source), omit the `design_token_provenance` block from the echo entirely and issue no `set-forcing-functions` call for it; the rule stays at its disabled default. The other three rules are always offered (their echo blocks are always emitted, with empty or auto-detected defaults). `design_token_provenance` is the only rule whose echo block AND setter call are suppressed entirely when no design source exists.
 
@@ -252,7 +252,7 @@ Pre-fill defaults before echo:
 Echo template:
 
 ````
-Here's what /devforge:constitute proposes for Section 3.5 — Forcing Functions [config-block]:
+Here's what /devforge:constitute proposes for the Forcing Functions config block (stored in .devforge/constitute.json; not a numbered section of constitution.md):
 
 magic_enum_duplication:
 - enabled:              <true|false>
@@ -326,7 +326,7 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 After parsing each section's reply, apply the resulting setter calls IN ORDER per section type:
 - Section 1: one `set-project-identity` call.
 - Sections 2, 3, 5, 6: `add-section` first (creates the sub-section record), then `add-rule` / `add-table` / `add-code-example` referencing that section's `--number`.
-- Section 3.5 (Forcing Functions): one `set-forcing-functions` call per offered rule (three calls when no design source exists; four when `design_token_provenance` was offered). Runs after Section 3's setters apply, before the next section's echo. Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section.
+- Forcing Functions config block: one `set-forcing-functions` call per offered rule (three calls when no design source exists; four when `design_token_provenance` was offered). Runs after Section 3's setters apply, before the next section's echo. Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section.
 - Section 4: `add-pattern-rule` per accepted pattern (no `add-section` prerequisite — Section 4 has no numbered sub-sections).
 - Section 7: one `set-scaffolding-guide` call (greenfield only).
 
@@ -403,7 +403,7 @@ Section 7 (Scaffolding Guide; greenfield only) uses a single setter:
     --sample-files-json '[{"path": "package.json", "language": "json", "content": "..."}, ...]'
 ```
 
-Section 3.5 (Forcing Functions; config block) uses one `set-forcing-functions` call per offered rule (the first three always; the fourth only when a design source exists):
+The Forcing Functions config block (not a numbered constitution.md sub-section) uses one `set-forcing-functions` call per offered rule (the first three always; the fourth only when a design source exists):
 
 ```bash
 .devforge/lib/constitute_helper set-forcing-functions \
@@ -430,7 +430,7 @@ Section 3.5 (Forcing Functions; config block) uses one `set-forcing-functions` c
     --enabled <true|false> \
     [--token-source-css "design/styles.css"] \
     [--allowlist-paths "src/legacy/**.css,src/legacy"]
-# --enabled is required on every call. See Section 3.5 echo template footer
+# --enabled is required on every call. See the Forcing Functions config block echo template footer
 # for the flag-omission rule (when each bracketed flag is passed).
 # --generated-types-dirs and --allowlist-paths accept comma-separated values.
 # --layer-graph-json and --layer-dirs-json require JSON-object form.
@@ -560,7 +560,7 @@ A reply that picks none of these — one that hands the choice back to you, or f
 
 ### Phase 6.4 — Pre-commit hook opt-in (conditional)
 
-Skip this phase entirely when no `forcing_functions.<rule>` has `enabled: true` in `.devforge/constitute.json` — a pre-commit hook that has no enabled rules to run is a no-op install. Determine the enabled set by reading `.devforge/constitute.json` directly and inspecting each `forcing_functions.<rule>.enabled` value (the rules captured in Phase 3 § Section 3.5 echo template — the always-offered three plus `design_token_provenance` when a design source existed). If the `forcing_functions` key is absent from the JSON (older state file from a prior `/devforge:constitute` run), treat every rule as `enabled: false` and skip this phase.
+Skip this phase entirely when no `forcing_functions.<rule>` has `enabled: true` in `.devforge/constitute.json` — a pre-commit hook that has no enabled rules to run is a no-op install. Determine the enabled set by reading `.devforge/constitute.json` directly and inspecting each `forcing_functions.<rule>.enabled` value (the rules captured in Phase 3 § Forcing Functions config block echo template — the always-offered three plus `design_token_provenance` when a design source existed). If the `forcing_functions` key is absent from the JSON (older state file from a prior `/devforge:constitute` run), treat every rule as `enabled: false` and skip this phase.
 
 When at least one rule has `enabled: true`, ask via AskUserQuestion:
 
