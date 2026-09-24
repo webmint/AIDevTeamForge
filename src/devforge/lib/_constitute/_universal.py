@@ -22,10 +22,16 @@ def _parse_universal_blocks(constitution_md_path: "Path") -> "Dict[str, Dict]":
         {
             "heading": "<exact heading text after the section number>",
             "rules": [
-                {"tag_or_label": "<label>", "body": "<rule body text>"},
+                {"name": "<label>", "body": "<rule body text>"},
                 ...
             ],
         }
+
+    ``name`` is the rule's IDENTITY (a canonical heading or bold sub-label,
+    e.g. "Single Responsibility") — the comparison key ``cmd_verify_universal_
+    defaults`` (D4(a)) keys both the canonical and consumer sides on. It is
+    unrelated to ``rule_tag`` (the ``{extracted, enforced, universal,
+    project-specific}`` enum on the consumer side's stored rule records).
 
     Section-specific splitting:
     - §3.6: splits the SOLID block into individual sub-rules (one entry per
@@ -33,8 +39,17 @@ def _parse_universal_blocks(constitution_md_path: "Path") -> "Dict[str, Dict]":
       Single Responsibility is included when present.
     - §4.1, §4.2, §4.3: splits on ``- **Label.**`` / ``- **Label**`` bullets
       (each top-level bullet becomes one rule entry).
-    - All other sections: emits a single rule entry with tag_or_label equal to
-      the section heading and body equal to the full section body text.
+    - All other sections: emits a single rule entry with name equal to the
+      section heading and body equal to the full section body text.
+
+    Section boundary (F9): a numbered section's body ends at the next
+    markdown heading line of ANY level <= its own — numbered (``N.N``) or
+    not — so a bare ``## 4. Patterns & Anti-Patterns`` H2 correctly closes
+    the last numbered ``###`` sub-section before it. Lines inside a fenced
+    code block (``` or ~~~ delimiters) are never treated as headings, so a
+    ``# comment`` inside a fence cannot end a section early. A trailing
+    horizontal-rule line (``---`` / ``***`` / ``___``, optionally spaced)
+    and surrounding trailing blank lines are stripped from the body.
 
     Missing file: raises ``FileNotFoundError`` (caller decides how to handle).
     Section absent from file: that section key is absent from the returned dict.
@@ -42,28 +57,54 @@ def _parse_universal_blocks(constitution_md_path: "Path") -> "Dict[str, Dict]":
     text = Path(constitution_md_path).read_text(encoding="utf-8")
     lines = text.splitlines()
 
-    # --- Step 1: locate each heading and extract the body slice. ---
-    heading_re = re.compile(r"^(#{2,})\s+([\d]+\.[\d]+(?:\.[\d]+)*)\s+(.*)")
-    heading_positions = []  # type: List[tuple]
-    for idx, line in enumerate(lines):
-        m = heading_re.match(line)
-        if m:
-            level = len(m.group(1))
-            number = m.group(2)
-            title_raw = m.group(3).strip()
-            heading_positions.append((idx, level, number, title_raw))
+    # --- Step 1: mark fenced code-block lines. A fence delimiter line
+    # toggles fence state; the delimiter line itself and every interior
+    # line are excluded from heading detection below.
+    fence_delim_re = re.compile(r"^\s*(```|~~~)")
+    in_fence = []  # type: List[bool]
+    fence_open = False
+    for line in lines:
+        if fence_delim_re.match(line):
+            in_fence.append(True)
+            fence_open = not fence_open
+        else:
+            in_fence.append(fence_open)
 
-    # Build a map: number_str -> (title_raw, body_lines).
+    # --- Step 2: locate every non-fenced heading line (any level, used for
+    # section-boundary detection) and every non-fenced NUMBERED heading
+    # (``N.N[.N]``, used for section recording).
+    any_heading_re = re.compile(r"^(#{1,6})\s")
+    numbered_heading_re = re.compile(r"^(#{2,})\s+([\d]+\.[\d]+(?:\.[\d]+)*)\s+(.*)")
+
+    all_headings = []       # type: List[tuple]  # (idx, level)
+    numbered_headings = []  # type: List[tuple]  # (idx, level, number, title_raw)
+    for idx, line in enumerate(lines):
+        if in_fence[idx]:
+            continue
+        m_any = any_heading_re.match(line)
+        if not m_any:
+            continue
+        level = len(m_any.group(1))
+        all_headings.append((idx, level))
+        m_num = numbered_heading_re.match(line)
+        if m_num:
+            numbered_headings.append((idx, level, m_num.group(2), m_num.group(3).strip()))
+
+    # --- Step 3: for each numbered heading, slice its body up to the next
+    # heading of ANY kind at level <= its own, then strip a trailing
+    # horizontal rule plus its surrounding blank lines.
+    hr_re = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
     section_map = {}  # type: Dict[str, tuple]
-    for i, (idx, level, number, title_raw) in enumerate(heading_positions):
+    for idx, level, number, title_raw in numbered_headings:
         body_start = idx + 1
         body_end = len(lines)
-        for j in range(i + 1, len(heading_positions)):
-            nxt_idx, nxt_level, _, _ = heading_positions[j]
-            if nxt_level <= level:
+        for nxt_idx, nxt_level in all_headings:
+            if nxt_idx > idx and nxt_level <= level:
                 body_end = nxt_idx
                 break
-        body_lines = lines[body_start:body_end]
+        body_lines = list(lines[body_start:body_end])
+        while body_lines and (not body_lines[-1].strip() or hr_re.match(body_lines[-1])):
+            body_lines.pop()
         section_map[number] = (title_raw, body_lines)
 
     # --- Step 2: build the result dict for universal sections. ---
@@ -81,7 +122,7 @@ def _parse_universal_blocks(constitution_md_path: "Path") -> "Dict[str, Dict]":
         elif sect_key in ("§4.1", "§4.2", "§4.3"):
             rules = _split_bullet_rules(heading, body_text)
         else:
-            rules = [{"tag_or_label": heading, "body": body_text}]
+            rules = [{"name": heading, "body": body_text}]
 
         result[sect_key] = {"heading": heading, "rules": rules}
 
@@ -94,9 +135,9 @@ def _split_design_principles(body_text: str) -> "List[Dict]":
     Recognises two block shapes:
     - SOLID sub-rules: ``- **Name** — ...`` top-level bullets within the
       ``**SOLID:**`` block.  Each becomes a separate rule with the principle
-      name as tag_or_label.
+      name as ``name``.
     - Top-level bold-header blocks (DRY, KISS): ``**Name (...):**`` paragraphs.
-      Each becomes a rule with the short name as tag_or_label and the full
+      Each becomes a rule with the short name as ``name`` and the full
       paragraph text (including its sub-bullets) as body.
 
     Returns a list of rule dicts in document order.
@@ -126,7 +167,7 @@ def _split_design_principles(body_text: str) -> "List[Dict]":
                 rules.extend(_split_solid_sub_rules(block_body))
             else:
                 short_name = re.split(r"\s*[\(\s]", block_name)[0].strip()
-                rules.append({"tag_or_label": short_name, "body": block_body})
+                rules.append({"name": short_name, "body": block_body})
         else:
             i += 1
 
@@ -138,7 +179,7 @@ def _split_solid_sub_rules(solid_body: str) -> "List[Dict]":
 
     Each principle starts with ``- **Name** — ...`` at the top indent level.
     Lines that are continuations (indented or blank) belong to the previous
-    principle.  Returns list of dicts with tag_or_label and body.
+    principle.  Returns list of dicts with ``name`` and ``body``.
     """
     bullet_re = re.compile(r"^- \*\*([^*]+)\*\*")
     lines = solid_body.splitlines()
@@ -165,7 +206,7 @@ def _split_solid_sub_rules(solid_body: str) -> "List[Dict]":
     result = []
     for name, body_lines in entries:
         body = "\n".join(body_lines).strip()
-        result.append({"tag_or_label": name, "body": body})
+        result.append({"name": name, "body": body})
     return result
 
 
@@ -177,7 +218,7 @@ def _split_bullet_rules(heading: str, body_text: str) -> "List[Dict]":
     the previous bullet.
 
     If no bullets are found, falls back to a single rule entry with
-    ``tag_or_label = heading`` and ``body = body_text``.
+    ``name = heading`` and ``body = body_text``.
     """
     bullet_re = re.compile(r"^- \*\*([^*]+?)[.\*]*\*\*")
     lines = body_text.splitlines()
@@ -203,12 +244,12 @@ def _split_bullet_rules(heading: str, body_text: str) -> "List[Dict]":
         entries.append((current_label, current_lines))
 
     if not entries:
-        return [{"tag_or_label": heading, "body": body_text}]
+        return [{"name": heading, "body": body_text}]
 
     result = []
     for label, body_lines in entries:
         body = "\n".join(body_lines).strip()
-        result.append({"tag_or_label": label, "body": body})
+        result.append({"name": label, "body": body})
     return result
 
 
@@ -227,7 +268,7 @@ def _extract_universal_rules_from_state(
             "§3.5": {
                 "heading": "<section title from state>",
                 "rules": [
-                    {"tag_or_label": "<rule tag>", "body": "<rule text>"},
+                    {"name": "<rule name, or None>", "body": "<rule text>"},
                     ...
                 ],
             },
@@ -242,8 +283,14 @@ def _extract_universal_rules_from_state(
       ``never_universal`` → §4.2, ``prefer_universal`` → §4.3.  Rules in
       each bucket are included regardless of the rule's own ``tag`` field.
 
-    Rule mapping: each ``{"tag": t, "text": txt}`` record maps to
-    ``{"tag_or_label": t, "body": txt}``.
+    Rule mapping (D4(a)): each ``{"tag": t, "text": txt, "name": n?}`` record
+    maps to ``{"name": r.get("name"), "body": txt}`` — identity comes ONLY
+    from the optional ``name`` field (added by ``add-rule --name`` /
+    ``add-pattern-rule --name``), never from ``tag`` (the closed
+    ``rule_tag`` enum). A rule with no ``name`` key maps to ``{"name": None,
+    ...}``; this function does not filter it out — ``cmd_verify_universal_
+    defaults`` (the sole caller) excludes unnamed rules from its comparison,
+    since they are project additions, not canonical rules.
 
     Returns ``{}`` if the state file has no universal sections populated.
     Raises ``FileNotFoundError`` if the path does not exist.
@@ -267,7 +314,7 @@ def _extract_universal_rules_from_state(
             title = section.get("title") or ""
             rules_raw = section.get("rules", [])
             rules = [
-                {"tag_or_label": r.get("tag", ""), "body": r.get("text", "")}
+                {"name": r.get("name"), "body": r.get("text", "")}
                 for r in rules_raw
             ]
             result[sect_key] = {"heading": title, "rules": rules}
@@ -278,7 +325,7 @@ def _extract_universal_rules_from_state(
         if not bucket_rules:
             continue
         rules = [
-            {"tag_or_label": r.get("tag", ""), "body": r.get("text", "")}
+            {"name": r.get("name"), "body": r.get("text", "")}
             for r in bucket_rules
         ]
         result[sect_key] = {"heading": bucket_name, "rules": rules}

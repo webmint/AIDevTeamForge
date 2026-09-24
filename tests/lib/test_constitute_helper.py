@@ -1551,6 +1551,90 @@ class TestAddRule(unittest.TestCase):
             self.assertEqual(rules[0]["text"], "Rule 1")
             self.assertEqual(rules[1]["text"], "Rule 2")
 
+    def test_name_stored_when_given(self):
+        """D5(a): --name is stored as the rule's `name` field when given."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "1.1", "--tag", "universal",
+                           "--name", "Universal Code Quality", "--text", "x"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rule = state["architecture_rules"][0]["rules"][0]
+            self.assertEqual(rule["name"], "Universal Code Quality")
+
+    def test_name_absent_when_not_given(self):
+        """D5(a): omitting --name leaves the rule with no `name` key at all."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "1.1", "--tag", "universal", "--text", "x"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rule = state["architecture_rules"][0]["rules"][0]
+            self.assertNotIn("name", rule)
+
+    def test_name_whitespace_only_exits_2(self):
+        """D5(a): a whitespace-only --name fails _validate_verbatim → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "1.1", "--tag", "universal",
+                           "--name", "   ", "--text", "x"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_duplicate_name_in_same_section_exits_2_state_unchanged(self):
+        """A second --name matching an existing rule's name in the SAME
+        section is rejected: exit 2, state unchanged (no rule appended)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            first = _run(["--devforge-dir", str(devforge), "add-rule",
+                          "--section", "1.1", "--tag", "universal",
+                          "--name", "Universal Code Quality", "--text", "x"])
+            self.assertEqual(first.returncode, 0, first.stderr)
+            before = (devforge / "constitute.json").read_text()
+
+            dup = _run(["--devforge-dir", str(devforge), "add-rule",
+                        "--section", "1.1", "--tag", "universal",
+                        "--name", "Universal Code Quality", "--text", "y"])
+            self.assertEqual(dup.returncode, 2)
+            self.assertIn("Universal Code Quality", dup.stderr)
+
+            after = (devforge / "constitute.json").read_text()
+            self.assertEqual(
+                before, after,
+                "state must be unchanged after a rejected duplicate name",
+            )
+            state = json.loads(after)
+            self.assertEqual(len(state["architecture_rules"][0]["rules"]), 1)
+
+    def test_same_name_in_different_section_allowed(self):
+        """The same --name in a DIFFERENT section is allowed — uniqueness is
+        per-section, not global."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "architecture", "--number", "1.2",
+                  "--title", "Another Section"])
+
+            r1 = _run(["--devforge-dir", str(devforge), "add-rule",
+                       "--section", "1.1", "--tag", "universal",
+                       "--name", "Shared Name", "--text", "x"])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run(["--devforge-dir", str(devforge), "add-rule",
+                       "--section", "1.2", "--tag", "universal",
+                       "--name", "Shared Name", "--text", "y"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "constitute.json").read_text())
+            names = [s["rules"][0]["name"] for s in state["architecture_rules"]]
+            self.assertEqual(names.count("Shared Name"), 2)
+
 
 class TestAddTable(unittest.TestCase):
     def _setup_section(self, devforge):
@@ -1727,6 +1811,160 @@ class TestAddPatternRule(unittest.TestCase):
             rules = state["patterns_and_antipatterns"]["never_project_specific"]
             self.assertEqual(len(rules), 1)
             self.assertEqual(rules[0]["text"], "Never use global state")
+
+    def test_name_stored_when_given(self):
+        """D5(a): --name is stored as the pattern rule's `name` field when given."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                           "--bucket", "always", "--scope", "universal",
+                           "--tag", "universal", "--name", "Universal Code Quality",
+                           "--text", "x"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rule = state["patterns_and_antipatterns"]["always_universal"][0]
+            self.assertEqual(rule["name"], "Universal Code Quality")
+
+    def test_name_absent_when_not_given(self):
+        """D5(a): omitting --name leaves the pattern rule with no `name` key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                           "--bucket", "always", "--scope", "universal",
+                           "--tag", "universal", "--text", "x"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rule = state["patterns_and_antipatterns"]["always_universal"][0]
+            self.assertNotIn("name", rule)
+
+    def test_name_whitespace_only_exits_2(self):
+        """D5(a): a whitespace-only --name fails _validate_verbatim → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                           "--bucket", "always", "--scope", "universal",
+                           "--tag", "universal", "--name", "   ", "--text", "x"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_duplicate_name_in_same_bucket_exits_2_state_unchanged(self):
+        """A second --name matching an existing rule's name in the SAME
+        bucket is rejected: exit 2, state unchanged (no rule appended)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            first = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                          "--bucket", "always", "--scope", "universal",
+                          "--tag", "universal", "--name", "Read before write",
+                          "--text", "x"])
+            self.assertEqual(first.returncode, 0, first.stderr)
+            before = (devforge / "constitute.json").read_text()
+
+            dup = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                        "--bucket", "always", "--scope", "universal",
+                        "--tag", "universal", "--name", "Read before write",
+                        "--text", "y"])
+            self.assertEqual(dup.returncode, 2)
+            self.assertIn("Read before write", dup.stderr)
+
+            after = (devforge / "constitute.json").read_text()
+            self.assertEqual(
+                before, after,
+                "state must be unchanged after a rejected duplicate name",
+            )
+            state = json.loads(after)
+            self.assertEqual(
+                len(state["patterns_and_antipatterns"]["always_universal"]), 1
+            )
+
+    def test_same_name_in_different_bucket_allowed(self):
+        """The same --name in a DIFFERENT bucket is allowed — uniqueness is
+        per-bucket, not global."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r1 = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                       "--bucket", "always", "--scope", "universal",
+                       "--tag", "universal", "--name", "Shared Name",
+                       "--text", "x"])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                       "--bucket", "never", "--scope", "universal",
+                       "--tag", "universal", "--name", "Shared Name",
+                       "--text", "y"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "constitute.json").read_text())
+            pap = state["patterns_and_antipatterns"]
+            self.assertEqual(pap["always_universal"][0]["name"], "Shared Name")
+            self.assertEqual(pap["never_universal"][0]["name"], "Shared Name")
+
+
+# ---------------------------------------------------------------------------
+# D5(a) integration — a named rule survives verify + render unchanged.
+# ---------------------------------------------------------------------------
+
+
+class TestRuleNameVerifyAndRender(unittest.TestCase):
+    """A rule's optional `name` field is transparent to verify and render.
+
+    Real-CLI round trip: reset → fill required scalars → add-section →
+    add-rule (with/without --name) → render → verify.
+    """
+
+    def _fill_required_scalars(self, devforge):
+        _run(["--devforge-dir", str(devforge), "reset"])
+        _run(["--devforge-dir", str(devforge), "set-project-name",
+              "--value", "TestProj"])
+        _run(["--devforge-dir", str(devforge), "set-mode",
+              "--value", "existing-codebase"])
+        _run(["--devforge-dir", str(devforge), "set-dates",
+              "--generated", "2026-01-01", "--updated", "2026-01-01"])
+        _run(["--devforge-dir", str(devforge), "set-project-identity",
+              "--name", "TestProj", "--type", "web",
+              "--domain", "test", "--stack", "Python"])
+
+    def test_verify_passes_on_state_with_named_rule(self):
+        """`constitute_helper verify` still exits 0 on a state with a named rule."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            self._fill_required_scalars(devforge)
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "3.5",
+                  "--title", "Universal Code Quality", "--tag", "universal"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "3.5", "--tag", "universal",
+                  "--name", "Universal Code Quality", "--text", "x"])
+
+            render_result = _run_render(devforge, install_root)
+            self.assertEqual(render_result.returncode, 0, render_result.stderr)
+
+            verify_result = _run_verify(devforge, install_root)
+            self.assertEqual(verify_result.returncode, 0, verify_result.stderr)
+
+    def test_render_output_identical_with_and_without_name(self):
+        """render output is byte-identical whether a rule carries `name` or not."""
+        outputs = {}
+        for label, name_args in (
+            ("with_name", ["--name", "Universal Code Quality"]),
+            ("without_name", []),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                devforge = Path(tmp) / ".devforge"
+                install_root = Path(tmp)
+                self._fill_required_scalars(devforge)
+                _run(["--devforge-dir", str(devforge), "add-section",
+                      "--bucket", "code-quality", "--number", "3.5",
+                      "--title", "Universal Code Quality", "--tag", "universal"])
+                _run(["--devforge-dir", str(devforge), "add-rule",
+                      "--section", "3.5", "--tag", "universal",
+                      "--text", "x"] + name_args)
+
+                render_result = _run_render(devforge, install_root)
+                self.assertEqual(render_result.returncode, 0, render_result.stderr)
+                outputs[label] = (install_root / "constitution.md").read_text(
+                    encoding="utf-8"
+                )
+
+        self.assertEqual(outputs["with_name"], outputs["without_name"])
 
 
 class TestSetScaffoldingGuide(unittest.TestCase):
@@ -3778,16 +4016,16 @@ class TestParseUniversalBlocks(unittest.TestCase):
                     msg="{0}[{1}] body is empty".format(sect_key, i),
                 )
 
-    def test_happy_path_every_rule_has_nonempty_tag_or_label(self):
-        """Every rule in every section has a non-empty tag_or_label."""
+    def test_happy_path_every_rule_has_nonempty_name(self):
+        """Every rule in every section has a non-empty name (D4(a) identity key)."""
         d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
         for sect_key, val in d.items():
             for i, rule in enumerate(val["rules"]):
-                self.assertIn("tag_or_label", rule,
+                self.assertIn("name", rule,
                               msg="{0}[{1}]".format(sect_key, i))
                 self.assertTrue(
-                    rule["tag_or_label"].strip(),
-                    msg="{0}[{1}] tag_or_label is empty".format(sect_key, i),
+                    rule["name"].strip(),
+                    msg="{0}[{1}] name is empty".format(sect_key, i),
                 )
 
     def test_section_36_rule_count_and_labels_present(self):
@@ -3805,7 +4043,7 @@ class TestParseUniversalBlocks(unittest.TestCase):
         self.assertIn("§3.6", d)
         rules = d["§3.6"]["rules"]
         self.assertGreaterEqual(len(rules), 8)
-        labels = {r["tag_or_label"] for r in rules}
+        labels = {r["name"] for r in rules}
         # The four SOLID sub-rules explicitly named in the brief spec.
         for expected_label in ("Open/Closed", "Liskov Substitution",
                                "Interface Segregation", "Dependency Inversion"):
@@ -3824,7 +4062,7 @@ class TestParseUniversalBlocks(unittest.TestCase):
         """
         d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
         rules = d["§3.6"]["rules"]
-        by_label = {r["tag_or_label"]: r["body"] for r in rules}
+        by_label = {r["name"]: r["body"] for r in rules}
 
         self.assertIn("Narrowing", by_label)
         narrowing_body = by_label["Narrowing"]
@@ -3847,7 +4085,7 @@ class TestParseUniversalBlocks(unittest.TestCase):
         for rule in rules:
             self.assertTrue(rule["body"].strip(),
                             msg="§4.3 rule {0!r} has empty body".format(
-                                rule.get("tag_or_label")))
+                                rule.get("name")))
 
     def test_missing_file_raises_file_not_found(self):
         """Non-existent path raises FileNotFoundError (clear failure signal)."""
@@ -3861,7 +4099,7 @@ class TestParseUniversalBlocks(unittest.TestCase):
         self.assertIn("§3.5", d)
         rules = d["§3.5"]["rules"]
         self.assertEqual(len(rules), 1)
-        self.assertEqual(rules[0]["tag_or_label"], d["§3.5"]["heading"])
+        self.assertEqual(rules[0]["name"], d["§3.5"]["heading"])
 
     def test_workflow_sections_have_single_rule(self):
         """§6.1-§6.4 (plain prose sections) each emit exactly one rule entry."""
@@ -3873,6 +4111,74 @@ class TestParseUniversalBlocks(unittest.TestCase):
                 len(rules), 1,
                 msg="{0} should emit 1 rule, got {1}".format(sect_key, len(rules)),
             )
+
+    def test_section_38_body_excludes_next_h2_and_trailing_rule(self):
+        """F9: §3.8's body ends at the bare ``## 4.`` H2, not past it.
+
+        §3.8 is the last numbered universal sub-section before ``## 4.
+        Patterns & Anti-Patterns``, a heading with no ``N.N`` number so it
+        never matched the old numbered-only boundary regex. Before the F9
+        fix, §3.8's body ran on through a trailing ``---`` and the literal
+        text ``## 4. Patterns & Anti-Patterns``.
+        """
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        self.assertIn("§3.8", d)
+        body = d["§3.8"]["rules"][0]["body"]
+        for line in body.splitlines():
+            self.assertFalse(
+                line.startswith("## "),
+                msg="§3.8 body leaked a bare H2 line: {0!r}".format(line),
+            )
+        self.assertFalse(
+            body.rstrip().endswith("---"),
+            msg="§3.8 body still ends with a trailing horizontal rule",
+        )
+        self.assertTrue(
+            body.endswith("is not among these findings."),
+            msg="§3.8 body does not end with the canonical closing paragraph: "
+                "{0!r}".format(body[-80:]),
+        )
+
+    def test_fenced_block_not_a_heading_and_trailing_rule_stripped(self):
+        """Fence-aware boundary: a ``#`` line inside a fence is not a heading,
+        and a trailing ``---`` + the following bare H2 are excluded (F9).
+
+        Tmp-file fixture: a numbered ``### 3.5`` universal section containing
+        a fenced block with a ``# not a heading`` line, then a trailing
+        horizontal rule, then a bare ``## 4. Next`` H2.
+        """
+        fixture_text = (
+            "### 3.5 Some Title [universal]\n"
+            "\n"
+            "Intro text.\n"
+            "\n"
+            "```\n"
+            "# not a heading\n"
+            "code line\n"
+            "```\n"
+            "\n"
+            "More text after fence.\n"
+            "\n"
+            "---\n"
+            "\n"
+            "## 4. Next\n"
+            "\n"
+            "Next section content.\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture_path = Path(tmp) / "constitution.md"
+            fixture_path.write_text(fixture_text, encoding="utf-8")
+
+            d = constitute_helper._parse_universal_blocks(fixture_path)
+
+            self.assertIn("§3.5", d)
+            body = d["§3.5"]["rules"][0]["body"]
+            self.assertIn("# not a heading", body)
+            self.assertIn("code line", body)
+            self.assertTrue(body.endswith("More text after fence."), msg=repr(body))
+            self.assertNotIn("---", body)
+            self.assertNotIn("## 4. Next", body)
+            self.assertNotIn("Next section content.", body)
 
 
 # ---------------------------------------------------------------------------
@@ -4033,6 +4339,66 @@ class TestExtractUniversalRulesFromState(unittest.TestCase):
                 "Every code change MUST impact as little code as possible.",
             )
 
+    def test_name_sets_equal_canonical_for_35_36_41_via_real_cli(self):
+        """D4(a) Verify: canonical and consumer `name` sets are equal for
+        §3.5, every §3.6 principle, and §4.1 — built through the real CLI
+        (``add-rule --name`` / ``add-pattern-rule --name``), not a
+        hand-authored fixture.
+        """
+        canonical = constitute_helper._parse_universal_blocks(
+            _REPO_ROOT / "src" / "constitution.md"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            helper = str(_HELPER_PY)
+            base = [sys.executable, helper, "--devforge-dir", str(devforge)]
+
+            def run(*args):
+                r = subprocess.run(base + list(args), capture_output=True, text=True)
+                if r.returncode != 0:
+                    raise RuntimeError(
+                        "constitute_helper {0} failed (exit {1}): {2}".format(
+                            args[0], r.returncode, r.stderr
+                        )
+                    )
+
+            run("reset")
+
+            # §3.5 — single canonical rule.
+            run("add-section", "--bucket", "code-quality", "--number", "3.5",
+                "--title", canonical["§3.5"]["heading"], "--tag", "universal")
+            for rule in canonical["§3.5"]["rules"]:
+                run("add-rule", "--section", "3.5", "--tag", "universal",
+                    "--name", rule["name"], "--text", rule["body"])
+
+            # §3.6 — every SOLID / DRY / KISS / Narrowing / Two-hats principle.
+            run("add-section", "--bucket", "code-quality", "--number", "3.6",
+                "--title", canonical["§3.6"]["heading"], "--tag", "universal")
+            for rule in canonical["§3.6"]["rules"]:
+                run("add-rule", "--section", "3.6", "--tag", "universal",
+                    "--name", rule["name"], "--text", rule["body"])
+
+            # §4.1 — patterns_and_antipatterns always_universal bucket.
+            for rule in canonical["§4.1"]["rules"]:
+                run("add-pattern-rule", "--bucket", "always", "--scope", "universal",
+                    "--tag", "universal", "--name", rule["name"], "--text", rule["body"])
+
+            state_path = devforge / "constitute.json"
+            consumer = constitute_helper._extract_universal_rules_from_state(
+                state_path
+            )
+
+            for sect_key in ("§3.5", "§3.6", "§4.1"):
+                self.assertIn(sect_key, consumer, msg=sect_key)
+                canonical_names = {r["name"] for r in canonical[sect_key]["rules"]}
+                consumer_names = {r["name"] for r in consumer[sect_key]["rules"]}
+                self.assertEqual(
+                    canonical_names, consumer_names,
+                    msg="{0}: name sets differ (canonical={1}, consumer={2})".format(
+                        sect_key, canonical_names, consumer_names
+                    ),
+                )
+
 
 # ---------------------------------------------------------------------------
 # forge-internal:verify-universal-defaults.
@@ -4043,15 +4409,21 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
     """Write a constitute.json whose universal-rule bodies match the canonical
     src/constitution.md exactly for ALL universal sections.
 
-    The fixture is hand-authored (not via setters) because:
-    - ``add-rule --tag`` is constrained to enum values (extracted | enforced |
-      universal | project-specific), so principle names like "Single
-      Responsibility" cannot be stored as the rule tag via the CLI.
-    - ``_extract_universal_rules_from_state`` maps rule.tag → tag_or_label, so
-      for the canonical and consumer tag_or_label keys to match, the JSON rule
-      records must carry the principle name as the ``tag`` field.
-    - Hand-authored JSON is explicitly permitted by the real-producer principle
-      where setters can't naturally produce the required shape.
+    The fixture is hand-authored (not via setters) because building every
+    rule for every universal section (§3.6 alone has 9 SOLID/DRY/KISS/
+    Narrowing/Two-hats entries) one ``add-rule --name ... --tag universal
+    --text ...`` subprocess call at a time would multiply this fixture's
+    setup cost across every test that uses it. Hand-authored JSON is
+    explicitly permitted by the real-producer principle where setters can't
+    naturally produce the required shape as cheaply (Phase 5 later moves this
+    fixture onto the real CLI's per-rule setters — not done here).
+
+    D4(a): each JSON rule record carries the rule's canonical identity in its
+    own ``name`` field — exactly what ``add-rule --name`` / ``add-pattern-rule
+    --name`` would store — never smuggled into ``tag``, which stays the closed
+    ``rule_tag`` enum value ``"universal"``. ``_extract_universal_rules_from_
+    state`` reads ``name`` directly, so the canonical and consumer ``name``
+    keys match without any tag-as-identity indirection.
 
     Body text is sourced directly from ``_parse_universal_blocks`` output on the
     real ``src/constitution.md`` — no body values are invented.
@@ -4072,7 +4444,7 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
         sect_key = "§" + number
         sec = canonical.get(sect_key, {})
         rules = [
-            {"tag": r["tag_or_label"], "text": r["body"]}
+            {"tag": "universal", "name": r["name"], "text": r["body"]}
             for r in sec.get("rules", [])
         ]
         state["code_quality_standards"].append(
@@ -4093,7 +4465,7 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
     for sect_key, bucket_name in _SECT_TO_BUCKET.items():
         sec = canonical.get(sect_key, {})
         rules = [
-            {"tag": r["tag_or_label"], "text": r["body"]}
+            {"tag": "universal", "name": r["name"], "text": r["body"]}
             for r in sec.get("rules", [])
         ]
         state["patterns_and_antipatterns"][bucket_name] = rules
@@ -4103,7 +4475,7 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
         sect_key = "§" + number
         sec = canonical.get(sect_key, {})
         rules = [
-            {"tag": r["tag_or_label"], "text": r["body"]}
+            {"tag": "universal", "name": r["name"], "text": r["body"]}
             for r in sec.get("rules", [])
         ]
         state["workflow_rules"].append(
@@ -4126,13 +4498,24 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
 class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
     """Tests for forge-internal:verify-universal-defaults subcommand.
 
-    Fixture strategy:
-    - All 3 tests use hand-authored constitute.json fixtures because the
-      ``add-rule`` setter constrains ``--tag`` to enum values, so principle
-      names like "Single Responsibility" cannot be stored via the CLI.
-      Body text is always sourced from the real canonical parser output.
+    Fixture strategy: most tests here use hand-authored constitute.json
+    fixtures (via ``_build_in_sync_constitute_json``), not because the real
+    CLI can't store a rule's ``name`` (``add-rule --name`` / ``add-pattern-
+    rule --name`` do exactly that), but because building every rule for
+    every universal section one ``add-rule``/``add-pattern-rule`` subprocess
+    call at a time would multiply this fixture's setup cost across every
+    test that needs an in-sync baseline. Body text is always sourced from
+    the real canonical parser output. Phase 5 later moves these fixtures
+    onto the real CLI's per-rule setters (see
+    ``TestExtractUniversalRulesFromState.
+    test_name_sets_equal_canonical_for_35_36_41_via_real_cli`` for a test
+    that already does this, for §3.5/§3.6/§4.1).
+
+    Tests:
     - test_verify_universal_defaults_in_sync: fixture bodies match canonical
       (exit 0, zero findings).
+    - test_unnamed_consumer_rule_ignored_no_spurious_finding: an unnamed
+      rule added to an in-sync section produces no MISSING/DRIFT (D4(a)).
     - test_verify_universal_defaults_missing_section: §3.6 entirely absent
       (exit 2, MISSING §3.6 finding).
     - test_verify_universal_defaults_drift_one_rule: §3.6 present but one
@@ -4177,17 +4560,58 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
                 msg="Expected zero findings on in-sync fixture"
             )
 
+    def test_unnamed_consumer_rule_ignored_no_spurious_finding(self):
+        """An unnamed consumer rule inside a named universal section produces
+        neither a MISSING nor a DRIFT finding — it is a project addition, not
+        a canonical rule (D4(a))."""
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+            _build_in_sync_constitute_json(devforge)
+
+            state_path = devforge / "constitute.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            for section in state["code_quality_standards"]:
+                if section["number"] == "3.5":
+                    section["rules"].append(
+                        {"tag": "project-specific", "text": "A project-only addition."}
+                    )
+                    break
+            state_path.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = self._invoke(consumer_root, canonical_path)
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(
+                report["findings"], [],
+                msg="Unnamed rule addition must not produce any finding",
+            )
+
     def test_verify_universal_defaults_missing_section(self):
-        """§3.6 absent in consumer → exit 2, MISSING §3.6 in findings."""
+        """§3.6 absent in consumer → exit 2, MISSING §3.6 in findings.
+
+        D5 pre-identity obligation: a state with ZERO named rules anywhere
+        (e.g. a bare ``default_state()``) now reports a single PRE_IDENTITY
+        finding instead of per-section MISSING (see
+        test_verify_universal_defaults_pre_identity below). To exercise the
+        MISSING path this test starts from the in-sync fixture (named rules
+        for all ten OTHER canonical sections) and strips §3.6 out entirely.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
 
-            # Build a state with §3.6 INTENTIONALLY absent.
-            state = constitute_helper.default_state()
-            devforge.mkdir(parents=True, exist_ok=True)
-            out = devforge / "constitute.json"
-            out.write_text(
+            _build_in_sync_constitute_json(devforge)
+            state_path = devforge / "constitute.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["code_quality_standards"] = [
+                s for s in state["code_quality_standards"] if s["number"] != "3.6"
+            ]
+            state_path.write_text(
                 json.dumps(state, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
@@ -4222,13 +4646,17 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
 
             # Build rules identical to canonical EXCEPT for the first rule,
             # whose body is replaced with pre-strengthening generic text.
+            # `name` is preserved unchanged on every rule (including the
+            # altered one) so the D4(a) comparator keys it to the same
+            # canonical rule and reports DRIFT, not MISSING.
             rules_36 = [
-                {"tag": r["tag_or_label"], "text": r["body"]}
+                {"tag": "universal", "name": r["name"], "text": r["body"]}
                 for r in sec36.get("rules", [])
             ]
             if rules_36:
                 rules_36[0] = {
-                    "tag": rules_36[0]["tag"],
+                    "tag": "universal",
+                    "name": rules_36[0]["name"],
                     "text": "Depend on abstractions, not on concretions.",
                 }
 
@@ -4278,11 +4706,17 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
 class TestDesignFidelityUniversalSection(unittest.TestCase):
     """Tests that §3.8 Design Fidelity is a tracked universal section.
 
-    Covers the four requirements:
-    1. §3.8 is in _UNIVERSAL_SECTIONS.
-    2. A re-rendered constitution from seeded state includes §3.8 content.
-    3. verify-universal-defaults detects a missing §3.8 (exit 2, MISSING).
-    4. verify-universal-defaults passes when §3.8 is in sync (exit 0).
+    Covers five requirements:
+    1. test_section_key_in_universal_sections: §3.8 is in _UNIVERSAL_SECTIONS.
+    2. test_render_from_seeded_state_includes_design_fidelity: a re-rendered
+       constitution from seeded state includes §3.8 content.
+    3. test_verify_universal_defaults_detects_missing_38: verify-universal-
+       defaults detects a missing §3.8 (exit 2, MISSING).
+    4. test_verify_universal_defaults_passes_with_38_in_sync: verify-
+       universal-defaults passes when §3.8 is in sync (exit 0).
+    5. test_verify_universal_defaults_pre_identity_on_bare_state: a bare,
+       pre-identity state (D5's pre-change-state obligation) reports exactly
+       one PRE_IDENTITY finding instead of per-section MISSING (exit 2).
     """
 
     def test_section_key_in_universal_sections(self):
@@ -4317,7 +4751,7 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
         sec38 = canonical.get("§3.8", {})
         self.assertTrue(sec38, "§3.8 absent from src/constitution.md — check heading")
         rules_38 = [
-            {"tag": r["tag_or_label"], "text": r["body"]}
+            {"tag": "universal", "name": r["name"], "text": r["body"]}
             for r in sec38.get("rules", [])
         ]
         state["code_quality_standards"].append(
@@ -4354,16 +4788,28 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
                       msg="NOT-COVERED honesty clause lost in re-render")
 
     def test_verify_universal_defaults_detects_missing_38(self):
-        """verify-universal-defaults exits 2 with MISSING §3.8 when §3.8 absent."""
+        """verify-universal-defaults exits 2 with MISSING §3.8 when §3.8 absent.
+
+        D5 pre-identity obligation: a state with ZERO named rules anywhere
+        (e.g. a bare ``default_state()``) now reports a single PRE_IDENTITY
+        finding instead of per-section MISSING (see
+        test_verify_universal_defaults_pre_identity_on_bare_state below). To
+        exercise the MISSING path this test starts from the in-sync fixture
+        (named rules for all ten OTHER canonical sections) and strips §3.8
+        out entirely.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
 
-            # Build state WITHOUT §3.8.
-            state = constitute_helper.default_state()
-            devforge.mkdir(parents=True, exist_ok=True)
-            out = devforge / "constitute.json"
-            out.write_text(
+            # Build a fully in-sync state, then strip §3.8 out entirely.
+            _build_in_sync_constitute_json(devforge)
+            state_path = devforge / "constitute.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["code_quality_standards"] = [
+                s for s in state["code_quality_standards"] if s["number"] != "3.8"
+            ]
+            state_path.write_text(
                 json.dumps(state, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
@@ -4425,6 +4871,56 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
             report = json.loads(result.stdout)
             self.assertEqual(report["findings"], [],
                              msg="Expected zero findings with §3.8 in sync")
+
+    def test_verify_universal_defaults_pre_identity_on_bare_state(self):
+        """D5 pre-identity obligation: a bare pre-identity state → one PRE_IDENTITY
+        finding, exit 2 — not eleven per-section MISSING findings.
+
+        A bare ``default_state()`` (what a pre-D4/D5 ``reset`` would have
+        produced, and what any state with zero named rules looks like to
+        this comparator) has no rule anywhere with a non-empty ``name``.
+        Per-rule comparison is skipped entirely in favor of this single
+        finding, which is what a genuinely never-constituted-since-this-
+        change consumer must see instead of a wall of MISSING findings.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+
+            state = constitute_helper.default_state()
+            devforge.mkdir(parents=True, exist_ok=True)
+            out = devforge / "constitute.json"
+            out.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "forge-internal:verify-universal-defaults",
+                    "--consumer-path", str(consumer_root),
+                    "--canonical-path", str(canonical_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 2,
+                             msg="Expected exit 2 for a pre-identity bare state")
+            self.assertIn("PRE_IDENTITY", result.stderr)
+
+            report = json.loads(result.stdout)
+            self.assertEqual(
+                len(report["findings"]), 1,
+                msg="Expected exactly one finding for a pre-identity bare state: "
+                    "{0}".format(report["findings"]),
+            )
+            self.assertEqual(report["findings"][0]["kind"], "PRE_IDENTITY")
+            self.assertEqual(report["findings"][0]["section"], "*")
 
 
 if __name__ == "__main__":

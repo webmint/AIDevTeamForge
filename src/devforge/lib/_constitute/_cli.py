@@ -163,6 +163,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Rule tag (extracted | enforced | universal | project-specific).",
     )
     sp.add_argument("--text", required=True, help="Rule text.")
+    sp.add_argument(
+        "--name",
+        default=None,
+        help=(
+            "Optional rule identity, distinct from --tag, e.g. a canonical "
+            "heading or bold sub-label such as \"Single Responsibility\". "
+            "Omitted for project rules. Must be unique within --section; a "
+            "duplicate name in the same section exits 2."
+        ),
+    )
     sp.set_defaults(func=cmd_add_rule)
 
     sp = subparsers.add_parser(
@@ -220,6 +230,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Rule tag (extracted | enforced | universal | project-specific).",
     )
     sp.add_argument("--text", required=True, help="Pattern rule text.")
+    sp.add_argument(
+        "--name",
+        default=None,
+        help=(
+            "Optional rule identity, distinct from --tag, e.g. a canonical "
+            "heading or bold sub-label such as \"Single Responsibility\". "
+            "Omitted for project rules. Must be unique within the "
+            "--bucket/--scope pair; a duplicate name in the same bucket "
+            "exits 2."
+        ),
+    )
     sp.set_defaults(func=cmd_add_pattern_rule)
 
     sp = subparsers.add_parser(

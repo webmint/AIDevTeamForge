@@ -45,21 +45,29 @@ forge_check_constitution_drift() {
   warned=0
   detail=""
 
-  # Check A — universal-section drift. Exit 2 == real drift (the consumer json is
-  # guaranteed present by the guard above and the canonical path is present, so
-  # exit 2 is never an input-missing case for this verb).
+  # Check A — universal-section drift. Exit 2 == findings: either per-rule
+  # MISSING/DRIFT against the canonical file, or a single PRE_IDENTITY finding
+  # when the consumer state predates rule identities (D5's pre-change-state
+  # obligation — see cmd_verify_universal_defaults's docstring). The consumer
+  # json is guaranteed present by the guard above and the canonical path is
+  # present, so exit 2 is never an input-missing case for this verb.
   # `|| uni_exit=$?` keeps the failing substitution inside an OR-list so a caller's
   # `set -e` does NOT abort here — exit 2 (drift) is the expected, handled case.
   uni_exit=0
   uni_json="$("$helper" forge-internal:verify-universal-defaults \
       --consumer-path "$target_dir" --canonical-path "$canonical" 2>/dev/null)" || uni_exit=$?
   if [ "$uni_exit" -eq 2 ]; then
-    local n_uni sections
-    n_uni="$(printf '%s' "$uni_json" | jq -r '.findings | length' 2>/dev/null)"
-    sections="$(printf '%s' "$uni_json" | jq -r '.findings[].section' 2>/dev/null \
-        | sort -u | paste -sd, - 2>/dev/null)"
-    [ -n "$n_uni" ] || n_uni="?"
-    detail="${detail}  • universal law: ${n_uni} rule(s) drifted across sections ${sections:-unknown}\n"
+    local first_kind n_uni sections
+    first_kind="$(printf '%s' "$uni_json" | jq -r '.findings[0].kind' 2>/dev/null)"
+    if [ "$first_kind" = "PRE_IDENTITY" ]; then
+      detail="${detail}  • universal law: this project was constituted before rule identities existed — re-run /devforge:constitute\n"
+    else
+      n_uni="$(printf '%s' "$uni_json" | jq -r '.findings | length' 2>/dev/null)"
+      sections="$(printf '%s' "$uni_json" | jq -r '.findings[].section' 2>/dev/null \
+          | sort -u | paste -sd, - 2>/dev/null)"
+      [ -n "$n_uni" ] || n_uni="?"
+      detail="${detail}  • universal law: ${n_uni} rule(s) drifted across sections ${sections:-unknown}\n"
+    fi
     warned=1
   elif [ "$uni_exit" -ne 0 ]; then
     printf "  constitution drift check (universal sections) skipped: helper exit %s\n" "$uni_exit"

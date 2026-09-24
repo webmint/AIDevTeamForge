@@ -167,7 +167,19 @@ def cmd_add_section(args: argparse.Namespace) -> int:
 
 
 def cmd_add_rule(args: argparse.Namespace) -> int:
-    """Append a rule to the section identified by --section number."""
+    """Append a rule to the section identified by --section number.
+
+    ``--name`` is an optional rule identity distinct from ``--tag``; when
+    given it is stored as the rule's ``name`` field, non-empty after strip.
+    When omitted, the appended record carries no ``name`` key at all — every
+    existing state file, render and validate output stays byte-identical.
+
+    Uniqueness contract: ``--name`` must be unique WITHIN its own section —
+    a second ``add-rule --name`` on the same ``--section`` with a name that
+    section already has exits 2 and writes nothing (the house precedent is
+    ``specify_helper add-ac``'s duplicate-``ac_id`` rejection). The same name
+    in a DIFFERENT section is allowed; unnamed rules are never checked.
+    """
     try:
         tag = _validate_enum(args.tag, "rule_tag", ENUM_FIELDS["rule_tag"])
     except ValueError as err:
@@ -176,22 +188,39 @@ def cmd_add_rule(args: argparse.Namespace) -> int:
         text = _validate_verbatim(args.text, "rule.text")
     except ValueError as err:
         return _die(str(err), code=2)
+    name = None
+    if args.name is not None:
+        try:
+            name = _validate_verbatim(args.name, "rule.name")
+        except ValueError as err:
+            return _die(str(err), code=2)
 
-    # Pre-check section exists (read-only — no lock). Avoids entering the
-    # _state_transaction on a guaranteed-fail path; `return` inside the
-    # with-block would still trigger _dump and silently re-write identical
-    # state, breaking the transaction's "NOT written if body raises" contract.
+    # Pre-check section exists + (when --name given) no duplicate name in it,
+    # read-only, no lock. Avoids entering the _state_transaction on a
+    # guaranteed-fail path; `return` inside the with-block would still
+    # trigger _dump and silently re-write identical state, breaking the
+    # transaction's "NOT written if body raises" contract.
     try:
         prev_state = _load(args.devforge_dir)
     except (OSError, ValueError) as err:
         return _die("add-rule: {0}".format(err))
-    if _find_section(prev_state, args.section)[1] is None:
+    _bucket_ro, section_ro = _find_section(prev_state, args.section)
+    if section_ro is None:
         return _die(
             "add-rule: section {0!r} not found; run add-section first".format(
                 args.section
             ),
             code=2,
         )
+    if name is not None:
+        existing_names = {r.get("name") for r in section_ro.get("rules", [])}
+        if name in existing_names:
+            return _die(
+                "add-rule: rule name {0!r} already exists in section {1!r}".format(
+                    name, args.section
+                ),
+                code=2,
+            )
 
     try:
         with _state_transaction(args.devforge_dir) as state:
@@ -201,7 +230,10 @@ def cmd_add_rule(args: argparse.Namespace) -> int:
                     args.section
                 )
             )
-            section["rules"].append({"tag": tag, "text": text})
+            rule_record = {"tag": tag, "text": text}
+            if name is not None:
+                rule_record["name"] = name
+            section["rules"].append(rule_record)
     except (OSError, json.JSONDecodeError) as err:
         return _die("add-rule: {0}".format(err))
     return 0
@@ -329,7 +361,20 @@ def cmd_add_code_example(args: argparse.Namespace) -> int:
 
 
 def cmd_add_pattern_rule(args: argparse.Namespace) -> int:
-    """Append a rule to a patterns_and_antipatterns bucket."""
+    """Append a rule to a patterns_and_antipatterns bucket.
+
+    ``--name`` is an optional rule identity distinct from ``--tag``; when
+    given it is stored as the rule's ``name`` field, non-empty after strip.
+    When omitted, the appended record carries no ``name`` key at all — every
+    existing state file, render and validate output stays byte-identical.
+
+    Uniqueness contract: ``--name`` must be unique WITHIN its own bucket
+    (the ``--bucket``/``--scope`` pair) — a second ``add-pattern-rule
+    --name`` on the same bucket with a name that bucket already has exits 2
+    and writes nothing (the house precedent is ``specify_helper add-ac``'s
+    duplicate-``ac_id`` rejection). The same name in a DIFFERENT bucket is
+    allowed; unnamed rules are never checked.
+    """
     allowed_buckets = {"always", "never", "prefer"}
     if args.bucket not in allowed_buckets:
         return _die(
@@ -355,12 +400,40 @@ def cmd_add_pattern_rule(args: argparse.Namespace) -> int:
         text = _validate_verbatim(args.text, "pattern_rule.text")
     except ValueError as err:
         return _die(str(err), code=2)
+    name = None
+    if args.name is not None:
+        try:
+            name = _validate_verbatim(args.name, "pattern_rule.name")
+        except ValueError as err:
+            return _die(str(err), code=2)
+
+    # Pre-check for a duplicate name in the target bucket, read-only, no
+    # lock — same rationale as cmd_add_rule's pre-check: avoids entering
+    # _state_transaction on a guaranteed-fail path, since `return` inside
+    # the with-block would still trigger _dump and silently re-write
+    # identical state.
+    if name is not None:
+        try:
+            prev_state = _load(args.devforge_dir)
+        except (OSError, ValueError) as err:
+            return _die("add-pattern-rule: {0}".format(err))
+        existing_names = {
+            r.get("name")
+            for r in prev_state["patterns_and_antipatterns"][pattern_key]
+        }
+        if name in existing_names:
+            return _die(
+                "add-pattern-rule: rule name {0!r} already exists in bucket "
+                "{1!r}".format(name, pattern_key),
+                code=2,
+            )
 
     try:
         with _state_transaction(args.devforge_dir) as state:
-            state["patterns_and_antipatterns"][pattern_key].append(
-                {"tag": tag, "text": text}
-            )
+            rule_record = {"tag": tag, "text": text}
+            if name is not None:
+                rule_record["name"] = name
+            state["patterns_and_antipatterns"][pattern_key].append(rule_record)
     except (OSError, json.JSONDecodeError) as err:
         return _die("add-pattern-rule: {0}".format(err))
     return 0

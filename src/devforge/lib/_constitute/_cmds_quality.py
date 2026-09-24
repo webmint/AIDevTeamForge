@@ -131,12 +131,60 @@ def _normalize_body(text: str) -> str:
     return " ".join((text or "").split())
 
 
+def _consumer_has_any_named_rule(consumer_blocks: "Dict[str, Dict]") -> bool:
+    """True if any rule anywhere in ``consumer_blocks`` carries a non-empty name.
+
+    ``consumer_blocks`` is ``_extract_universal_rules_from_state``'s full
+    return value — every universal-tagged section it found in
+    ``code_quality_standards`` / ``workflow_rules`` at a ``_UNIVERSAL_SECTIONS``
+    number, plus the three ``*_universal`` pattern buckets. Used only for the
+    PRE_IDENTITY pre-check below.
+    """
+    for section_data in consumer_blocks.values():
+        for rule in section_data.get("rules", []):
+            if rule.get("name"):
+                return True
+    return False
+
+
 def cmd_verify_universal_defaults(args: argparse.Namespace) -> int:
     """Diff consumer's universal-rule bodies vs framework canonical.
 
     Reads both surfaces via the Phase 1.C parsers, compares per-section
     + per-rule, emits findings per line on stderr. Exit 0 if zero findings;
     exit 2 otherwise. Stdout = JSON report for downstream tooling.
+
+    Keying (D4(a)): both the canonical and the consumer per-rule dict are
+    keyed on ``name`` (the rule identity — see ``_universal.py``), never on
+    ``tag`` (the closed ``rule_tag`` enum, which is not an identity and was
+    never comparable across the two sides). A consumer rule whose ``name`` is
+    missing or empty is EXCLUDED from the consumer side's dict entirely — it
+    is a project addition (e.g. a user's own override rule living inside a
+    universal-tagged section), not a canonical rule, and must not manufacture
+    a spurious MISSING/DRIFT finding for a name it never claims to be.
+
+    Finding kinds:
+    - ``MISSING`` (section-level): the section key itself is absent from the
+      consumer state.
+    - ``MISSING`` (rule-level, carries ``"rule": name``): the canonical name
+      has no matching named consumer rule in that section.
+    - ``DRIFT`` (carries ``"rule": name``): a named consumer rule matches the
+      canonical name but its normalized body differs.
+    - ``PRE_IDENTITY`` (new in this phase — D5's pre-change-state obligation,
+      a build choice, not a semantic drift kind): this drift check always
+      runs the NEW helper (this one, keyed on ``name``) against state that
+      may have been written by an OLD helper (pre-D5, with no ``name`` field
+      at all). If the consumer state has NOT ONE named rule anywhere
+      ``_extract_universal_rules_from_state`` looks, per-rule comparison is
+      SKIPPED entirely and exactly one finding is reported:
+      ``{"kind": "PRE_IDENTITY", "section": "*", "detail": "state predates
+      rule identities; re-run /devforge:constitute"}``. Known edge, not a
+      false positive to chase: a POST-change consumer who genuinely dropped
+      every universal section (e.g. hand-edited constitute.json down to
+      nothing) also has zero named rules and gets this identical single
+      finding instead of eleven section-level MISSING findings — the
+      remedy is the same either way (re-run ``/devforge:constitute``), so
+      the two causes are not distinguished.
 
     Args:
         args.consumer_path — consumer project root containing
@@ -168,48 +216,59 @@ def cmd_verify_universal_defaults(args: argparse.Namespace) -> int:
 
     findings = []  # type: List[Dict[str, str]]
 
-    for section_key, canonical_data in canonical_blocks.items():
-        if section_key not in consumer_blocks:
-            findings.append(
-                {
-                    "kind": "MISSING",
-                    "section": section_key,
-                    "detail": "consumer state has no entry for {0}".format(
-                        section_key
-                    ),
-                }
-            )
-            continue
-        consumer_data = consumer_blocks[section_key]
-        canonical_rules = {
-            r["tag_or_label"]: r["body"] for r in canonical_data["rules"]
-        }
-        consumer_rules = {
-            r["tag_or_label"]: r["body"] for r in consumer_data["rules"]
-        }
-        for label, canonical_body in canonical_rules.items():
-            if label not in consumer_rules:
+    if not _consumer_has_any_named_rule(consumer_blocks):
+        findings.append(
+            {
+                "kind": "PRE_IDENTITY",
+                "section": "*",
+                "detail": "state predates rule identities; re-run /devforge:constitute",
+            }
+        )
+    else:
+        for section_key, canonical_data in canonical_blocks.items():
+            if section_key not in consumer_blocks:
                 findings.append(
                     {
                         "kind": "MISSING",
                         "section": section_key,
-                        "rule": label,
-                        "detail": "consumer missing rule '{0}' in {1}".format(
-                            label, section_key
+                        "detail": "consumer state has no entry for {0}".format(
+                            section_key
                         ),
                     }
                 )
                 continue
-            consumer_body = consumer_rules[label]
-            if _normalize_body(canonical_body) != _normalize_body(consumer_body):
-                findings.append(
-                    {
-                        "kind": "DRIFT",
-                        "section": section_key,
-                        "rule": label,
-                        "detail": "body text differs",
-                    }
-                )
+            consumer_data = consumer_blocks[section_key]
+            canonical_rules = {
+                r["name"]: r["body"] for r in canonical_data["rules"]
+            }
+            consumer_rules = {
+                r["name"]: r["body"]
+                for r in consumer_data["rules"]
+                if r.get("name")
+            }
+            for name, canonical_body in canonical_rules.items():
+                if name not in consumer_rules:
+                    findings.append(
+                        {
+                            "kind": "MISSING",
+                            "section": section_key,
+                            "rule": name,
+                            "detail": "consumer missing rule '{0}' in {1}".format(
+                                name, section_key
+                            ),
+                        }
+                    )
+                    continue
+                consumer_body = consumer_rules[name]
+                if _normalize_body(canonical_body) != _normalize_body(consumer_body):
+                    findings.append(
+                        {
+                            "kind": "DRIFT",
+                            "section": section_key,
+                            "rule": name,
+                            "detail": "body text differs",
+                        }
+                    )
 
     report = {
         "consumer": str(consumer_path),
