@@ -1,7 +1,7 @@
 # 104 — Universal Sections Integrity Plan
 
 **Created**: 2026-09-20
-**Status**: **Phase 0 NOT STARTED.** Nothing here is ratified, nothing here is built, and **no build phase may start** until `## Phase 0 close record` carries an outcome for every one of D1–D7 and OQ-1–OQ-3. Every "RECOMMEND" below is a drafting-time proposal, not a decision. **Re-checked against the live tree 2026-09-24 — see `### Re-check (2026-09-24)`**; that re-check added F9–F11, corrected false sentences in place and re-opened two recommendations, and it ratified nothing.
+**Status**: **Phase 0 CLOSED 2026-09-24 by a blanket maintainer directive — every item ratified as recommended (D2 and D3 by their standing text, see the record). Build phases MAY start. NOTHING IS BUILT.** `## Phase 0 close record` — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. **Re-checked against the live tree 2026-09-24 — see `### Re-check (2026-09-24)`**; that re-check added F9–F11, corrected false sentences in place and re-opened two recommendations, and it ratified nothing.
 
 ⚠ **Evidence class, to be repeated in every summary of this plan: ONE observed thing only — a user hit F1's label confusion in a real run and asked whether it was a bug. F4, F9, F10 and F11 were REPRODUCED on 2026-09-24 on a scratch state built through the real CLI — reproductions, not consumer incidents. F2 and F3 were found by READING. Nothing was measured on any consumer, no consumer incident stands behind any of them, and a clean consumer run at the end of this plan would show the chain behaves on planted fixtures, never that any of these gaps cost anything.**
 
@@ -217,7 +217,7 @@ Each item below was a false or incomplete sentence corrected where it stood; no 
 
 ## Decisions to ratify
 
-**Nothing below is ratified.** Each item states the decision, the options, a recommendation and the strongest counter-argument, **recorded rather than answered away**. Proposed emitted wording is **substance, not final text**: the builder may reword, but every element named must survive. **No emitted sentence may name plan vocabulary ("D5", "plan NN", "Phase 0", "F4").**
+**Nothing below is ratified.** **(Drafting-time text, kept as drafted — Phase 0 CLOSED 2026-09-24; D1–D7 and OQ-1–OQ-3 ratified as recommended, D2 → (d) and D3 → (a) by the orchestrator's reading of their re-opened standing text; see `## Phase 0 close record`.)** Each item states the decision, the options, a recommendation and the strongest counter-argument, **recorded rather than answered away**. Proposed emitted wording is **substance, not final text**: the builder may reword, but every element named must survive. **No emitted sentence may name plan vocabulary ("D5", "plan NN", "Phase 0", "F4").**
 
 ### D1 — Scope: does this plan include the label fix, or only the mechanism?
 
@@ -269,7 +269,7 @@ Given a text source (D2), something must put those sections into `.devforge/cons
 - **RECOMMEND (a)**, **conditional on D5** — it becomes largely mechanical once D5 settles what a rule's identity is.
   - (c) is the option this plan exists to retire: it is what happens today, minus the text source, and it puts eleven exactly-specified sections back in the hands of the composer. Helper-owns-shape says the helper owns structure and the LLM composes values; canonical universal text has no values to compose.
   - (b) changes the meaning of `reset` from "empty state" to "state with content", which every existing test and every re-run assumes.
-- ⚠ **RE-OPENED 2026-09-24.** The recommendation of (a) was made without (d) on the table and without knowing that render cannot carry the text (a) would seed (F10). **Drafting-time view: (d) must be argued against (a) at Phase 0.** The recommendation is **not** flipped here — it stays (a), re-opened.
+- ⚠ **RE-OPENED 2026-09-24.** The recommendation of (a) was made without (d) on the table and without knowing that render cannot carry the text (a) would seed (F10). **Drafting-time view: (d) must be argued against (a) at Phase 0.** The recommendation is **not** flipped here — it stays (a), re-opened. **(2026-09-24 close: (d) was not argued — the blanket directive ratified the standing (a), and (d) stays live for re-opening; see `## Phase 0 close record`.)**
 
 **Counter-argument, recorded:** (a) adds a 28th verb to a helper that already has 27, and the framework has a standing preference for extending one binary over adding another composer. Accepted as a cost, not refuted: the alternative that avoids the verb is (b), whose price is redefining `reset`. **Recorded 2026-09-24:** (a) now also needs a render change (F10) on top of D5's schema change and the new verb; (d) trades all three for a render change of its own plus a presence record in the state, and needs no rule identity for the eight sections it covers.
 
@@ -323,7 +323,7 @@ Today the per-section echo offers `add rule` / `drop rule` / `replace rule` / `d
 - **RECOMMEND (a)** — with the echo saying plainly that an override of a universal rule will be reported as drift on every update until it is reverted.
 - **Why not (b):** it removes a capability a user has today, on a plan with no evidence anyone misused it, and it makes `drop section` mean different things in different sections of the same echo.
 - **Why not (c):** it is the correct answer and the expensive one — a per-rule override record is a second schema change on top of D5's, with its own comparison semantics. **Recorded as the named strengthening arm, with an observable trigger: a user who reverts an intentional override because the drift warning kept naming it.**
-- **Recorded 2026-09-24:** under D3(d) the state holds no universal text, so an override of a universal rule has no state home — D3(d) makes this decision effectively (b) for the sections it covers. This decision is read against whatever D3 ratifies.
+- **Recorded 2026-09-24:** under D3(d) the state holds no universal text, so an override of a universal rule has no state home — D3(d) makes this decision effectively (b) for the sections it covers. This decision is read against whatever D3 ratifies. **(Moot — D3(d) not taken (2026-09-24 close); D3(a) keeps universal text in the state, so D6(a)'s overrides keep a state home.)**
 
 **Counter-argument, recorded:** (a) knowingly ships a warning that cannot be silenced without undoing the user's own decision, and a warning a user learns to ignore is worse than no warning — it trains them past the real ones too. That is accepted here, not refuted, because (c)'s cost is a second schema change and (b)'s cost is removing a capability.
 
@@ -361,7 +361,7 @@ Plans 86, 89 and 99 each tell consumers to expect a `verify-universal-defaults` 
 
 ### OQ-3 — Does `install.sh:364`'s presence guard stay?
 
-The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) or D2(d) the canonical text would arrive by a different path (`.devforge/template/`, or D2(d)'s CODE-class target), so the guard's role changes.
+The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) or D2(d) the canonical text would arrive by a different path (`.devforge/template/`, or D2(d)'s CODE-class target), so the guard's role changes. **(2026-09-24 close: D2(d) is ratified; D2(a) is not taken — its mentions below are drafting-time text.)**
 
 - **RECOMMEND: it stays, untouched.** Its job is brownfield safety — never overwrite a user's constitution — and that job is unchanged by anything here. D2(a) or D2(d) makes it irrelevant to the text source rather than wrong.
 - **Alternative:** drop the root copy entirely, since after D2(a) or D2(d) nothing reads it as a source and `render` overwrites it anyway. That is a real simplification and it is **out of this plan's scope**: the root copy is what a freshly installed, never-constituted project has as its constitution, and removing it is a separate decision with its own blast radius.
@@ -371,9 +371,11 @@ The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) or D
 
 ## Phase 0 close record
 
-**Pending.** Nothing is ratified. **No build phase may start until this section carries an outcome — ratified, amended or declined — for every one of D1–D7 and OQ-1–OQ-3.**
+**CLOSED 2026-09-24.** **D1–D7 and OQ-1–OQ-3 are ratified as recommended — D2 and D3 by a reading of their re-opened standing text, marked in the Outcomes table.** Nothing was amended, nothing was declined, no item is left open, and **build phases MAY start.** ⚠ **Nothing is built.**
 
-When it closes it must state, following the house pattern:
+Every statement in this record is dated 2026-09-24 unless it names another date.
+
+**What this record was required to contain** — the drafting-time list, kept as drafted (its opening line then read *"**Pending.** Nothing is ratified. No build phase may start until this section carries an outcome — ratified, amended or declined — for every one of D1–D7 and OQ-1–OQ-3."*; that is the pre-close state, quoted as history). When it closes it must state, following the house pattern:
 
 - **Each** of D1–D7 and OQ-1–OQ-3 by name, with its outcome. **No item silently omitted** — check by NAME, never against a range (plan 100's Phase-4 tripwire: a range reads as complete while the enumeration beside it drops a member).
 - Whether **per-item deliberation was supplied**, and whether the close was an **explicit pick or a delegation**.
@@ -382,6 +384,86 @@ When it closes it must state, following the house pattern:
 - ⚠ That **ratification changes no evidence class**: F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.
 
 ⚠ **D5 must be answered before D2, D3 and D4 are read as settled.** If the close is a blanket ratification, it still records that ordering, because D2's, D3's and D4's recommendations are each explicitly conditional and a blanket close does not discharge a condition.
+
+**It contains each of them:** every one of D1–D7 and OQ-1–OQ-3 by name, in the Outcomes table; whether deliberation was supplied and whether the close was a pick or a delegation, under **How it closed**; that every decision keeps its counter-argument, same block; the files each outcome puts in scope, per phase, under **What the outcomes put in scope**; the evidence class, under **How it closed**; and the D5-first ordering with each condition discharged explicitly, under **Ordering and conditions**.
+
+**How it closed — 2026-09-24.**
+
+- A **single blanket maintainer directive**, given in the maintainer's own words, in Ukrainian. English paraphrase: *"commit. 0 ratified"* — the "0" is Phase 0.
+- **It came one message after the orchestrator argued that D3 — (a) against (d) — should be decided before D5, or jointly with it, rather than D5 first. The directive did NOT adopt that argument.** It is recorded here as **the orchestrator's argument, not ratified**, and it stays live for re-opening (**What this record does NOT close**).
+- **No per-item deliberation was supplied, and this record says so.** The precedent is `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s close record, which states the same.
+- **It is a PICK, not a delegation** (`98-DELEGATED-REPLY-ATTRIBUTION-PLAN.md`'s D1 distinction): it states an outcome rather than handing the decision back. ⚠ **But it names no option per item.** The outcomes below are **this plan's own recommendations, taken under a blanket approval — not ten separate maintainer choices**, and no sentence here may be read as the maintainer having weighed any individual counter-argument. **Two items, D2 and D3, carried re-opened text on the day of the close; what "as recommended" means for them is the orchestrator's reading**, marked as such in their rows.
+- **Every decision keeps its counter-argument.** Nothing under `## Decisions to ratify` is deleted, shortened or answered away by this close, because **a ratified decision with its counter-argument deleted cannot be re-opened honestly.** That section's drafting-time lead-in keeps its opening sentence, *"Nothing below is ratified."*, with a dated parenthetical beside it naming this close. **Arms not taken are LABELLED "not taken (2026-09-24 close)", never deleted** — in Phase 2, Phase 3, Phase 8 anchor 1, D6 and OQ-3.
+- ⚠ **Ratification changes no evidence class**, and this close changed none: F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer. A blanket approval of a reading is still a reading.
+
+### Outcomes — 2026-09-24
+
+| Item | Outcome (2026-09-24) | What it settles |
+|---|---|---|
+| **D1** | Ratified as recommended | **(a) Both, in one plan.** F1's label fix rides with the mechanism work, and **Phase 1 may ship alone.** |
+| **D2** | **Ratified — (d), by the orchestrator's reading of re-opened text** | ⚠ **One of two rows that are not a plain blanket "as recommended".** D2's standing text is *"RECOMMEND — RE-OPENED 2026-09-24"* followed by *"Drafting-time view after the re-check: leans to (d), still conditional on D5 and on D3"*. **No other standing recommendation exists, so the lean is what the blanket ratified** — **(d), one `templateOwned.files[]` entry in `src/manifest.json` mapping `src/constitution.md` to a gitignored CODE-class target.** ⚠ **This is the orchestrator's reading of the text under the blanket, not a maintainer pick of (d); the maintainer may re-open it.** (a), (b) and (c) are **not taken (2026-09-24 close)**; the counter-argument to (d) and the counter-argument about (b) stay live. |
+| **D3** | **Ratified — (a), the standing RECOMMEND** | ⚠ **The other row that is not a plain blanket "as recommended".** D3's standing RECOMMEND is **(a), a new `seed-universal` verb**, RE-OPENED 2026-09-24 and explicitly NOT flipped; **the blanket ratified that standing text.** **(d) render-from-source was not deliberated**: its record and both counter-arguments (to (a) and to (d)) stay live, and so does the orchestrator's D3-before-D5 argument (**How it closed**). (a) carries F10's render change and F11's citation obligation (Phase 3). (b), (c) and (d) are **not taken (2026-09-24 close)**. |
+| **D4** | Ratified as recommended | **(a) Compare on the new identity field** D5 gives a rule; both sides populate it with the same string. |
+| **D5** | Ratified as recommended | **(a) A rule gains an identity field distinct from `--tag`**, and `--tag` stays the four-value `rule_tag` enum. Its blast radius and its pre-change-state obligation are Phase 2's scope; its user-facing half (F6's `[<tag>]` override grammar) is Phase 4's. |
+| **D6** | Ratified as recommended | **(a) Overrides stay available against universal sections**, and the echo says plainly that an overridden universal rule is reported as drift on every update until it is reverted. (c) stays the named strengthening arm, with its trigger. |
+| **D7** | Ratified as recommended | **(a) A fixed 8** — 3.5–3.8 reserved for the universal set, seeded and never composed; 3.1–3.4 stay a composed range. *"4-7"* leaves the tree. |
+| **OQ-1** | Ratified as recommended | **Yes** — the `verify-universal-defaults` tests move onto the real-producer principle, as Phase 5. |
+| **OQ-2** | Ratified as recommended | **Establish it by a run** — Phase 6. The before-half baseline is already recorded (32 MISSING / 0 DRIFT / exit 2 at canon `6a786b3`) and is re-run at build time. Amendments go to plan files only; `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s D7 is recorded, never reopened. |
+| **OQ-3** | Ratified as recommended | **The presence guard stays, untouched** (grep `leaving as-is` in `install.sh`). |
+
+**Ordering and conditions — 2026-09-24.**
+
+- **The directive gave no order. D5 was taken as settled first, then D4, D3 and D2** — this plan's own order (the ⚠ paragraph above and D2's sequencing note).
+- **D4(a) was conditional on D5** → D5(a) is ratified → **discharged.**
+- **D3(a) was conditional on D5** → D5(a) is ratified → **discharged.**
+- **D2's lean was conditional on D5 and on D3.** D2's sequencing note warned that under an identity field *"a flat markdown copy may no longer be enough"*. Under D3(a) the `seed-universal` verb derives each rule's identity from the canonical markdown with the parser — the section heading or bold sub-label, the same keys `_parse_universal_blocks` already produces once F9's boundary is fixed — so a flat copy suffices → **discharged.** ⚠ **This discharge reasoning is the orchestrator's, not the maintainer's.** If the build finds a rule identity the parser cannot derive from the canonical markdown, the discharge fails and D2 is re-opened, not patched.
+- **D6 was to be read against D3's outcome** (its 2026-09-24 note). D3(a) keeps universal text in the state, so D6(a)'s overrides keep a state home; the D3(d) note is **moot**.
+
+**What the outcomes put in scope — 2026-09-24.**
+
+Each ratified item is checked here **by NAME, never against a range**, and the phase that carries it is named. Paths below were verified by grep on 2026-09-24; they drift, and `## When resuming work` step 3 re-verifies them.
+
+- **Phase 1 — D1.** `src/commands/constitute/main.md` — the seven `Section 3.5` sites, the user-facing echo line first; `src/CLAUDE.md` — the `#### /devforge:constitute` clause.
+- **Phase 2 — D5, D4, F9, and D5's pre-change-state obligation.** In `src/devforge/lib/_constitute/`:
+  - `_schema.py` — the rule shape gains the identity field; the `rule_tag` enum is unchanged.
+  - `_cli.py` — the `add-rule` and `add-pattern-rule` surfaces.
+  - `_cmds_set.py` — `cmd_add_rule` and `cmd_add_pattern_rule`.
+  - `_cmds_render.py` — `cmd_verify` also checks every rule's tag against `ENUM_FIELDS["rule_tag"]`, for section rules and for pattern-bucket rules. ⚠ **Recorded 2026-09-24: this surface is NOT in D5's blast-radius list**; it is scope here, and D5's counter-argument keeps its drafted "seven surfaces".
+  - `_render.py` — how the identity renders (D5's render bullet). The full F10 render change is Phase 3's.
+  - `_validate_metrics.py` — Dim 4.
+  - `_universal.py` — both comparison sides; F9's section boundary.
+  - `_cmds_quality.py` — the comparator keyed per D4(a), and its behaviour on state constituted before the change.
+  - Outside that package: `scripts/constitution-drift-check.sh` — Check A's comment and printed `Fix: re-run …` line; `tests/lib/test_constitute_helper.py`.
+- **Phase 3 — D2(d), D3(a), F10, F11, OQ-3.**
+  - `src/manifest.json` — the `templateOwned` entry (D2(d)).
+  - `install.sh` — the line its own pattern requires; the presence guard untouched (OQ-3).
+  - `src/devforge/storage-rules.md` — the class entry (markdown — instruction lane).
+  - The `seed-universal` verb (D3(a)) — `_cli.py` plus a `_cmds_*.py` module; which module is a build choice.
+  - `_render.py` — F10's render change: a rule renders as a named block.
+  - `src/commands/constitute/main.md` — the verb wired before Section 3's and Section 6's echoes.
+  - Tests, including F11's `validate` citation check.
+  - `src/files/devforge.gitignore` — only if the chosen target is not already under an ignored path; `.devforge/lib/` and `.devforge/templates/` already are.
+- **Phase 4 — D7, D6, and D5's user-facing half** (F6's `[<tag>]` override grammar). `src/commands/constitute/main.md` — the Section 3 and Section 6 compose paragraphs and the echo override footer; `src/commands/constitute/references/section-shapes.md` — the Section 3 and Section 6 blocks, the *"Function Length"* example, the CBM-first anchor, and its `rule_tag` bullet if the identity field needs documenting there.
+- **Phase 5 — OQ-1**, as Phase 5 lists.
+- **Phase 6 — OQ-2.** Plan files `89-TEST-FOUNDATION-HARDENING-PLAN.md`, `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md` and `44-CONSTITUTION-DRIFT-WIRING-PLAN.md` only; `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` recorded, not reopened; `86-FOWLER-REFACTORING-GAPS-PLAN.md` has no plan-file site.
+- **Phase 7 — docs**, as Phase 7 lists. **Phase 8 — the user gate**, not run.
+- **By name, every item has a phase:** D1 → 1; D2 → 3; D3 → 3; D4 → 2; D5 → 2 and 4; D6 → 4; D7 → 4; OQ-1 → 5; OQ-2 → 6; OQ-3 → 3. None is carried by no phase.
+
+**Build sequencing — 2026-09-24.**
+
+- **Phase 0 is CLOSED and build phases MAY start.** The sequencing below is the maintainer's numeric order plus this plan's own phase order — not a new gate.
+- The maintainer works open root plans **in numeric order** (stated 2026-09-21, recorded in `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s close record, which then listed 101, 102, 104, 105, 106 and 107 as the open lower-numbered plans ahead of it). **Verified 2026-09-24 from their status lines: `100-SCOPE-RULE-FOLLOW-UPS-PLAN.md`, `101-NON-WEB-STACK-READINESS-PLAN.md` and `102-SPECIFY-IN-PLACE-REVISION-PLAN.md` are DONE (build) and closed, and no root plan file carries the number 103** — so, on the orchestrator's reading, this plan is next in line.
+- **Build order:** Phase 1 is independent and may ship alone. Phase 2 → Phase 3 → Phase 4, and **Phase 4 never before Phase 3**; Phase 5 after Phases 2 and 3; Phase 6 after Phase 5; Phase 7 last; Phase 8 user-driven.
+- ⚠ **File anchors drift.** `## When resuming work` step 3's re-verification is **the FIRST action of any build session**, not an optional one.
+
+**What this record does NOT close — 2026-09-24.**
+
+- **Nothing is built.** Phases 1–8 have not started.
+- **No evidence class changed** (**How it closed**).
+- **No per-item deliberation happened**, so every counter-argument in this plan is live for re-opening on its own merits.
+- **The orchestrator's D3-before-D5 argument is NOT ratified and stays live.** If D3 is ever re-opened onto (d), D5's identity field stops being needed for §3.5–§3.8 and §6.1–§6.4 (D5's 2026-09-24 note), D6 is re-read, and D2's discharge above is re-derived.
+- **D2 → (d) and D3 → (a) are the orchestrator's readings of re-opened text under a blanket approval, not maintainer picks.** The maintainer may re-open either.
+- **D2(d)'s `install.sh` line was not verified** in the 2026-09-24 re-check; Phase 3 verifies it at build.
 
 ---
 
@@ -429,7 +511,7 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - The comparator keys on whatever D4 ratifies, in `_cmds_quality.py`.
 - **The canonical parser's section boundary (F9):** any markdown heading ends a section, and a trailing `---` rule is not body. A parser defect, not a decision — it rides in this phase because it is the comparator's canonical side, and no keying fix can make §3.8 compare equal while its canonical body carries `## 4.`.
 - **`scripts/constitution-drift-check.sh`'s Check A comment and printed remediation** — *"Exit 2 == real drift"* and *"Fix: re-run /devforge:constitute to re-synthesize constitution.md + forcing-function config."* (F5). They describe the comparator's semantics, so they change with it and must be true of the built comparator. Shell text, not Python; same route.
-- ⚠ **If D5 is ratified (b) — no identity field — this phase is D4's repair alone** (with F9's boundary and the drift-check text), and its Verify drops every schema bullet. The phase does not silently do (a) anyway.
+- **Not taken (2026-09-24 close) — D5 is ratified (a).** Drafting-time text kept: ⚠ **If D5 is ratified (b) — no identity field — this phase is D4's repair alone** (with F9's boundary and the drift-check text), and its Verify drops every schema bullet. The phase does not silently do (a) anyway.
 
 #### Verify
 
@@ -446,15 +528,15 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 **Route: python-engineer → python-reviewer for the helper work, the `install.sh` line, any `update.sh` line D2(a)'s update path adds, and, under D2(d), the `src/manifest.json` entry — for the shell and manifest lines the reviewer runs the affected install/update path against a scratch target, never a consumer install. instruction-author → instruction-reviewer for doc text only — including, under D2(d), `src/devforge/storage-rules.md`'s class entry, which is markdown.**
 
 - The carrier D2 ratifies.
-  - Under (a): one added line in `install.sh`'s snapshot block at `:432-434`, copying from `$TEMPLATE_DIR/src/constitution.md` directly (`install.sh:365`'s pattern) and **not** from `$TARGET_DIR` the way the block's existing two lines do. ⚠ **And (a) has no update path** (D2, corrected 2026-09-24): `update.sh` never refreshes `.devforge/template/constitution.md`, so this phase either adds one or states the install-time freeze, per what D2 ratifies.
-  - Under (d): one `templateOwned.files[]` entry in `src/manifest.json` mapping `src/constitution.md` to a gitignored CODE-class target; whatever line `install.sh`'s own pattern requires (verified at build — not verified in the 2026-09-24 re-check); and the new entry in `src/devforge/storage-rules.md`'s class list.
-- The seeding route D3 ratifies. Under (a): a new verb that writes all eleven universal sections into `.devforge/constitute.json` from the canonical source, with the helper owning numbers, headings, tags and identities. Under (d): `render` emits §3.5–§3.8 and §6.1–§6.4 from the carrier, the state records only their presence, and §4.1–§4.3 stay on `add-pattern-rule`.
-- **The render change D3 ratifies (F10)** — this phase owns render's shape, which no phase owned before 2026-09-24. Under D3(a)–(c): a rule renders as a named block — name, prose, nested list and code fence intact — not as a one-line `- [<tag>] <text>` bullet. Under D3(d): the verbatim emission above.
+  - Under (a) — **not taken (2026-09-24 close)**: one added line in `install.sh`'s snapshot block at `:432-434`, copying from `$TEMPLATE_DIR/src/constitution.md` directly (`install.sh:365`'s pattern) and **not** from `$TARGET_DIR` the way the block's existing two lines do. ⚠ **And (a) has no update path** (D2, corrected 2026-09-24): `update.sh` never refreshes `.devforge/template/constitution.md`, so this phase either adds one or states the install-time freeze, per what D2 ratifies.
+  - Under (d) — **ratified (2026-09-24 close)**: one `templateOwned.files[]` entry in `src/manifest.json` mapping `src/constitution.md` to a gitignored CODE-class target; whatever line `install.sh`'s own pattern requires (verified at build — not verified in the 2026-09-24 re-check); and the new entry in `src/devforge/storage-rules.md`'s class list.
+- The seeding route D3 ratifies. Under (a) — **ratified (2026-09-24 close)**: a new verb that writes all eleven universal sections into `.devforge/constitute.json` from the canonical source, with the helper owning numbers, headings, tags and identities. Under (d) — **not taken (2026-09-24 close)**: `render` emits §3.5–§3.8 and §6.1–§6.4 from the carrier, the state records only their presence, and §4.1–§4.3 stay on `add-pattern-rule`.
+- **The render change D3 ratifies (F10)** — this phase owns render's shape, which no phase owned before 2026-09-24. Under D3(a)–(c): a rule renders as a named block — name, prose, nested list and code fence intact — not as a one-line `- [<tag>] <text>` bullet (D3(a) is ratified, so this is the arm that applies). Under D3(d) — **not taken (2026-09-24 close)**: the verbatim emission above.
 - The `/devforge:constitute` spec is wired to call it, at a phase that runs before Section 3's and Section 6's echoes.
 
 #### Verify
 
-- A fresh `reset` followed by the seeding route produces a state in which **`_extract_universal_rules_from_state` returns all eleven `_UNIVERSAL_SECTIONS` keys**, each with non-empty rules — under D3(d), the consumer side the comparator then reads (the rendered file for §3.5–§3.8 and §6.1–§6.4, the state for §4.1–§4.3) yields all eleven.
+- A fresh `reset` followed by the seeding route produces a state in which **`_extract_universal_rules_from_state` returns all eleven `_UNIVERSAL_SECTIONS` keys**, each with non-empty rules — under D3(d) (**not taken, 2026-09-24 close**), the consumer side the comparator then reads (the rendered file for §3.5–§3.8 and §6.1–§6.4, the state for §4.1–§4.3) yields all eleven.
 - `forge-internal:verify-universal-defaults` against that state and the canonical file **exits 0 with zero findings** — the first time any real-producer state makes that verb exit 0. (A real-producer state was first fed to it on 2026-09-24, in the re-check, and exited 2 with 32 MISSING.)
 - **`constitute_helper verify` — the round-trip verb, not only `verify-universal-defaults` — exits 0 on the seeded state** (F9: a state seeded from today's canonical parser fails it with a section-count mismatch).
 - **The rendered §3.6 carries every principle name** canonical §3.6 carries — counted live from `src/constitution.md`, each grep-found in the rendered `constitution.md` (F10).
@@ -546,7 +628,7 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - **Fixture:** a testForge20 install. **The frozen benchmark install is never touched.**
 - The anchors are known-answer cases, **scored in PAIRS**:
 
-1. **A fresh `/devforge:constitute` run on a constituted-from-scratch fixture** → the rendered `constitution.md` carries §3.5, §3.6, §3.7, §3.8, §6.1, §6.2, §6.3 and §6.4 **at those numbers with those headings** (number and title; Section 6's render omits the `[universal]` suffix today — `include_tag_suffix=False`), and the bodies meet the check D3's outcome sets (F10): **under D3(d)**, each rendered universal sub-section's body equals the canonical body byte-for-byte after whitespace normalization; **under D3(a)–(c)**, each equals the canonical body after the render change D3 ratifies, with §3.6's principle names present. Phase 0's D3 outcome names which of the two is scored. **PAIRED WITH 2.**
+1. **A fresh `/devforge:constitute` run on a constituted-from-scratch fixture** → the rendered `constitution.md` carries §3.5, §3.6, §3.7, §3.8, §6.1, §6.2, §6.3 and §6.4 **at those numbers with those headings** (number and title; Section 6's render omits the `[universal]` suffix today — `include_tag_suffix=False`), and the bodies meet the check D3's outcome sets (F10): **under D3(d)** — **not taken (2026-09-24 close)** — each rendered universal sub-section's body equals the canonical body byte-for-byte after whitespace normalization; **under D3(a)–(c)**, each equals the canonical body after the render change D3 ratifies, with §3.6's principle names present. Phase 0 ratified D3(a) (2026-09-24 close), so **the D3(a)–(c) statement is the one scored.** **PAIRED WITH 2.**
 2. **`forge-internal:verify-universal-defaults` against that same install** → **exit 0, zero findings.**
 3. **The same install with one universal rule deliberately altered** → exit 2 with **exactly that section** in the findings, and no other.
 4. **A `/devforge:constitute` run read by a human at the forcing-functions echo** → the user-facing line does not name the block by a `3.x` number, and nothing in the transcript invites a reader to confuse it with §3.5. (Phase 1's anchor; it stands alone if Phase 1 ships alone.)
@@ -647,7 +729,7 @@ Two things from it carry forward, and both are load-bearing:
 - `src/commands/constitute/main.md` — the four input captures; the Section 3 and Section 6 compose paragraphs; the per-section echo template and its override footer; the Section 3.5 echo template and its setter block; the render contract paragraphs.
 - `src/commands/constitute/references/section-shapes.md` — the Section 3 and Section 6 blocks; the universal-dimension example; the CBM-first protocol rule.
 - `src/constitution.md` — **read-only here.** §3.1–§3.8, §6.1–§6.6, and the `## Rule Tags` section; the `---` and `## 4. Patterns & Anti-Patterns` after §3.8 (F9); §6.1's `plan.md` token (F11).
-- `src/devforge/lib/_constitute/` — `_universal.py` (both comparison sides; `_parse_universal_blocks`'s heading regex, F9), `_cmds_quality.py` (the comparator), `_schema.py` (`_UNIVERSAL_SECTIONS`, `_PATTERNS_BUCKET_TO_SECTION`, the `rule_tag` enum), `_validate_metrics.py` (Dim 2, F11; Dim 4), `_cmds_render.py` (`cmd_verify`'s section walk under *"Check 2: Section arrays"*, and the round-trip identity check F9 trips), `_render.py` (`_render_section_body`, `_render_pattern_bucket`, `_render_constitution` — the render walk; F10), `_cli.py` (the 27 subparsers).
+- `src/devforge/lib/_constitute/` — `_universal.py` (both comparison sides; `_parse_universal_blocks`'s heading regex, F9), `_cmds_quality.py` (the comparator), `_schema.py` (`_UNIVERSAL_SECTIONS`, `_PATTERNS_BUCKET_TO_SECTION`, the `rule_tag` enum), `_validate_metrics.py` (Dim 2, F11; Dim 4), `_cmds_set.py` (`cmd_add_rule`, `cmd_add_pattern_rule` — Phase 2), `_cmds_render.py` (`cmd_verify`'s section walk under *"Check 2: Section arrays"*, its rule-tag check against `ENUM_FIELDS["rule_tag"]` — Phase 2, and the round-trip identity check F9 trips), `_render.py` (`_render_section_body`, `_render_pattern_bucket`, `_render_constitution` — the render walk; F10), `_cli.py` (the 27 subparsers).
 - `tests/lib/test_constitute_helper.py` — `TestParseUniversalBlocks`, `TestExtractUniversalRulesFromState`, `TestForgeInternalVerifyUniversalDefaults`, `_build_real_constitute_state`, `_build_in_sync_constitute_json`, the two §3.8 verify tests, and `TestDesignFidelityUniversalSection`'s `test_render_from_seeded_state_includes_design_fidelity`.
 - `install.sh` — the constitution presence guard and drift-check call; the `.devforge/template/` snapshot block.
 - `update.sh` and `scripts/constitution-drift-check.sh` — the drift-check wiring; the drift check's header comment (new helper, old state — D5); Check A's comment and printed remediation (Phase 2); `update.sh`'s `Project customizations live in` comment (Phase 7).
@@ -662,9 +744,9 @@ Two things from it carry forward, and both are load-bearing:
 ## When resuming work
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation, including a reverted session whose edits are not in the tree.
-2. **Check `## Phase 0 close record` first.** If it still reads *Pending*, nothing is ratified and **no build phase may start.**
+2. **Read `## Phase 0 close record` first** — it **reads CLOSED 2026-09-24**: D1–D7 and OQ-1–OQ-3 ratified as recommended, D2 → (d) and D3 → (a) by the orchestrator's reading of their re-opened standing text. Build phases may start, and **the record — not the decisions above it — is what says what each phase must do.** ⚠ **The close was a single blanket directive with no per-item deliberation, so every counter-argument in this plan is still live on its own merits**, and the orchestrator's D3-before-D5 argument is recorded there, unratified.
 3. **Re-verify F1–F11 against the live tree** (`### Re-check (2026-09-24)` is the last recorded pass). Grep the quoted text, never the digits: `Section 3.5 echo template`, `proposes for Section 3.5`, `Compose 4-7 sub-sections`, `Common sub-sections: Minimal Changes`, `Function Length / Complexity`, `Section 3 Documentation sub-section`, `"tag_or_label": heading`, `r.get("tag", "")`, `Fixture strategy`, `Real-producer principle`, `forge_check_constitution_drift`, `leaving as-is`, `.devforge/template/.claude/agents`, `[\d]+\.[\d]+(?:\.[\d]+)*`, `- [<rule.tag>] <rule.text>`, `templateDerived`, `WARN-only drift notice`, `Project customizations live in`. ⚠ After a build phase some of these strings are gone by design; zero hits is then the built state, not a regression.
-4. **Answer D5 before you read D2, D3 or D4 as settled.** A blanket close does not discharge D2's, D3's or D4's explicit conditions.
+4. **D5 was taken as settled first at the 2026-09-24 close, then D4, D3 and D2**, and the record's **Ordering and conditions** block discharges each condition explicitly — D2's discharge by the orchestrator's reasoning, not the maintainer's. If D2, D3 or D4 is ever re-opened, re-read its condition against D5 before treating it as settled: a blanket close does not discharge a condition, and only the record's explicit discharges count.
 5. **Build order:** Phase 1 is independent and may ship alone. Phase 2 before Phase 3; **Phase 3 before Phase 4, without exception**; Phases 2 and 3 before Phase 5; Phase 5 before Phase 6; Phase 7 last, because it records what the others did.
 6. **Route every edit through the house flow:**
    - python-engineer → python-reviewer for every code edit — Python (with a test per function, run in the same turn), the drift-check script's shell lines, the `install.sh` and `update.sh` code lines, and the `src/manifest.json` entry; for the shell and manifest lines the reviewer runs the affected install/update path against a scratch target, never a consumer install;
