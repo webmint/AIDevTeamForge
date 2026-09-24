@@ -120,7 +120,17 @@ def cmd_verify_ac_shape(args: argparse.Namespace) -> int:
 
 
 def cmd_verify_numerical_consistency(args: argparse.Namespace) -> int:
-    """Variance rule #6: digit-prefixed nouns consistent across spec."""
+    """Variance rule #6: digit-prefixed nouns consistent across spec.
+
+    Advisory / non-blocking — always exits 0. The grouping key is the bare
+    lowercased noun following a digit, and that key cannot distinguish a
+    restated quantity from two different quantities that legitimately share
+    a unit ("The API shall respond within 200 ms." and "The report shall
+    render within 500 ms." both group under "ms" and collide by
+    construction). A blocking gate on that unsound predicate would force
+    rewording of correct spec text just to satisfy the regex, so the report
+    is surfaced for human reconciliation instead of enforced mechanically.
+    """
     try:
         state = _load_state(args.devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
@@ -141,8 +151,10 @@ def cmd_verify_numerical_consistency(args: argparse.Namespace) -> int:
             inconsistencies.append((noun, value_map))
     if inconsistencies:
         sys.stderr.write(
-            "verify-numerical-consistency: inconsistent digit counts "
-            "across rendered sections (Variance rule #6):\n"
+            "verify-numerical-consistency: WARNING — digit counts "
+            "differ across rendered sections (Variance rule #6; "
+            "non-blocking — reconcile a restated quantity, ignore "
+            "two different quantities that share a unit):\n"
         )
         for noun, value_map in sorted(inconsistencies):
             occurrences = ", ".join(
@@ -152,7 +164,7 @@ def cmd_verify_numerical_consistency(args: argparse.Namespace) -> int:
             sys.stderr.write(
                 "  - {0}: {1}\n".format(noun, occurrences)
             )
-        return 2
+    # Always exit 0 — non-blocking warning, mirrors check-constitution-compliance.
     return 0
 
 

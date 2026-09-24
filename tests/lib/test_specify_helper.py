@@ -3652,8 +3652,9 @@ class TestPhase4VerifyNumericalConsistency(unittest.TestCase):
                 "--devforge-dir", str(dev), "verify-numerical-consistency",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr, "")
 
-    def test_fails_on_inconsistent_render(self):
+    def test_warns_but_passes_on_inconsistent_render(self):
         with tempfile.TemporaryDirectory() as td:
             dev = Path(td) / ".devforge"
             _run(["--devforge-dir", str(dev), "reset-state"])
@@ -3668,8 +3669,39 @@ class TestPhase4VerifyNumericalConsistency(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(dev), "verify-numerical-consistency",
             ])
-            self.assertEqual(r.returncode, 2)
-            self.assertIn("packages", r.stderr)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("  - packages: 3 (lines ", r.stderr)
+            self.assertIn(", 5 (lines ", r.stderr)
+            self.assertIn("WARNING", r.stderr)
+            self.assertIn("non-blocking", r.stderr)
+
+    def test_warns_but_passes_on_two_different_quantities_same_unit(self):
+        """F2's false-positive class: two CORRECT, distinct quantities that
+        happen to share a unit must not block — only warn."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r_ac1 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The API shall respond within 200 ms.",
+            ])
+            self.assertEqual(r_ac1.returncode, 0, r_ac1.stderr)
+            r_ac2 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The report shall render within 500 ms.",
+            ])
+            self.assertEqual(r_ac2.returncode, 0, r_ac2.stderr)
+            r = _run([
+                "--devforge-dir", str(dev), "verify-numerical-consistency",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("  - ms: 200 (lines ", r.stderr)
+            self.assertIn(", 500 (lines ", r.stderr)
+            self.assertIn("WARNING", r.stderr)
 
     def test_ignores_section_heading_numbers(self):
         """5.1 / 5.2 in headings must not flag false inconsistency."""
