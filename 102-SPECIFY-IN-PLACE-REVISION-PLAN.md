@@ -1,7 +1,7 @@
 # 102 — Specify In-Place Revision Plan
 
 **Created**: 2026-09-20
-**Status**: **Phase 0 CLOSED 2026-09-24 by an explicit maintainer PICK — every decision (D1–D4) and every open question (OQ-1–OQ-5) ratified as recommended, D1 with carrier (i), and `revise-ac` placed in a new sibling module (`### Phase 0 close record`). Build phases MAY start, in the order 1 → 2 → 3 → 4. NOTHING IS BUILT.** ⚠ The maintainer picked one option whose text named every item's outcome; the per-item deliberation is the model's — each item's recommendation and counter-argument below — and not the maintainer's. **Phase 5 is a user-driven consumer e2e HARD GATE that has not run**; when this plan is later closed on its build, "done" will mean BUILT and build-verified and NEVER that Phase 5 passed. Drafted 2026-09-20; re-verified against the tree on 2026-09-23 (commit `897e7ce`), before the close. ⚠ **The close changes no evidence class** (`## Origin & evidence`). ⚠ **Numbered 102 — drafted as 102, briefly renumbered to 103 while the Hypothesis-Suppression Precision Plan held 102, and returned to 102 the same day once that plan moved to 103.**
+**Status**: **✅ DONE (build) 2026-09-24 — Phases 1, 2, 3 and 4 BUILT. Phase 5, the user-driven consumer e2e HARD GATE, is DEFERRED and NOT run. The plan is NOT CLOSED: only a maintainer directive closes it.** *(corrected 2026-09-24 at build — until the build this line read "NOTHING IS BUILT".)* Commits: re-verification `897e7ce`; Phase 0 close `9a94b52`; Phase 1 `696d947`; Phase 2 `f4a2e30`; Phase 3 `fa9d4f5`; Phase 4 — the Phase 4 docs commit, which carries this line. Each built phase carries a `#### Phase N build record — 2026-09-24` directly after its `#### Verify`: its commit, what was built, its review, its test counts, and every build-time decision and discovery. ⚠ **"Done" means BUILT and build-verified, and NEVER that Phase 5 passed** — nothing this plan ships is consumer-validated. **Phase 0 CLOSED 2026-09-24 by an explicit maintainer PICK** (`### Phase 0 close record`): every decision (D1–D4) and open question (OQ-1–OQ-5) ratified as recommended, D1 with carrier (i), `revise-ac` in a new sibling module; the per-item deliberation is the model's, not the maintainer's. ⚠ **The build corrected one piece of this plan's own wording:** a reset re-walked "from the start" dead-ends at Phase 0.4 once `spec.md` exists. The emitted reset path is in `#### Phase 3 build record — 2026-09-24`, departure (b), and it is **not verified end-to-end** (Phase 5 anchor 5). Drafted 2026-09-20; re-verified against the tree on 2026-09-23, before the close. ⚠ **Neither the close nor the build changes the evidence class** (`## Origin & evidence`). ⚠ **Numbered 102 — drafted as 102, briefly renumbered to 103 while the Hypothesis-Suppression Precision Plan held 102, and returned to 102 the same day once that plan moved to 103.**
 
 Four fixes in `/devforge:specify`. One blocking gate rejects correct spec text by construction and is demoted to an advisory warning the command surfaces at its approval gate. One missing capability — no verb edits an acceptance criterion already recorded — is added as a single in-place `revise-ac`. One cluster of sentences in the shipped instruction is false against today's code, including the one on the command's primary human gate, and is repaired. One latent id-numbering defect in `add-ac` is closed before the new verb makes it reachable. The four are one change because they are one loop: the gate fires, the command documents a recovery, and the recovery is to throw the spec state away.
 
@@ -56,6 +56,8 @@ Each statement is a valid `ubiquitous` EARS criterion under F6's regex, each pai
 *(added 2026-09-23)* **Reproduced on the live helper against planted state** — a fresh `.devforge/` in a scratch directory, not a consumer run. Two `add-ac --ac-id AC-8 …` calls both exit 0 and both print `AC-8`, and `render` prints two `- [ ] **AC-8**:` lines (F6). The count rule collides too (F7): `add-ac --ac-id AC-X` followed by an auto-assigned `add-ac` prints `AC-2`, harmlessly and as D4's second shape constraint predicts; but `add-ac --ac-id AC-2` followed by an auto-assigned `add-ac` prints `AC-2` again — a second `AC-2`, silently. **This shows the defects exist; it does not show the documented flow reaches them** — no emitted instruction passes `--ac-id` (F8).
 
 **F13 — The recovery, and what it costs.** `cmd_reset_state` (`_cmds_phase01.py:42`) atomically writes `default_state()` over `.devforge/specify-state.json`. `src/commands/specify/main.md:96` states the model: *"Fresh-every-run: any prior state is overwritten. `/devforge:specify` does not resume mid-flight prior runs — every invocation starts clean."* A reset therefore discards the Phase 1 input reads, the Phase 1.5 findings, the Phase 2 decision points and all nine rendered sections — everything the run has built.
+
+⚠ *(added 2026-09-24 at build)* **Once Step 4.11 has written `spec.md`, the recovery is not a replay from the start.** `find-handoffs` drops a feature dir once `spec.md` exists (unless a spec-stage re-entry seed admits it), so a re-walk from Phase 0 after `reset-state` dead-ends at Phase 0.4. The reset path the build emitted repeats this run's Phase 0.4 import on the same handoff path and re-walks from Phase 0.5 — `#### Phase 3 build record — 2026-09-24`, departure (b), **not verified end-to-end.**
 
 **F14 — The Step 4.9 block already contains two non-blocking precedents, and they are handled DIFFERENTLY at Phase 5.** Step 4.9 spans `src/commands/specify/main.md:819`–`:843`.
 - `check-constitution-compliance` (`:834`–`:837`): *"Warnings appear on stderr but exit code is 0 unless the helper itself fails. Surface any warning text to the user as plain prose so they decide whether to amend the spec or proceed with the conflict noted … Re-run this command at Phase 5 entry so changes between Phase 4 and approval re-surface relevant warnings."* That re-run is Step 5.2 (`:936`), whose prose closes *"Surface any warning text to the user as plain prose alongside the approval prompt."*
@@ -138,6 +140,15 @@ Verified 2026-09-23 against the plan files at the repo root. Each is referenced 
 3. **Phase 3's `Surface any warning text` Verify reads "at least four"**, so a later plan adding a fifth hit does not break it.
 4. **The reciprocal pointer is missing.** The Surface Path Proof Plan records no coordination with this plan; adding it is THAT plan's edit, not this plan's, and this section does not claim it exists.
 
+⚠ *(added 2026-09-24 at build)* **This plan has now landed** in:
+- `_specify/_cmds_phase4_setters.py` — D4 only, 695 → 725 lines;
+- `_specify/_cmds_phase4_verify.py` — `cmd_verify_numerical_consistency`;
+- `_specify/_cli.py` — the `revise-ac` subparser, 803 → 825 lines;
+- the new `_specify/_cmds_phase4_revise.py`;
+- `src/commands/specify/main.md` — Steps 4.9, 5.2 and 5.3, and IMPORTANT RULES item 8.
+
+Step 4.9 now carries three advisory checks, and Step 5.2 re-runs two of them. **Every later plan listed above re-derives its anchors from the tree**, never from its own drafting-time digits (the build records under `## Phases`). The Surface Path Proof Plan still names this plan nowhere, verified 2026-09-24 — adding that pointer is its edit.
+
 ---
 
 ## Phase 0 — ratification
@@ -209,6 +220,8 @@ specify_helper revise-ac --ac-id <existing id>
 
 **Counter-argument, recorded and NOT answered:** the cost is identical for a risk row or an out-of-scope item. A user who says "change the third risk's mitigation" at `request-changes` still pays the full reset-and-replay (F13), and (a) narrows the dodge surface without closing it. Nothing here makes that case cheaper, and this plan does not claim it does.
 
+⚠ *(added 2026-09-24 at build)* The replay this counter names does not start from Phase 0: at `request-changes`, `spec.md` already exists, so a re-walk from the start dead-ends at Phase 0.4, and the emitted path repeats the Phase 0.4 import, then re-walks from Phase 0.5 (`#### Phase 3 build record — 2026-09-24`, departure (b)). This corrects the mechanics only; the counter stands, unanswered.
+
 **Named strengthening arm, NOT built.** The first `request-changes` reply that names a constraint, risk, out-of-scope or affected-area entry opens (b) — and **that plan owes the identity scheme first**, before any verb.
 
 **A build constraint the ratifier should see, recorded rather than smoothed.** The recommended module placement is beside `cmd_add_ac` in `_specify/_cmds_phase4_setters.py`, because the new verb shares that module's validators, its `_state_transaction` pattern and its pre-validate-before-transaction rule. *(corrected 2026-09-24)* **That reason is partly false against the tree.** `_cmds_phase4_setters.py` defines neither the validators nor `_state_transaction` — it IMPORTS them, together with the constants `add-ac` validates against (its import block; grep `from ._state import`):
@@ -232,7 +245,7 @@ So a new sibling module can import every one of them. The helpers the setters mo
 2. **`:830`, the same bullet's fallback — *"reset state and re-walk Step 4.4 to avoid stale entries"*.** TRUE today, and it is the recovery the benchmark agent correctly followed. **It is the cost this plan attacks, not a model error.** Under D2 it is replaced by the `revise-ac` route; if D2 is declined it stays, and the bullet must then say plainly what the reset costs (F13) *(not taken — D2 ratified 2026-09-24)*.
 3. **`:831`, the `verify-numerical-consistency` bullet — *"resolve by editing the source values via setters and re-rendering"*.** Impossible whenever the offending number sits in any of the six append-only sections (F5); true only for the seven scalar fields and the decision-point entries (F5) *(corrected 2026-09-23)*. **Under D1 this bullet is also where half 2's surfacing sentence lands** (F14) — without it the demoted warning reaches nobody.
 4. **`:939`, Step 5.2 — state *"may have changed … (e.g., a Phase 4 verifier loop revised an AC)"*.** Names a capability that does not exist today (F4). It becomes true only if D2 ships; if D2 is declined the example must be replaced with one that is real *(not taken — D2 ratified 2026-09-24)*.
-5. **`:946`, Step 5.3's `request-changes` arm — *"The state file persists across the loop; setters mutate in place."*** FALSE for all six list sections (F5). **This is the most consequential of the six: it sits on the command's primary human gate.** Under it, a user asking to change AC-8's wording at the approval gate leads the model to re-run `add-ac`, producing a SECOND AC-8 in the rendered spec (F12). **It must be fixed even if D1 and D2 are both declined** — in that case it must state plainly that list-shaped sections do NOT mutate in place, and name the reset as the recovery *(the both-declined arm is not taken — D1 and D2 ratified 2026-09-24; the sentence is still fixed, in its `revise-ac` form)*.
+5. **`:946`, Step 5.3's `request-changes` arm — *"The state file persists across the loop; setters mutate in place."*** FALSE for all six list sections (F5). **This is the most consequential of the six: it sits on the command's primary human gate.** Under it, a user asking to change AC-8's wording at the approval gate leads the model to re-run `add-ac`, producing a SECOND AC-8 in the rendered spec (F12). **It must be fixed even if D1 and D2 are both declined** — in that case it must state plainly that list-shaped sections do NOT mutate in place, and name the reset as the recovery *(the both-declined arm is not taken — D1 and D2 ratified 2026-09-24; the sentence is still fixed, in its `revise-ac` form)*. ⚠ *(added 2026-09-24 at build)* The reset the built arm names, for the sections `revise-ac` does not cover, is not a replay from the start — `#### Phase 3 build record — 2026-09-24`, departure (b).
 6. **`:1016`, IMPORTANT RULES item 8 — *"Inconsistent numbers in the same spec are a hard error — `verify-numerical-consistency` blocks the render until reconciled."*** Becomes false the moment D1 ships. ⚠ **It is already imprecise today:** `cmd_render` (`_cmds_phase4_verify.py:370`) consults no verifier, so nothing in the helper prevents `render` from being called — the block is procedural, from Step 4.9's *"run in order"* placement ahead of Step 4.11. The repaired sentence states the advisory status and keeps the verify-by-enumeration duty, which is independent of the gate.
 
 **One site outside that file, found while cross-checking, and owned by Phase 4 rather than Phase 3.** `DEVELOPMENT-STATUS.md:16` lists the Phase 4 verifiers as *"… `verify-ac-shape` (per-variant regex), `verify-numerical-consistency`, non-blocking `check-constitution-compliance`"* — the qualifier attaches to the last item only, so after D1 the line reads as though the demoted verb still blocks. The two `done-plans/` hits are history and are NOT rewritten.
@@ -400,7 +413,7 @@ Every statement in this record is dated 2026-09-24 unless it names another date.
 
 ## Phases
 
-Phase 0 is the `## Phase 0 — ratification` section above; **nothing below starts before its close record exists.** *(added 2026-09-24)* **The close record exists — Phase 0 CLOSED 2026-09-24 (`### Phase 0 close record`), so Phases 1, 2, 3 and 4 may start, in the order below. Phase 5 stays DEFERRED.** Build order is 1 → 2 → 3 → 4, because Phase 3 repairs sentences whose final text depends on what Phases 1 and 2 shipped. Phases 1 and 2 are independent of each other. ⚠ **Phase 3 is load-bearing for D1, not cosmetic** — Phase 1 without Phase 3 leaves the demoted check silent.
+Phase 0 is the `## Phase 0 — ratification` section above; **nothing below starts before its close record exists.** *(added 2026-09-24)* **The close record exists — Phase 0 CLOSED 2026-09-24 (`### Phase 0 close record`), so Phases 1, 2, 3 and 4 may start, in the order below. Phase 5 stays DEFERRED.** *(added 2026-09-24 at build)* **Phases 1, 2, 3 and 4 are BUILT**, each with a `#### Phase N build record — 2026-09-24` after its `#### Verify`; Phase 5 stays DEFERRED and NOT run. Build order is 1 → 2 → 3 → 4, because Phase 3 repairs sentences whose final text depends on what Phases 1 and 2 shipped. Phases 1 and 2 are independent of each other. ⚠ **Phase 3 is load-bearing for D1, not cosmetic** — Phase 1 without Phase 3 leaves the demoted check silent.
 
 ### Phase 1 — D1 half 1, Python
 
@@ -421,6 +434,22 @@ Phase 0 is the `## Phase 0 — ratification` section above; **nothing below star
 - `git diff src/devforge/lib/_specify/_schema.py` is empty.
 - `tests/lib/test_specify_helper.py` is green, then the full `tests/lib` suite is green.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
+
+#### Phase 1 build record — 2026-09-24
+
+*(added 2026-09-24 at build)* **Commit `696d947`. Route as specified: python-engineer → python-reviewer.** ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built:**
+- `_specify/_cmds_phase4_verify.py` — `cmd_verify_numerical_consistency` returns 0 on inconsistencies, and its docstring states that the verb is advisory and why. The header now reads *"verify-numerical-consistency: WARNING — digit counts differ across rendered sections (Variance rule #6; non-blocking — reconcile a restated quantity, ignore two different quantities that share a unit):"*. The per-noun detail lines are unchanged, and the state-load failure path keeps `_die`.
+- `_schema.py` and `_cli.py` are untouched. The `verify-numerical-consistency` help still reads *"Variance rule #6: digit-prefixed nouns consistent across spec."* and asserts no blocking outcome, so the help edit is a verified no-op, as the 2026-09-23 re-verification expected.
+- Tests, in `TestPhase4VerifyNumericalConsistency`:
+  - `test_fails_on_inconsistent_render` is renamed `test_warns_but_passes_on_inconsistent_render`. It asserts exit 0, the `packages` detail line, `WARNING` and `non-blocking`.
+  - `test_warns_but_passes_on_two_different_quantities_same_unit` is new. It records F2's `ms` pair as two ACs through `add-ac` and asserts exit 0 with the warning — the false-positive class, pinned.
+  - `test_passes_on_consistent_render` asserts that a clean render prints no stderr.
+
+**Review:** python-reviewer raised one LOW, a loose substring pin, and it was tightened.
+
+**Suites:** the full `tests/lib` count is recorded in Phase 2's build record, on a tree that carries this phase.
 
 ### Phase 2 — D2 + D4, Python
 
@@ -453,6 +482,22 @@ Phase 0 is the `## Phase 0 — ratification` section above; **nothing below star
 - **The placement.** `grep -rn "def cmd_revise_ac" src/devforge/lib/_specify/` returns exactly one hit, and it is not in `_cmds_phase4_setters.py` — the new sibling module picked at the Phase 0 close. *(added 2026-09-24 at the Phase 0 close)*
 - The full `tests/lib` suite is green.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
+
+#### Phase 2 build record — 2026-09-24
+
+*(added 2026-09-24 at build)* **Commit `f4a2e30`. Route as specified: python-engineer → python-reviewer.** ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built:**
+- **`revise-ac`** — `cmd_revise_ac` in the new sibling module `_specify/_cmds_phase4_revise.py`, the proposed name, confirmed (181 lines at first build). The module docstring records the reason: the verb needs none of `_cmds_phase4_setters.py`'s own helpers, only the validators, state I/O and schema constants that file itself imports. Its flags are exactly D2's shape: `--ac-id` (required), `--statement`, `--ears-variant`, `--verification-command` and `--test-anchor`, each defaulting to `None`, so an explicit empty string counts as passed. Every check runs on a read-only load before the write transaction opens. **The placement** Verify line holds: `grep -rn "def cmd_revise_ac" src/devforge/lib/_specify/` returns one hit, in `_cmds_phase4_revise.py`.
+- **`_cmds_phase4_setters.py`** — D4 only: `add-ac`'s read-only duplicate-id pre-check, and the scanning `_next_ac_id`. The file went from 695 to 725 lines.
+- **`_cli.py`** — the `revise-ac` subparser. The file went from 803 to 825 lines.
+- ⚠ Both files were past 600 lines before this plan (D2's build constraint). Neither split is undertaken.
+
+**Build decisions NOT in this plan's text — two, both exit 2, both reachable only on a state written before D4 or hand-edited:**
+- **(a) More than one AC sharing the `--ac-id`** exits 2, naming the id and the match count, rather than revising an arbitrary one.
+- **(b) A stored `ears_variant` that is not a known variant** exits 2 before the EARS match runs. This was a **python-reviewer HIGH**: the `EARS_REGEX[...]` lookup raised a `KeyError` traceback, reproduced live. The fix mirrors `cmd_verify_ac_shape`'s own unknown-variant guard, and a valid `--ears-variant` passed in the same call repairs the entry.
+
+**Tests:** the new classes `TestPhase4ReviseAc` and `TestNextAcIdScans`, and three new `TestPhase4AddAc` methods — `test_rejects_duplicate_explicit_ac_id`, `test_auto_assign_scans_past_explicit_id` and `test_auto_assign_skips_unparseable_id`. **Full `tests/lib`: 11816 passed, 16 skipped.**
 
 ### Phase 3 — D1 half 2 + D3, instructions only
 
@@ -488,6 +533,38 @@ Phase 0 is the `## Phase 0 — ratification` section above; **nothing below star
 - No emitted sentence names plan vocabulary.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
+#### Phase 3 build record — 2026-09-24
+
+*(added 2026-09-24 at build)* **Commit `fa9d4f5`. Instruction-only: its one `src/` file is `src/commands/specify/main.md`.** ⚠ Build-verified, never consumer-validated; Phase 5 stays DEFERRED and NOT run.
+
+**What was built, in `src/commands/specify/main.md`:**
+- **D1 half 2, carrier (i).** The Step 4.9 `verify-numerical-consistency` bullet states the non-blocking status in the siblings' shape, carries *"Surface any warning text to the user as plain prose"*, and names the Step 5.2 re-run. Step 5.2's heading reads *"Constitution and numerical-consistency recheck (re-run)"*. The step invokes `verify-numerical-consistency` beside `check-constitution-compliance` and surfaces both checks' warnings alongside the approval prompt. `grep -n "Surface any warning text"` returns **4** hits: three in Step 4.9 and one in Step 5.2.
+- **D3's six claims:**
+  - the `verify-ac-shape` bullet — duplicate rejection, now true, with its recovery routed to `revise-ac`;
+  - the `verify-numerical-consistency` bullet's recovery — reconcile at the source: a §1–§3 section through its Step 4.2 setter, an AC through `revise-ac`;
+  - Step 5.2's example — an AC revised with `revise-ac`;
+  - the Step 5.3 `request-changes` arm — which setters overwrite in place, the `revise-ac` route, OQ-1's bound, and the reset path;
+  - IMPORTANT RULES item 8 — a WARNING that exits 0.
+- IMPORTANT RULES item 11 is byte-identical.
+- The `blocks the render`, `setters mutate in place` and `reset state and re-walk` greps each return nothing.
+
+**Tests:** the live-spec tests Phase 3's Verify names — **78 passed.**
+
+**Departures — three changes beyond this plan's text, each accepted by the orchestrator:**
+- **(a) "Step 5.2 recheck" joined the `request-changes` re-run chain.** Without it, a loop pass would print the warning a turn before the approval prompt, not beside it.
+- **(b) ⚠ A correction to this plan's own wording — the reset path.** A re-walk "from the start" after `reset-state` DEAD-ENDS at Phase 0.4. `find-handoffs` drops a feature dir once `spec.md` exists (unless a spec-stage re-entry seed admits it), and Step 4.11 writes `spec.md` before Phase 5. The emitted reset path is therefore:
+  1. `reset-state`;
+  2. this run's Phase 0.4 import, repeated on the same handoff path — `import-handoff --handoff-path <path>`, or `record-handoff-path --handoff-path <path>` after a `cold` pick; both check only that the handoff exists;
+  3. a re-walk from Phase 0.5.
+
+  **Not verified end-to-end** — Phase 5 anchor 5 is its test. Where this plan's own text implies that a replay from the start works, a dated note points here: F13, D2's counter-argument, D3's claim 5, Trap 5 and `### Honest bounds`.
+- **(c) §8 renders two structures, and the emitted text treats them differently.** `record-open-question` entries are append-only. A number on a decision-point line is left for the user at the approval prompt and never rewritten:
+  - `description` is reachable by no setter;
+  - a `[default applied]` line quotes the user's verbatim `delegated_reply`;
+  - `set-dp-deferral` writes a fixed reason once the turn cap is hit.
+
+**Review:** two instruction-reviewer rounds narrowed, and then removed, a `set-dp-*` route for reconciling such a number — departure (c).
+
 ### Phase 4 — Docs sweep
 
 **Route: instruction-author → instruction-reviewer. Docs only.** ⚠ **Apply the coordination rule before touching any ledger** (`## Coordination with the Hypothesis-Suppression Precision Plan`): another session may be building that plan in this checkout, and `PLAN-STATUS-ARCHIVE.md`, `CHANGELOG.md` and `VERSION` have all moved under this plan while it was drafted. Re-read `git status`, read each ledger LIVE, re-derive every edit from what is there, and **commit by explicit path — never `git add -A`, and never a wholesale sweep of those files.**
@@ -508,6 +585,28 @@ Phase 0 is the `## Phase 0 — ratification` section above; **nothing below star
 - **No ledger line belonging to the Hypothesis-Suppression Precision Plan is altered or reflowed by this sweep** — `git diff` on the shared ledger files shows only this plan's own additions. ⚠ **`PLAN-STATUS-ARCHIVE.md` carries two of the three shared surfaces**, so that one diff is checked twice: once under `## Index`, once under `## Entries`.
 - Every site above is recorded as an **edit or an explicit verified no-op**, with the grep that shows it.
 - No tracked file names a client, an install, a repo, a branch or any benchmark identifier.
+- instruction-reviewer returns SHIP-READY, or every finding is fixed. *(added 2026-09-24 at build)*
+
+#### Phase 4 build record — 2026-09-24
+
+*(added 2026-09-24 at build)* **Docs only, apart from one docstring — no code under `src/`, `tests/` or `scripts/` changes. One commit, the Phase 4 docs commit, carries two halves:** the ledger sweep, and this plan file's own record. *(corrected 2026-09-24 at build — this sentence read "no file under `src/`, `tests/` or `scripts/` is touched" until the `_cmds_phase4_revise.py` docstring fix below joined this commit.)* The plan-file half covers the Status line, the four build records, the dated reset-path notes, Phase 5's anchor 5, `### Honest bounds`, `### Other plans that edit the same files` and `## When resuming work`. ⚠ This block records a docs sweep over a build, not a consumer observation.
+
+**Every ledger site, as an EDIT or a VERIFIED NO-OP:**
+- **`PLAN-STATUS-ARCHIVE.md` — EDIT:** one `## Index` line and one `## Entries` entry.
+- **`CHANGELOG.md` — EDIT:** one entry in the existing `## [Unreleased]`, under `### Changed` (OQ-4).
+- **`DEVELOPMENT-STATUS.md:16` — EDIT:** the `specify.md` bullet's verifier list (D3's out-of-file site).
+- **`README.md` — VERIFIED NO-OP:** its `/devforge:specify` bullet makes no verifier or revision claim.
+- **`FINDINGS.md` — VERIFIED NO-OP:** entry 4 mentions `add-ac` in an unrelated conflict-shape context.
+- **The repo `CLAUDE.md` — untouched.**
+
+**One code-comment edit rides in the same commit:**
+- *(added 2026-09-24 at build)* **`_specify/_cmds_phase4_revise.py` — module docstring only.** Its present-tense line count went stale when D4 grew `_cmds_phase4_setters.py` to 725 lines. It read *"that module is already 695 lines -- past the 600-line automatic-HIGH module-split threshold --"* and now reads *"that module is past the 600-line automatic-HIGH module-split threshold (695 lines when this module was split out)"*. No code changed. Route: python-engineer → python-reviewer, clean; the `ReviseAc` tests — 20 passed.
+
+⚠ **The ledger half was written in parallel by another author.** This record states its sites; it does not re-verify them. The Verify lines above that read those files are checked at commit time, by the session that commits.
+
+**Review:** *(added 2026-09-24 at build)* instruction-reviewer, two rounds over all four files. Round 1 raised one MEDIUM — the archive entry named anchor (5) but gave no failure mechanism for it — and one LOW — this phase's `#### Verify` had no reviewer sign-off line. Both were fixed; round 2 returned SHIP-READY with no findings.
+
+**Verified at commit, by the committing session:** *(added 2026-09-24 at build)* `grep -n "102-SPECIFY" PLAN-STATUS-ARCHIVE.md` returns one `## Index` line and one `## Entries` entry; `grep -n "102-SPECIFY" CLAUDE.md` returns nothing; `grep -c "^## \[Unreleased\]" CHANGELOG.md` returns 1; and `git diff` on the three ledgers adds only this plan's lines — the `## [2.0.12]` block and every neighbouring plan's line are unchanged.
 
 ### Phase 5 — Consumer e2e — user-driven HARD GATE, DEFERRED by default, NOT run
 
@@ -522,11 +621,12 @@ The anchors are known-answer cases:
    - **Anchors 1 and 2 are scored as a PAIR:** a change that silences the warning entirely passes 1 and fails 2.
 3. **`request-changes` naming AC-8's wording** → exactly one `revise-ac` call → the rendered spec contains exactly one `AC-8`, carrying the new statement, with its finding references intact, **and no `reset-state` anywhere in the turn.**
 4. **`add-ac --ac-id` naming an existing id** → exit 2, with `specify-state.json` byte-unchanged.
+5. *(added 2026-09-24 at build)* **The reset path — a `request-changes` that asks to change an existing constraint or risk** → the model states the reset cost before acting, runs `reset-state`, repeats the Phase 0.4 import on the same handoff path (`import-handoff --handoff-path <path>`, or `record-handoff-path --handoff-path <path>` after a `cold` pick — **never `find-handoffs`**), and re-walks from Phase 0.5. The re-rendered `spec.md` carries the change, with no duplicate entry. ⚠ This path is **not verified end-to-end** (`#### Phase 3 build record — 2026-09-24`, departure (b)).
 
 #### Verify
 
 - Every anchor is scored **explicitly** — stated, not summarized — with the pair scored together.
-- **If an anchor fails,** record the negative with the artifacts and name the mechanism before proposing any fix: a block on anchor 1 is D1 half 1; a warning nobody surfaced on anchor 2 is D1 half 2 / Phase 3's Step 4.9 bullet; a second `AC-8`, or a `reset-state`, on anchor 3 is D2 or D3's Step 5.3 arm; a silent append on anchor 4 is D4. **They have different fixes.**
+- **If an anchor fails,** record the negative with the artifacts and name the mechanism before proposing any fix: a block on anchor 1 is D1 half 1; a warning nobody surfaced on anchor 2 is D1 half 2 / Phase 3's Step 4.9 bullet; a second `AC-8`, or a `reset-state`, on anchor 3 is D2 or D3's Step 5.3 arm; a silent append on anchor 4 is D4; a `find-handoffs` BLOCKED at Phase 0.4 on anchor 5 is the Step 5.3 arm's reset path *(added 2026-09-24 at build)*. **They have different fixes.**
 - **A clean run shows the four fixes behave on planted fixtures, never that any gap beyond the observed incident cost anything.**
 
 ---
@@ -558,7 +658,9 @@ The anchors are known-answer cases:
 
 - **D1 removes a block and adds nothing mechanical in its place.** A spec carrying two contradictory numbers can be approved. The only carrier is a warning the model is instructed to surface as prose, which nothing checks — the same bound the two sibling checks in Step 4.9 already carry (F14).
 - **The approval summary renders counts, not AC text** (F15). No change here makes a number inside an AC statement visible in that block.
+- *(added 2026-09-24 at build)* **§8 decision-point numbers are surfaced, not reconciled.** A number on a decision-point line is left for the user at the approval prompt and never rewritten, because no setter reaches `description`, a `[default applied]` line quotes the user's own reply, and a capped deferral carries a fixed reason (`#### Phase 3 build record — 2026-09-24`, departure (c)).
 - **D2 covers one section of six.** A user who names a constraint, risk, out-of-scope item or affected area at `request-changes` still pays the full reset (F9, F13).
+- *(added 2026-09-24 at build)* **That reset path is unverified end-to-end.** It is not a replay from the start: once `spec.md` exists, a re-walk from Phase 0 dead-ends at Phase 0.4, so the emitted path repeats the Phase 0.4 import on the same handoff path and re-walks from Phase 0.5 (`#### Phase 3 build record — 2026-09-24`, departure (b)). Phase 5 anchor 5 is its first test.
 - **D4 fixes a latent path.** No consumer run has reached it — only a planted-state reproduction (F12) *(corrected 2026-09-23)*; it is fixed because D2 makes it reachable (F8).
 - **Nothing here verifies that a revised AC is BETTER** — `revise-ac` re-applies the same EARS regex `add-ac` applies, and that regex is a shape check, not a meaning check.
 - **`verify-ac-shape` remains a pure backstop** (F11). This plan does not change that, and does not claim the backstop is reachable.
@@ -574,7 +676,7 @@ The anchors are known-answer cases:
 
 **Trap 4 — adding a delete verb because revision felt incomplete.** `verify-coverage` checks only `landed_in`, never whether `landed_ref` resolves (F10), so a deletion strands findings past the gate silently. This is a non-goal for a mechanical reason, not a scope preference.
 
-**Trap 5 — treating `import-handoff`'s pre-seed as evidence that list sections are editable.** It REPLACES four lists wholesale at Phase 0.4 (F5). That is not a per-entry edit and it is not reachable from Phase 4 or Phase 5.
+**Trap 5 — treating `import-handoff`'s pre-seed as evidence that list sections are editable.** It REPLACES four lists wholesale at Phase 0.4 (F5). That is not a per-entry edit and it is not reachable from Phase 4 or Phase 5. ⚠ *(corrected 2026-09-24 at build)* One qualification: the Step 5.3 reset path now repeats the Phase 0.4 import after `reset-state` (`#### Phase 3 build record — 2026-09-24`, departure (b)), so `import-handoff` IS reached from Phase 5 on a run that imported at Phase 0.4 (a `cold` pick repeats `record-handoff-path` instead) — but only over a freshly reset state, as the start of the replay, and never as a per-entry edit. The trap stands.
 
 **Trap 6 — rejecting a non-numeric `ac_id` during D4's scan.** `--ac-id AC-X` is accepted today and a test pins it (F8). The scan skips what it cannot parse.
 
@@ -592,10 +694,10 @@ The anchors are known-answer cases:
 
 ### File anchors
 
-- `src/commands/specify/main.md` — Step 4.4 (`add-ac`), Step 4.9 (the four-verb block, the `verify-ac-shape` bullet, the `verify-numerical-consistency` bullet, and the two non-blocking precedents), Step 4.11 (render + save), Step 5.1 (the approval summary paragraph), Step 5.2 (the constitution re-run), Step 5.3 (the approval prompt and `request-changes`), IMPORTANT RULES items 8 and 11.
+- `src/commands/specify/main.md` — Step 4.4 (`add-ac`), Step 4.9 (the four-verb block, the `verify-ac-shape` bullet, the `verify-numerical-consistency` bullet, and the two non-blocking precedents), Step 4.11 (render + save), Step 5.1 (the approval summary paragraph), Step 5.2 (the constitution re-run), Step 5.3 (the approval prompt and `request-changes`), IMPORTANT RULES items 8 and 11. *(corrected 2026-09-24 at build — Step 5.2 now re-runs `verify-numerical-consistency` too, under the heading "Constitution and numerical-consistency recheck (re-run)".)*
 - `src/devforge/lib/_specify/_cmds_phase4_verify.py` — `cmd_verify_coverage`, `cmd_verify_ac_subsection_coverage`, `cmd_verify_ac_shape`, `cmd_verify_numerical_consistency`, `cmd_render`.
 - `src/devforge/lib/_specify/_cmds_phase4_setters.py` — `_flip_findings`, the six append-only setters, `_next_ac_id`, `cmd_add_ac`, `cmd_set_finding_landed`.
-- *(added 2026-09-24)* The new sibling module Phase 2 creates for `cmd_revise_ac` — proposed name `_cmds_phase4_revise.py`, for Phase 2 to confirm (`### Phase 0 close record`, Question 2). **It does not exist before Phase 2**, and `cmd_revise_ac` does not go in `_cmds_phase4_setters.py`.
+- *(added 2026-09-24)* The new sibling module Phase 2 creates for `cmd_revise_ac` — proposed name `_cmds_phase4_revise.py`, for Phase 2 to confirm (`### Phase 0 close record`, Question 2). **It does not exist before Phase 2**, and `cmd_revise_ac` does not go in `_cmds_phase4_setters.py`. *(added 2026-09-24 at build — Phase 2 created it as `_specify/_cmds_phase4_revise.py`, the proposed name, confirmed.)*
 - `src/devforge/lib/_specify/_schema.py` — `EARS_VARIANT_ENUM`, `EARS_REGEX`, the three `NUMERIC_*` patterns.
 - `src/devforge/lib/_specify/_cli.py` — the `add-ac` subparser (and `--ac-id`), the `verify-numerical-consistency` subparser.
 - `src/devforge/lib/_specify/_render.py` — `_render_section_acs`, `_approval_summary`.
@@ -605,6 +707,12 @@ The anchors are known-answer cases:
 ---
 
 ## When resuming work
+
+⚠ *(added 2026-09-24 at build)* **This plan is ✅ DONE (build) 2026-09-24 — Phases 1, 2, 3 and 4 BUILT, each with a `#### Phase N build record — 2026-09-24` directly after its `#### Verify`. It is NOT CLOSED: only a maintainer directive closes it.** **The next step is Phase 5, and it is the maintainer's:** the known-answer anchors 1–5, including anchor 5, the reset path. That anchor was added at build because the path is not verified end-to-end. The steps below were written before the build:
+- **Steps 2 and 4 are history** — the order the build followed.
+- **Step 8's first half is done**; its second half is the next step.
+- **Steps 1, 3, 5, 6, 7 and 9 still bind** any later edit to this plan's files.
+- ⚠ **Step 3's re-verification now meets the built tree.** The build changed, by design, what F1, F2, F3, F4, F6, F7, F8 and F14 record, and F12's `add-ac` reproduction no longer reproduces. A mismatch in one of those is the build, not drift — read the matching build record first. Six of step 3's strings are gone from `src/` and `tests/` by design: `re-add with the same`, `setters mutate in place`, `blocks the render until reconciled`, `a Phase 4 verifier loop revised an AC`, `resolve by editing the source values` and `test_fails_on_inconsistent_render`.
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation. Then read the Hypothesis-Suppression Precision Plan's D6 (`105-HYPOTHESIS-SUPPRESSION-PRECISION-PLAN.md` as of 2026-09-20) and this plan's `## Coordination with the Hypothesis-Suppression Precision Plan` together; they are the two halves of one question. Read that section's `### Other plans that edit the same files` alongside it — five other plans are listed there, three of them OPEN and writing this plan's files *(added 2026-09-23)*. ⚠ **That plan's filename has already changed more than once** — it was `103-` while this plan was being drafted — so if the path above does not resolve, find it by its TITLE (`grep -l "Hypothesis-Suppression Precision Plan" *.md`), never by assuming a number.
 2. **Check `### Phase 0 close record` first.** It reads **CLOSED (2026-09-24)**: every item is ratified as recommended, D1 with carrier (i), and `revise-ac` goes in a new sibling module. **The build phases may start, in the order 1 → 2 → 3 → 4** (step 4). ⚠ A record that reads *PENDING* — a re-opened Phase 0 — means nothing is ratified and **no build phase may start.** *(corrected 2026-09-24 — until the close this step read only the PENDING rule, and cited the record as `## Phase 0 close record`; the heading is level 3.)*

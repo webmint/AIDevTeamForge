@@ -2,10 +2,10 @@
 Criterion (102-SPECIFY-IN-PLACE-REVISION-PLAN.md D2).
 
 A new sibling module rather than a new function beside cmd_add_ac in
-_cmds_phase4_setters.py: that module is already 695 lines -- past the
-600-line automatic-HIGH module-split threshold -- and this verb needs
-none of its private helpers (_next_ac_id, _flip_findings, the
-finding-ref trio). It only needs the validators, state I/O and schema
+_cmds_phase4_setters.py: that module is past the 600-line automatic-HIGH
+module-split threshold (695 lines when this module was split out), and
+this verb needs none of its private helpers (_next_ac_id, _flip_findings,
+the finding-ref trio). It only needs the validators, state I/O and schema
 constants _cmds_phase4_setters.py itself merely IMPORTS from
 ._validators / ._state / ._schema, which a sibling module shares
 equally (plan 102's Phase 0 close record, Question 2).
