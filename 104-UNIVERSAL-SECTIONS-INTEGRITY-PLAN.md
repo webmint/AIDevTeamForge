@@ -1,18 +1,18 @@
 # 104 — Universal Sections Integrity Plan
 
 **Created**: 2026-09-20
-**Status**: **Phase 0 NOT STARTED.** Nothing here is ratified, nothing here is built, and **no build phase may start** until `## Phase 0 close record` carries an outcome for every one of D1–D7 and OQ-1–OQ-3. Every "RECOMMEND" below is a drafting-time proposal, not a decision.
+**Status**: **Phase 0 NOT STARTED.** Nothing here is ratified, nothing here is built, and **no build phase may start** until `## Phase 0 close record` carries an outcome for every one of D1–D7 and OQ-1–OQ-3. Every "RECOMMEND" below is a drafting-time proposal, not a decision. **Re-checked against the live tree 2026-09-24 — see `### Re-check (2026-09-24)`**; that re-check added F9–F11, corrected false sentences in place and re-opened two recommendations, and it ratified nothing.
 
-⚠ **Evidence class, to be repeated in every summary of this plan: ONE observed thing only — a user hit F1's label confusion in a real run and asked whether it was a bug. F2, F3 and F4 were found by READING. Nothing was measured, no consumer incident stands behind them, and a clean consumer run at the end of this plan would show the chain behaves on planted fixtures, never that any of these gaps cost anything.**
+⚠ **Evidence class, to be repeated in every summary of this plan: ONE observed thing only — a user hit F1's label confusion in a real run and asked whether it was a bug. F4, F9, F10 and F11 were REPRODUCED on 2026-09-24 on a scratch state built through the real CLI — reproductions, not consumer incidents. F2 and F3 were found by READING. Nothing was measured on any consumer, no consumer incident stands behind any of them, and a clean consumer run at the end of this plan would show the chain behaves on planted fixtures, never that any of these gaps cost anything.**
 
-**The one sentence that governs everything here:** the chain that puts universal sub-sections into a consumer's `constitution.md` is unclosed at every link — the spec names wrong numbers, nothing supplies the canonical body text, the drift detector cannot return green, and the tests hide it.
+**The one sentence that governs everything here:** the chain that puts universal sub-sections into a consumer's `constitution.md` is unclosed at every link — the spec names wrong numbers, nothing supplies the canonical body text, the render cannot reproduce that text, the drift detector cannot return green, and the tests hide it.
 
 ---
 
 ## Origin & evidence
 
 - **The one observed thing (F1).** A user reading a real `/devforge:constitute` run met the string *"Section 3.5"* in the user-facing echo, compared it to the constitution's own §3.5, and asked whether it was a bug. It is a label collision, not a mechanism defect — and it is the only part of this plan anyone has ever reported.
-- **F2, F3 and F4 were found by reading**, in the session that followed that question. Each is recorded below with the `file:line` it was checked at on 2026-09-20. **None was observed failing on a consumer, and no count, rate or cost was measured.**
+- **F2, F3 and F4 were found by reading**, in the session that followed that question. Each is recorded below with the `file:line` it was checked at on 2026-09-20. **F4 was then reproduced on 2026-09-24**, together with three new facts F9–F11, on a scratch state built through the real CLI (`### Re-check (2026-09-24)`). **None was observed failing on a consumer, and no count, rate or cost was measured on any consumer** — the re-check's numbers are a scratch state's.
 - **F4 is separately recorded in this project's memory** as `verify-universal-defaults-broken` (memory file present 2026-09-20). That record and this plan are the only places it exists.
 - **The 2026-09-20 reverted session.** See `## Context for next session` — Facts 1 and 2 were fixed in the tree that day and every edit was then reverted, on the maintainer's observation that the work should have been a plan rather than a series of audit fixes. **Nothing from it survives in the tree**, and this plan is written as if none of it happened, because in the tree none of it did.
 
@@ -25,7 +25,7 @@ Every fact below was checked against the tree on 2026-09-20. ⚠ **Line digits d
 - **Seven sites in `src/commands/constitute/main.md`** (grep `Section 3.5`): the echo-template heading `### Section 3.5 echo template (Forcing Functions — config block, not a constitution.md sub-section)` (`:235`), the template body (`:237`), **the USER-FACING echo line** *"Here's what /devforge:constitute proposes for Section 3.5 — Forcing Functions [config-block]:"* (`:255`), the setter-plan bullet (`:329`), the setter-call block (`:406`), a comment in that block (`:433`), and one more at `:563`.
 - **One site in `src/CLAUDE.md`** (`:129`, the `#### /devforge:constitute` catalog entry): *"Its Section 3.5 forcing-functions config-capture offers the `design_token_provenance` rule …"*. This file is emitted into every consumer project.
 - **The real §3.5** is `src/constitution.md:62` — `### 3.5 Universal Code Quality [universal]`.
-- **The block is structurally not a numbered sub-section.** It targets the top-level `forcing_functions` key in `.devforge/constitute.json`, and `_cmds_render.py`'s `section_bucket_keys` walk (`:108-113`) iterates only `["architecture_rules", "code_quality_standards", "domain_rules", "workflow_rules"]`. A `forcing_functions` entry can therefore never render as a `3.x` sub-section.
+- **The block is structurally not a numbered sub-section.** It targets the top-level `forcing_functions` key in `.devforge/constitute.json`, and the render walk — `_render.py`'s `_render_constitution` — reads only `architecture_rules`, `code_quality_standards`, `patterns_and_antipatterns`, `domain_rules`, `workflow_rules` and `scaffolding_guide`; a grep for `forcing` in `_render.py` returns nothing (read 2026-09-24). A `forcing_functions` entry can therefore never render as a `3.x` sub-section. (`_cmds_render.py`'s `section_bucket_keys` list is not the render walk: it sits inside `cmd_verify`, under the comment *"Check 2: Section arrays"*.)
 - **The spec already disambiguates — in model-facing prose only.** `:235` (*"config block, not a constitution.md sub-section"*), `:237` and `:329` (*"Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section."*) all say it. **`:255` is the line the user reads, and it says none of it.**
 
 #### F2 — the spec's sub-section numbering contradicts the canon
@@ -77,14 +77,14 @@ Every fact below was checked against the tree on 2026-09-20. ⚠ **Line digits d
 
 #### F4 — `verify-universal-defaults` cannot return green on a real install
 
-The two comparison sides build the per-rule key from different things.
+The two comparison sides build the per-rule key from different things. **Found by reading on 2026-09-20; reproduced on 2026-09-24** on a scratch state built through the real CLI, not a consumer — exit 2, 32 findings, all MISSING, 0 DRIFT (`### Re-check (2026-09-24)`).
 
 - **Canonical side, `_universal.py:84`** (the default branch of `_parse_universal_blocks`): `rules = [{"tag_or_label": heading, "body": body_text}]` — **the key is the SECTION HEADING**, e.g. `"Universal Code Quality"`. (§3.6 takes `_split_design_principles` and §4.1–§4.3 take `_split_bullet_rules`; both produce bold sub-labels as keys, e.g. `"Single Responsibility"`.)
 - **Consumer side, `_universal.py:270`**: `{"tag_or_label": r.get("tag", ""), "body": r.get("text", "")}` — **the key is `rule.tag`**, a member of the `rule_tag` enum `{extracted, enforced, universal, project-specific}` (`_schema.py:268`). The patterns-bucket branch at `:281` does the same.
 - **`_cmds_quality.py:184-212`** builds both dicts keyed on `tag_or_label` and reports `MISSING` for every canonical label absent from the consumer keys, then `DRIFT` on a body mismatch. **`heading` is carried in the return shape by `_universal.py:86` and never compared — the string `heading` does not appear in `_cmds_quality.py` at all.**
 - **No enum value equals a heading string, so every universal section reports MISSING even for a perfectly composed consumer.** §3.6 and §4.1–§4.3 mismatch for the same reason with different canonical keys.
 
-**Two filters compound with F2, checked at `_universal.py:259-265`.** The consumer side skips any section whose `tag != "universal"` and any section whose `number` is not in `_UNIVERSAL_SECTIONS` (`_schema.py:296-300` — a closed eleven-entry tuple: §3.5–§3.8, §4.1–§4.3, §6.1–§6.4). **So a sub-section composed at a wrong number (F2) never enters the comparison either** — the same `MISSING` line, from a second independent cause. Fixing one cause alone does not make the detector green.
+**Two filters compound with F2, checked at `_universal.py:259-265`.** The consumer side skips any section whose `tag != "universal"` and any section whose `number` is not in `_UNIVERSAL_SECTIONS` (`_schema.py:296-300` — a closed eleven-entry tuple: §3.5–§3.8, §4.1–§4.3, §6.1–§6.4). **So a sub-section composed at a wrong number (F2) never enters the comparison either** — the same `MISSING` line, from a second independent cause. **A third independent cause is F9** (the canonical parser swallows `## 4.` into §3.8's body). **Fixing any one of the three — F4's keying, this filter, F9's section boundary — alone does not make the detector green.**
 
 **The tests do not catch this, and say why in their own docstring** — `tests/lib/test_constitute_helper.py`, `class TestForgeInternalVerifyUniversalDefaults`: *"All 3 tests use hand-authored constitute.json fixtures because the ``add-rule`` setter constrains ``--tag`` to enum values, so principle names like "Single Responsibility" cannot be stored via the CLI."* The shared builder `_build_in_sync_constitute_json` writes `{"tag": r["tag_or_label"], "text": r["body"]}` for all eleven sections — **the canonical heading into the `tag` field, a state the real CLI rejects** (`add-rule` validates `--tag` against the enum; `test_invalid_tag_exits_2`).
 
@@ -96,8 +96,18 @@ The two comparison sides build the per-rule key from different things.
 - **So under F4 every constituted consumer sees that warning on every update, naming every universal section, regardless of whether anything drifted.**
 - **There are five `verify-universal-defaults` tests, not three.** Beyond the class above, `test_verify_universal_defaults_detects_missing_38` builds a bare `default_state()` (nothing populated) and asserts `MISSING §3.8` — which passes trivially — and `test_verify_universal_defaults_passes_with_38_in_sync` calls the **same** hand-authored `_build_in_sync_constitute_json`.
 - **The real-producer path exists for the extractor and never reaches the comparator.** `TestExtractUniversalRulesFromState` opens with *"Real-producer principle: fixture states are built via the actual constitute_helper CLI (reset + add-section + add-rule + add-pattern-rule) rather than hand-authored JSON"*, and `test_happy_path_real_producer` asserts `result["§3.5"]["heading"] == "Universal Code Quality"` — **it reads the `heading` key, which is the one the comparator ignores.** No test feeds `_build_real_constitute_state`'s output to `verify-universal-defaults`.
+- **Shipped user-facing text describes a warning that does not behave that way** (read 2026-09-24). `README.md` gained, in the 2.0.12 release commit `e2a3862` (committed 2026-09-23, after this plan was drafted): *"`constitution.md` is project-owned and an update never rewrites it. When a release changes a universal constitution section, the update prints a WARN-only drift notice naming the drifted sections and exits normally; re-run `/devforge:constitute` to adopt the new wording."* Under F4 — reproduced 2026-09-24 on a scratch state — the notice names all eleven sections on every update of every constituted install, whether or not a release changed any, and **re-running `/devforge:constitute` cannot clear it** (F4's keying, the F2 filter, F9's boundary).
+- **Two false comments sit beside it** (read 2026-09-24). `scripts/constitution-drift-check.sh`: *"Check A — universal-section drift. Exit 2 == real drift"*, and its printed remediation *"Fix: re-run /devforge:constitute to re-synthesize constitution.md + forcing-function config."* — which cannot clear the universal-section half of the warning today. `update.sh`: *"Project customizations live in CLAUDE.md / constitution.md / agents — those still three-way merge upstream."* (grep `Project customizations live in`; the sentence wraps across two comment lines) — false for `constitution.md`, which `src/manifest.json` lists under `projectOwned` (*"NEVER overwrite"*) and which no line of `update.sh` copies or merges.
 
-⚠ **The consequence this plan must state and must NOT conclude.** The "designed consumer drift" that plans 86, 89 and 99 each tell consumers to expect may be an ARTIFACT of F4 rather than real drift. **This plan does not get to decide that** — OQ-2 owns it, and it is established by a run, not by reading. A fourth candidate exists and is recorded here so it is not missed: `44-CONSTITUTION-DRIFT-WIRING-PLAN.md` reports *"~30 MISSING universal rules across §3.5/§3.6/§3.7/§3.8/§4/§6"* and *"validated on testForge20 with exit 2 + 29 MISSING findings"* — a count that F4 predicts for an in-sync install just as well as for a drifted one, so **that observation cannot distinguish the two and is not evidence either way.**
+⚠ **The consequence this plan must state and must NOT conclude.** The "designed consumer drift" that plans 86, 89 and 99 each tell consumers to expect may be an ARTIFACT of F4 rather than real drift. **This plan does not get to decide that** — OQ-2 owns it, and it is established by a run, not by reading. **Where each claim lives** (named 2026-09-24 — grep the quoted text):
+
+- `86-FOWLER-REFACTORING-GAPS-PLAN.md`'s claim lives **only** in `CHANGELOG.md` under `## [2.0.10]` (grep `Consumer-install drift, by design`). The plan file itself has zero `verify-universal-defaults` hits.
+- `89-TEST-FOUNDATION-HARDENING-PLAN.md`'s claim is in that plan file (grep `verify-universal-defaults`) **and** in `CHANGELOG.md` under `## [2.0.10]` (grep `Consumer-install drift is expected`).
+- `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`'s claim is in that plan file (grep `Designed consumer drift, not a regression`) **and** in `CHANGELOG.md` under `## [2.0.12]` (grep `Designed consumer drift.`).
+- **A fourth candidate** is recorded here so it is not missed: `44-CONSTITUTION-DRIFT-WIRING-PLAN.md` reports *"~30 MISSING universal rules across §3.5/§3.6/§3.7/§3.8/§4/§6"* and *"validated on testForge20 with exit 2 + 29 MISSING findings"* — a count that F4 predicts for an in-sync install just as well as for a drifted one, so **that observation cannot distinguish the two and is not evidence either way.**
+- **A fifth candidate appeared after this plan was drafted:** `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` (created 2026-09-21), whose ratified D7 declined a §6.1 edit partly so that *"no fourth `verify-universal-defaults` / update-time drift finding is created for installs constituted earlier"* — a cost argument that rests on the detector's findings being meaningful. **Recorded, NOT reopened by this plan:** it is another plan's ratified decision, and OQ-2 only records whether its cost premise held.
+
+**Released `CHANGELOG.md` sections are not edited in place in this repo**, so the `## [2.0.10]` and `## [2.0.12]` claims can only ever be corrected by a later entry (OQ-2, Phase 6, Phase 7).
 
 #### F6 — the override grammar embeds the tag
 
@@ -114,11 +124,79 @@ This grammar is offered against every section, universal ones included. It is D5
 
 #### F7 — `validate`'s rule-tag dimension
 
-`_validate_metrics.py` Dim 4 is `rule_tag` — *"every rule tag in closed enum"* — with **weight 0.20** and **pass threshold 1.0** (*"rule_tag is mechanical (any invalid tag is …)"*), checked against `ENUM_FIELDS["rule_tag"]`. **A rule carrying any label outside the enum fails Dim 4 outright and costs up to 0.20 of the composite**, against the Phase 6.2 ship/cancel/fix human gate that fires below 0.95. This is the mechanical cost of D5's permissive arm, and it is the number to argue with.
+`_validate_metrics.py` Dim 4 is `rule_tag` — *"every rule tag in closed enum"* — with **weight 0.20** and **pass threshold 1.0** (*"rule_tag is mechanical (any invalid tag is …)"*), checked against `ENUM_FIELDS["rule_tag"]`. **A rule carrying any label outside the enum fails Dim 4 outright and costs up to 0.20 of the composite**, against the Phase 6.2 ship/cancel/fix human gate that fires below 0.95. This is the mechanical cost of D5's permissive arm, and it is the number to argue with. (Dim 2, the citation dimension, carries F11's cost: seeded canonical text is itself a citation.)
 
 #### The checkout
 
 **F8 — Concurrency.** Other sessions build in this checkout, and **plan numbers are allocated with no coordination between them**: each session takes the next free number from what it can see, and what it can see goes stale while it drafts. This is neither hypothetical nor rare — **this file's own number was taken and re-taken more than once inside the single session that produced it**, and the neighbouring sessions' files moved repeatedly over the same stretch, at one point leaving the same plan title sitting at two numbers at once, a rename caught mid-flight. A rename moves a file and never the sentences inside it, so **a document that cites another plan by number alone is citing a value that drifts** — where the citation matters, name the work, not the digits. Before touching any ledger, re-read `git status`, read the ledger live, and **commit by explicit path, never `git add -A`.** Do not touch a plan file this session did not create, for any reason: ownership is established from `git status` and from which sessions are active, never from a plan's number.
+
+### Re-check (2026-09-24)
+
+On 2026-09-24 this plan was re-checked against the live tree at HEAD `f251e6d` (`src/constitution.md` last changed in `6a786b3`, 2026-09-19; `src/devforge/lib/_constitute/` last changed in `22162eb`, 2026-08-28). ⚠ Line digits below are 2026-09-24 values — grep the quoted text, never the digits. **Held:** F1's seven `Section 3.5` sites and `src/CLAUDE.md`'s catalog clause; F2's table and every quoted spec string; F3's four inputs, the presence guard (grep `leaving as-is`), the snapshot block (grep `.devforge/template/.claude/agents`) and the 27 `add_parser(` calls, counted live; F4's keying (grep `"tag_or_label": heading` and `r.get("tag", "")`); F5's wiring (`install.sh`'s drift-check call in the `leaving as-is` branch, `update.sh`'s `forge_check_constitution_drift` call) and its five verify tests; F6's override footer (grep `'add rule <number>`); F7's Dim 4 weight 0.20 and threshold 1.0. **F4 is now reproduced, not only read:** a best-possible consumer state built through the real CLI — `reset`, then `add-section` + `add-rule --tag universal --text <canonical body>` for §3.x and §6.x and `add-pattern-rule --scope universal` for §4.x, every canonical body verbatim, every section at its canonical number and heading — gives `forge-internal:verify-universal-defaults` **exit 2, 32 findings, all MISSING, 0 DRIFT, all eleven sections**. 32 is today's canonical rule count as the comparator splits it: 1+9+1+1 for §3.5–§3.8, 5+5+6 for §4.1–§4.3, 1 each for §6.1–§6.4 — counted against canon `6a786b3`, and re-counted live whenever it is quoted. That state is a scratch reproduction, not a consumer. Three facts the 2026-09-20 draft did not have follow; after them, every in-place correction they forced.
+
+#### F9 — the canonical parser swallows `## 4.` into §3.8
+
+Reproduced 2026-09-24 on a scratch state built through the real CLI (not a consumer); the parser was read in the tree the same day.
+
+- **The boundary regex only knows `N.N` headings.** `_universal.py`'s `_parse_universal_blocks` compiles `heading_re = re.compile(r"^(#{2,})\s+([\d]+\.[\d]+(?:\.[\d]+)*)\s+(.*)")` (grep `[\d]+\.[\d]+(?:\.[\d]+)*`). A heading numbered `N.` — `## 4. Patterns & Anti-Patterns` — never matches, so it is never a section boundary.
+- **So §3.8's canonical body runs past its end.** `_parse_universal_blocks` returns a §3.8 body ending `…is not among these findings.\n\n---\n\n## 4. Patterns & Anti-Patterns`. §3.8 is the only universal sub-section in `src/constitution.md` followed by an H2; every other one is followed by a `###` heading, which the regex does match.
+- **(a) Seeding from this parser breaks `verify`.** Seeding §3.8 from this parser — what every current test fixture that seeds §3.8 does, and the obvious D3(a) implementation — injects a second `## 4.` H2 into the render. On a scratch state seeded with all eleven canonical bodies, `constitute_helper render` exits 0 but `constitute_helper verify` exits 2: *"round-trip identity: section count mismatch: rendered=7, expected=6"*. A control state built with the same setters and no universal text gives `verify: ok`. **So `/devforge:constitute`'s verify step would fail on exactly the state this plan intends to create.**
+- **(b) A third independent cause of non-green.** Once F4's keying is fixed, a correctly composed §3.8 — one without the swallowed H2 — reports `DRIFT` forever against this canonical body. That is a third cause beside F4's keying and the F2 filter F4 records (`_universal.py`'s `tag != "universal"` check and its `_UNIVERSAL_SECTIONS` membership check).
+- **(c) The tests pass on it.** `test_verify_universal_defaults_passes_with_38_in_sync` copies the swallowed text into both sides and passes; `TestParseUniversalBlocks` asserts nothing about §3.8's tail.
+- **Reach.** `_parse_universal_blocks` is called only by `_cmds_quality.py` (the comparator); `constitute_helper.py` re-exports it, and `tests/lib/test_constitute_helper.py` uses it. Its other mentions are in plan files.
+
+#### F10 — `render` cannot carry canonical universal text
+
+Reproduced 2026-09-24 on a scratch state built through the real CLI (not a consumer); the render code was read in the tree the same day.
+
+- **Render's rule shape is one line.** `_render.py`'s `_render_section_body` emits `### <number> <title> [<tag>]`, an optional description, tables, then ONE line per rule — `- [<rule.tag>] <rule.text>` (its docstring; grep that string) — then code examples. `_render_pattern_bucket` does the same for §4's buckets.
+- **Canonical universal sections are not one-line rules.** They are prose: bold-lead paragraphs, a fenced code block (§3.5), bold block headers with nested bullet lists (§3.6), `*Backed by*` paragraphs.
+- **What the render produced** from a state seeded with the canonical bodies at the canonical parser's granularity:
+  - §3.6's rules render as `- [universal] a class/module/function has one reason to change…` — **the principle NAMES (Single Responsibility, Open/Closed, …, DRY, KISS, Narrowing, Two-hats) are GONE**, because the canonical splitter puts the name in the comparison key (`tag_or_label`) and the rule schema has no field to hold it.
+  - DRY, KISS, Narrowing and Two-hats render as `- [universal] - If the same logic…` — a bullet whose text starts with a bullet.
+  - §3.5 renders as a single bullet carrying roughly 3.7K characters, its code fence included.
+- **Consequence.** Phase 8 anchor 1's drafted check — that the rendered bodies match the canonical file — was unreachable with today's render, and **no phase owned render's shape**: D5's blast radius named render only as *"whether a label appears in the rendered constitution, and how"*. The chain table now carries render as its own link, D3 carries option (d) and a render change for (a)–(c), and Phase 3 owns the render change.
+
+#### F11 — seeded canonical text is itself a `validate` citation
+
+Reproduced 2026-09-24 on a scratch state built through the real CLI (not a consumer).
+
+- `constitute_helper validate` on the seeded scratch state reports *"citation unresolved: 'plan.md'"*, with a Dim 2 citation score of 0.5 on that state. Dim 2 carries **weight 0.25** and a per-dimension threshold of **0.95**, and the composite gate is **0.95** (`_validate_metrics.py` — `_VALIDATE_WEIGHTS`, `_DIM_PASS_THRESHOLDS`, `_COMPOSITE_PASS_THRESHOLD`).
+- The token comes from canonical §6.1 Minimal Changes: a grep for `plan.md` in `src/constitution.md` returns only the §6.1 line. The control state without universal text scores citation 1.0.
+- Dim 2 collects its texts from the state (`_collect_citation_texts(state)`), so any seeding route that puts canonical text into the state carries this token into `validate`.
+- **The cost on a real consumer depends on how many other citations it has — not measured.** 0.5 is the scratch state's number only.
+- Related: `80-CONSTITUTE-CITATION-FALSE-POSITIVE-PLAN.md` owns citation false positives — another session's untracked file, cited here and never touched. `src/constitution.md` stays unedited (Tripwires), so the answer to F11 cannot be removing the token from the canon.
+
+#### Corrected in place on 2026-09-24
+
+Each item below was a false or incomplete sentence corrected where it stood; no D-item or OQ-item was decided, and every counter-argument survives.
+
+- **Status line** — points to this section.
+- **Evidence-class sentences** (status banner, `## Origin & evidence`, `## Phase 0 close record`, Phase 7 Verify, `## Honest bounds`, `## Context for next session`, `## When resuming work` step 10) — F4, F9, F10, F11 reproduced on a scratch state; F2, F3 found by reading; nothing measured on any consumer.
+- **The governing sentence** (top and `## Context for next session`) — names the render link.
+- **F1's structural bullet** — the render walk re-anchored from `_cmds_render.py`'s `section_bucket_keys` (that list is `cmd_verify`'s "Check 2: Section arrays") to `_render.py`'s `_render_constitution`.
+- **F4** — reproduction noted; "fixing one cause alone" now names three causes (F4's keying, the F2 filter, F9's boundary).
+- **F5** — claim sites named per plan (plan file vs released `CHANGELOG.md` section); fifth candidate `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` D7; the `README.md` sentence and two false comments added.
+- **F7** — one-clause cross-reference to F11.
+- **The chain table** — new link 4 (render, F10); the detector row gains F9; later links renumbered; the "Link 1 alone is a trap" paragraph now says link 5 and qualifies its DRIFT prediction by F4 — as does item 2 of `## Context for next session`'s reverted-session record.
+- **D2** — (a)'s blast radius corrected (no update path; a tracked file); option (d) added; RECOMMEND (a) re-opened, with a drafting-time lean to (d) and (d)'s counter-argument.
+- **D3** — option (d) added with its record; a render change stated for (a)–(c); an F11 bullet; RECOMMEND (a) re-opened and NOT flipped.
+- **D4, D5, D6** — one D3(d) cross-reference each; D5's blast radius: render bullet expanded, pre-change-state obligation added.
+- **OQ-1** — the "cannot be written before D5 and D3" note limited to the exit-0 test; the before-fix measurement is runnable today.
+- **OQ-2** — claim sites named; 2026-09-24 baseline recorded; amendments go to plan files only; fifth candidate recorded, not reopened.
+- **OQ-3** — D2(d) named beside D2(a).
+- **Phase 2** — heading gains F9; scope: F9's section boundary, D5's pre-change-state obligation, and the drift-check comment + remediation line; Verify: the §3.8 body test and the render exception.
+- **Phase 3** — heading gains render, F10 and F11; scope: (a)'s update gap, D2(d), D3(d), the render change (F10); Verify: round-trip `verify`, §3.6 names, `validate` citations (F11), and "the first time any real-producer state has been fed to that verb" corrected.
+- **Phase 5** — sixth hand-authored fixture `test_render_from_seeded_state_includes_design_fidelity`; the grep's five hits; F9 seeding note.
+- **Phase 6** — sites precise; released `CHANGELOG.md` sections never edited; baseline re-run at build time; grep extended; `108-…` recorded.
+- **Phase 7** — `README.md` becomes an EDIT; the `update.sh` comment; the `## [Unreleased]` entry carries any released-claim correction.
+- **Phase 8** — anchor 1 rewritten per D3; anchor 5 pinned to after-fix, anchor 5b added; failure mapping gains F9 and F10.
+- **Honest bounds** — evidence; the "no migration owed" bullet refined; `108-…`; a bound on F11's cost.
+- **Tripwires, Non-goals, Trap 5** — enumerations gain `108-…`; released `CHANGELOG.md` sections never edited; the 32-rule count joins the counted-live list; Phase 7's `update.sh` comment named as a comment; D3(d)'s §4.x exclusion tied to the §4.1–§4.3 tripwire.
+- **Routing** (Tripwires bullet, Phase 2 and Phase 3 route lines, `## When resuming work` step 6) — "Python is confined" became "Code is confined", naming every non-Python code edit (drift-check shell lines, `install.sh` / `update.sh` lines, `src/manifest.json` entry) with exactly one route: python-engineer → python-reviewer plus a scratch-target install/update run; markdown and Phase 7's single `update.sh` comment go instruction-author → instruction-reviewer.
+- **Traps** — Trap 11 added.
+- **File anchors** — `_cmds_render.py` re-described; `_render.py`, `src/manifest.json`, `README.md`, `CHANGELOG.md` and the other anchors D2 and F5 need added; tests line extended.
+- **When resuming work** — step 3 re-verifies F1–F11 with new grep strings; step 10's evidence class.
 
 ---
 
@@ -129,10 +207,11 @@ This grammar is offered against every section, universal ones included. It is D5
 | 1. The spec names the sub-sections | The model is told the canonical numbers and headings | Six of eight universal numbers are wrong or absent; the range cannot hold the canon | F2 |
 | 2. Something supplies the body text | The canonical prose reaches the run | No input carries it; the root copy is presence-guarded, uninstructed and overwritten by render | F3 |
 | 3. The state records them | `add-rule` stores a rule with an identity | `--tag` is the only identity and it is a four-value enum | F4, F6 |
-| 4. The detector compares | An in-sync consumer returns exit 0 | Heading vs enum value — every universal section reports MISSING | F4 |
-| 5. The tests hold the line | A real-producer in-sync fixture proves exit 0 | All five verify tests use hand-authored or empty state; the real-producer fixture never reaches the comparator | F4, F5 |
+| 4. The render reproduces them | The rendered constitution carries the canonical text, names included | One `- [<tag>] <text>` line per rule: names lost, nested lists doubled, prose and code fence collapsed into one bullet | F10 |
+| 5. The detector compares | An in-sync consumer returns exit 0 | Heading vs enum value — every universal section reports MISSING; the canonical parser also swallows `## 4.` into §3.8 | F4, F9 |
+| 6. The tests hold the line | A real-producer in-sync fixture proves exit 0 | All five verify tests use hand-authored or empty state; the real-producer fixture never reaches the comparator | F4, F5 |
 
-**Link 1 alone is a trap.** Fixing F2 without F3 changes the failure mode rather than removing it: with correct numbers and no body-text source, the model produces the canonical heading at the canonical number and **invents** the body. That is quieter than today's absence, not louder — and link 4 would then report `DRIFT` instead of `MISSING`, which reads like a smaller problem. **This is the whole argument for treating delivery as inseparable from numbering.**
+**Link 1 alone is a trap.** Fixing F2 without F3 changes the failure mode rather than removing it: with correct numbers and no body-text source, the model produces the canonical heading at the canonical number and **invents** the body. That is quieter than today's absence, not louder — and once F4's keying is repaired, link 5 would then report `DRIFT` instead of `MISSING`, which reads like a smaller problem. (Until then link 5 reports `MISSING` whatever the body says, because the key never matches — for verbatim canonical bodies this was reproduced on 2026-09-24.) **This is the whole argument for treating delivery as inseparable from numbering.**
 
 ---
 
@@ -156,13 +235,19 @@ F1 (the "Section 3.5" label collision) and F2–F4 (the universal-sections chain
 Nothing supplies §3.5–§3.8 and §6.1–§6.4 body text to a `/devforge:constitute` run (F3). Something must.
 
 - **(a) A snapshot at `.devforge/template/constitution.md`** — one added line in `install.sh`'s existing snapshot block (`:432-434`). ⚠ **That line must copy from `$TEMPLATE_DIR/src/constitution.md` directly** — `install.sh:365`'s pattern, **not** the block's own two lines' pattern: `:433-434` both copy from `$TARGET_DIR`, and `$TARGET_DIR/constitution.md` holds the shipped template only on the branch where `:365` ran. On a brownfield reinstall the presence guard at `:364` takes its `else` branch (`:366-372` — OQ-3's), `:365` never runs, and that path holds whatever the consumer already had, most likely a previously **rendered** constitution. **Sourcing from `$TARGET_DIR` would break this option's own guarantee on exactly the installs where it matters.** Sourced from `$TEMPLATE_DIR`, the run reads a path that is by construction the shipped template and never a rendered artifact, whichever branch the guard took.
+  - ⚠ **(a) has no update path** (read 2026-09-24). `update.sh` refreshes `.devforge/template/` only through `src/manifest.json`'s `templateDerived.mappings`, which holds exactly two entries — `generated:agents` → `.claude/agents` and `generated:coreLLM` → `CLAUDE.md` — and it three-way-MERGES against that snapshot. `constitution.md` sits in `projectOwned` (*"NEVER overwrite"*), and no line of `update.sh` copies or merges it: its `constitution` mentions are the drift check's source line, its call and comment, and the false comment F5 records. **So under (a) as written the snapshot freezes at install-time canon:** after a canon amendment, a `/devforge:constitute` re-run seeds STALE text, and the drift check — which reads the TEMPLATE's `src/constitution.md` — keeps reporting it. Adding the file to `templateDerived` would make it a three-way-merge baseline, which is the wrong semantics for text that must be replaced, not merged.
+  - ⚠ **(a) adds a tracked file to every consumer repo.** `.devforge/template/` (SINGULAR) stays TRACKED in consumers — `src/devforge/storage-rules.md` records it as the agent three-way-merge baseline.
 - **(b) Inline the canonical prose into the spec** — the text lives in `constitute/main.md` or a reference file, and the model composes from what it reads.
 - **(c) Another route** — a helper verb that emits the canonical blocks on stdout (which collapses into D3), or reading `src/constitution.md` from the installed template directory directly.
+- **(d) A `templateOwned` mapping** *(added 2026-09-24)* — one entry in `src/manifest.json`'s `templateOwned.files[]` mapping `src/constitution.md` to a gitignored CODE-class target, e.g. under `.devforge/lib/` or `.devforge/templates/` (both listed in `src/files/devforge.gitignore`). `templateOwned` already ships single files generically on every update, with overwrite semantics — precedent: `{ "source": "src/devforge/storage-rules.md", "target": ".devforge/storage-rules.md" }` — and `update.sh`'s `expand_templateOwned_pairs` expands every entry. So the canon stays single-sourced in `src/constitution.md`, is refreshed on every update with no new `update.sh` logic, and stays version-locked with the helper that parses it — which matters because of F9: the parser and the text it parses ship together.
+  - **Costs, recorded:** `install.sh` needs whatever line its own pattern requires (verify at build — not verified in the 2026-09-24 re-check); `src/devforge/storage-rules.md`'s class list gains an entry; and ⚠ **a markdown data file inside a CODE-class path is a mild invention** — the nearest precedents are `_design/js/*.js` (non-Python assets inside a lib sub-package) and `.devforge/command-refs/` (markdown in a CODE-class path, but instruction text the model reads, not data a helper parses). Flagged, not hidden.
 
-- **RECOMMEND (a)**, **conditionally and subject to re-derivation after D5.** It adds one line to a block that already exists and already solves exactly this problem for agents and `CLAUDE.md`; it puts the text where an update ships it; and it keeps the canonical prose single-sourced in `src/constitution.md`.
+- **RECOMMEND — RE-OPENED 2026-09-24.** The drafting-time recommendation was **(a)**, conditionally and subject to re-derivation after D5, on three stated grounds: it adds one line to a block that already exists and already solves exactly this problem for agents and `CLAUDE.md`; it puts the text where an update ships it; and it keeps the canonical prose single-sourced in `src/constitution.md`. **The second ground is false** — (a) has no update path (above) — so (a)'s recommendation no longer stands on its own stated reasoning.
+- **Drafting-time view after the re-check: leans to (d)**, still **conditional on D5 and on D3**. (d) keeps (a)'s cheapness (one manifest entry plus whatever `install.sh` needs, no new `update.sh` logic) and its single source, and it is the only option whose text an update refreshes. Nothing is decided here.
+- **Counter-argument to (d), recorded:** it puts a markdown file that a helper parses as data inside a CODE-class path — a first of its kind; it adds one more manifest entry and a `storage-rules.md` edit; and it ships a second on-disk copy of the canon to every consumer, where (a) reused a mechanism whose whole purpose is recording what the template shipped.
 - ⚠ **Sequencing note, load-bearing: D2 is decided AFTER D5.** If D5 gives a rule an identity separate from its tag, the snapshot's required shape changes — a flat markdown copy may no longer be enough, and a structured emission (the (c) family) may become the cheaper carrier. **A ratifier who takes D2 before D5 has decided the carrier before knowing what it must carry.**
 
-**Counter-argument, recorded:** (b) is the only option that needs no install-time change at all, and inlining reads as the simplest thing. It is not: `verify-universal-defaults` compares body text byte-for-byte after normalization, so inlined prose becomes **byte-critical duplication** — two copies of the same paragraphs that must never diverge, with the detector turning any divergence into a `DRIFT` finding on every consumer. That is the drift class this plan exists to close, reintroduced at a new site. Recorded and not answered away: (a) still leaves two copies on disk in a consumer (the snapshot and the render), but only one is ever read as a source.
+**Counter-argument, recorded:** (b) is the only option that needs no install-time change at all, and inlining reads as the simplest thing. It is not: `verify-universal-defaults` compares body text byte-for-byte after normalization, so inlined prose becomes **byte-critical duplication** — two copies of the same paragraphs that must never diverge, with the detector turning any divergence into a `DRIFT` finding on every consumer. That is the drift class this plan exists to close, reintroduced at a new site. Recorded and not answered away: (a) still leaves two copies on disk in a consumer (the snapshot and the render), but only one is ever read as a source — and (d) leaves the same two, its CODE-class copy in the snapshot's place.
 
 ### D3 — Who seeds the universal sections
 
@@ -171,12 +256,24 @@ Given a text source (D2), something must put those sections into `.devforge/cons
 - **(a) A new `seed-universal` verb** — the helper reads the canonical source and writes all eleven sections itself. Helper-owns-shape: the numbers, headings, tags and rule identities are the helper's, and the model composes nothing.
 - **(b) Extend `reset`** — a freshly reset state already carries the universal sections. One fewer verb; every `reset` call in every test changes shape.
 - **(c) The model follows an instruction** — the spec tells it to read the source and issue `add-section` / `add-rule` per universal sub-section.
+- **(d) Render-from-source** *(added 2026-09-24)* — `render` emits the universal sub-sections verbatim from the canonical text carrier (D2), and the state records only that they are present (e.g. which canonical version was rendered), not their text. Recorded as found, without a verdict:
+  - **The comparator could parse the consumer's rendered `constitution.md` with the same parser as the canonical side**, so both sides key identically by construction and **D5's identity field is not needed for comparison** — for §3.5–§3.8 and §6.1–§6.4. ⚠ Not for §4.1–§4.3: render prints those buckets as `### Always Do (Universal)`, `### Never Do (Universal)` and `### Prefer (Universal)`, with no `4.x` number (`_render.py`'s `_render_constitution` and `_render_pattern_bucket`, read 2026-09-24), so a number-keyed parser would not find them in a rendered file; their comparison stays on the state side.
+  - **D6's overrides of universal rules would have no state home** — effectively D6(b).
+  - **`render` gains a second input besides the state**, which bends the helper-owns-shape statement that render walks the state — the render contract F2 quotes (*"render artifact rebuilt from `.devforge/constitute.json`"*; *"walks the locked schema"*) would change with it.
+  - F11 would not arise under (d) as reproduced: Dim 2 reads citation text from the state (`_collect_citation_texts(state)`), under (d) the state holds no §3.5–§3.8 or §6.1–§6.4 text, and the one unresolved token F11 found comes from §6.1. How `validate`'s Dim 1 slot-fill scores a state that records universal sub-sections by presence only is unexamined.
+  - ⚠ **Applying (d) to §4.1–§4.3 would change their `add-pattern-rule` production path, which this plan's Tripwires and Non-goals forbid** — so (d) as drafted covers §3.5–§3.8 and §6.1–§6.4 only, and §4.x stays on its path.
+
+- **Whichever of (a)–(c) is ratified ALSO carries a render change** (F10): a rule must be able to render as a named block — name, prose, nested list and code fence intact — not as a one-line `- [<tag>] <text>` bullet. Phase 3 owns it.
+- **Whichever option is ratified, F11 is owed** (recorded 2026-09-24): a route that puts canonical text into the state carries canonical §6.1's `plan.md` token into `validate`'s Dim 2 as an unresolved citation (weight 0.25, threshold 0.95, composite gate 0.95). Phase 3 must show `validate` reports no unresolved citation originating in canonical text, or state each one with its Dim 2 cost.
 
 - **RECOMMEND (a)**, **conditional on D5** — it becomes largely mechanical once D5 settles what a rule's identity is.
   - (c) is the option this plan exists to retire: it is what happens today, minus the text source, and it puts eleven exactly-specified sections back in the hands of the composer. Helper-owns-shape says the helper owns structure and the LLM composes values; canonical universal text has no values to compose.
   - (b) changes the meaning of `reset` from "empty state" to "state with content", which every existing test and every re-run assumes.
+- ⚠ **RE-OPENED 2026-09-24.** The recommendation of (a) was made without (d) on the table and without knowing that render cannot carry the text (a) would seed (F10). **Drafting-time view: (d) must be argued against (a) at Phase 0.** The recommendation is **not** flipped here — it stays (a), re-opened.
 
-**Counter-argument, recorded:** (a) adds a 28th verb to a helper that already has 27, and the framework has a standing preference for extending one binary over adding another composer. Accepted as a cost, not refuted: the alternative that avoids the verb is (b), whose price is redefining `reset`.
+**Counter-argument, recorded:** (a) adds a 28th verb to a helper that already has 27, and the framework has a standing preference for extending one binary over adding another composer. Accepted as a cost, not refuted: the alternative that avoids the verb is (b), whose price is redefining `reset`. **Recorded 2026-09-24:** (a) now also needs a render change (F10) on top of D5's schema change and the new verb; (d) trades all three for a render change of its own plus a presence record in the state, and needs no rule identity for the eight sections it covers.
+
+**Counter-argument to (d), recorded:** it bends the render contract (a second input besides the state), leaves user overrides of universal rules nowhere to live, and splits the comparator into two paths — parser-against-parser for eight sections, state-against-parser for §4.1–§4.3 — so the universal set is no longer compared one way.
 
 ### D4 — What keys a rule during comparison
 
@@ -190,12 +287,15 @@ Given a text source (D2), something must put those sections into `.devforge/cons
 - **RECOMMEND (a)**, **conditional on D5** — once a rule carries an identity separate from its tag, the comparator keys on it and the two sides mean the same thing by construction.
 - **Recorded about (c):** positional comparison is the only option that needs neither a schema change nor a new field, and it is the one that fails silently — a consumer who legitimately appends one project rule to a universal section shifts every later index and the detector reports drift on rules nobody touched.
 - **Recorded about (b):** it is strictly cheaper than (a) and strictly weaker. It would make §3.5, §3.7, §3.8 and §6.1–§6.4 comparable today with zero schema change, and it would leave §3.6 and §4.1–§4.3 — the sections whose canonical keys are bold sub-labels — exactly as broken as they are now.
+- **Recorded 2026-09-24:** D3(d) would let the comparator run one parser over both the canonical file and the consumer's rendered `constitution.md` for §3.5–§3.8 and §6.1–§6.4, keying both sides identically by construction — a keying answer none of (a)–(d) here names. §4.1–§4.3 would stay on whatever this decision ratifies (D3(d)'s record). Whichever keying is ratified, F9's section boundary must be fixed first, or §3.8 never compares equal.
 
 **Counter-argument, recorded:** (a) is the most invasive option in a plan whose cheapest correct option is (b), and it is recommended partly because there are no production installs to protect (see `## Honest bounds`). If that ever stops being true, (b) becomes the proportionate answer for the sections it covers, and §3.6 / §4.x stay uncovered — which is a real, statable partial fix, not a failure.
 
 ### D5 — Does `add-rule` accept a label outside the `rule_tag` enum?
 
 ⚠ **This decision governs the rest. Once it is settled whether a rule carries an identity separate from its tag, D3 and D4 become largely mechanical.** Decide it first.
+
+⚠ **Recorded 2026-09-24:** D3(d) would make this decision's identity field unnecessary for comparing §3.5–§3.8 and §6.1–§6.4 (D3(d)'s record); §4.1–§4.3 would still need it or D4's repair. "Decide it first" stands as drafted — a ratifier weighing D3(d) records what D5 still governs under it.
 
 - **(a) Yes — a rule gains an identity field** (a label / name) distinct from `--tag`, which stays the four-value enum it is. The canonical side's heading or bold sub-label lands there; the consumer side emits it; the comparator keys on it (D4(a)).
 - **(b) No — the enum stays the only identity**, and the comparison is repaired some other way (D4(b) or (c)).
@@ -204,10 +304,11 @@ Given a text source (D2), something must put those sections into `.devforge/cons
 - **Blast radius, stated so it is argued with rather than discovered:** the `rule` schema propagates to
   - `add-rule`'s CLI surface and its `--tag` validation,
   - `validate`'s Dim 4 `rule_tag` — **weight 0.20, pass threshold 1.0** (F7), so a label smuggled into `tag` costs up to 0.20 of the composite against a 0.95 human gate,
-  - `render` (whether a label appears in the rendered constitution, and how),
+  - `render` — whether a label appears in the rendered constitution, and how; ⚠ **and, recorded 2026-09-24 (F10), render today cannot carry multi-paragraph prose, a fenced code block or a nested list inside a rule at all** — it emits one `- [<tag>] <text>` line per rule,
   - **both** comparison sides in `_universal.py`,
   - the override grammar's `[<tag>]` token at `constitute/main.md:224-228` (F6), which is user-facing,
   - and the tests, including every fixture that constructs a rule.
+- **And one obligation that is not a schema surface** (recorded 2026-09-24): **the comparator's behaviour on state constituted before the change.** The drift check always pairs the NEW helper with OLD state — `scripts/constitution-drift-check.sh`: *"The freshly-shipped TEMPLATE helper is used (not the consumer's installed helper), because update.sh runs this BEFORE it copies the new lib"*, and `update.sh` calls it before the equal-version bail. So every update of every install constituted before the change runs the new comparator on rules written by the old schema. D5 must say what the comparator reports there — e.g. one line naming re-constitution, not one MISSING per rule. This is structural, not a production-install question.
 
 **Counter-argument, recorded:** (b) is a real position and the cheapest one. The enum exists because a rule's tag is a *classification* — where the rule came from and whether it is universal — and a name is a different kind of thing that the schema deliberately did not carry. Adding one widens a locked schema across seven surfaces to serve a comparator that (b) could repair in one file. The case for (a) is that F4's root cause **is** the absence of an identity: the comparator did not invent the mismatch, it inherited a schema in which a rule has no name to compare.
 
@@ -222,6 +323,7 @@ Today the per-section echo offers `add rule` / `drop rule` / `replace rule` / `d
 - **RECOMMEND (a)** — with the echo saying plainly that an override of a universal rule will be reported as drift on every update until it is reverted.
 - **Why not (b):** it removes a capability a user has today, on a plan with no evidence anyone misused it, and it makes `drop section` mean different things in different sections of the same echo.
 - **Why not (c):** it is the correct answer and the expensive one — a per-rule override record is a second schema change on top of D5's, with its own comparison semantics. **Recorded as the named strengthening arm, with an observable trigger: a user who reverts an intentional override because the drift warning kept naming it.**
+- **Recorded 2026-09-24:** under D3(d) the state holds no universal text, so an override of a universal rule has no state home — D3(d) makes this decision effectively (b) for the sections it covers. This decision is read against whatever D3 ratifies.
 
 **Counter-argument, recorded:** (a) knowingly ships a warning that cannot be silenced without undoing the user's own decision, and a warning a user learns to ignore is worse than no warning — it trains them past the real ones too. That is accepted here, not refuted, because (c)'s cost is a second schema change and (b)'s cost is removing a capability.
 
@@ -244,23 +346,25 @@ The repo's own rule is that tests use input shapes matching production, round-tr
 
 - **RECOMMEND yes**, in this plan, as its own phase: a real-producer in-sync fixture built through the CLI (`reset` + the seeding route D3 ratifies) fed to the comparator, asserting **exit 0**. **That single test is the only thing that would have caught F4, and it is the only thing that will catch its return.**
 - **Alternative:** keep the hand-authored fixtures and add one real-producer test beside them. Cheaper, and leaves four tests that pass on a state the CLI rejects.
-- ⚠ **Note for whoever ratifies:** this test cannot be written before D5 and D3 are built. A real-producer in-sync fixture requires a route by which canonical text and identities enter the state through the real CLI. That is a phase ordering constraint, not an argument against.
+- ⚠ **Note for whoever ratifies:** the exit-0 in-sync test cannot be written before D5 and D3 are built. A real-producer in-sync fixture that returns exit 0 requires a route by which canonical text and identities enter the state through the real CLI — or, under D3(d), reach the rendered file. That is a phase ordering constraint, not an argument against. **Qualified 2026-09-24:** the before-fix measurement needs no such route. The real CLI already stores canonical body text through `add-rule --tag universal --text` and `add-pattern-rule --scope universal`, and that state was built and measured on 2026-09-24 (`### Re-check (2026-09-24)`: exit 2, 32 MISSING, 0 DRIFT).
 
 ### OQ-2 — Are the plans 86 / 89 / 99 "designed drift" claims artifacts?
 
-Plans 86, 89 and 99 each tell consumers to expect a `verify-universal-defaults` DRIFT/MISSING finding as designed consequence of a constitution amendment. **Under F4 those findings would appear whether or not anything drifted.**
+Plans 86, 89 and 99 each tell consumers to expect a `verify-universal-defaults` DRIFT/MISSING finding as designed consequence of a constitution amendment, at the sites F5 names: `86-FOWLER-REFACTORING-GAPS-PLAN.md`'s claim only in `CHANGELOG.md` under `## [2.0.10]`; `89-TEST-FOUNDATION-HARDENING-PLAN.md`'s in its plan file and under `## [2.0.10]`; `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`'s in its plan file and under `## [2.0.12]`. **Under F4 those findings would appear whether or not anything drifted.**
 
 - **RECOMMEND: establish it by a run, not by reading, and record the result in this plan's own build record.** The run is: a real-producer in-sync consumer state (OQ-1's fixture) against the current canonical file, **before** the comparison fix and **after** it. Before-fix exit 2 with every universal section MISSING, after-fix exit 0, is the finding.
-- **If established true:** the three ledger entries get **dated amendments**, never rewrites — the claim stays on the record, with a dated note saying the finding it predicted was not distinguishable from an artifact of the comparator. `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* / *"29 MISSING findings"* records are a **fourth** candidate (F5) and take the same treatment.
+- **Before-half baseline, recorded 2026-09-24 (canon at `6a786b3`):** exit 2, 32 findings, all MISSING, 0 DRIFT, all eleven sections — on a scratch state built through the real CLI with every canonical body verbatim (`### Re-check (2026-09-24)`). The before half is therefore runnable today; only the after half needs Phases 2–3. ⚠ **Phase 6 re-runs the before half at build time** — the canon may change before then, and this number is a baseline, not the result.
+- **If established true:** **dated amendments**, never rewrites, at the **plan files** that carry a claim — `89-TEST-FOUNDATION-HARDENING-PLAN.md` and `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md` — the claim stays on the record, with a dated note saying the finding it predicted was not distinguishable from an artifact of the comparator. `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* / *"29 MISSING findings"* records are a **fourth** candidate (F5) and take the same treatment. `86-FOWLER-REFACTORING-GAPS-PLAN.md` carries no claim in its plan file and gets no amendment. **Released `CHANGELOG.md` sections are never edited:** the `## [2.0.10]` claims (86's and 89's) and the `## [2.0.12]` claim (99's) are corrected only by Phase 7's `## [Unreleased]` entry.
+- **Fifth candidate, recorded and NOT reopened:** `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s ratified D7 rests partly on the cost of a fourth drift finding (F5). OQ-2 records, in this plan, whether that cost premise held; the decision stays that plan's, and that plan file is not amended.
 - **If established false or indistinguishable:** record that, and amend nothing.
 - ⚠ **This plan does not get to conclude it either way from reading.** F4 says the comparator cannot return green; it does not by itself say those specific consumers had no real drift. Those installs may have had both.
 
 ### OQ-3 — Does `install.sh:364`'s presence guard stay?
 
-The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) the canonical text would arrive by a different path (`.devforge/template/`), so the guard's role changes.
+The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) or D2(d) the canonical text would arrive by a different path (`.devforge/template/`, or D2(d)'s CODE-class target), so the guard's role changes.
 
-- **RECOMMEND: it stays, untouched.** Its job is brownfield safety — never overwrite a user's constitution — and that job is unchanged by anything here. D2(a) makes it irrelevant to the text source rather than wrong.
-- **Alternative:** drop the root copy entirely, since after D2(a) nothing reads it as a source and `render` overwrites it anyway. That is a real simplification and it is **out of this plan's scope**: the root copy is what a freshly installed, never-constituted project has as its constitution, and removing it is a separate decision with its own blast radius.
+- **RECOMMEND: it stays, untouched.** Its job is brownfield safety — never overwrite a user's constitution — and that job is unchanged by anything here. D2(a) or D2(d) makes it irrelevant to the text source rather than wrong.
+- **Alternative:** drop the root copy entirely, since after D2(a) or D2(d) nothing reads it as a source and `render` overwrites it anyway. That is a real simplification and it is **out of this plan's scope**: the root copy is what a freshly installed, never-constituted project has as its constitution, and removing it is a separate decision with its own blast radius.
 - **Recorded either way:** `install.sh:371`'s drift-check call sits in the guard's `else` branch, so anything done to the guard touches when the drift check runs.
 
 ---
@@ -275,7 +379,7 @@ When it closes it must state, following the house pattern:
 - Whether **per-item deliberation was supplied**, and whether the close was an **explicit pick or a delegation**.
 - That **every decision keeps its counter-argument** — a ratified decision with its counter-argument deleted cannot be re-opened honestly.
 - **Which files each outcome puts in scope**, per phase.
-- ⚠ That **ratification changes no evidence class**: F1 observed once, F2–F4 found by reading, nothing measured.
+- ⚠ That **ratification changes no evidence class**: F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.
 
 ⚠ **D5 must be answered before D2, D3 and D4 are read as settled.** If the close is a blanket ratification, it still records that ordering, because D2's, D3's and D4's recommendations are each explicitly conditional and a blanket close does not discharge a condition.
 
@@ -316,36 +420,45 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - The live-spec tests are green: `tests/lib/test_agent_reachability.py`, `tests/lib/test_memory_lane.py`, `tests/scripts/test_claude_emitter.py`.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
-### Phase 2 — Rule identity and comparison keying (F4)
+### Phase 2 — Rule identity and comparison keying (F4, F9)
 
 **Depends on: D5, then D4.** Not startable while either is open.
-**Route: python-engineer → python-reviewer. Every function gets a test written AND run in the same turn.**
+**Route: python-engineer → python-reviewer. Every function gets a test written AND run in the same turn. `scripts/constitution-drift-check.sh`'s Check A comment and printed `Fix: re-run …` line ride the same route, and for them the reviewer runs the affected install/update path against a scratch target, never a consumer install.**
 
-- The schema change D5 ratifies, across the surfaces its blast-radius list names: `add-rule`'s CLI surface, `validate`'s Dim 4, `render`, both sides of `_universal.py`, and the tests.
+- The schema change D5 ratifies, across the surfaces its blast-radius list names: `add-rule`'s CLI surface, `validate`'s Dim 4, `render`, both sides of `_universal.py`, and the tests — **plus D5's pre-change-state obligation**: what the comparator reports on state constituted before the change.
 - The comparator keys on whatever D4 ratifies, in `_cmds_quality.py`.
-- ⚠ **If D5 is ratified (b) — no identity field — this phase is D4's repair alone**, and its Verify drops every schema bullet. The phase does not silently do (a) anyway.
+- **The canonical parser's section boundary (F9):** any markdown heading ends a section, and a trailing `---` rule is not body. A parser defect, not a decision — it rides in this phase because it is the comparator's canonical side, and no keying fix can make §3.8 compare equal while its canonical body carries `## 4.`.
+- **`scripts/constitution-drift-check.sh`'s Check A comment and printed remediation** — *"Exit 2 == real drift"* and *"Fix: re-run /devforge:constitute to re-synthesize constitution.md + forcing-function config."* (F5). They describe the comparator's semantics, so they change with it and must be true of the built comparator. Shell text, not Python; same route.
+- ⚠ **If D5 is ratified (b) — no identity field — this phase is D4's repair alone** (with F9's boundary and the drift-check text), and its Verify drops every schema bullet. The phase does not silently do (a) anyway.
 
 #### Verify
 
 - **The two sides mean the same thing**, demonstrated by a test that builds a consumer state through the real CLI and asserts the comparator's canonical and consumer key sets are equal for at least one section outside §3.6 and §4.x, and for §3.6 and §4.1 as well.
+- **A test asserts §3.8's canonical body contains no line starting `## ` and does not end with `---`** (F9) — `_parse_universal_blocks` run over the live `src/constitution.md`.
 - `validate`'s composite on a fully-populated real-producer state is **unchanged** from before this phase, or the change is stated with the number (F7: Dim 4 carries weight 0.20 against a 0.95 gate).
-- `render` output on a fully-populated state is byte-identical to before this phase, or every difference is stated.
+- `render` output on a fully-populated state is byte-identical to before this phase, or every difference is stated — **except the render change D3 ratifies (F10), stated.** Phase 3 owns that change; any part of it D5's schema change forces into this phase is stated here.
 - The targeted suite, then the full `tests/lib` suite, is green.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
 
-### Phase 3 — Canonical text delivery and seeding (F3)
+### Phase 3 — Canonical text delivery, seeding and render (F3, F10, F11)
 
 **Depends on: D2 and D3, and D2 depends on Phase 2's outcome (D5).** Not startable while any is open.
-**Route: python-engineer → python-reviewer for the helper work; instruction-author → instruction-reviewer for any `install.sh`-adjacent doc text.**
+**Route: python-engineer → python-reviewer for the helper work, the `install.sh` line, any `update.sh` line D2(a)'s update path adds, and, under D2(d), the `src/manifest.json` entry — for the shell and manifest lines the reviewer runs the affected install/update path against a scratch target, never a consumer install. instruction-author → instruction-reviewer for doc text only — including, under D2(d), `src/devforge/storage-rules.md`'s class entry, which is markdown.**
 
-- The carrier D2 ratifies. Under (a): one added line in `install.sh`'s snapshot block at `:432-434`, copying from `$TEMPLATE_DIR/src/constitution.md` directly (`install.sh:365`'s pattern) and **not** from `$TARGET_DIR` the way the block's existing two lines do.
-- The seeding route D3 ratifies. Under (a): a new verb that writes all eleven universal sections into `.devforge/constitute.json` from the canonical source, with the helper owning numbers, headings, tags and identities.
+- The carrier D2 ratifies.
+  - Under (a): one added line in `install.sh`'s snapshot block at `:432-434`, copying from `$TEMPLATE_DIR/src/constitution.md` directly (`install.sh:365`'s pattern) and **not** from `$TARGET_DIR` the way the block's existing two lines do. ⚠ **And (a) has no update path** (D2, corrected 2026-09-24): `update.sh` never refreshes `.devforge/template/constitution.md`, so this phase either adds one or states the install-time freeze, per what D2 ratifies.
+  - Under (d): one `templateOwned.files[]` entry in `src/manifest.json` mapping `src/constitution.md` to a gitignored CODE-class target; whatever line `install.sh`'s own pattern requires (verified at build — not verified in the 2026-09-24 re-check); and the new entry in `src/devforge/storage-rules.md`'s class list.
+- The seeding route D3 ratifies. Under (a): a new verb that writes all eleven universal sections into `.devforge/constitute.json` from the canonical source, with the helper owning numbers, headings, tags and identities. Under (d): `render` emits §3.5–§3.8 and §6.1–§6.4 from the carrier, the state records only their presence, and §4.1–§4.3 stay on `add-pattern-rule`.
+- **The render change D3 ratifies (F10)** — this phase owns render's shape, which no phase owned before 2026-09-24. Under D3(a)–(c): a rule renders as a named block — name, prose, nested list and code fence intact — not as a one-line `- [<tag>] <text>` bullet. Under D3(d): the verbatim emission above.
 - The `/devforge:constitute` spec is wired to call it, at a phase that runs before Section 3's and Section 6's echoes.
 
 #### Verify
 
-- A fresh `reset` followed by the seeding route produces a state in which **`_extract_universal_rules_from_state` returns all eleven `_UNIVERSAL_SECTIONS` keys**, each with non-empty rules.
-- `forge-internal:verify-universal-defaults` against that state and the canonical file **exits 0 with zero findings** — the first time any real-producer state has been fed to that verb.
+- A fresh `reset` followed by the seeding route produces a state in which **`_extract_universal_rules_from_state` returns all eleven `_UNIVERSAL_SECTIONS` keys**, each with non-empty rules — under D3(d), the consumer side the comparator then reads (the rendered file for §3.5–§3.8 and §6.1–§6.4, the state for §4.1–§4.3) yields all eleven.
+- `forge-internal:verify-universal-defaults` against that state and the canonical file **exits 0 with zero findings** — the first time any real-producer state makes that verb exit 0. (A real-producer state was first fed to it on 2026-09-24, in the re-check, and exited 2 with 32 MISSING.)
+- **`constitute_helper verify` — the round-trip verb, not only `verify-universal-defaults` — exits 0 on the seeded state** (F9: a state seeded from today's canonical parser fails it with a section-count mismatch).
+- **The rendered §3.6 carries every principle name** canonical §3.6 carries — counted live from `src/constitution.md`, each grep-found in the rendered `constitution.md` (F10).
+- `validate` on the seeded state reports no unresolved citation that originates in canonical text, or each one is stated with its Dim 2 cost (F11).
 - The canonical text reaching the consumer is the shipped template's, not a rendered artifact: the source path is asserted in a test, and `install.sh:364`'s presence guard is untouched (OQ-3) or its change is stated.
 - The 27-subcommand count is restated as whatever it now is, **counted live from `add_parser(` call sites, never incremented from memory.**
 - Full `tests/lib` suite green; python-reviewer SHIP-READY or every finding fixed.
@@ -379,6 +492,8 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - The `TestForgeInternalVerifyUniversalDefaults` fixtures, per OQ-1.
 - `test_verify_universal_defaults_passes_with_38_in_sync` and `test_verify_universal_defaults_detects_missing_38`, which share the same hand-authored builder or a bare `default_state()` (F5).
 - `_build_in_sync_constitute_json`'s docstring, whose *"Fixture strategy"* paragraph explains a constraint this plan removes.
+- `test_render_from_seeded_state_includes_design_fidelity` in `TestDesignFidelityUniversalSection` *(added 2026-09-24)* — a sixth hand-authored fixture that writes the canonical label into `tag` (it builds `{"tag": r["tag_or_label"], "text": r["body"]}` rows). On 2026-09-24 `grep -n '"tag": r\["tag_or_label"\]' tests/lib/test_constitute_helper.py` returns 5 hits: 3 in `_build_in_sync_constitute_json`, 1 in the drift test, 1 in this render test.
+- Every rewritten fixture that takes canonical text from `_parse_universal_blocks` takes it after Phase 2's boundary fix (F9) — before it, §3.8's canonical body carries `## 4.`.
 
 #### Verify
 
@@ -389,36 +504,39 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 
 ### Phase 6 — The drift-claim question (OQ-2)
 
-**Depends on: OQ-2, and on Phase 5 (the before/after run needs the real-producer fixture).**
+**Depends on: OQ-2, and on Phase 5** (the after half needs the real-producer fixture; the before half is runnable today and was baselined on 2026-09-24).
 **Route: instruction-author → instruction-reviewer for the amendments; the run itself is an observation recorded in this plan.**
 
-- Run the before/after OQ-2 names and **record the result as a fact with its numbers**, in this plan's build record.
-- If established: dated amendments — never rewrites — at plans 86, 89 and 99's drift claims, and at `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* / *"29 MISSING findings"* records (F5).
+- Run the before/after OQ-2 names and **record the result as a fact with its numbers**, in this plan's build record. The before half re-runs at build time against the canon then current; the 2026-09-24 baseline (32 MISSING / 0 DRIFT / exit 2, canon at `6a786b3`) is a comparison point, not a substitute.
+- If established: dated amendments — never rewrites — at the **plan-file** claim sites only: `89-TEST-FOUNDATION-HARDENING-PLAN.md`, `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`, and `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* / *"29 MISSING findings"* records (F5). **Released `CHANGELOG.md` sections are never edited** — the correction for `## [2.0.10]` (the `86-FOWLER-REFACTORING-GAPS-PLAN.md` and `89-…` claims) and `## [2.0.12]` (the `99-…` claim) rides in Phase 7's `## [Unreleased]` entry. `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s D7 is recorded in this plan as whether its cost premise held — never amended.
 - If not established, or indistinguishable: record that, and amend nothing.
 
 #### Verify
 
 - The run's result is recorded as a NUMBER on both sides (findings before, findings after), not as a characterization.
-- Every amendment is **dated and additive**; no ratified sentence in plans 44, 86, 89 or 99 is rewritten or deleted.
+- Every amendment is **dated and additive**; no ratified sentence in plans 44, 86, 89 or 99, or in `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`, is rewritten or deleted.
+- **No released `CHANGELOG.md` section is edited** — this phase's diff does not touch `CHANGELOG.md` at all.
 - ⚠ The amendments say what was established and what was not. **"Indistinguishable" is a legitimate result and is recorded as one**, not smoothed into either conclusion.
-- `grep -rn "designed consumer drift\|verify-universal-defaults" --include=*.md .` is classified in full: each hit is an amended site, history, or this plan's own quote of one.
+- `grep -rniE "designed consumer drift|consumer-install drift|verify-universal-defaults" --include=*.md .` is classified in full: each hit is an amended site, a released `CHANGELOG.md` section left as released, history, or this plan's own quote of one.
 
 ### Phase 7 — Docs sweep
 
-**Route: instruction-author → instruction-reviewer. Docs only.** Apply F8 before touching any ledger.
+**Route: instruction-author → instruction-reviewer. Docs only, plus one `update.sh` comment (a comment, no executable line).** Apply F8 before touching any ledger.
 
-- `CHANGELOG.md` — a new entry under `## [Unreleased]`, **evidence class first and honest bounds last**.
+- `CHANGELOG.md` — a new entry under `## [Unreleased]`, **evidence class first and honest bounds last**. If Phase 6 established the artifact finding, this entry also carries the correction for the released `## [2.0.10]` and `## [2.0.12]` drift claims — **those released sections are never edited.**
 - `DEVELOPMENT-STATUS.md` — an edit or a recorded verified no-op.
 - Repo `CLAUDE.md` — **the "Where to find what" router's constitute / forcing-functions rows ONLY**: an edit or a recorded verified no-op. ⚠ **No index line goes here, and no pointer to the archive either** — that file carries no plan status at all.
 - `PLAN-STATUS-ARCHIVE.md` — **two sites in one file**: this plan's one-line entry in `## Index`, in the house shape its neighbours there use, and a new full entry in `## Entries` in the archive's house shape. `## Entries` is the authority; the `## Index` line summarizes it and never competes with it.
-- `README.md` — an edit or a recorded verified no-op.
+- `README.md` — **an EDIT, not a verified no-op** (corrected 2026-09-24). Its sentence *"When a release changes a universal constitution section, the update prints a WARN-only drift notice naming the drifted sections and exits normally; re-run `/devforge:constitute` to adopt the new wording."* (grep `WARN-only drift notice`) must be true of the built state. ⚠ **It is false TODAY (F5), so it may be corrected ahead of the build**, in the same "may ship alone" spirit as Phase 1 — **the maintainer's call, not decided here.**
+- `update.sh` — the neighbouring false comment F5 records, *"Project customizations live in CLAUDE.md / constitution.md / agents — those still three-way merge upstream."* (grep `Project customizations live in`): it stops naming `constitution.md` as three-way merged. One comment, no executable change.
 
 #### Verify
 
 - Every site is recorded as an **edit or an explicit verified no-op, with the grep that shows it.**
+- `README.md`'s drift sentence (grep `WARN-only drift notice`) is true of the built state, and the `update.sh` comment (grep `Project customizations live in`) no longer names `constitution.md`.
 - `grep -rn "104-UNIVERSAL" --include=*.md .` returns `PLAN-STATUS-ARCHIVE.md` **twice — once under `## Index`, once under `## Entries`** — plus this file, at minimum. ⚠ It returns **no** repo `CLAUDE.md` hit; one there is a line this phase must not have written.
 - No summary anywhere claims consumer validation. **"Built and reviewed" is the ceiling** until Phase 8 runs.
-- The evidence class is attached at every site: F1 observed once, F2–F4 found by reading, nothing measured.
+- The evidence class is attached at every site: F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.
 - No tracked file names a client, a client component, a client ticket or a benchmark path.
 
 ### Phase 8 — Consumer e2e — user-driven HARD GATE, NOT run
@@ -428,26 +546,27 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - **Fixture:** a testForge20 install. **The frozen benchmark install is never touched.**
 - The anchors are known-answer cases, **scored in PAIRS**:
 
-1. **A fresh `/devforge:constitute` run on a constituted-from-scratch fixture** → the rendered `constitution.md` carries §3.5, §3.6, §3.7, §3.8, §6.1, §6.2, §6.3 and §6.4 **at those numbers with those headings**, and the bodies match the canonical file. **PAIRED WITH 2.**
+1. **A fresh `/devforge:constitute` run on a constituted-from-scratch fixture** → the rendered `constitution.md` carries §3.5, §3.6, §3.7, §3.8, §6.1, §6.2, §6.3 and §6.4 **at those numbers with those headings** (number and title; Section 6's render omits the `[universal]` suffix today — `include_tag_suffix=False`), and the bodies meet the check D3's outcome sets (F10): **under D3(d)**, each rendered universal sub-section's body equals the canonical body byte-for-byte after whitespace normalization; **under D3(a)–(c)**, each equals the canonical body after the render change D3 ratifies, with §3.6's principle names present. Phase 0's D3 outcome names which of the two is scored. **PAIRED WITH 2.**
 2. **`forge-internal:verify-universal-defaults` against that same install** → **exit 0, zero findings.**
 3. **The same install with one universal rule deliberately altered** → exit 2 with **exactly that section** in the findings, and no other.
 4. **A `/devforge:constitute` run read by a human at the forcing-functions echo** → the user-facing line does not name the block by a `3.x` number, and nothing in the transcript invites a reader to confuse it with §3.5. (Phase 1's anchor; it stands alone if Phase 1 ships alone.)
-5. **An `update.sh` run against a constituted install with nothing drifted** → **no constitution-drift warning at all.** ⚠ This is the anchor that tests F5's user-visible consequence, and it is the only one that would show the warning noise gone.
+5. **An `update.sh` run against an install constituted AFTER the fix, with nothing drifted** → **no constitution-drift warning at all.** ⚠ This is the anchor that tests F5's user-visible consequence, and it is the only one that would show the warning noise gone. **PAIRED WITH 5b.**
+   - **5b — an `update.sh` run against an install constituted BEFORE the fix** → exactly the output D5 ratifies for pre-change state (D5's blast radius: the drift check always pairs the new helper with old state) — e.g. one line naming re-constitution, never one MISSING per rule. **PAIRED WITH 5.**
 
 #### Verify
 
 - Every anchor is scored **explicitly** — stated, not summarized — with the pair scored together.
-- **If an anchor fails,** record the negative with the artifacts and name the mechanism before proposing any fix: a wrong number or heading is D7 / Phase 4; an invented body is D2 / D3 / Phase 3; a false MISSING is D4 / D5 / Phase 2; a false green on anchor 3 is a comparator that stopped comparing; a surviving label collision is Phase 1. **They have different fixes.**
+- **If an anchor fails,** record the negative with the artifacts and name the mechanism before proposing any fix: a wrong number or heading is D7 / Phase 4; an invented body is D2 / D3 / Phase 3; a false MISSING is D4 / D5 / Phase 2; a duplicated `## 4.` heading or a round-trip `verify` failure is F9 / Phase 2; a missing §3.6 principle name or a universal body collapsed into one bullet is F10 / D3 / Phase 3; a per-rule MISSING flood on anchor 5b is D5's pre-change-state answer / Phase 2; a false green on anchor 3 is a comparator that stopped comparing; a surviving label collision is Phase 1. **They have different fixes.**
 - **A clean run shows the chain behaves on planted fixtures, never that any of these gaps cost anything** — F1 is the only observed item, and it is a label, not a mechanism.
 
 ---
 
 ## Honest bounds
 
-- **No consumer incident for F2, F3 or F4.** The only observed thing is F1's label confusion in a real run. F2–F4 were found by reading. **Nothing was measured** — not how many consumers have a wrong-numbered §3.5, not how much universal text is missing from any install, not how often the drift warning fires.
-- **The framework currently has no production installs, only test ones** (maintainer, 2026-09-20). **So there is no backward compatibility to preserve and no migration owed** — which is the reason the more invasive options (D4(a), D5(a)) stay on the table rather than losing to the cheapest compatible repair. ⚠ If that stops being true before this plan ships, D4 and D5 must be re-argued, not inherited.
+- **No consumer incident for F2, F3, F4, F9, F10 or F11.** The only observed thing is F1's label confusion in a real run. F2 and F3 were found by reading; F4, F9, F10 and F11 were reproduced on 2026-09-24 on a scratch state built through the real CLI — reproductions, not consumer incidents. **Nothing was measured on any consumer** — not how many consumers have a wrong-numbered §3.5, not how much universal text is missing from any install, not how often the drift warning fires, not what F11's citation costs a real consumer's `validate` composite.
+- **The framework currently has no production installs, only test ones** (maintainer, 2026-09-20). **So there is no backward compatibility to preserve and no data migration owed** — which is the reason the more invasive options (D4(a), D5(a)) stay on the table rather than losing to the cheapest compatible repair. ⚠ If that stops being true before this plan ships, D4 and D5 must be re-argued, not inherited. ⚠ **Refined 2026-09-24: the comparator's behaviour on pre-change state IS owed**, whatever the install count — the drift check always runs the NEW helper against OLD state (D5's blast radius). The frozen benchmark install, a consumer install on an older version, meets that behaviour on whatever update it next receives, if it holds a `.devforge/constitute.json` (the drift check is silent without one).
 - **A green `verify-universal-defaults` test run is not evidence the detector works.** Today five such tests pass against a comparator that cannot return green on a real install (F4, F5). Only a real-producer in-sync fixture asserting exit 0 is evidence, and it does not exist yet.
-- **F5's artifact question is not settled by this plan's reading.** F4 says the comparator cannot return green; it does not say the specific installs plans 44, 86, 89 and 99 describe had no real drift. They may have had both. OQ-2 establishes it by a run or records that it could not.
+- **F5's artifact question is not settled by this plan's reading.** F4 says the comparator cannot return green; it does not say the specific installs plans 44, 86, 89 and 99 describe had no real drift. They may have had both. Nor does it say `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s D7 cost premise was wrong — it makes that premise a candidate too. OQ-2 establishes it by a run or records that it could not.
 - **Nothing mechanical checks that the model composed the canonical text.** After every phase here, `validate`'s dimensions and `verify-universal-defaults` are the only nets, the second is advisory and WARN-only at install/update time, and neither runs inside a `/devforge:constitute` session at the moment a sub-section is composed.
 - **D6(a) knowingly ships an unsilenceable warning** for a user who deliberately overrides a universal rule, and a warning that is learned-past trains a user past the real ones too. Accepted, with (c) recorded as the named strengthening arm and its trigger stated.
 - **Phase 4 without Phase 3 is worse than today.** Correct numbers with no text source replaces a loud absence with a quiet invention. This is an argument from reasoning, not from an observed run.
@@ -459,12 +578,12 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - **Plan 75's tripwire, both halves: zero new `verify-*` gates, zero new check numbers, zero new hard-fail validators.** This plan repairs an existing advisory detector and adds no gate. `verify-universal-defaults` stays WARN-only and fail-soft at `install.sh` / `update.sh`; nothing here makes it block.
 - **No edit to `src/constitution.md`.** The canonical file is the thing everything else is measured against; editing it inside this plan would move the target mid-repair. Any constitution amendment is a separate plan with its own designed-drift note.
 - **No back-porting into shipped installs.** They arrive via `install.sh` / `update.sh`. The frozen benchmark install is never touched.
-- **Python is confined to Phases 2, 3 and 5** (delivery, keying, tests). Phases 1, 4, 6 and 7 are instruction and docs only.
-  - Python goes python-engineer → python-reviewer, with a test for every function, run in the same turn.
-  - Every markdown edit goes instruction-author → instruction-reviewer.
+- **Code is confined to Phases 2, 3 and 5** (delivery, keying, tests). The code in them: Python helpers and tests (Phases 2, 3 and 5); `scripts/constitution-drift-check.sh`'s Check A comment and its printed `Fix: re-run …` line (Phase 2); the `install.sh` line D2(a) or D2(d) requires, any `update.sh` line D2(a)'s update path adds, and, under D2(d), the `src/manifest.json` `templateOwned` entry (Phase 3). Phases 1, 4, 6 and 7 are instruction and docs only — Phase 7's one `update.sh` comment included, as a comment with no executable change.
+  - Every code edit named above — Python, shell, manifest — goes python-engineer → python-reviewer, with a test for every Python function, run in the same turn. For the shell and manifest lines the reviewer runs the affected install/update path against a scratch target, never a consumer install.
+  - Every markdown edit, and Phase 7's single `update.sh` comment (no executable line), goes instruction-author → instruction-reviewer.
   - Every new Claude Code fact is checked through `claude-code-guide`.
-- **No change to §4.1–§4.3's path.** They travel `add-pattern-rule`, which appends to a named `patterns_and_antipatterns` bucket and records that bucket name, never a number; their numbers are fixed in `src/constitution.md`'s own `### 4.1`, `### 4.2` and `### 4.3` headings, and no number here is ever composed by the model. D4 and D5 touch how their rules are **compared** — the side `_PATTERNS_BUCKET_TO_SECTION` serves — never how they are produced.
-- **Counts are counted live, never incremented from memory.** The 27 subcommands, the eleven `_UNIVERSAL_SECTIONS` entries, the eight Section 3 sub-sections, the five `verify-universal-defaults` tests — re-derive each one at build time and state the number you counted.
+- **No change to §4.1–§4.3's path.** They travel `add-pattern-rule`, which appends to a named `patterns_and_antipatterns` bucket and records that bucket name, never a number; their numbers are fixed in `src/constitution.md`'s own `### 4.1`, `### 4.2` and `### 4.3` headings, and no number here is ever composed by the model. D4 and D5 touch how their rules are **compared** — the side `_PATTERNS_BUCKET_TO_SECTION` serves — never how they are produced. D3(d) is drafted for §3.5–§3.8 and §6.1–§6.4 only for this reason.
+- **Counts are counted live, never incremented from memory.** The 27 subcommands, the eleven `_UNIVERSAL_SECTIONS` entries, the eight Section 3 sub-sections, the five `verify-universal-defaults` tests, the 32 canonical rules the comparator splits today — re-derive each one at build time and state the number you counted.
 - **No `disable-model-invocation` change.** `/devforge:constitute` stays human-typed-only; this plan moves no flag and contributes no count delta.
 
 ---
@@ -477,7 +596,8 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - **Changing §4.1–§4.3's production path** (`add-pattern-rule` appending to the `patterns_and_antipatterns` bucket).
 - **Making `verify-universal-defaults` blocking.** It is advisory at `install.sh` / `update.sh` and stays advisory.
 - **Removing the root `constitution.md` copy** (OQ-3's alternative) — a separate decision with its own blast radius.
-- **Rewriting any ratified sentence in plans 44, 86, 89 or 99.** OQ-2's remedy is dated additive amendments only.
+- **Rewriting any ratified sentence in plans 44, 86, 89 or 99, or in `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`, and editing any released `CHANGELOG.md` section.** OQ-2's remedy is dated additive amendments to plan files, plus a correction in a new `## [Unreleased]` entry.
+- **Reopening `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s ratified D7.** OQ-2 records whether its cost premise held; the decision stays that plan's.
 - **Deciding whether prior drift findings were artifacts, from reading.** OQ-2 establishes it by a run or records that it could not.
 - **Touching a plan file this session did not create.** Ownership is established from `git status` and from which sessions are active in this checkout, never from a plan's number (F8).
 
@@ -485,9 +605,9 @@ D1–D7 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 
 ## Context for next session
 
-⚠ **Evidence class, repeated: F1 was observed ONCE, in a real run, as a label confusion. F2, F3 and F4 were found by READING. Nothing was measured, and no incident stands behind the mechanism half of this plan.** ⚠ All line digits drift — grep the quoted text.
+⚠ **Evidence class, repeated: F1 was observed ONCE, in a real run, as a label confusion. F4, F9, F10 and F11 were REPRODUCED on 2026-09-24 on a scratch state built through the real CLI — reproductions, not consumer incidents. F2 and F3 were found by READING. Nothing was measured on any consumer, and no consumer incident stands behind the mechanism half of this plan.** ⚠ All line digits drift — grep the quoted text. The 2026-09-24 re-check (`### Re-check (2026-09-24)`) added F9–F11 and lists every sentence it corrected in place.
 
-**The one sentence that governs everything here:** the chain that puts universal sub-sections into a consumer's `constitution.md` is unclosed at every link — wrong numbers, no text source, a detector that cannot return green, and tests that hide it.
+**The one sentence that governs everything here:** the chain that puts universal sub-sections into a consumer's `constitution.md` is unclosed at every link — wrong numbers, no text source, a render that cannot carry the text, a detector that cannot return green, and tests that hide it.
 
 ### The 2026-09-20 reverted session — what happened and what carries forward
 
@@ -496,7 +616,7 @@ On 2026-09-20 a session fixed F1 and F2 directly in the tree: the user-facing ec
 Two things from it carry forward, and both are load-bearing:
 
 1. **F4 was discovered during that session** and is recorded in this project's memory as `verify-universal-defaults-broken`. That memory note and this plan are the only places it exists.
-2. **An attempted fix of F2 alone would have changed the failure mode rather than removing it.** With correct numbers and no body-text source, the model produces the canonical heading at the canonical number and **invents** the body — which is **quieter than the current absence, not louder**, and downgrades the detector's signal from MISSING to DRIFT. **That is the argument for treating delivery (F3) as inseparable from numbering (F2)**, and it is why Phase 4 carries a hard ordering rule rather than a preference.
+2. **An attempted fix of F2 alone would have changed the failure mode rather than removing it.** With correct numbers and no body-text source, the model produces the canonical heading at the canonical number and **invents** the body — which is **quieter than the current absence, not louder**, and, once the comparator's keying (F4) is repaired, downgrades the detector's signal from MISSING to DRIFT. **That is the argument for treating delivery (F3) as inseparable from numbering (F2)**, and it is why Phase 4 carries a hard ordering rule rather than a preference.
 
 ### Traps
 
@@ -508,7 +628,7 @@ Two things from it carry forward, and both are load-bearing:
 
 **Trap 4 — assuming `verify-universal-defaults` is maintainer-only.** `scripts/constitution-drift-check.sh` calls it from `install.sh` and `update.sh`. Under F4 every constituted consumer sees its warning on every update. It is WARN-only and fail-soft — it never blocks — but it is user-visible.
 
-**Trap 5 — concluding that plans 86 / 89 / 99's designed drift was an artifact.** F4 makes it a candidate, not a finding. OQ-2 settles it with a before/after run or records that it could not. `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* is a fourth candidate on the same footing — **a count F4 predicts for an in-sync install as readily as for a drifted one.**
+**Trap 5 — concluding that plans 86 / 89 / 99's designed drift was an artifact.** F4 makes it a candidate, not a finding. OQ-2 settles it with a before/after run or records that it could not. `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`'s *"~30 MISSING"* is a fourth candidate on the same footing — **a count F4 predicts for an in-sync install as readily as for a drifted one.** `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md`'s D7 cost premise is a fifth — recorded, never reopened here. And never "correct" a claim inside a released `CHANGELOG.md` section: the `86-FOWLER-REFACTORING-GAPS-PLAN.md` claim lives only there, so its correction can only be a new entry.
 
 **Trap 6 — deciding D2 before D5.** D5 decides whether a rule has an identity separate from its tag; that changes what the canonical-text carrier must carry. A carrier chosen first is a carrier chosen blind.
 
@@ -520,15 +640,21 @@ Two things from it carry forward, and both are load-bearing:
 
 **Trap 10 — a clobbered ledger edit.** Other sessions build in this checkout, and their plan files appear, move and get renumbered without warning (F8). Re-read `git status`, read each ledger live, commit by explicit path, and **never touch a plan file this session did not create** — ownership is established from `git status` and from which sessions are active, never from a plan's number.
 
+**Trap 11 — trusting the canonical parser's §3.8 body.** `_parse_universal_blocks` treats only `N.N` headings as boundaries, so §3.8's body runs through the `---` rule and swallows `## 4. Patterns & Anti-Patterns` (F9). Seed from it and `constitute_helper verify` fails the round-trip; compare against it and a correctly composed §3.8 reports DRIFT forever. Every current fixture that seeds §3.8 takes it from this parser, so those tests carry the same swallowed text on both sides and agree.
+
 ### File anchors
 
 - `src/commands/constitute/main.md` — the four input captures; the Section 3 and Section 6 compose paragraphs; the per-section echo template and its override footer; the Section 3.5 echo template and its setter block; the render contract paragraphs.
 - `src/commands/constitute/references/section-shapes.md` — the Section 3 and Section 6 blocks; the universal-dimension example; the CBM-first protocol rule.
-- `src/constitution.md` — **read-only here.** §3.1–§3.8, §6.1–§6.6, and the `## Rule Tags` section.
-- `src/devforge/lib/_constitute/` — `_universal.py` (both comparison sides), `_cmds_quality.py` (the comparator), `_schema.py` (`_UNIVERSAL_SECTIONS`, `_PATTERNS_BUCKET_TO_SECTION`, the `rule_tag` enum), `_validate_metrics.py` (Dim 4), `_cmds_render.py` (`section_bucket_keys`), `_cli.py` (the 27 subparsers).
-- `tests/lib/test_constitute_helper.py` — `TestExtractUniversalRulesFromState`, `TestForgeInternalVerifyUniversalDefaults`, `_build_real_constitute_state`, `_build_in_sync_constitute_json`, and the two §3.8 verify tests.
+- `src/constitution.md` — **read-only here.** §3.1–§3.8, §6.1–§6.6, and the `## Rule Tags` section; the `---` and `## 4. Patterns & Anti-Patterns` after §3.8 (F9); §6.1's `plan.md` token (F11).
+- `src/devforge/lib/_constitute/` — `_universal.py` (both comparison sides; `_parse_universal_blocks`'s heading regex, F9), `_cmds_quality.py` (the comparator), `_schema.py` (`_UNIVERSAL_SECTIONS`, `_PATTERNS_BUCKET_TO_SECTION`, the `rule_tag` enum), `_validate_metrics.py` (Dim 2, F11; Dim 4), `_cmds_render.py` (`cmd_verify`'s section walk under *"Check 2: Section arrays"*, and the round-trip identity check F9 trips), `_render.py` (`_render_section_body`, `_render_pattern_bucket`, `_render_constitution` — the render walk; F10), `_cli.py` (the 27 subparsers).
+- `tests/lib/test_constitute_helper.py` — `TestParseUniversalBlocks`, `TestExtractUniversalRulesFromState`, `TestForgeInternalVerifyUniversalDefaults`, `_build_real_constitute_state`, `_build_in_sync_constitute_json`, the two §3.8 verify tests, and `TestDesignFidelityUniversalSection`'s `test_render_from_seeded_state_includes_design_fidelity`.
 - `install.sh` — the constitution presence guard and drift-check call; the `.devforge/template/` snapshot block.
-- `update.sh` and `scripts/constitution-drift-check.sh` — the drift-check wiring.
+- `update.sh` and `scripts/constitution-drift-check.sh` — the drift-check wiring; the drift check's header comment (new helper, old state — D5); Check A's comment and printed remediation (Phase 2); `update.sh`'s `Project customizations live in` comment (Phase 7).
+- `src/manifest.json` — `templateOwned`, `templateDerived`, `projectOwned` (D2). `src/devforge/storage-rules.md` and `src/files/devforge.gitignore` — the CODE class and the tracked `.devforge/template/` (D2).
+- `README.md` — the drift sentence (grep `WARN-only drift notice`; F5, Phase 7).
+- `CHANGELOG.md` — the released `## [2.0.10]` and `## [2.0.12]` drift claims, **read-only** (OQ-2); `## [Unreleased]` (Phase 7).
+- Other plans, **cited and never edited except as OQ-2 / Phase 6 allow**: `44-CONSTITUTION-DRIFT-WIRING-PLAN.md`, `86-FOWLER-REFACTORING-GAPS-PLAN.md`, `89-TEST-FOUNDATION-HARDENING-PLAN.md`, `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md`, `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` (never amended), `80-CONSTITUTE-CITATION-FALSE-POSITIVE-PLAN.md` (another session's file; never touched).
 - `src/CLAUDE.md` — **read-only except Phase 1's one clause** in the `#### /devforge:constitute` entry.
 
 ---
@@ -537,14 +663,14 @@ Two things from it carry forward, and both are load-bearing:
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation, including a reverted session whose edits are not in the tree.
 2. **Check `## Phase 0 close record` first.** If it still reads *Pending*, nothing is ratified and **no build phase may start.**
-3. **Re-verify F1–F8 against the live tree.** Grep the quoted text, never the digits: `Section 3.5 echo template`, `proposes for Section 3.5`, `Compose 4-7 sub-sections`, `Common sub-sections: Minimal Changes`, `Function Length / Complexity`, `Section 3 Documentation sub-section`, `"tag_or_label": heading`, `r.get("tag", "")`, `Fixture strategy`, `Real-producer principle`, `forge_check_constitution_drift`, `leaving as-is`, `.devforge/template/.claude/agents`. ⚠ After a build phase some of these strings are gone by design; zero hits is then the built state, not a regression.
+3. **Re-verify F1–F11 against the live tree** (`### Re-check (2026-09-24)` is the last recorded pass). Grep the quoted text, never the digits: `Section 3.5 echo template`, `proposes for Section 3.5`, `Compose 4-7 sub-sections`, `Common sub-sections: Minimal Changes`, `Function Length / Complexity`, `Section 3 Documentation sub-section`, `"tag_or_label": heading`, `r.get("tag", "")`, `Fixture strategy`, `Real-producer principle`, `forge_check_constitution_drift`, `leaving as-is`, `.devforge/template/.claude/agents`, `[\d]+\.[\d]+(?:\.[\d]+)*`, `- [<rule.tag>] <rule.text>`, `templateDerived`, `WARN-only drift notice`, `Project customizations live in`. ⚠ After a build phase some of these strings are gone by design; zero hits is then the built state, not a regression.
 4. **Answer D5 before you read D2, D3 or D4 as settled.** A blanket close does not discharge D2's, D3's or D4's explicit conditions.
 5. **Build order:** Phase 1 is independent and may ship alone. Phase 2 before Phase 3; **Phase 3 before Phase 4, without exception**; Phases 2 and 3 before Phase 5; Phase 5 before Phase 6; Phase 7 last, because it records what the others did.
 6. **Route every edit through the house flow:**
-   - python-engineer → python-reviewer for every Python edit, with a test per function, run in the same turn;
-   - instruction-author → instruction-reviewer for every markdown edit;
+   - python-engineer → python-reviewer for every code edit — Python (with a test per function, run in the same turn), the drift-check script's shell lines, the `install.sh` and `update.sh` code lines, and the `src/manifest.json` entry; for the shell and manifest lines the reviewer runs the affected install/update path against a scratch target, never a consumer install;
+   - instruction-author → instruction-reviewer for every markdown edit and for Phase 7's single `update.sh` comment;
    - `claude-code-guide` for every new Claude-Code-integration fact.
 7. **Commit by explicit path, never `git add -A`.** Re-read `git status` first (F8), and touch no other session's plan file.
 8. **After each phase, cross-check.** Grep every verb, key, section number and heading touched — `verify-universal-defaults`, `_UNIVERSAL_SECTIONS`, `tag_or_label`, `Section 3.5`, `3.8 Design Fidelity`, `seed-universal` if it exists — and fix any dangling reference in the SAME change.
 9. **Run Phase 7, then leave Phase 8 to the maintainer.**
-10. **Keep the evidence class attached.** Any summary of this plan repeats it: **F1 observed once as a label confusion; F2, F3 and F4 found by reading; nothing measured.**
+10. **Keep the evidence class attached.** Any summary of this plan repeats it: **F1 observed once as a label confusion; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.**
