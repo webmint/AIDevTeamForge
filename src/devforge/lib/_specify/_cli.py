@@ -65,6 +65,7 @@ from ._cmds_phase4_verify import (
     cmd_verify_rendered,
     cmd_verify_scope_coherence,
 )
+from ._cmds_phase4_revise import cmd_revise_ac
 from ._cmds_handoff import (
     cmd_find_handoffs,
     cmd_finalize_handoff,
@@ -481,6 +482,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Phase 1.5 finding_id to land in this AC (repeatable).",
     )
     sp.set_defaults(func=cmd_add_ac)
+
+    sp = sub.add_parser(
+        "revise-ac",
+        help="In-place revision of one already-recorded §5 Acceptance "
+             "Criterion, addressed by --ac-id (statement / ears-variant / "
+             "verification-command / test-anchor only; keeps its list "
+             "position, its ac_id and its finding refs).",
+    )
+    sp.add_argument("--ac-id", required=True, dest="ac_id")
+    sp.add_argument("--statement", default=None)
+    sp.add_argument(
+        "--ears-variant", default=None, dest="ears_variant",
+    )
+    sp.add_argument(
+        "--verification-command", default=None,
+        dest="verification_command",
+    )
+    sp.add_argument(
+        "--test-anchor", default=None, dest="test_anchor",
+    )
+    sp.set_defaults(func=cmd_revise_ac)
 
     sp = sub.add_parser(
         "record-out-of-scope",

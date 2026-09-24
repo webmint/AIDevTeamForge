@@ -3492,6 +3492,585 @@ class TestPhase4AddAc(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 2)
 
+    # -- D4: explicit --ac-id duplicate rejection ---------------------------
+
+    def test_rejects_duplicate_explicit_ac_id(self):
+        """102-SPECIFY-IN-PLACE-REVISION-PLAN.md D4: a read-only pre-check
+        before the write transaction opens (Trap 7); state byte-unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r1 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--ac-id", "AC-1",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do the first thing.",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            state_path = dev / "specify-state.json"
+            before = state_path.read_bytes()
+            r2 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--ac-id", "AC-1",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do a colliding thing.",
+            ])
+            self.assertEqual(r2.returncode, 2)
+            self.assertIn("AC-1", r2.stderr)
+            after = state_path.read_bytes()
+            self.assertEqual(before, after)
+
+    def test_auto_assign_scans_past_explicit_id(self):
+        """D4's scan half: AC-2 explicit, then an auto-assign must not hand
+        out AC-2 again (the F12 collision the old count rule reproduced) --
+        it must scan past it to AC-3."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r1 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--ac-id", "AC-2",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do thing two.",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do thing three.",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertEqual(r2.stdout.strip(), "AC-3")
+
+    def test_auto_assign_skips_unparseable_id(self):
+        """D4's second shape constraint: a state whose only entry is AC-X
+        (a non-AC-<digits> id, accepted today per F8/Trap 6) still yields
+        AC-1 on the next auto-assign, not a crash and not AC-2."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r1 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--ac-id", "AC-X",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do thing X.",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do thing Y.",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertEqual(r2.stdout.strip(), "AC-1")
+
+
+# ---------------------------------------------------------------------------
+# D4 — _next_ac_id unit tests (direct import, in-memory state dicts).
+# ---------------------------------------------------------------------------
+
+
+class TestNextAcIdScans(unittest.TestCase):
+    """Unit tests for _cmds_phase4_setters._next_ac_id -- scans for the
+    highest existing AC-<n> suffix instead of counting entries (D4)."""
+
+    def setUp(self):
+        from _specify._cmds_phase4_setters import _next_ac_id
+        self._next_ac_id = _next_ac_id
+
+    def test_empty(self):
+        self.assertEqual(
+            self._next_ac_id({"acceptance_criteria": []}), "AC-1",
+        )
+
+    def test_standard_ids(self):
+        state = {
+            "acceptance_criteria": [
+                {"ac_id": "AC-1"}, {"ac_id": "AC-2"}, {"ac_id": "AC-3"},
+            ],
+        }
+        self.assertEqual(self._next_ac_id(state), "AC-4")
+
+    def test_unparseable_id_only(self):
+        state = {"acceptance_criteria": [{"ac_id": "AC-X"}]}
+        self.assertEqual(self._next_ac_id(state), "AC-1")
+
+    def test_mixed_parseable_and_unparseable(self):
+        state = {
+            "acceptance_criteria": [
+                {"ac_id": "AC-1"}, {"ac_id": "AC-X"}, {"ac_id": "AC-3"},
+            ],
+        }
+        self.assertEqual(self._next_ac_id(state), "AC-4")
+
+    def test_gap_is_not_filled(self):
+        """A gap (AC-1, AC-5) yields AC-6, not AC-2 -- highest+1, never a
+        fill-the-gap scan."""
+        state = {
+            "acceptance_criteria": [{"ac_id": "AC-1"}, {"ac_id": "AC-5"}],
+        }
+        self.assertEqual(self._next_ac_id(state), "AC-6")
+
+
+# ---------------------------------------------------------------------------
+# D2 — revise-ac (102-SPECIFY-IN-PLACE-REVISION-PLAN.md Phase 2).
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4ReviseAc(unittest.TestCase):
+    def _dev(self, td: str) -> Path:
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        return dev
+
+    def _state_bytes(self, dev: Path) -> bytes:
+        return (dev / "specify-state.json").read_bytes()
+
+    def _add_ac(self, dev: Path, **kwargs):
+        argv = ["--devforge-dir", str(dev), "add-ac"]
+        for key, value in kwargs.items():
+            argv += ["--{0}".format(key.replace("_", "-")), value]
+        r = _run(argv)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    # -- flag-presence / resolution guards -----------------------------
+
+    def test_no_field_flag_exits_2_state_unchanged(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac", "--ac-id", "AC-1",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_empty_ac_id_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "  ",
+                "--statement", "The system shall do a new thing.",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_unknown_ac_id_exits_2_state_unchanged(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-9",
+                "--statement", "The x shall y.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_duplicate_ac_id_in_state_exits_2_naming_count(self):
+        """The one case this file hand-edits JSON for: today's fixed
+        add-ac can no longer PRODUCE a duplicate ac_id (D4), so the only
+        way to reach revise-ac's more-than-one-match guard is to plant
+        one directly, exactly as the plan's Phase 2 Deliverables permit."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do thing one.",
+            )
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do thing two.",
+            )
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["acceptance_criteria"][1]["ac_id"] = "AC-1"
+            state_path.write_text(json.dumps(state, indent=2) + "\n")
+            before = state_path.read_bytes()
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--statement", "The system shall do a revised thing.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("AC-1", r.stderr)
+            self.assertIn("2", r.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    # -- the revision itself ---------------------------------------------
+
+    def test_revises_middle_of_three_index_ac_id_findings_unchanged(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            fid = _run([
+                "--devforge-dir", str(dev), "record-finding",
+                "--source-path", "constitution.md",
+                "--content", "middle AC needs a wording fix",
+            ]).stdout.strip()
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do thing one.",
+            )
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do thing two.",
+                finding_ref=fid,
+            )
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do thing three.",
+            )
+            before_state = json.loads(
+                (dev / "specify-state.json").read_text(),
+            )
+            self.assertEqual(before_state["findings"][0]["landed_in"], "AC")
+            self.assertEqual(
+                before_state["findings"][0]["landed_ref"], "AC-2",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-2",
+                "--statement", "The system shall do the revised thing.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "AC-2")
+            after_state = json.loads(
+                (dev / "specify-state.json").read_text(),
+            )
+            acs = after_state["acceptance_criteria"]
+            self.assertEqual(len(acs), 3)
+            self.assertEqual(
+                [a["ac_id"] for a in acs], ["AC-1", "AC-2", "AC-3"],
+            )
+            self.assertEqual(
+                acs[1]["statement"],
+                "The system shall do the revised thing.",
+            )
+            self.assertEqual(
+                before_state["findings"], after_state["findings"],
+            )
+
+    def test_revised_entry_key_set_is_exactly_seven_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--statement", "The system shall do a revised thing.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            entry = state["acceptance_criteria"][0]
+            self.assertEqual(
+                set(entry.keys()),
+                {
+                    "ac_id", "subsection", "ears_variant", "statement",
+                    "verification_command", "test_anchor", "n_a_reason",
+                },
+            )
+
+    def test_revise_prints_ac_id_on_stdout(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--statement", "The system shall do a revised thing.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "AC-1")
+
+    def test_render_after_revise_shows_exactly_one_ac8_line(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, ac_id="AC-8", subsection="behavior_change",
+                ears_variant="ubiquitous",
+                statement="The system shall do the original thing.",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-8",
+                "--statement", "The system shall do the revised thing.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rendered = _run(["--devforge-dir", str(dev), "render"]).stdout
+            hits = [
+                line for line in rendered.splitlines()
+                if "**AC-8**" in line
+            ]
+            self.assertEqual(len(hits), 1)
+            self.assertIn("revised thing", hits[0])
+
+    # -- EARS re-validation of the resulting entry -----------------------
+
+    def test_ears_failing_statement_exits_2_state_unchanged(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--statement", "System should sometimes do stuff",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("EARS", r.stderr)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_empty_statement_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--statement", "   ",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_ears_variant_alone_revalidates_kept_statement(self):
+        """A bare --ears-variant change re-validates the KEPT statement
+        against the NEW variant's regex, even though --statement was never
+        passed."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--ears-variant", "event_driven",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("EARS", r.stderr)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_ears_variant_and_statement_change_together_succeeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN the build runs, the linter shall report no errors.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            entry = state["acceptance_criteria"][0]
+            self.assertEqual(entry["ears_variant"], "event_driven")
+            self.assertEqual(
+                entry["statement"],
+                "WHEN the build runs, the linter shall report no errors.",
+            )
+
+    def test_corrupted_ears_variant_exits_2_state_unchanged(self):
+        """A stored ears_variant outside EARS_REGEX (hand-edited or
+        corrupted state, planted by hand-editing JSON the way
+        test_duplicate_ac_id_in_state_exits_2_naming_count does) must exit
+        2 via _die, never KeyError -- mirrors cmd_verify_ac_shape's own
+        `if variant not in EARS_REGEX` guard (_cmds_phase4_verify.py).
+        python-reviewer HIGH finding, reproduced live."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["acceptance_criteria"][0]["ears_variant"] = "bogus_variant"
+            state_path.write_text(json.dumps(state, indent=2) + "\n")
+            before = state_path.read_bytes()
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--verification-command", "echo ok",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("AC-1", r.stderr)
+            self.assertIn("bogus_variant", r.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_corrupted_ears_variant_repaired_by_explicit_ears_variant(self):
+        """A valid --ears-variant passed in the same call still repairs
+        the entry -- the guard only fires when no valid variant results;
+        --ears-variant itself is validated by _validate_enum first."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["acceptance_criteria"][0]["ears_variant"] = "bogus_variant"
+            state_path.write_text(json.dumps(state, indent=2) + "\n")
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--ears-variant", "ubiquitous",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads(state_path.read_text())
+            self.assertEqual(
+                state["acceptance_criteria"][0]["ears_variant"],
+                "ubiquitous",
+            )
+
+    # -- clearing --verification-command / --test-anchor -----------------
+
+    def test_clearing_test_anchor_on_behavior_change_ac_succeeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+                test_anchor="tests/test_x.py::test_thing",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--test-anchor", "",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                state["acceptance_criteria"][0]["test_anchor"], "",
+            )
+
+    def test_clearing_verification_command_on_non_ubiquitous_only_ac(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+                verification_command="pytest tests/test_x.py",
+            )
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--verification-command", "",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                state["acceptance_criteria"][0]["verification_command"], "",
+            )
+
+    # -- AC_UBIQUITOUS_ONLY_SUBSECTIONS rule ------------------------------
+
+    def test_ubiquitous_only_rule_blocks_non_ubiquitous_variant(self):
+        """The statement is crafted to MATCH EARS_REGEX["event_driven"] so
+        the EARS check cannot be what rejects the variant change -- only
+        the ubiquitous-only rule can, per the plan's own warning."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="tooling_artifact_presence",
+                ears_variant="ubiquitous",
+                statement="The repo shall contain a lockfile.",
+                verification_command="test -f package-lock.json",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN the build runs, the linter shall report no errors.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("ubiquitous", r.stderr)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_ubiquitous_only_rule_blocks_emptied_verification_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="tooling_artifact_presence",
+                ears_variant="ubiquitous",
+                statement="The repo shall contain a lockfile.",
+                verification_command="test -f package-lock.json",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--verification-command", "",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("verification-command", r.stderr)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    # -- OQ-1 / OQ-2: no --subsection, no --finding-ref -------------------
+
+    def test_subsection_flag_rejected_as_unrecognized_argument(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--subsection", "behavior_change",
+                "--statement", "The system shall do a new thing.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(self._state_bytes(dev), before)
+
+    def test_finding_ref_flag_rejected_as_unrecognized_argument(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            fid = _run([
+                "--devforge-dir", str(dev), "record-finding",
+                "--source-path", "constitution.md",
+                "--content", "unrelated finding",
+            ]).stdout.strip()
+            self._add_ac(
+                dev, subsection="behavior_change", ears_variant="ubiquitous",
+                statement="The system shall do a thing.",
+            )
+            before = self._state_bytes(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "revise-ac",
+                "--ac-id", "AC-1", "--finding-ref", fid,
+                "--statement", "The system shall do a new thing.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(self._state_bytes(dev), before)
+
 
 # ---------------------------------------------------------------------------
 # Phase 4 — verify subcommands.

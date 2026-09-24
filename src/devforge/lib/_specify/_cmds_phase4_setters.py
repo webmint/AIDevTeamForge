@@ -467,9 +467,21 @@ def cmd_record_risk(args: argparse.Namespace) -> int:
     return 0
 
 
+_AC_ID_RE = re.compile(r"^AC-(\d+)$")
+
+
 def _next_ac_id(state: Dict[str, Any]) -> str:
-    n = 1 + len(state["acceptance_criteria"])
-    return "AC-{0}".format(n)
+    """One above the highest existing AC-<n> suffix; "AC-1" when none
+    parse (D4). Skips -- never crashes on, never rejects -- any ac_id
+    that does not match AC-<digits>, e.g. the explicit "AC-X"
+    test_accepts_explicit_ac_id already pins (F8, Trap 6): a state
+    holding only "AC-X" yields "AC-1", not a crash and not "AC-2"."""
+    highest = 0
+    for a in state["acceptance_criteria"]:
+        m = _AC_ID_RE.match(a.get("ac_id") or "")
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return "AC-{0}".format(highest + 1)
 
 
 def cmd_add_ac(args: argparse.Namespace) -> int:
@@ -529,21 +541,39 @@ def cmd_add_ac(args: argparse.Namespace) -> int:
             code=2,
         )
 
+    explicit_ac_id = (args.ac_id or "").strip()
     finding_ids = _parse_finding_refs(getattr(args, "finding_ref", None))
-    # Pre-validate finding refs with a read-only load before opening the
-    # write transaction. This guarantees no partial write is structurally
-    # possible: the transaction body only appends + flips (no error paths).
-    if finding_ids:
+    # Pre-validate on a read-only load before opening the write
+    # transaction -- the module's "no partial write is structurally
+    # possible" rule (Trap 7), extended here to the explicit --ac-id
+    # duplicate check (D4) the same way it already covers --finding-ref.
+    # One load serves both checks; it runs only when either needs it.
+    if explicit_ac_id or finding_ids:
         try:
             ro_state = _load_state(args.devforge_dir)
         except (OSError, json.JSONDecodeError) as err:
             return _die("add-ac: {0}".format(err))
-        err_msg = _validate_finding_refs(ro_state, finding_ids)
-        if err_msg:
-            return _die("add-ac: {0}".format(err_msg), code=2)
+        if explicit_ac_id:
+            existing_ids = {
+                a.get("ac_id") for a in ro_state["acceptance_criteria"]
+            }
+            if explicit_ac_id in existing_ids:
+                return _die(
+                    "add-ac: ac_id {0!r} already exists".format(
+                        explicit_ac_id,
+                    ),
+                    code=2,
+                )
+        if finding_ids:
+            err_msg = _validate_finding_refs(ro_state, finding_ids)
+            if err_msg:
+                return _die("add-ac: {0}".format(err_msg), code=2)
+    # An auto-assigned id cannot collide with the check above once
+    # _next_ac_id scans instead of counts (D4) -- no second duplicate
+    # check is added for the auto-assign path.
     try:
         with _state_transaction(args.devforge_dir) as state:
-            ac_id = (args.ac_id or "").strip() or _next_ac_id(state)
+            ac_id = explicit_ac_id or _next_ac_id(state)
             state["acceptance_criteria"].append({
                 "ac_id": ac_id,
                 "subsection": subsection,
