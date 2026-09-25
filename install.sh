@@ -452,6 +452,15 @@ mkdir -p "$TARGET_DIR/.devforge/templates/git-hooks"
 cp -R "$TEMPLATE_DIR/src/git-hooks/." "$TARGET_DIR/.devforge/templates/git-hooks/"
 chmod +x "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh
 
+# ── Copy canonical constitution.md for seed-universal (D2(d), plan 104) ───
+#   Read by `constitute_helper seed-universal` as the default
+#   --canonical-path. Refreshed on every update via templateOwned
+#   (src/manifest.json) — unlike the presence-guarded root copy above,
+#   which may hold a previously RENDERED constitution.md on a brownfield
+#   reinstall, this path is by construction always the shipped template.
+mkdir -p "$TARGET_DIR/.devforge/templates"
+cp "$TEMPLATE_DIR/src/constitution.md" "$TARGET_DIR/.devforge/templates/constitution.md"
+
 # ── Stamp .claude/template-version (D3, plan 72) ───────────────────────────
 # update.sh reads this marker to report the installed template version and,
 # via its repair-mode guard, install completeness. Without it a fresh

@@ -89,6 +89,7 @@ yaml fixtures bypass the real producer.
 Stdlib only.
 """
 
+import importlib
 import json
 import os
 import shutil
@@ -96,6 +97,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -1903,10 +1905,22 @@ class TestAddPatternRule(unittest.TestCase):
 
 
 class TestRuleNameVerifyAndRender(unittest.TestCase):
-    """A rule's optional `name` field is transparent to verify and render.
+    """A rule's optional `name` field and `verify` / `render`.
 
     Real-CLI round trip: reset → fill required scalars → add-section →
     add-rule (with/without --name) → render → verify.
+
+    Pre-Phase-3 (plan 104), `name` was fully transparent to render: this
+    class's `test_render_output_identical_with_and_without_name` asserted
+    render output was byte-identical whether or not a rule carried a name.
+    Phase 3 (F10) deliberately changes that — a named rule now renders as a
+    named block (see `_render.py::_render_rule`) so its identity survives
+    into `constitution.md` and multi-line canonical prose is never squeezed
+    onto one bullet line. `test_render_output_identical_with_and_without_name`
+    below now documents the NEW contract split in two: unnamed-vs-unnamed
+    stays byte-identical (the real transparency guarantee), and
+    named-vs-unnamed is asserted to DIFFER, with the named form checked
+    explicitly.
     """
 
     def _fill_required_scalars(self, devforge):
@@ -1940,31 +1954,44 @@ class TestRuleNameVerifyAndRender(unittest.TestCase):
             verify_result = _run_verify(devforge, install_root)
             self.assertEqual(verify_result.returncode, 0, verify_result.stderr)
 
+    def _render_with(self, name_args):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            self._fill_required_scalars(devforge)
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "3.5",
+                  "--title", "Universal Code Quality", "--tag", "universal"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "3.5", "--tag", "universal",
+                  "--text", "x"] + name_args)
+
+            render_result = _run_render(devforge, install_root)
+            self.assertEqual(render_result.returncode, 0, render_result.stderr)
+            return (install_root / "constitution.md").read_text(encoding="utf-8")
+
+    def test_render_output_identical_for_two_unnamed_rules(self):
+        """render output is byte-identical for two unnamed-rule runs — the
+        real transparency guarantee `name`'s absence must keep."""
+        first = self._render_with([])
+        second = self._render_with([])
+        self.assertEqual(first, second)
+
     def test_render_output_identical_with_and_without_name(self):
-        """render output is byte-identical whether a rule carries `name` or not."""
-        outputs = {}
-        for label, name_args in (
-            ("with_name", ["--name", "Universal Code Quality"]),
-            ("without_name", []),
-        ):
-            with tempfile.TemporaryDirectory() as tmp:
-                devforge = Path(tmp) / ".devforge"
-                install_root = Path(tmp)
-                self._fill_required_scalars(devforge)
-                _run(["--devforge-dir", str(devforge), "add-section",
-                      "--bucket", "code-quality", "--number", "3.5",
-                      "--title", "Universal Code Quality", "--tag", "universal"])
-                _run(["--devforge-dir", str(devforge), "add-rule",
-                      "--section", "3.5", "--tag", "universal",
-                      "--text", "x"] + name_args)
+        """F10: a named rule renders DIFFERENTLY from an unnamed one.
 
-                render_result = _run_render(devforge, install_root)
-                self.assertEqual(render_result.returncode, 0, render_result.stderr)
-                outputs[label] = (install_root / "constitution.md").read_text(
-                    encoding="utf-8"
-                )
+        `--name "Universal Code Quality"` equals the section's own title,
+        so the named branch renders the text as a verbatim paragraph block
+        (no bullet, no `[tag]` prefix) instead of the unnamed
+        `- [universal] x` bullet line.
+        """
+        with_name = self._render_with(["--name", "Universal Code Quality"])
+        without_name = self._render_with([])
 
-        self.assertEqual(outputs["with_name"], outputs["without_name"])
+        self.assertNotEqual(with_name, without_name)
+        self.assertIn("- [universal] x", without_name)
+        self.assertNotIn("- [universal] x", with_name)
+        self.assertIn("\nx\n", with_name)
 
 
 class TestSetScaffoldingGuide(unittest.TestCase):
@@ -4921,6 +4948,315 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
             )
             self.assertEqual(report["findings"][0]["kind"], "PRE_IDENTITY")
             self.assertEqual(report["findings"][0]["section"], "*")
+
+
+# ---------------------------------------------------------------------------
+# Named-rule render + numeric section ordering (F10, plan 104 Phase 3 Unit B).
+# ---------------------------------------------------------------------------
+
+
+def _load_head_render_constitution():
+    """Import HEAD's `_render.py` (pre-Unit-B) as a standalone module.
+
+    Before Unit B, `_render_section_body` / `_render_pattern_bucket`
+    rendered every rule as `- [<tag>] <text>` unconditionally (no `name`
+    handling, no numeric section sort). Comparing against a LIVE IMPORT of
+    that exact committed file — not a hand-copied excerpt — proves Unit B's
+    render change is byte-identical for a state where no rule carries
+    `name` (F10's stated compatibility contract).
+
+    `_state.py` and `_schema.py` are untouched by Unit B, so the snapshot
+    package reuses the CURRENT files to satisfy `_render.py`'s
+    `from ._state import _empty_patterns_section` relative import (and
+    `_state.py`'s own `from ._schema import ...`), rather than duplicating
+    their logic here.
+
+    The snapshot directory is a `TemporaryDirectory` context manager, not a
+    bare `mkdtemp` — it is removed before this function returns. Safe: once
+    `importlib.import_module` returns, the module's compiled bytecode lives
+    in memory (`sys.modules`), not on the now-deleted disk path.
+    """
+    head_src = subprocess.run(
+        ["git", "show", "HEAD:src/devforge/lib/_constitute/_render.py"],
+        cwd=str(_REPO_ROOT), capture_output=True, text=True, check=True,
+    ).stdout
+
+    pkg_name = "_constitute_head_{0}".format(uuid.uuid4().hex)
+    with tempfile.TemporaryDirectory(prefix="head-constitute-") as tmp_pkg_root:
+        pkg_dir = Path(tmp_pkg_root) / pkg_name
+        pkg_dir.mkdir()
+        (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+        (pkg_dir / "_render.py").write_text(head_src, encoding="utf-8")
+        for dep_name in ("_state.py", "_schema.py"):
+            dep_src = (_LIB_DIR / "_constitute" / dep_name).read_text(encoding="utf-8")
+            (pkg_dir / dep_name).write_text(dep_src, encoding="utf-8")
+
+        sys.path.insert(0, tmp_pkg_root)
+        try:
+            module = importlib.import_module("{0}._render".format(pkg_name))
+        finally:
+            sys.path.remove(tmp_pkg_root)
+        return module._render_constitution
+
+
+class TestRenderNamedRuleAndSectionOrder(unittest.TestCase):
+    """Unit B (F10) — named-rule render + numeric section ordering.
+
+    Real-CLI round trip: reset -> required scalars -> seed-universal ->
+    add-section 3.1 (project-specific) + a rule -> render -> verify.
+    """
+
+    _CANONICAL = _REPO_ROOT / "src" / "constitution.md"
+
+    def _fill_required_scalars(self, devforge):
+        _run(["--devforge-dir", str(devforge), "reset"])
+        _run(["--devforge-dir", str(devforge), "set-project-name",
+              "--value", "TestProj"])
+        _run(["--devforge-dir", str(devforge), "set-mode",
+              "--value", "existing-codebase"])
+        _run(["--devforge-dir", str(devforge), "set-dates",
+              "--generated", "2026-01-01", "--updated", "2026-01-01"])
+        _run(["--devforge-dir", str(devforge), "set-project-identity",
+              "--name", "TestProj", "--type", "web",
+              "--domain", "test", "--stack", "Python"])
+
+    def test_seeded_state_renders_and_verifies_clean(self):
+        """render exit 0 and verify (round-trip) exit 0 on a seeded state
+        with a project section (3.1) added after seeding; every §3.6
+        principle name survives; no mangled bullet; §3.5's fenced code
+        block stays balanced; 3.1 renders before 3.5 (numeric order)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            self._fill_required_scalars(devforge)
+
+            seed_result = _run(["--devforge-dir", str(devforge), "seed-universal",
+                                 "--canonical-path", str(self._CANONICAL)])
+            self.assertEqual(seed_result.returncode, 0, seed_result.stderr)
+
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "3.1",
+                  "--title", "Type Safety", "--tag", "project-specific"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "3.1", "--tag", "project-specific",
+                  "--text", "Use strict TypeScript settings."])
+
+            render_result = _run_render(devforge, install_root)
+            self.assertEqual(render_result.returncode, 0, render_result.stderr)
+
+            verify_result = _run_verify(devforge, install_root)
+            self.assertEqual(verify_result.returncode, 0, verify_result.stderr)
+
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+
+            # Every §3.6 principle name survives into the rendered output,
+            # counted live from the real canonical parser (not hardcoded).
+            canonical = constitute_helper._parse_universal_blocks(self._CANONICAL)
+            principle_names = [r["name"] for r in canonical["§3.6"]["rules"]]
+            self.assertGreater(len(principle_names), 0)
+            for name in principle_names:
+                self.assertIn(
+                    name, text, msg="{0} missing from rendered output".format(name)
+                )
+
+            # No line starts with the pre-Unit-B mangled bullet shape.
+            for line in text.splitlines():
+                self.assertFalse(
+                    line.startswith("- [universal] - "),
+                    msg="mangled bullet survived: {0!r}".format(line),
+                )
+
+            # §3.5's fenced code block(s) stay balanced (even ``` count).
+            fence_count = sum(
+                1 for line in text.splitlines() if line.strip().startswith("```")
+            )
+            self.assertGreater(fence_count, 0)
+            self.assertEqual(fence_count % 2, 0, "unbalanced fenced code block(s)")
+
+            # 3.1 (project-specific, added after seeding) renders before 3.5
+            # (numeric order — add-section only ever appends).
+            idx_31 = text.index("### 3.1 ")
+            idx_35 = text.index("### 3.5 ")
+            self.assertLess(idx_31, idx_35)
+
+    def test_unnamed_state_renders_byte_identical_to_head(self):
+        """A state with no named rules renders byte-identically to HEAD's
+        `_render.py` (pre-Unit-B) — a live import of the exact committed
+        file, not a hand-copied excerpt."""
+        from _constitute._render import _render_constitution
+
+        state = _fully_populated_state()
+        head_render_constitution = _load_head_render_constitution()
+
+        old_text = head_render_constitution(state)
+        new_text = _render_constitution(state)
+
+        self.assertEqual(old_text, new_text)
+
+
+# ---------------------------------------------------------------------------
+# validate Dim 2 (citation) skips named rules (F11, plan 104 Phase 3 Unit C).
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCitationSkipsNamedRules(unittest.TestCase):
+    """F11 — `validate`'s Dim 2 (citation) skips a rule's text ONLY when it
+    carries BOTH a non-empty `name` AND `tag == "universal"` — the exact
+    shape `seed-universal` writes, not `name` alone.
+
+    Real-CLI round trip: reset -> seed-universal / add-rule -> validate.
+    """
+
+    _CANONICAL = _REPO_ROOT / "src" / "constitution.md"
+
+    def test_seeded_state_reports_no_plan_md_unresolved_citation(self):
+        """A seed-universal'd state reports no unresolved 'plan.md' citation
+        — canonical §6.1's own token, which F11 found (Dim 2 citation score
+        0.5 on the scratch reproduction that motivated this fix)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset"])
+            seed_result = _run(["--devforge-dir", str(devforge), "seed-universal",
+                                 "--canonical-path", str(self._CANONICAL)])
+            self.assertEqual(seed_result.returncode, 0, seed_result.stderr)
+
+            result = _run_validate(devforge, install_root)
+            report = json.loads(result.stdout)
+
+            self.assertNotIn(
+                "citation unresolved: 'plan.md'", report["failed_items"],
+                msg=report["failed_items"],
+            )
+            self.assertEqual(report["dimensions"]["citation"]["score"], 1.0)
+
+    def test_unnamed_project_rule_missing_path_still_unresolved(self):
+        """An UNNAMED project rule citing a missing path is still counted
+        unresolved — F11 only exempts a rule that is BOTH named AND
+        tagged universal."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset"])
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "3.1",
+                  "--title", "Type Safety"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "3.1", "--tag", "project-specific",
+                  "--text", "See docs/does-not-exist-xyz.md for the convention."])
+
+            result = _run_validate(devforge, install_root)
+            report = json.loads(result.stdout)
+
+            self.assertIn(
+                "citation unresolved: 'docs/does-not-exist-xyz.md'",
+                report["failed_items"],
+            )
+            self.assertLess(report["dimensions"]["citation"]["score"], 1.0)
+
+    def test_named_project_specific_rule_missing_path_still_unresolved(self):
+        """python-reviewer MEDIUM finding: a rule can carry a non-empty
+        `name` under any tag (`add-rule --name` does not restrict --tag),
+        so a NAMED rule tagged project-specific is STILL collected — the
+        F11 exemption keys on (name AND tag=='universal'), the exact shape
+        `seed-universal` writes, never on `name` alone."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset"])
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "3.1",
+                  "--title", "Type Safety"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "3.1", "--tag", "project-specific",
+                  "--name", "X", "--text", "See missing.md for the convention."])
+
+            result = _run_validate(devforge, install_root)
+            report = json.loads(result.stdout)
+
+            self.assertIn(
+                "citation unresolved: 'missing.md'",
+                report["failed_items"],
+            )
+            self.assertLess(report["dimensions"]["citation"]["score"], 1.0)
+
+    def test_collect_citation_texts_unaffected_when_no_rule_named(self):
+        """A state where no rule carries `name` collects EXACTLY the texts
+        the pre-F11 walk would have collected — the name check never
+        triggers, so behavior for every unnamed-only state (every
+        pre-Phase-3 state) is unchanged. Recomputed independently here
+        (not via a HEAD dynamic import, unlike
+        TestRenderNamedRuleAndSectionOrder's render comparison) because
+        `_validate_metrics.py` imports the top-level sibling `init_helper`
+        module, which a standalone snapshot package would have to
+        duplicate rather than reuse."""
+        from _constitute._schema import _PATTERNS_BUCKETS
+        from _constitute._validate_metrics import _collect_citation_texts
+
+        state = _fully_populated_state()
+
+        expected = []
+        for bucket_key in ("architecture_rules", "code_quality_standards",
+                           "domain_rules", "workflow_rules"):
+            for section in state.get(bucket_key) or []:
+                for rule in section.get("rules", []):
+                    if rule.get("text"):
+                        expected.append(rule["text"])
+                for table in section.get("tables", []):
+                    for row in table.get("rows", []):
+                        for cell in row:
+                            if cell:
+                                expected.append(str(cell))
+                for ex in section.get("code_examples", []):
+                    ann = ex.get("annotation")
+                    if ann:
+                        expected.append(ann)
+        for bucket in _PATTERNS_BUCKETS:
+            for rule in state["patterns_and_antipatterns"].get(bucket, []):
+                if rule.get("text"):
+                    expected.append(rule["text"])
+
+        self.assertEqual(_collect_citation_texts(state), expected)
+
+
+# ---------------------------------------------------------------------------
+# D2(d) carrier — src/manifest.json + install.sh (plan 104 Phase 3 Unit C).
+# ---------------------------------------------------------------------------
+
+
+class TestManifestAndInstallShipConstitutionCarrier(unittest.TestCase):
+    """D2(d) — `src/manifest.json` + `install.sh` ship the canonical-text
+    carrier `seed-universal` reads by default.
+
+    Read-only assertions against the checked-in files — the live
+    scratch-install / update-function verification for this carrier is
+    run manually (not as an automated test) against
+    `${TMPDIR:-/tmp}/forge-plan104-install-scratch`; see this unit's report.
+    """
+
+    def test_manifest_maps_constitution_md_to_devforge_templates(self):
+        """`templateOwned.files[]` maps src/constitution.md to the D2(d)
+        gitignored CODE-class target."""
+        manifest = json.loads(
+            (_REPO_ROOT / "src" / "manifest.json").read_text(encoding="utf-8")
+        )
+        files = manifest["templateOwned"]["files"]
+        matches = [
+            f for f in files
+            if f.get("source") == "src/constitution.md"
+            and f.get("target") == ".devforge/templates/constitution.md"
+        ]
+        self.assertEqual(len(matches), 1, msg=files)
+
+    def test_install_sh_copies_constitution_md_from_template_dir(self):
+        """install.sh copies the canonical file from $TEMPLATE_DIR (never
+        $TARGET_DIR) to the seed-universal default carrier path."""
+        install_sh = (_REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'cp "$TEMPLATE_DIR/src/constitution.md" '
+            '"$TARGET_DIR/.devforge/templates/constitution.md"',
+            install_sh,
+        )
 
 
 if __name__ == "__main__":

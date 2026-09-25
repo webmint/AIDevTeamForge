@@ -150,7 +150,24 @@ def _collect_citation_texts(state: dict) -> "List[str]":
     """Collect all text fields that may contain path references.
 
     Walks:
-    - rule.text in all section buckets + patterns buckets
+    - rule.text in all section buckets + patterns buckets, EXCEPT a rule
+      that carries BOTH a non-empty `name` AND `tag == "universal"` (F11,
+      plan 104 Phase 3 — build choice, recorded here rather than left
+      implicit): that is the exact shape `seed-universal` writes for every
+      rule it seeds from `src/constitution.md` (D3(a)) — a canonical
+      framework-law rule, not a project claim about THIS codebase, so its
+      body's own path-shaped tokens (e.g. canonical §6.1's `plan.md`) are
+      not citations this dimension should resolve against the consumer's
+      filesystem. `seed-universal` is the only producer that writes this
+      exact `(name, tag="universal")` pairing; a rule a user hand-writes
+      with that same shape (e.g. `add-rule --tag universal --name X`) is
+      treated identically — the exemption keys on the SHAPE, not on
+      provenance the state does not record. A named rule with any OTHER
+      tag (`extracted`, `enforced`, `project-specific`) is a project
+      claim and is collected exactly as before — `--name` alone was never
+      meant to opt a rule out of citation checking. An unnamed rule
+      (every rule this validator collected before Phase 3, and every
+      project-authored rule after it) is collected exactly as before too.
     - table cell strings (all cells in all rows)
     - code_example.annotation strings
 
@@ -159,6 +176,8 @@ def _collect_citation_texts(state: dict) -> "List[str]":
     texts = []  # type: List[str]
 
     def _add_rule(rule: dict) -> None:
+        if rule.get("name") and rule.get("tag") == "universal":
+            return
         t = rule.get("text")
         if t:
             texts.append(t)

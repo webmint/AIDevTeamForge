@@ -34,13 +34,19 @@ test -f docs/glossary.md
 
 ## Phase 1 — Reset + pull inputs
 
-Reset helper state, then invoke each `read-*` subcommand in order. Every read subcommand emits JSON to stdout; capture each output into a named variable so Phase 2 has all four inputs in memory before composing.
+Reset helper state, seed the universal parts of the constitution, then invoke each `read-*` subcommand in order. Every read subcommand emits JSON to stdout; capture each output into a named variable so Phase 2 has all four inputs in memory before composing.
 
 ```bash
 .devforge/lib/constitute_helper reset
 ```
 
 `reset` writes a fresh defaults JSON at `.devforge/constitute.json` (every schema field reset to its null/empty default). Idempotent on re-runs.
+
+```bash
+.devforge/lib/constitute_helper seed-universal
+```
+
+`seed-universal` writes the constitution's eleven universal parts into `.devforge/constitute.json` verbatim from `.devforge/templates/constitution.md` — the framework's canonical constitution, shipped by install and overwritten by every update: sub-sections 3.5-3.8 into Section 3, sub-sections 6.1-6.4 into Section 6, and Section 4's three universal buckets (canonical 4.1 ALWAYS Do, 4.2 NEVER Do, 4.3 PREFER). The helper owns their numbers, titles, tags, rule text and each seeded rule's identity (`name`) — the drift check matches rules by that identity, so a dropped or replaced seeded rule is reported as drift while an added rule, which carries none, is not; never compose, rewrite or re-number them yourself — only a user override accepted in Phase 3 changes them. Idempotent on re-runs; silent on success. If it exits non-zero, surface its stderr verbatim and ABORT: "missing or incomplete `.devforge/templates/constitution.md` (the framework's canonical constitution copy) — re-run the framework's `update.sh` (or `install.sh`) to restore it, then re-run `/devforge:constitute`."
 
 ```bash
 .devforge/lib/constitute_helper read-init
@@ -108,13 +114,13 @@ Per-rule tag selection: project-specific conventions → `extracted` (or `projec
 
 ### Section 4 — Patterns & Anti-Patterns
 
-Six buckets emitted via `add-pattern-rule` (one bucket per `--bucket` × `--scope` combination):
+Six buckets (one bucket per `--bucket` × `--scope` combination). The three universal buckets are already in `.devforge/constitute.json`: Phase 1's `seed-universal` wrote them from the canonical constitution, and Phase 3 shows them as-is — compose nothing for them (a user override against one is applied in Phase 3). Compose only the three project-specific buckets, each emitted via `add-pattern-rule`:
 
-- `--bucket always --scope universal` — always-do rules that apply to every project (e.g., "Validate inputs at module boundaries").
+- Always Do (Universal) — seeded from canonical 4.1 ALWAYS Do; not composed.
 - `--bucket always --scope project-specific` — always-do rules extracted from `DOCS_JSON.architecture.patterns` and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as mandates — e.g., "All shared state lives in the store").
-- `--bucket never --scope universal` — never-do rules that apply to every project (e.g., "Never swallow errors silently").
+- Never Do (Universal) — seeded from canonical 4.2 NEVER Do; not composed.
 - `--bucket never --scope project-specific` — never-do rules extracted from this project's anti-patterns and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as prohibitions — e.g., "Never mutate state outside a reducer").
-- `--bucket prefer --scope universal` — universal preferences (e.g., "Prefer composition over inheritance").
+- Prefer (Universal) — seeded from canonical 4.3 PREFER; not composed.
 - `--bucket prefer --scope project-specific` — preferences extracted from `DOCS_JSON.architecture.patterns` and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as preferences — e.g., "Prefer selectors over direct store reads").
 
 **Conventions-bucket routing (where each `DOCS_JSON.architecture.conventions` bucket lands).** The docs `## Conventions` section can carry up to six bold-heading bucket sub-sections; this list records which constitution home each routes to (identified by its bold-heading sub-section label, per Section 3 above):
@@ -163,41 +169,51 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line 
 
 ### Section 4 echo template (Patterns & Anti-Patterns — bucket-based, no sub-section numbers)
 
-Section 4 has no numbered sub-sections — its 6 buckets are addressed by `(--bucket × --scope)` not by `--number`. Use this echo template (NOT the Sections 2/3/5/6 template below):
+Section 4 has no numbered sub-sections — its 6 buckets are addressed by `(--bucket × --scope)` not by `--number`. The three `(Universal)` buckets are not composed: echo the rules Phase 1's `seed-universal` wrote, read from `.devforge/constitute.json` (`patterns_and_antipatterns.always_universal`, `patterns_and_antipatterns.never_universal`, `patterns_and_antipatterns.prefer_universal`), one line per rule name, as-is. Overrides against them are accepted and map to setters against the seeded state (see the mapping paragraph below the template). Use this echo template (NOT the Sections 2/3/5/6 template below):
 
 ````
 Here's what /devforge:constitute proposes for Section 4 — Patterns & Anti-Patterns:
 
-Always Do (Universal):
-- [<rule.tag>] <rule.text>
+Always Do (Universal) — seeded from the canonical constitution, shown as-is:
+- [<rule.tag>] <rule.name>
 - ...
 
 Always Do (Project-Specific):
 - [<rule.tag>] <rule.text>
 - ...
 
-Never Do (Universal):
+Never Do (Universal) — seeded from the canonical constitution, shown as-is:
 - ...
 
 Never Do (Project-Specific):
 - ...
 
-Prefer (Universal):
+Prefer (Universal) — seeded from the canonical constitution, shown as-is:
 - ...
 
 Prefer (Project-Specific):
 - ...
 
 Reply 'yes' to apply this section, 'cancel' to abort the run, or list overrides one per line:
-  - 'add pattern <bucket>:<scope>: [<tag>] <text>'   — append to bucket (e.g., 'add pattern always:universal: [universal] Validate inputs at module boundaries')
+  - 'add pattern <bucket>:<scope>: [<tag>] <text>'   — append to bucket (e.g., 'add pattern always:project-specific: [extracted] All shared state lives in the store')
   - 'drop pattern <bucket>:<scope>:<index>'          — remove rule at 1-based index from the named bucket
   - 'replace pattern <bucket>:<scope>:<index>: [<tag>] <text>' — replace rule at 1-based index
   - 'drop bucket <bucket>:<scope>'                   — drop every rule in the named bucket
 
 Bucket values: always | never | prefer. Scope values: universal | project-specific.
+Dropping or replacing a Universal rule is allowed, but the framework's constitution drift check (run on every update and on a reinstall over an existing constitution) will report it as drift until it is reverted.
 ````
 
-Each accepted line maps to one `add-pattern-rule` call (`--bucket <bucket> --scope <scope> --tag <tag> --text "<text>"`). `drop` / `replace` overrides operate against the Phase 2 composed values held in memory before any setter call — apply the merged final list once, not delta-style.
+**Project-specific buckets.** Each accepted line maps to one `add-pattern-rule` call (`--bucket <bucket> --scope project-specific --tag <tag> --text "<text>"`). `drop` / `replace` overrides operate against the Phase 2 composed values held in memory before any setter call — apply the merged final list once, not delta-style.
+
+**Universal buckets.** Their rules are already in `.devforge/constitute.json`, so each override maps to setters against the seeded state; every `<index>` refers to the echoed list:
+
+- `drop pattern <bucket>:universal:<index>` → `drop-rule --bucket <bucket> --scope universal --index <index>`.
+- `replace pattern <bucket>:universal:<index>: [<tag>] <text>` → that `drop-rule`, then `add-pattern-rule --bucket <bucket> --scope universal --tag <tag> --text "<text>"`. The replacement is unnamed and lands at the bucket's end.
+- `add pattern <bucket>:universal: [<tag>] <text>` → `add-pattern-rule --bucket <bucket> --scope universal --tag <tag> --text "<text>"` (appended at the bucket's end).
+- `drop bucket <bucket>:universal` → one `drop-rule` per echoed rule of that bucket.
+
+When several `drop-rule` calls target one bucket, issue them in DESCENDING index order so earlier removals do not shift later indices. An appended rule lands after every echoed rule, so it shifts none of their indices. A universal bucket the reply does not touch takes no setter call.
 
 ### Sections 2/3/5/6 echo template (rule-bearing sections with numbered sub-sections)
 
@@ -319,7 +335,7 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 ### Parsing the user reply (per-section)
 
 - Reply equals `yes` (case-insensitive, exact after strip) → apply this section's Phase 2 composed values via the setters listed in the "Setter mapping per section" table below.
-- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`reset` defaults state plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
+- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`seed-universal` state (the `reset` defaults plus the seeded universal parts) plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
 - Otherwise → parse line-by-line per the override syntax shown in the section's echo template. Apply each accepted override in order; apply the Phase 2 composed value for every other rule/table/code-example. Tag values are case-insensitive (helper's `_validate_enum` normalizes mixed-case to canonical lowercase / uppercase per enum).
 - Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values — never recorded or cited as confirmed by the user — and warn: "Proceeding with the proposed values for Section <N> WITHOUT your confirmation; re-run `/devforge:constitute` to revise."
 
@@ -327,7 +343,7 @@ After parsing each section's reply, apply the resulting setter calls IN ORDER pe
 - Section 1: one `set-project-identity` call.
 - Sections 2, 3, 5, 6: `add-section` first (creates the sub-section record), then `add-rule` / `add-table` / `add-code-example` referencing that section's `--number`.
 - Forcing Functions config block: one `set-forcing-functions` call per offered rule (three calls when no design source exists; four when `design_token_provenance` was offered). Runs after Section 3's setters apply, before the next section's echo. Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section.
-- Section 4: `add-pattern-rule` per accepted pattern (no `add-section` prerequisite — Section 4 has no numbered sub-sections).
+- Section 4: `add-pattern-rule` per rule of the merged project-specific lists (no `add-section` prerequisite — Section 4 has no numbered sub-sections), plus, for each universal bucket the reply overrode, the `drop-rule` / `add-pattern-rule` calls named in the Section 4 echo template's "Universal buckets" mapping. A universal bucket the reply does not touch takes no call — Phase 1's `seed-universal` already wrote it.
 - Section 7: one `set-scaffolding-guide` call (greenfield only).
 
 Then advance to the next section's echo (in the next turn — Phase 3 stop discipline still applies between sections).
@@ -376,7 +392,7 @@ Bucket-to-section mapping (locked by the helper's `_SECTION_BUCKET_TO_KEY`):
 | Section 5 (Domain Rules) | `domain` |
 | Section 6 (Workflow Rules) | `workflow` |
 
-Section 4 (Patterns & Anti-Patterns) uses `add-pattern-rule` instead — six bucket × scope combinations:
+Section 4 (Patterns & Anti-Patterns) uses `add-pattern-rule` instead. The three project-specific buckets are written from the merged composed lists. Phase 1's `seed-universal` already wrote the three universal buckets, so they take a call only when the user overrode them — `drop-rule` removes a seeded rule, `add-pattern-rule --scope universal` appends one:
 
 ```bash
 .devforge/lib/constitute_helper add-pattern-rule \
@@ -384,7 +400,13 @@ Section 4 (Patterns & Anti-Patterns) uses `add-pattern-rule` instead — six buc
     --scope <universal|project-specific> \
     --tag <extracted|enforced|universal|project-specific> \
     --text "<pattern rule text>"
-# repeat per pattern rule
+# repeat per pattern rule; --scope universal only for a user override
+
+.devforge/lib/constitute_helper drop-rule \
+    --bucket <always|never|prefer> \
+    --scope universal \
+    --index <1-based index into the echoed bucket>
+# universal-bucket overrides only; per bucket, DESCENDING index order
 ```
 
 Section 1 (Project Identity) uses a single setter:

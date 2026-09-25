@@ -77,6 +77,48 @@ def _render_code_example(ex: dict) -> str:
     return "".join(parts)
 
 
+def _render_rule(rule: dict, block_title: str) -> str:
+    """Render one rule record as markdown — unnamed or named (F10).
+
+    Unnamed rules (no ``name`` key, or a falsy one) render EXACTLY as
+    before — a single ``- [<tag>] <text>`` bullet line, byte-identical to
+    every pre-F10 state and render test. This is the compatibility
+    contract: a rule's optional ``name`` must never change render output
+    unless present and non-empty.
+
+    Named rules render as a block that keeps the identity visible and
+    never squeezes multi-line prose onto one bullet line:
+      - ``name == block_title`` (the enclosing section's title, or the
+        enclosing patterns-bucket's heading): the text renders verbatim as
+        its own blank-line-separated paragraph block — no bullet, no tag
+        prefix. This is the shape a canonical section seeded as a SINGLE
+        rule (e.g. §3.5, whose one rule's name equals its section title)
+        needs: multi-paragraph prose and a fenced code block survive
+        untouched.
+      - single-line text: ``- **<name>** — <text>`` (reads as a normal
+        list item, consistent with unnamed bullets around it).
+      - multi-line text: a blank line, ``**<name>:**``, the text verbatim,
+        then a single trailing newline — never bulleted, so a nested list
+        or fenced code block inside the text renders correctly.
+    """
+    name = rule.get("name")
+    rule_tag = rule.get("tag", "")
+    rule_text = rule.get("text", "")
+
+    if not name:
+        return "- [{0}] {1}\n".format(rule_tag, rule_text)
+
+    text_body = rule_text.rstrip("\n")
+
+    if name == block_title:
+        return "\n{0}\n".format(text_body)
+
+    if "\n" not in text_body:
+        return "- **{0}** — {1}\n".format(name, text_body)
+
+    return "\n**{0}:**\n{1}\n".format(name, text_body)
+
+
 def _render_section_body(section: dict, include_tag_suffix: bool) -> str:
     """Render a single section record into markdown.
 
@@ -84,7 +126,8 @@ def _render_section_body(section: dict, include_tag_suffix: bool) -> str:
         ### <number> <title> [<tag>]      (tag suffix only when include_tag_suffix=True and tag non-null)
         [<description paragraph>]
         [<table(s)>]
-        - [<rule.tag>] <rule.text>
+        one block per rule — see _render_rule (unnamed: "- [<tag>] <text>";
+        named: a named bullet or block, F10)
         [<code_example(s)>]
 
     Returns a string. Always ends without a trailing newline (caller adds spacing).
@@ -111,15 +154,48 @@ def _render_section_body(section: dict, include_tag_suffix: bool) -> str:
         lines.append(_render_table(table))
 
     for rule in rules:
-        rule_tag = rule.get("tag", "")
-        rule_text = rule.get("text", "")
-        lines.append("- [{0}] {1}\n".format(rule_tag, rule_text))
+        lines.append(_render_rule(rule, title))
 
     for ex in code_examples:
         lines.append("\n")
         lines.append(_render_code_example(ex))
 
     return "".join(lines)
+
+
+def _section_sort_key(index: int, section: dict) -> tuple:
+    """Sort key for numeric section ordering (F10 / D3(a) sequencing).
+
+    Parses ``section["number"]`` (e.g. "3.10") into a tuple of ints
+    ``(3, 10)`` so numeric order is used, not lexicographic ("3.10" <
+    "3.9" as strings). A number that fails to parse (missing, empty, or
+    containing a non-digit component) sorts AFTER every parseable number,
+    in its original relative position — ``index`` alone breaks ties within
+    each of the two groups, and the leading 0/1 discriminator keeps the
+    two groups apart regardless of tuple shape (Python's tuple comparison
+    short-circuits on the first unequal element).
+    """
+    number = section.get("number") or ""
+    try:
+        int_parts = tuple(int(p) for p in number.split("."))
+        if not int_parts:
+            raise ValueError("empty number")
+        return (0, int_parts, index)
+    except ValueError:
+        return (1, index)
+
+
+def _sort_sections_numerically(sections: List[dict]) -> List[dict]:
+    """Return ``sections`` reordered by numeric section number.
+
+    Stable: an already-ordered list is returned unchanged (byte-identical
+    render). Used so a seeded universal section (e.g. §3.5) renders after a
+    project-specific section added later at a lower number (e.g. §3.1),
+    even though ``add-section`` only ever appends.
+    """
+    indexed = list(enumerate(sections))
+    indexed.sort(key=lambda pair: _section_sort_key(pair[0], pair[1]))
+    return [item[1] for item in indexed]
 
 
 def _render_section_array(
@@ -136,6 +212,11 @@ def _render_section_array(
 
     intro_text (if non-None) is rendered as a paragraph between the H2 heading
     and the first section. Returns a string; caller adds surrounding --- separators.
+
+    Sections render in NUMERIC order of ``number`` (F10 / D3(a) sequencing
+    — see ``_sort_sections_numerically``), not array order: seeding writes
+    §3.5-§3.8 first, and a later ``add-section 3.1`` only ever appends, so
+    array order alone would render 3.1 after 3.5.
     """
     lines = []
     lines.append("## {0}\n".format(h2_title))
@@ -144,7 +225,7 @@ def _render_section_array(
     if not sections:
         lines.append("\n_(no rules defined)_\n")
     else:
-        for section in sections:
+        for section in _sort_sections_numerically(sections):
             lines.append("\n")
             lines.append(_render_section_body(section, include_tag_suffix))
     return "".join(lines)
@@ -158,7 +239,12 @@ def _render_pattern_bucket(
     """Render one patterns_and_antipatterns bucket as a ### sub-section.
 
     Returns a string (heading + bullet list). If empty, renders heading +
-    _(no rules defined)_ marker.
+    _(no rules defined)_ marker. Rules render via _render_rule (unnamed:
+    "- [<tag>] <text>"; named: a named bullet or block, F10) — the bucket's
+    ``heading`` (e.g. "Always Do (Universal)") never equals a seeded §4.x
+    rule's canonical label, so the name-equals-title verbatim-block branch
+    does not trigger here in practice; it is still checked for consistency
+    with _render_section_body.
     """
     rules = patterns_state.get(bucket_key, [])
     lines = []
@@ -167,9 +253,7 @@ def _render_pattern_bucket(
         lines.append("_(no rules defined)_\n")
     else:
         for rule in rules:
-            rule_tag = rule.get("tag", "")
-            rule_text = rule.get("text", "")
-            lines.append("- [{0}] {1}\n".format(rule_tag, rule_text))
+            lines.append(_render_rule(rule, heading))
     return "".join(lines)
 
 
