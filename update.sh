@@ -1092,8 +1092,9 @@ done
 #
 # Overwrite semantics here are deliberate: commands are framework-owned
 # (matches templateOwned policy). User-modified target commands are NOT
-# preserved across updates. Project customizations live in CLAUDE.md /
-# constitution.md / agents — those still three-way merge upstream.
+# preserved across updates. Project customizations live in CLAUDE.md and
+# the agents — those still three-way merge upstream; project-owned files
+# are never rewritten by an update.
 if [ -n "$PYTHON3_CMD" ]; then
   if $PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" \
        --src "$TEMPLATE_DIR/src" \

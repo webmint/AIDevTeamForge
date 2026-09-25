@@ -1,7 +1,7 @@
 # 104 — Universal Sections Integrity Plan
 
 **Created**: 2026-09-20
-**Status**: **Phases 1–6 BUILT — Phase 1 on 2026-09-24, Phases 2–6 on 2026-09-25. Phase 7, the docs sweep, is PENDING. Phase 8, the user-driven consumer e2e HARD GATE, is NOT run — so "built and reviewed" is the ceiling of every claim here: nothing this plan ships is consumer-validated.** *(corrected 2026-09-25 at build — until the build this line read "Build phases MAY start. NOTHING IS BUILT.")* Commits: Phase 0 close `4c61af4`; Phase 1 `9981148`; Phase 2 `01e3d3a`; Phase 3 `787cf72`; Phase 4 `c76905d`; Phase 5 `760b8b7`; Phase 6 — the Phase 6 commit, which carries this line. Each built phase carries a `#### Phase N build record` directly after its `#### Verify`: its commit, what was built, how its Verify lines were met, what is on record of its review, its test counts, and every build-time decision and departure. ⚠ **One maintainer decision was taken mid-build, on 2026-09-25: `drop-rule` and `drop-section` were added** (`#### Phase 3 build record — 2026-09-25`). **Phase 0 CLOSED 2026-09-24 by a blanket maintainer directive — every item ratified as recommended (D2 and D3 by their standing text, see the record).** `## Phase 0 close record` — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. ⚠ **Neither the close nor the build changes the evidence class** (the paragraph below). **Re-checked against the live tree 2026-09-24 — see `### Re-check (2026-09-24)`**; that re-check added F9–F11, corrected false sentences in place and re-opened two recommendations, and it ratified nothing.
+**Status**: **✅ DONE (build) 2026-09-25 — Phases 1–7 BUILT: Phase 1 on 2026-09-24, Phases 2–7 on 2026-09-25. Phase 8 consumer e2e DEFERRED — user-driven HARD GATE, NOT run; build-verified, NOT consumer-validated — "built and reviewed" is the ceiling of every claim here, and nothing this plan ships is consumer-validated. As of 2026-09-25 the maintainer has not closed the plan.** *(corrected 2026-09-25 at Phase 7 — after the Phase 1–6 build this line read "Phases 1–6 BUILT — Phase 1 on 2026-09-24, Phases 2–6 on 2026-09-25. Phase 7, the docs sweep, is PENDING."; until the build it read "Build phases MAY start. NOTHING IS BUILT.")* Commits: Phase 0 close `4c61af4`; Phase 1 `9981148`; Phase 2 `01e3d3a`; Phase 3 `787cf72`; Phase 4 `c76905d`; Phase 5 `760b8b7`; Phase 6 `087497c`; Phase 7 — the Phase 7 commit, which carries this line. Each built phase carries a `#### Phase N build record` directly after its `#### Verify`: its commit, what was built, how its Verify lines were met, what is on record of its review, its test counts, and every build-time decision and departure. ⚠ **One maintainer decision was taken mid-build, on 2026-09-25: `drop-rule` and `drop-section` were added** (`#### Phase 3 build record — 2026-09-25`). **Phase 0 CLOSED 2026-09-24 by a blanket maintainer directive — every item ratified as recommended (D2 and D3 by their standing text, see the record).** `## Phase 0 close record` — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. ⚠ **Neither the close nor the build changes the evidence class** (the paragraph below). **Re-checked against the live tree 2026-09-24 — see `### Re-check (2026-09-24)`**; that re-check added F9–F11, corrected false sentences in place and re-opened two recommendations, and it ratified nothing.
 
 ⚠ **Evidence class, to be repeated in every summary of this plan: ONE observed thing only — a user hit F1's label confusion in a real run and asked whether it was a bug. F4, F9, F10 and F11 were REPRODUCED on 2026-09-24 on a scratch state built through the real CLI — reproductions, not consumer incidents. F2 and F3 were found by READING. Nothing was measured on any consumer, no consumer incident stands behind any of them, and a clean consumer run at the end of this plan would show the chain behaves on planted fixtures, never that any of these gaps cost anything.**
 
@@ -13,7 +13,7 @@
 
 - **The one observed thing (F1).** A user reading a real `/devforge:constitute` run met the string *"Section 3.5"* in the user-facing echo, compared it to the constitution's own §3.5, and asked whether it was a bug. It is a label collision, not a mechanism defect — and it is the only part of this plan anyone has ever reported.
 - **F2, F3 and F4 were found by reading**, in the session that followed that question. Each is recorded below with the `file:line` it was checked at on 2026-09-20. **F4 was then reproduced on 2026-09-24**, together with three new facts F9–F11, on a scratch state built through the real CLI (`### Re-check (2026-09-24)`). **None was observed failing on a consumer, and no count, rate or cost was measured on any consumer** — the re-check's numbers are a scratch state's.
-- **F4 is separately recorded in this project's memory** as `verify-universal-defaults-broken` (memory file present 2026-09-20). That record and this plan are the only places it exists.
+- **F4 is separately recorded in this project's memory** as `verify-universal-defaults-broken` (memory file present 2026-09-20). That record and this plan are the only places it exists. *(True when written. Added 2026-09-25 at Phase 7: F4 is fixed — Phases 2 and 5 — and since 2026-09-25 it is also recorded in `CHANGELOG.md`'s `## [Unreleased]` entry, in `DEVELOPMENT-STATUS.md`'s constitution-drift-check bullet, in Phase 6's amendments in plans 89, 99 and 44, and in this plan's `PLAN-STATUS-ARCHIVE.md` entry.)*
 - **The 2026-09-20 reverted session.** See `## Context for next session` — Facts 1 and 2 were fixed in the tree that day and every edit was then reverted, on the maintainer's observation that the work should have been a plan rather than a series of audit fixes. **Nothing from it survives in the tree**, and this plan is written as if none of it happened, because in the tree none of it did.
 
 ### Verified structure (2026-09-20)
@@ -371,7 +371,7 @@ The guard leaves an existing root `constitution.md` alone (F3). Under D2(a) or D
 
 ## Phase 0 close record
 
-**CLOSED 2026-09-24.** **D1–D7 and OQ-1–OQ-3 are ratified as recommended — D2 and D3 by a reading of their re-opened standing text, marked in the Outcomes table.** Nothing was amended, nothing was declined, no item is left open, and **build phases MAY start.** ⚠ **Nothing is built.** *(True at the close. Added 2026-09-25 at build: Phases 1–6 are now BUILT — each phase's build record under `## Phases`.)*
+**CLOSED 2026-09-24.** **D1–D7 and OQ-1–OQ-3 are ratified as recommended — D2 and D3 by a reading of their re-opened standing text, marked in the Outcomes table.** Nothing was amended, nothing was declined, no item is left open, and **build phases MAY start.** ⚠ **Nothing is built.** *(True at the close. Added 2026-09-25 at build: Phases 1–6 are now BUILT — each phase's build record under `## Phases`.)* *(Added 2026-09-25 at Phase 7: Phase 7 is BUILT too; Phase 8 is NOT run.)*
 
 Every statement in this record is dated 2026-09-24 unless it names another date.
 
@@ -458,7 +458,7 @@ Each ratified item is checked here **by NAME, never against a range**, and the p
 
 **What this record does NOT close — 2026-09-24.**
 
-- **Nothing is built.** Phases 1–8 have not started. *(True at the close. Added 2026-09-25 at build: Phases 1–6 are now BUILT; Phase 7 is pending and Phase 8 is NOT run.)*
+- **Nothing is built.** Phases 1–8 have not started. *(True at the close. Added 2026-09-25 at build: Phases 1–6 are now BUILT; Phase 7 is pending and Phase 8 is NOT run.)* *(Added 2026-09-25 at Phase 7: Phase 7 is BUILT too — `#### Phase 7 build record — 2026-09-25`; Phase 8 is still NOT run.)*
 - **No evidence class changed** (**How it closed**).
 - **No per-item deliberation happened**, so every counter-argument in this plan is live for re-opening on its own merits.
 - **The orchestrator's D3-before-D5 argument is NOT ratified and stays live.** If D3 is ever re-opened onto (d), D5's identity field stops being needed for §3.5–§3.8 and §6.1–§6.4 (D5's 2026-09-24 note), D6 is re-read, and D2's discharge above is re-derived.
@@ -723,7 +723,7 @@ The first two were fixed → **SHIP-READY.**
 
 #### Phase 6 build record — 2026-09-25
 
-*(added 2026-09-25 at build)* **The Phase 6 commit — the one that carries this record and the Status line.** The run is an observation, recorded here. ⚠ Build-verified, never consumer-validated; Phase 8 is NOT run.
+*(added 2026-09-25 at build)* **The Phase 6 commit — the one that carries this record and the Status line.** *(`087497c` — added 2026-09-25 at Phase 7.)* The run is an observation, recorded here. ⚠ Build-verified, never consumer-validated; Phase 8 is NOT run.
 
 **The OQ-2 run** was reproduced twice, the second time at `760b8b7`. One state was built through the real CLI to match the canon exactly: `reset`, then `seed-universal --canonical-path src/constitution.md`, with the canon at `6a786b3`.
 - **Before the fix** (the comparator with lib at `9981148`): **exit 2, 32 findings, all MISSING, across all eleven universal sections.** This matches the 2026-09-24 baseline (32 MISSING / 0 DRIFT / exit 2).
@@ -767,7 +767,7 @@ The first two were fixed → **SHIP-READY.**
 - LOW: plan 44 gained its local pointers.
 - LOW: the grep's reach gap. It is recorded here — the two HISTORY sites above.
 
-**Open after the Phase 1–6 build — 2026-09-25:**
+**Open after the Phase 1–6 build — 2026-09-25:** *(Added 2026-09-25 at Phase 7: the first two bullets are closed out — Phase 7 is BUILT, and it fixed the deferred `src/agents-AUTHORING.md` example; `#### Phase 7 build record — 2026-09-25`. Phase 8 stays NOT run, the side findings stay NOT fixed, and the evidence class is unchanged.)*
 - **Phase 7, the docs sweep, is pending. Phase 8 is NOT run**, so "built and reviewed" is the ceiling of every claim in this plan.
 - **One review finding is deferred to Phase 7:** Phase 4's LOW on the example in `src/agents-AUTHORING.md`.
 - **Side findings, NOT fixed — outside this plan's scope:**
@@ -784,7 +784,7 @@ The first two were fixed → **SHIP-READY.**
 - `DEVELOPMENT-STATUS.md` — an edit or a recorded verified no-op.
 - Repo `CLAUDE.md` — **the "Where to find what" router's constitute / forcing-functions rows ONLY**: an edit or a recorded verified no-op. ⚠ **No index line goes here, and no pointer to the archive either** — that file carries no plan status at all.
 - `PLAN-STATUS-ARCHIVE.md` — **two sites in one file**: this plan's one-line entry in `## Index`, in the house shape its neighbours there use, and a new full entry in `## Entries` in the archive's house shape. `## Entries` is the authority; the `## Index` line summarizes it and never competes with it.
-- `README.md` — **an EDIT, not a verified no-op** (corrected 2026-09-24). Its sentence *"When a release changes a universal constitution section, the update prints a WARN-only drift notice naming the drifted sections and exits normally; re-run `/devforge:constitute` to adopt the new wording."* (grep `WARN-only drift notice`) must be true of the built state. ⚠ **It is false TODAY (F5), so it may be corrected ahead of the build**, in the same "may ship alone" spirit as Phase 1 — **the maintainer's call, not decided here.**
+- `README.md` — **an EDIT, not a verified no-op** (corrected 2026-09-24). Its sentence *"When a release changes a universal constitution section, the update prints a WARN-only drift notice naming the drifted sections and exits normally; re-run `/devforge:constitute` to adopt the new wording."* (grep `WARN-only drift notice`) must be true of the built state. ⚠ **It is false TODAY (F5), so it may be corrected ahead of the build**, in the same "may ship alone" spirit as Phase 1 — **the maintainer's call, not decided here.** *(Added 2026-09-25 at Phase 7: it was corrected in Phase 7, after the build rather than ahead of it — `#### Phase 7 build record — 2026-09-25`.)*
 - `update.sh` — the neighbouring false comment F5 records, *"Project customizations live in CLAUDE.md / constitution.md / agents — those still three-way merge upstream."* (grep `Project customizations live in`): it stops naming `constitution.md` as three-way merged. One comment, no executable change.
 - `src/agents-AUTHORING.md` — the example deferred from Phase 4's review (LOW): an edit or a recorded verified no-op. *(added 2026-09-25 at build)*
 
@@ -797,6 +797,54 @@ The first two were fixed → **SHIP-READY.**
 - No summary anywhere claims consumer validation. **"Built and reviewed" is the ceiling** until Phase 8 runs.
 - The evidence class is attached at every site: F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.
 - No tracked file names a client, a client component, a client ticket or a benchmark path.
+
+#### Phase 7 build record — 2026-09-25
+
+*(added 2026-09-25 at build)* **The Phase 7 commit — the one that carries this record, the Status line and the two `PLAN-STATUS-ARCHIVE.md` sites.** Docs only, plus one `update.sh` comment with no executable change. ⚠ Build-verified, never consumer-validated; Phase 8 is NOT run.
+
+**F8, applied before the ledger edit:** `git status` showed `PLAN-STATUS-ARCHIVE.md` unmodified by any other session, and the ledger was read live. The `## Index` line and the `## Entries` entry for `102-SPECIFY-IN-PLACE-REVISION-PLAN.md`, and the entry for `101-NON-WEB-STACK-READINESS-PLAN.md`, set the house shape.
+
+**What was built — each site an edit or a verified no-op, with its grep:**
+- **`CHANGELOG.md` — EDIT.** A new entry under `## [Unreleased]` → `### Changed` (grep `feat(constitute,update,install)`), evidence class first and honest bounds last. It carries the correction of the released `## [2.0.10]` and `## [2.0.12]` drift claims, which Phase 6's run established. **Those released sections are not edited.**
+- **`DEVELOPMENT-STATUS.md` — EDIT, three sites:**
+  - under `### Forcing Functions`, the `set-forcing-functions` bullet — the block's name and its call count (grep `three calls, or four`);
+  - under `### Update System`, the constitution-drift-check bullet — the comparator keyed on `name`, the `PRE_IDENTITY` line, and the OQ-2 result (grep `Constitution-drift check:`);
+  - under `## Key Design Decisions`, item 6 — `seed-universal`, the shipped canon, and `drop-rule` / `drop-section` (grep `Universal constitution rules pre-populated`).
+- **Repo `CLAUDE.md` — the router's two rows only.**
+  - The `Runtime helpers (4-command sequence)` row — EDIT. It gains the universal-sections pointer: `seed-universal`, `drop-rule` / `drop-section`, and `forge-internal:verify-universal-defaults` keyed on rule `name`.
+  - The `Forcing-functions detectors (consumer-side)` row — VERIFIED NO-OP. It names no section number and no behaviour this plan changed; the drift check it names stays WARN-only.
+  - `grep -n "104-UNIVERSAL" CLAUDE.md` returns nothing: no index line, and no pointer to the archive.
+- **`PLAN-STATUS-ARCHIVE.md` — EDIT, two sites.** One line in `## Index`, directly after 102's, and a full entry in `## Entries`, after 102's and before the two relocated-FINDING placeholders — the placement plans 101 and 102 took. `## Entries` is the authority; the `## Index` line summarizes it.
+- **`README.md` — EDIT** (grep `WARN-only drift notice`). The notice now fires when a universal section's rules no longer match the release's canonical text — because the release changed that text, or because the user dropped or replaced a universal rule. A project constituted before rule identities gets a single line asking to re-run `/devforge:constitute`, and a re-run adopts the new wording.
+- **`update.sh` — EDIT, a comment only** (grep `Project customizations live in`). It says `CLAUDE.md` and the agents still three-way merge upstream and that project-owned files are never rewritten by an update. It no longer names `constitution.md` at all.
+- **`src/agents-AUTHORING.md` — EDIT**, closing the LOW deferred from Phase 4's review (grep `Import Style`). The example now contrasts template §3.1 "Type Safety" with a populated §3.1 "Import Style".
+
+**Verify, line by line:**
+- Every site is recorded above as an edit or a verified no-op, with its grep.
+- **`README.md`'s drift sentence is true of the built state.** Its single re-run line is the drift check's `PRE_IDENTITY` branch (`scripts/constitution-drift-check.sh`, grep `PRE_IDENTITY`).
+- **The `update.sh` comment** (grep `Project customizations live in`) no longer names `constitution.md` at all. It meets both this Verify line and this phase's own bullet (*"it stops naming `constitution.md` as three-way merged"*).
+- **`src/agents-AUTHORING.md`'s example is live and consistent with `src/commands/constitute/references/section-shapes.md`.** That file's Section 3 count line says the project-specific headings are the project's own dimensions, and it gives "Import Style" as its example (grep `Import Style`).
+- **`grep -rn "104-UNIVERSAL" --include=*.md .`** — on 2026-09-25, after the ledger edit:
+  - `PLAN-STATUS-ARCHIVE.md` **twice** — its `## Index` line and its `## Entries` entry;
+  - this file — the Phase 7 Verify line and this record's grep lines;
+  - `CHANGELOG.md` — the `## [Unreleased]` entry;
+  - `DEVELOPMENT-STATUS.md`, twice — the drift-check bullet and Key Design Decision 6;
+  - Phase 6's amendments and pointers — `44-CONSTITUTION-DRIFT-WIRING-PLAN.md` (three), `89-TEST-FOUNDATION-HARDENING-PLAN.md` (five) and `99-SCOPE-FOLLOWS-USER-VISIBLE-BEHAVIOR-PLAN.md` (two);
+  - other sessions' plan files naming this one by filename, which this plan did not write — `102-SPECIFY-IN-PLACE-REVISION-PLAN.md`, `106-INTAKE-PROVENANCE-CONTINUITY-PLAN.md` (two), `108-SCOPE-RULE-DOWNSTREAM-REGIME-PLAN.md` and `109-REENTRY-CHAIN-CONTINUITY-PLAN.md`.
+
+  **No repo `CLAUDE.md` hit.**
+- **No summary claims consumer validation.** The `CHANGELOG.md` entry, `DEVELOPMENT-STATUS.md`'s drift-check bullet and Key Design Decision 6, and both archive sites each say build-verified, NOT consumer-validated.
+- **The evidence class is attached at every site that summarizes this plan** — the `CHANGELOG.md` entry, `DEVELOPMENT-STATUS.md`'s drift-check bullet and Key Design Decision 6, and both archive sites. `README.md`, the `CLAUDE.md` router row, the `update.sh` comment, the `src/agents-AUTHORING.md` example and `DEVELOPMENT-STATUS.md`'s `set-forcing-functions` bullet describe mechanism and make no evidence claim, so they carry none. ⚠ **This reads the Verify line's *"at every site"* as every site that summarizes the plan — the orchestrator's reading, not a maintainer ruling.**
+- No edit this phase made names a client, a client component, a client ticket or a benchmark path.
+
+**Review:** instruction-reviewer — the six docs sites (`CHANGELOG.md`, `README.md`, the `update.sh` comment, `DEVELOPMENT-STATUS.md`, the repo `CLAUDE.md`, `src/agents-AUTHORING.md`) are SHIP-READY after two LOWs in the `CHANGELOG.md` entry were fixed. The two archive sites and this record were reviewed with this record's commit.
+
+**Side finding, NOT fixed — found during the sweep, outside this plan's scope:** `docs/v2/ARCHITECTURE.md` says `constitute_helper` has 15 subcommands, at two sites (grep `15 subcommands` — §5.1 and §8's reading-order list). The count was already stale before this plan (27) and is 30 now. The three side findings in Phase 6's record stand, NOT fixed.
+
+**Open after the Phase 1–7 build — 2026-09-25:**
+- **Phase 8, the user-driven consumer e2e HARD GATE, is NOT run**, so "built and reviewed" is the ceiling of every claim in this plan.
+- **Four side findings are NOT fixed** — Phase 6's three and the one above.
+- ⚠ **The evidence class is unchanged:** F1 observed once; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.
 
 ### Phase 8 — Consumer e2e — user-driven HARD GATE, NOT run
 
@@ -923,7 +971,7 @@ Two things from it carry forward, and both are load-bearing:
 ## When resuming work
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation, including a reverted session whose edits are not in the tree.
-2. **Read `## Phase 0 close record` first** — it **reads CLOSED 2026-09-24**: D1–D7 and OQ-1–OQ-3 ratified as recommended, D2 → (d) and D3 → (a) by the orchestrator's reading of their re-opened standing text. Build phases may start, and **the record — not the decisions above it — is what says what each phase must do.** ⚠ **The close was a single blanket directive with no per-item deliberation, so every counter-argument in this plan is still live on its own merits**, and the orchestrator's D3-before-D5 argument is recorded there, unratified. *(Added 2026-09-25 at build: first read the Status line, then the close record, then each phase's build record. **Phases 1–6 are BUILT** — Phase 1 on 2026-09-24, Phases 2–6 on 2026-09-25 — and each carries a `#### Phase N build record` directly after its `#### Verify`. Read them for every build-time decision: the mid-build maintainer decision to add `drop-rule` and `drop-section`, the orchestrator's reading of the §4.1–§4.3 tripwire (both in Phase 3's record), and the new `PRE_IDENTITY` finding kind (Phase 2's). Every phase closed **SHIP-READY** after its review loop. ⚠ **One Phase 4 LOW is deferred to Phase 7:** the example in `src/agents-AUTHORING.md`. **Next: Phase 7, the docs sweep. Phase 8 stays the maintainer's, NOT run.**)*
+2. **Read `## Phase 0 close record` first** — it **reads CLOSED 2026-09-24**: D1–D7 and OQ-1–OQ-3 ratified as recommended, D2 → (d) and D3 → (a) by the orchestrator's reading of their re-opened standing text. Build phases may start, and **the record — not the decisions above it — is what says what each phase must do.** ⚠ **The close was a single blanket directive with no per-item deliberation, so every counter-argument in this plan is still live on its own merits**, and the orchestrator's D3-before-D5 argument is recorded there, unratified. *(Added 2026-09-25 at build: first read the Status line, then the close record, then each phase's build record. **Phases 1–7 are BUILT** — Phase 1 on 2026-09-24, Phases 2–7 on 2026-09-25 — and each carries a `#### Phase N build record` directly after its `#### Verify`. Read them for every build-time decision: the mid-build maintainer decision to add `drop-rule` and `drop-section`, the orchestrator's reading of the §4.1–§4.3 tripwire (both in Phase 3's record), and the new `PRE_IDENTITY` finding kind (Phase 2's). Phases 1–6 each closed **SHIP-READY** after its review loop; Phase 7's review is in its record. ⚠ **One Phase 4 LOW was deferred to Phase 7** — the example in `src/agents-AUTHORING.md` — **and Phase 7 fixed it.** **Next: Phase 8 (user-driven) — the maintainer's HARD GATE, NOT run.**)* *(Corrected 2026-09-25 at Phase 7 — until then this parenthetical read "**Phases 1–6 are BUILT** — Phase 1 on 2026-09-24, Phases 2–6 on 2026-09-25", "Every phase closed **SHIP-READY** after its review loop", "One Phase 4 LOW is deferred to Phase 7" and "Next: Phase 7, the docs sweep. Phase 8 stays the maintainer's, NOT run.")*
 3. **Re-verify F1–F11 against the live tree** (`### Re-check (2026-09-24)` is the last recorded pass). Grep the quoted text, never the digits: `Section 3.5 echo template`, `proposes for Section 3.5`, `Compose 4-7 sub-sections`, `Common sub-sections: Minimal Changes`, `Function Length / Complexity`, `Section 3 Documentation sub-section`, `"tag_or_label": heading`, `r.get("tag", "")`, `Fixture strategy`, `Real-producer principle`, `forge_check_constitution_drift`, `leaving as-is`, `.devforge/template/.claude/agents`, `[\d]+\.[\d]+(?:\.[\d]+)*`, `- [<rule.tag>] <rule.text>`, `templateDerived`, `WARN-only drift notice`, `Project customizations live in`. ⚠ After a build phase some of these strings are gone by design; zero hits is then the built state, not a regression.
 4. **D5 was taken as settled first at the 2026-09-24 close, then D4, D3 and D2**, and the record's **Ordering and conditions** block discharges each condition explicitly — D2's discharge by the orchestrator's reasoning, not the maintainer's. If D2, D3 or D4 is ever re-opened, re-read its condition against D5 before treating it as settled: a blanket close does not discharge a condition, and only the record's explicit discharges count.
 5. **Build order:** Phase 1 is independent and may ship alone. Phase 2 before Phase 3; **Phase 3 before Phase 4, without exception**; Phases 2 and 3 before Phase 5; Phase 5 before Phase 6; Phase 7 last, because it records what the others did.
@@ -933,5 +981,5 @@ Two things from it carry forward, and both are load-bearing:
    - `claude-code-guide` for every new Claude-Code-integration fact.
 7. **Commit by explicit path, never `git add -A`.** Re-read `git status` first (F8), and touch no other session's plan file.
 8. **After each phase, cross-check.** Grep every verb, key, section number and heading touched — `verify-universal-defaults`, `_UNIVERSAL_SECTIONS`, `tag_or_label`, `Section 3.5`, `3.8 Design Fidelity`, `seed-universal` if it exists *(it exists since Phase 3 — added 2026-09-25 at build)* — and fix any dangling reference in the SAME change.
-9. **Run Phase 7, then leave Phase 8 to the maintainer.**
+9. **Run Phase 7, then leave Phase 8 to the maintainer.** *(Added 2026-09-25 at Phase 7: Phase 7 is run — `#### Phase 7 build record — 2026-09-25`. Phase 8 is the maintainer's, NOT run.)*
 10. **Keep the evidence class attached.** Any summary of this plan repeats it: **F1 observed once as a label confusion; F4, F9, F10 and F11 reproduced on 2026-09-24 on a scratch state built through the real CLI (reproductions, not consumer incidents); F2 and F3 found by reading; nothing measured on any consumer.**

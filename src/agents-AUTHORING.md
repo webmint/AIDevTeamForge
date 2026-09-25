@@ -152,7 +152,7 @@ A fixed `## Rules` line, prose — not a new frontmatter field (the meta-block c
 
 ## Reference the constitution by concept-name, never `§`-number (F3)
 
-Section numbers drift across constitution versions (e.g. template §3.6 "Design Principles" vs a populated §3.6 "Function Length & Simplicity"). Cite the constitution by its section NAME/CONCEPT (e.g. "Patterns & Anti-Patterns material"), never by a `§`-number. A `§`-number reference is a dangling reference waiting to happen.
+Section numbers drift across constitution versions (e.g. template §3.1 "Type Safety" vs a populated §3.1 "Import Style" — the project-specific sub-sections are composed per project, so the heading at a number varies). Cite the constitution by its section NAME/CONCEPT (e.g. "Patterns & Anti-Patterns material"), never by a `§`-number. A `§`-number reference is a dangling reference waiting to happen.
 
 ## The grounding rule (D-Grounding)
 

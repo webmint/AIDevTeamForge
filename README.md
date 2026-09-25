@@ -39,7 +39,7 @@ To push template improvements to an already-installed project without clobbering
 ./update.sh /path/to/your-project        # add --dry-run to preview, --force to skip the prompt
 ```
 
-`constitution.md` is project-owned and an update never rewrites it. When a release changes a universal constitution section, the update prints a WARN-only drift notice naming the drifted sections and exits normally; re-run `/devforge:constitute` to adopt the new wording.
+`constitution.md` is project-owned and an update never rewrites it. When a universal constitution section's rules no longer match the release's canonical text — the release changed that text, or you dropped or replaced a universal rule — the update prints a WARN-only drift notice naming those sections and exits normally; a project constituted before rule identities existed gets a single line asking you to re-run `/devforge:constitute` instead. Re-running `/devforge:constitute` adopts the new wording.
 
 ## Flow
 
