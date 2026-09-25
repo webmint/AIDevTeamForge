@@ -4432,121 +4432,61 @@ class TestExtractUniversalRulesFromState(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
-    """Write a constitute.json whose universal-rule bodies match the canonical
-    src/constitution.md exactly for ALL universal sections.
+def _seed_in_sync_devforge(devforge_dir: Path) -> None:
+    """Build a fully in-sync .devforge/constitute.json via the real CLI:
+    ``reset`` then ``seed-universal --canonical-path <repo>/src/
+    constitution.md`` — the same route ``/devforge:constitute`` runs before
+    composing any consumer section (D3(a)).
 
-    The fixture is hand-authored (not via setters) because building every
-    rule for every universal section (§3.6 alone has 9 SOLID/DRY/KISS/
-    Narrowing/Two-hats entries) one ``add-rule --name ... --tag universal
-    --text ...`` subprocess call at a time would multiply this fixture's
-    setup cost across every test that uses it. Hand-authored JSON is
-    explicitly permitted by the real-producer principle where setters can't
-    naturally produce the required shape as cheaply (Phase 5 later moves this
-    fixture onto the real CLI's per-rule setters — not done here).
+    Replaces the hand-authored ``_build_in_sync_constitute_json`` fixture
+    plan 104 Phase 5 removes: that fixture wrote each rule's canonical
+    heading into the record's ``tag`` field — the closed ``rule_tag`` enum,
+    never an identity — instead of ``name``, a shape the real ``add-rule``
+    setter rejects outright, in violation of the repo's real-producer
+    principle.
 
-    D4(a): each JSON rule record carries the rule's canonical identity in its
-    own ``name`` field — exactly what ``add-rule --name`` / ``add-pattern-rule
-    --name`` would store — never smuggled into ``tag``, which stays the closed
-    ``rule_tag`` enum value ``"universal"``. ``_extract_universal_rules_from_
-    state`` reads ``name`` directly, so the canonical and consumer ``name``
-    keys match without any tag-as-identity indirection.
-
-    Body text is sourced directly from ``_parse_universal_blocks`` output on the
-    real ``src/constitution.md`` — no body values are invented.
-
-    Sections populated:
-    - code_quality_standards: §3.5, §3.6, §3.7, §3.8
-    - patterns_and_antipatterns universal buckets: §4.1, §4.2, §4.3
-    - workflow_rules: §6.1, §6.2, §6.3, §6.4
+    Raises ``RuntimeError`` if either subprocess call exits non-zero.
     """
-    canonical = constitute_helper._parse_universal_blocks(
-        _REPO_ROOT / "src" / "constitution.md"
+    canonical_path = _REPO_ROOT / "src" / "constitution.md"
+    reset_result = _run(["--devforge-dir", str(devforge_dir), "reset"])
+    if reset_result.returncode != 0:
+        raise RuntimeError("reset failed: {0}".format(reset_result.stderr))
+    seed_result = _run(
+        ["--devforge-dir", str(devforge_dir), "seed-universal",
+         "--canonical-path", str(canonical_path)]
     )
-
-    state = constitute_helper.default_state()
-
-    # --- code_quality_standards sections: §3.5, §3.6, §3.7, §3.8 ---
-    for number in ("3.5", "3.6", "3.7", "3.8"):
-        sect_key = "§" + number
-        sec = canonical.get(sect_key, {})
-        rules = [
-            {"tag": "universal", "name": r["name"], "text": r["body"]}
-            for r in sec.get("rules", [])
-        ]
-        state["code_quality_standards"].append(
-            {
-                "number": number,
-                "title": sec.get("heading", number),
-                "tag": "universal",
-                "description": None,
-                "rules": rules,
-                "tables": [],
-                "code_examples": [],
-            }
+    if seed_result.returncode != 0:
+        raise RuntimeError(
+            "seed-universal failed: {0}".format(seed_result.stderr)
         )
-
-    # --- patterns_and_antipatterns universal buckets: §4.1, §4.2, §4.3 ---
-    _SECT_TO_BUCKET = {"§4.1": "always_universal", "§4.2": "never_universal",
-                       "§4.3": "prefer_universal"}
-    for sect_key, bucket_name in _SECT_TO_BUCKET.items():
-        sec = canonical.get(sect_key, {})
-        rules = [
-            {"tag": "universal", "name": r["name"], "text": r["body"]}
-            for r in sec.get("rules", [])
-        ]
-        state["patterns_and_antipatterns"][bucket_name] = rules
-
-    # --- workflow_rules sections: §6.1, §6.2, §6.3, §6.4 ---
-    for number in ("6.1", "6.2", "6.3", "6.4"):
-        sect_key = "§" + number
-        sec = canonical.get(sect_key, {})
-        rules = [
-            {"tag": "universal", "name": r["name"], "text": r["body"]}
-            for r in sec.get("rules", [])
-        ]
-        state["workflow_rules"].append(
-            {
-                "number": number,
-                "title": sec.get("heading", number),
-                "tag": "universal",
-                "description": None,
-                "rules": rules,
-                "tables": [],
-                "code_examples": [],
-            }
-        )
-
-    devforge_dir.mkdir(parents=True, exist_ok=True)
-    out = devforge_dir / "constitute.json"
-    out.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
     """Tests for forge-internal:verify-universal-defaults subcommand.
 
-    Fixture strategy: most tests here use hand-authored constitute.json
-    fixtures (via ``_build_in_sync_constitute_json``), not because the real
-    CLI can't store a rule's ``name`` (``add-rule --name`` / ``add-pattern-
-    rule --name`` do exactly that), but because building every rule for
-    every universal section one ``add-rule``/``add-pattern-rule`` subprocess
-    call at a time would multiply this fixture's setup cost across every
-    test that needs an in-sync baseline. Body text is always sourced from
-    the real canonical parser output. Phase 5 later moves these fixtures
-    onto the real CLI's per-rule setters (see
-    ``TestExtractUniversalRulesFromState.
-    test_name_sets_equal_canonical_for_35_36_41_via_real_cli`` for a test
-    that already does this, for §3.5/§3.6/§4.1).
+    Every fixture here is built via the real CLI (``reset`` +
+    ``seed-universal`` + ``drop-rule`` / ``drop-section`` / ``add-rule``) —
+    never a hand-authored constitute.json (real-producer principle; plan 104
+    Phase 5 removed the ``_build_in_sync_constitute_json`` hand-authored
+    builder this class used to depend on).
 
     Tests:
-    - test_verify_universal_defaults_in_sync: fixture bodies match canonical
-      (exit 0, zero findings).
+    - test_verify_universal_defaults_in_sync: ``seed-universal``'s own
+      output -> exit 0, zero findings. THIS is the test named in plan 104
+      Phase 5's record as the one that would have caught F4 — before
+      Phase 2/3/5, no test in this class fed the comparator a state an
+      actual consumer could produce through the CLI; every test below used
+      a hand-authored fixture whose canonical heading was smuggled into the
+      closed ``tag`` enum, a shape ``add-rule`` itself rejects.
     - test_unnamed_consumer_rule_ignored_no_spurious_finding: an unnamed
       rule added to an in-sync section produces no MISSING/DRIFT (D4(a)).
-    - test_verify_universal_defaults_missing_section: §3.6 entirely absent
-      (exit 2, MISSING §3.6 finding).
-    - test_verify_universal_defaults_drift_one_rule: §3.6 present but one
-      rule body differs (exit 2, DRIFT §3.6 finding).
+    - test_verify_universal_defaults_missing_section: ``drop-section
+      --number 3.6`` on a seeded state -> exit 2, one section-level MISSING
+      §3.6 finding.
+    - test_verify_universal_defaults_drift_one_rule: ``drop-rule --section
+      3.6 --index 1`` then ``add-rule`` with that dropped rule's own
+      canonical name and an altered body -> exit 2, exactly one DRIFT
+      finding for that name.
     """
 
     def _invoke(self, consumer_path: Path, canonical_path: Path):
@@ -4565,11 +4505,24 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
         )
 
     def test_verify_universal_defaults_in_sync(self):
-        """In-sync fixture: bodies match canonical → exit 0, empty findings."""
+        """``seed-universal``'s own output -> exit 0, empty findings.
+
+        THIS is the test that would have caught F4 (plan 104 Phase 5's
+        record): F4 found that no test fed a state buildable by a real
+        consumer through the CLI to this comparator — every pre-Phase-5
+        test here used ``_build_in_sync_constitute_json``, a hand-authored
+        fixture that wrote the canonical heading into the closed ``tag``
+        enum, a shape the real ``add-rule`` setter rejects outright.
+
+        See also: ``tests/lib/_constitute/test_cmds_seed.py::
+        TestSeedUniversal::test_verify_universal_defaults_exits_0_zero_
+        findings`` — same seed-then-verify scenario; keep both in sync on a
+        future comparator change.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
-            _build_in_sync_constitute_json(devforge)
+            _seed_in_sync_devforge(devforge)
 
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
             result = self._invoke(consumer_root, canonical_path)
@@ -4594,19 +4547,14 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
-            _build_in_sync_constitute_json(devforge)
+            _seed_in_sync_devforge(devforge)
 
-            state_path = devforge / "constitute.json"
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            for section in state["code_quality_standards"]:
-                if section["number"] == "3.5":
-                    section["rules"].append(
-                        {"tag": "project-specific", "text": "A project-only addition."}
-                    )
-                    break
-            state_path.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+            add_result = _run(
+                ["--devforge-dir", str(devforge), "add-rule",
+                 "--section", "3.5", "--tag", "project-specific",
+                 "--text", "A project-only addition."]
             )
+            self.assertEqual(add_result.returncode, 0, msg=add_result.stderr)
 
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
             result = self._invoke(consumer_root, canonical_path)
@@ -4619,29 +4567,33 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
             )
 
     def test_verify_universal_defaults_missing_section(self):
-        """§3.6 absent in consumer → exit 2, MISSING §3.6 in findings.
+        """``drop-section --number 3.6`` on a seeded state -> exit 2, exactly
+        one section-level MISSING §3.6 finding (no ``rule`` key — nothing
+        else drifts).
 
         D5 pre-identity obligation: a state with ZERO named rules anywhere
-        (e.g. a bare ``default_state()``) now reports a single PRE_IDENTITY
+        (e.g. a bare ``default_state()``) reports a single PRE_IDENTITY
         finding instead of per-section MISSING (see
-        test_verify_universal_defaults_pre_identity below). To exercise the
-        MISSING path this test starts from the in-sync fixture (named rules
-        for all ten OTHER canonical sections) and strips §3.6 out entirely.
+        test_verify_universal_defaults_pre_identity_on_bare_state below). To
+        exercise the MISSING path this test starts from a seeded state
+        (named rules for all eleven canonical sections) and drops §3.6.
+
+        See also: ``tests/lib/_constitute/test_cmds_drop.py::
+        TestDropRuleD6UniversalOverride::
+        test_drop_section_reports_section_level_missing_only`` — same
+        drop-section-then-verify scenario (§3.7 there); keep both in sync on
+        a future comparator change.
         """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
+            _seed_in_sync_devforge(devforge)
 
-            _build_in_sync_constitute_json(devforge)
-            state_path = devforge / "constitute.json"
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            state["code_quality_standards"] = [
-                s for s in state["code_quality_standards"] if s["number"] != "3.6"
-            ]
-            state_path.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False),
-                encoding="utf-8",
+            drop_result = _run(
+                ["--devforge-dir", str(devforge), "drop-section",
+                 "--number", "3.6"]
             )
+            self.assertEqual(drop_result.returncode, 0, msg=drop_result.stderr)
 
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
             result = self._invoke(consumer_root, canonical_path)
@@ -4651,61 +4603,43 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
             self.assertIn("§3.6", result.stderr)
 
             report = json.loads(result.stdout)
-            missing_entries = [
-                f for f in report["findings"]
-                if f.get("kind") == "MISSING" and f.get("section") == "§3.6"
-            ]
-            self.assertGreater(
-                len(missing_entries), 0,
-                msg="Expected at least one MISSING entry for §3.6 in JSON findings"
-            )
+            self.assertEqual(len(report["findings"]), 1, msg=report["findings"])
+            finding = report["findings"][0]
+            self.assertEqual(finding["kind"], "MISSING")
+            self.assertEqual(finding["section"], "§3.6")
+            self.assertNotIn("rule", finding)
 
     def test_verify_universal_defaults_drift_one_rule(self):
-        """§3.6 present but one rule body differs → exit 2, DRIFT §3.6 finding."""
+        """``drop-rule --section 3.6 --index 1`` then ``add-rule`` with that
+        dropped rule's own canonical name and an altered body -> exit 2,
+        exactly one DRIFT finding for that name."""
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
+            _seed_in_sync_devforge(devforge)
 
-            canonical = constitute_helper._parse_universal_blocks(
-                _REPO_ROOT / "src" / "constitution.md"
+            state_before = json.loads(
+                (devforge / "constitute.json").read_text(encoding="utf-8")
             )
-            sec36 = canonical.get("§3.6", {})
-
-            # Build rules identical to canonical EXCEPT for the first rule,
-            # whose body is replaced with pre-strengthening generic text.
-            # `name` is preserved unchanged on every rule (including the
-            # altered one) so the D4(a) comparator keys it to the same
-            # canonical rule and reports DRIFT, not MISSING.
-            rules_36 = [
-                {"tag": "universal", "name": r["name"], "text": r["body"]}
-                for r in sec36.get("rules", [])
-            ]
-            if rules_36:
-                rules_36[0] = {
-                    "tag": "universal",
-                    "name": rules_36[0]["name"],
-                    "text": "Depend on abstractions, not on concretions.",
-                }
-
-            state = constitute_helper.default_state()
-            state["code_quality_standards"].append(
-                {
-                    "number": "3.6",
-                    "title": sec36.get("heading", "Design Principles"),
-                    "tag": "universal",
-                    "description": None,
-                    "rules": rules_36,
-                    "tables": [],
-                    "code_examples": [],
-                }
+            sec36 = next(
+                s for s in state_before["code_quality_standards"]
+                if s["number"] == "3.6"
             )
+            dropped_name = sec36["rules"][0]["name"]
 
-            devforge.mkdir(parents=True, exist_ok=True)
-            out = devforge / "constitute.json"
-            out.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False),
-                encoding="utf-8",
+            drop_result = _run(
+                ["--devforge-dir", str(devforge), "drop-rule",
+                 "--section", "3.6", "--index", "1"]
             )
+            self.assertEqual(drop_result.returncode, 0, msg=drop_result.stderr)
+
+            add_result = _run(
+                ["--devforge-dir", str(devforge), "add-rule",
+                 "--section", "3.6", "--tag", "universal",
+                 "--name", dropped_name,
+                 "--text", "Depend on abstractions, not on concretions."]
+            )
+            self.assertEqual(add_result.returncode, 0, msg=add_result.stderr)
 
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
             result = self._invoke(consumer_root, canonical_path)
@@ -4715,14 +4649,11 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
             self.assertIn("§3.6", result.stderr)
 
             report = json.loads(result.stdout)
-            drift_entries = [
-                f for f in report["findings"]
-                if f.get("kind") == "DRIFT" and f.get("section") == "§3.6"
-            ]
-            self.assertGreater(
-                len(drift_entries), 0,
-                msg="Expected at least one DRIFT entry for §3.6 in JSON findings"
-            )
+            self.assertEqual(len(report["findings"]), 1, msg=report["findings"])
+            finding = report["findings"][0]
+            self.assertEqual(finding["kind"], "DRIFT")
+            self.assertEqual(finding["section"], "§3.6")
+            self.assertEqual(finding["rule"], dropped_name)
 
 
 # ---------------------------------------------------------------------------
@@ -4733,16 +4664,22 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
 class TestDesignFidelityUniversalSection(unittest.TestCase):
     """Tests that §3.8 Design Fidelity is a tracked universal section.
 
-    Covers five requirements:
-    1. test_section_key_in_universal_sections: §3.8 is in _UNIVERSAL_SECTIONS.
-    2. test_render_from_seeded_state_includes_design_fidelity: a re-rendered
-       constitution from seeded state includes §3.8 content.
-    3. test_verify_universal_defaults_detects_missing_38: verify-universal-
-       defaults detects a missing §3.8 (exit 2, MISSING).
-    4. test_verify_universal_defaults_passes_with_38_in_sync: verify-
-       universal-defaults passes when §3.8 is in sync (exit 0).
-    5. test_verify_universal_defaults_pre_identity_on_bare_state: a bare,
-       pre-identity state (D5's pre-change-state obligation) reports exactly
+    Covers five requirements. Every fixture that touches a universal rule
+    is built via the real CLI (``reset`` + the scalar setters +
+    ``seed-universal`` + ``drop-section``) — never a hand-authored
+    constitute.json (real-producer principle; plan 104 Phase 5):
+    1. test_section_key_in_universal_sections: §3.8 is in _UNIVERSAL_SECTIONS
+       (no state fixture — reads the schema constant directly).
+    2. test_render_from_seeded_state_includes_design_fidelity: a state seeded
+       via ``seed-universal``, rendered via the real ``render`` subcommand,
+       includes §3.8 content.
+    3. test_verify_universal_defaults_detects_missing_38: a seeded state with
+       ``drop-section --number 3.8`` applied -> verify-universal-defaults
+       detects a missing §3.8 (exit 2, MISSING).
+    4. test_verify_universal_defaults_passes_with_38_in_sync: a freshly
+       seeded state -> verify-universal-defaults passes (exit 0).
+    5. test_verify_universal_defaults_pre_identity_on_bare_state: a bare
+       ``reset`` state (D5's pre-change-state obligation) reports exactly
        one PRE_IDENTITY finding instead of per-section MISSING (exit 2).
     """
 
@@ -4752,96 +4689,95 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
         self.assertIn("§3.8", _UNIVERSAL_SECTIONS)
 
     def test_render_from_seeded_state_includes_design_fidelity(self):
-        """Re-render from seeded state preserves §3.8 content.
+        """Re-render from a real-CLI-seeded state preserves §3.8 content.
 
-        Seeds §3.8 into code_quality_standards (tag=universal), renders via
-        _render_constitution, and asserts the orthogonality statement and both
-        check descriptions survive in the rendered output.
+        Seeds via ``reset`` + the required scalar setters + ``seed-universal``
+        (real CLI — the same route ``TestRenderNamedRuleAndSectionOrder``
+        below uses), renders via the real ``render`` subcommand, and asserts
+        the orthogonality statement and both check descriptions survive in
+        the rendered ``constitution.md``.
         """
-        state = constitute_helper.default_state()
-        state["project_name"] = "TestProj"
-        state["generated_date"] = "2026-01-01"
-        state["last_updated"] = "2026-01-01"
-        state["mode"] = "existing-codebase"
-        state["project_identity"] = {
-            "name": "TestProj",
-            "type": "web",
-            "domain": "test",
-            "stack": "Python",
-        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
 
-        # Seed §3.8 using the same body text that verify-universal-defaults
-        # compares against: sourced from the real canonical parser.
-        canonical = constitute_helper._parse_universal_blocks(
-            _REPO_ROOT / "src" / "constitution.md"
-        )
-        sec38 = canonical.get("§3.8", {})
-        self.assertTrue(sec38, "§3.8 absent from src/constitution.md — check heading")
-        rules_38 = [
-            {"tag": "universal", "name": r["name"], "text": r["body"]}
-            for r in sec38.get("rules", [])
-        ]
-        state["code_quality_standards"].append(
-            {
-                "number": "3.8",
-                "title": sec38.get("heading", "Design Fidelity"),
-                "tag": "universal",
-                "description": None,
-                "rules": rules_38,
-                "tables": [],
-                "code_examples": [],
-            }
-        )
+            reset_result = _run(["--devforge-dir", str(devforge), "reset"])
+            self.assertEqual(reset_result.returncode, 0, msg=reset_result.stderr)
+            name_result = _run(["--devforge-dir", str(devforge), "set-project-name",
+                                 "--value", "TestProj"])
+            self.assertEqual(name_result.returncode, 0, msg=name_result.stderr)
+            mode_result = _run(["--devforge-dir", str(devforge), "set-mode",
+                                 "--value", "existing-codebase"])
+            self.assertEqual(mode_result.returncode, 0, msg=mode_result.stderr)
+            dates_result = _run(["--devforge-dir", str(devforge), "set-dates",
+                                  "--generated", "2026-01-01", "--updated", "2026-01-01"])
+            self.assertEqual(dates_result.returncode, 0, msg=dates_result.stderr)
+            identity_result = _run(
+                ["--devforge-dir", str(devforge), "set-project-identity",
+                 "--name", "TestProj", "--type", "web",
+                 "--domain", "test", "--stack", "Python"]
+            )
+            self.assertEqual(identity_result.returncode, 0, msg=identity_result.stderr)
+            seed_result = _run(
+                ["--devforge-dir", str(devforge), "seed-universal",
+                 "--canonical-path", str(canonical_path)]
+            )
+            self.assertEqual(seed_result.returncode, 0, msg=seed_result.stderr)
 
-        from _constitute._render import _render_constitution
-        rendered = _render_constitution(state)
+            render_result = _run_render(devforge, install_root)
+            self.assertEqual(render_result.returncode, 0, msg=render_result.stderr)
 
-        # §3.8 heading must appear.
-        self.assertIn("3.8 Design Fidelity", rendered,
-                      msg="§3.8 heading not found in rendered output")
-        # The orthogonality statement must survive re-render.
-        self.assertIn("ORTHOGONAL", rendered,
-                      msg="Orthogonality statement lost in re-render")
-        # Both check descriptions must survive.
-        self.assertIn("Static provenance check", rendered,
-                      msg="Static provenance check description lost in re-render")
-        self.assertIn("Runtime conformance check", rendered,
-                      msg="Runtime conformance check description lost in re-render")
-        # The anchor-gated fidelity obligation must survive re-render.
-        self.assertIn("captured design intent", rendered,
-                      msg="Captured-design-intent fidelity obligation lost in re-render")
-        # The NOT-COVERED honesty clause must survive re-render.
-        self.assertIn("NOT-COVERED", rendered,
-                      msg="NOT-COVERED honesty clause lost in re-render")
+            rendered = (install_root / "constitution.md").read_text(encoding="utf-8")
+
+            # §3.8 heading must appear.
+            self.assertIn("3.8 Design Fidelity", rendered,
+                          msg="§3.8 heading not found in rendered output")
+            # The orthogonality statement must survive re-render.
+            self.assertIn("ORTHOGONAL", rendered,
+                          msg="Orthogonality statement lost in re-render")
+            # Both check descriptions must survive.
+            self.assertIn("Static provenance check", rendered,
+                          msg="Static provenance check description lost in re-render")
+            self.assertIn("Runtime conformance check", rendered,
+                          msg="Runtime conformance check description lost in re-render")
+            # The anchor-gated fidelity obligation must survive re-render.
+            self.assertIn("captured design intent", rendered,
+                          msg="Captured-design-intent fidelity obligation lost in re-render")
+            # The NOT-COVERED honesty clause must survive re-render.
+            self.assertIn("NOT-COVERED", rendered,
+                          msg="NOT-COVERED honesty clause lost in re-render")
 
     def test_verify_universal_defaults_detects_missing_38(self):
-        """verify-universal-defaults exits 2 with MISSING §3.8 when §3.8 absent.
+        """A seeded state with `drop-section --number 3.8` applied ->
+        verify-universal-defaults exits 2 with MISSING §3.8.
 
         D5 pre-identity obligation: a state with ZERO named rules anywhere
-        (e.g. a bare ``default_state()``) now reports a single PRE_IDENTITY
-        finding instead of per-section MISSING (see
+        (e.g. a bare ``reset``) reports a single PRE_IDENTITY finding
+        instead of per-section MISSING (see
         test_verify_universal_defaults_pre_identity_on_bare_state below). To
-        exercise the MISSING path this test starts from the in-sync fixture
-        (named rules for all ten OTHER canonical sections) and strips §3.8
-        out entirely.
+        exercise the MISSING path this test starts from a seeded state
+        (named rules for all eleven canonical sections) and drops §3.8.
+
+        See also: ``tests/lib/_constitute/test_cmds_drop.py::
+        TestDropRuleD6UniversalOverride::
+        test_drop_section_reports_section_level_missing_only`` — same
+        drop-section-then-verify scenario (§3.7 there); keep both in sync on
+        a future comparator change.
         """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
-
-            # Build a fully in-sync state, then strip §3.8 out entirely.
-            _build_in_sync_constitute_json(devforge)
-            state_path = devforge / "constitute.json"
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            state["code_quality_standards"] = [
-                s for s in state["code_quality_standards"] if s["number"] != "3.8"
-            ]
-            state_path.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
+
+            _seed_in_sync_devforge(devforge)
+
+            drop_result = _run(
+                ["--devforge-dir", str(devforge), "drop-section",
+                 "--number", "3.8"]
+            )
+            self.assertEqual(drop_result.returncode, 0, msg=drop_result.stderr)
+
             result = subprocess.run(
                 [
                     sys.executable,
@@ -4870,16 +4806,21 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
                                msg="No MISSING §3.8 entry in JSON findings")
 
     def test_verify_universal_defaults_passes_with_38_in_sync(self):
-        """verify-universal-defaults exits 0 when §3.8 body matches canonical.
+        """A freshly seeded state (all 11 sections, incl. §3.8) ->
+        verify-universal-defaults exits 0.
 
-        Uses _build_in_sync_constitute_json which now includes §3.8.
+        See also: ``tests/lib/_constitute/test_cmds_seed.py::
+        TestSeedUniversal::test_verify_universal_defaults_exits_0_zero_
+        findings`` — same seed-then-verify scenario; keep both in sync on a
+        future comparator change.
         """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
-            _build_in_sync_constitute_json(devforge)
-
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
+
+            _seed_in_sync_devforge(devforge)
+
             result = subprocess.run(
                 [
                     sys.executable,
@@ -4903,24 +4844,19 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
         """D5 pre-identity obligation: a bare pre-identity state → one PRE_IDENTITY
         finding, exit 2 — not eleven per-section MISSING findings.
 
-        A bare ``default_state()`` (what a pre-D4/D5 ``reset`` would have
-        produced, and what any state with zero named rules looks like to
-        this comparator) has no rule anywhere with a non-empty ``name``.
-        Per-rule comparison is skipped entirely in favor of this single
-        finding, which is what a genuinely never-constituted-since-this-
-        change consumer must see instead of a wall of MISSING findings.
+        A bare ``reset`` (what a pre-D4/D5 ``reset`` also produced, and what
+        any state with zero named rules looks like to this comparator) has
+        no rule anywhere with a non-empty ``name``. Per-rule comparison is
+        skipped entirely in favor of this single finding, which is what a
+        genuinely never-constituted-since-this-change consumer must see
+        instead of a wall of MISSING findings.
         """
         with tempfile.TemporaryDirectory() as tmp:
             consumer_root = Path(tmp)
             devforge = consumer_root / ".devforge"
 
-            state = constitute_helper.default_state()
-            devforge.mkdir(parents=True, exist_ok=True)
-            out = devforge / "constitute.json"
-            out.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            reset_result = _run(["--devforge-dir", str(devforge), "reset"])
+            self.assertEqual(reset_result.returncode, 0, msg=reset_result.stderr)
 
             canonical_path = _REPO_ROOT / "src" / "constitution.md"
             result = subprocess.run(
