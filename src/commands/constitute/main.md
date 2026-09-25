@@ -89,7 +89,7 @@ If any read subcommand exits non-zero, surface its stderr verbatim and ABORT —
 
 Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/devforge:configure` Phase 2 and `/devforge:generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes per-section content in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written via setters.
 
-Compose the following per-section content. The structural shape (section numbers, bucket assignment, rule-tag enum) is locked by the helper; only the rule TEXT, table CELLS, and code-example CONTENT are LLM-composed. Authoring guidance (opening prose, tag distribution, code-example selection, sub-section count expectations) lives in `references/section-shapes.md` — read it before composing.
+Compose the following per-section content. The structural shape (section numbers, bucket assignment, rule-tag enum) is locked by the helper; only the rule TEXT, table CELLS, and code-example CONTENT are LLM-composed. The universal parts — sub-sections 3.5-3.8 and 6.1-6.4 and Section 4's three universal buckets — are not composed at all: Phase 1's `seed-universal` already wrote them, and Phase 3 shows them as-is. Authoring guidance (opening prose, tag distribution, code-example selection, sub-section count expectations) lives in `references/section-shapes.md` — read it before composing.
 
 ### Section 1 — Project Identity (4 scalars)
 
@@ -106,11 +106,11 @@ Per-rule tag selection: rules cited from `architecture.md` → `extracted`; rule
 
 ### Section 3 — Code Quality Standards
 
-Compose 4-7 sub-sections (e.g., 3.1 Type Safety, 3.2 Error Handling, 3.3 Naming Conventions, 3.4 Testing Requirements, 3.5 Documentation, 3.6 Function Length, 3.7 Check Before You Build) drawing from `DOCS_JSON.architecture.patterns` + the code-quality buckets of `DOCS_JSON.architecture.conventions` + universal defaults applicable to every project.
+Section 3 has fixed numbering. 3.5 Universal Code Quality, 3.6 Design Principles, 3.7 Check Before You Build and 3.8 Design Fidelity are the four universal sub-sections, already in `.devforge/constitute.json`: Phase 1's `seed-universal` wrote them from the canonical constitution, and Phase 3 shows them as-is — compose nothing for them (a user override against one is applied in Phase 3). Compose 0-4 project-specific sub-sections, numbered consecutively from 3.1 and never beyond 3.4 (never at a universal number), drawing from `DOCS_JSON.architecture.patterns` + the code-quality buckets of `DOCS_JSON.architecture.conventions`. Their headings are the project's own dimensions: the canonical template's are typical (e.g., Type Safety, Error Handling, Naming Conventions, Testing Requirements) — use one when it fits, otherwise name the project's own dimension (e.g., Import Style). Compose a sub-section only when the project has content for it — never invent one; when the project has more than four dimensions, merge related ones. Section 3 therefore always carries the four seeded universal sub-sections (a Phase 3 `drop section` override is the only thing that removes one) plus zero to four composed ones. The general function-length rule is already canonical 3.5 content and documentation is canonical 6.4 — compose no duplicate of either.
 
 `DOCS_JSON.architecture.conventions` is the raw text of the docs `## Conventions` section, which carries up to six bucket sub-sections rendered as bold-heading labels (`**Naming**`, `**File Organization**`, `**Import Style**`, `**Error Handling**`, `**Styling**`, `**State Management**`). The orchestrator identifies each bucket by its bold-heading sub-section label in that raw text. For Section 3, draw from ONLY the four legacy code-quality buckets — `**Naming**`, `**File Organization**`, `**Import Style**`, `**Error Handling**` — and explicitly EXCLUDE the `**Styling**` and `**State Management**` bold-heading sub-sections of `DOCS_JSON.architecture.conventions` specifically (this exclusion narrows only the conventions-bucket path; state-management content documented in the architecture.md `## Patterns` section still feeds Section 3 via `DOCS_JSON.architecture.patterns`, a separate architecture-tier path). `**State Management**` routes to Section 4 instead (see Section 4 below); `**Styling**` is documented-only and is lifted into neither Section 3 nor Section 4 (see Section 4's styling note).
 
-Per-rule tag selection: project-specific conventions → `extracted` (or `project-specific` when the rule applies only to this project); universal defaults → `universal`; tooling-enforced rules → `enforced`.
+Per-rule tag selection: project-specific conventions → `extracted` (or `project-specific` when the rule applies only to this project); tooling-enforced rules → `enforced`. Never tag a composed rule `universal` — the universal sub-sections are seeded, not composed.
 
 ### Section 4 — Patterns & Anti-Patterns
 
@@ -137,7 +137,7 @@ If `GLOSSARY_JSON` has fewer than 3 records AND `mode` resolves to `greenfield` 
 
 ### Section 6 — Workflow Rules
 
-Compose 4-6 sub-sections drawing from `CONFIGURE_JSON.workflow_enforcement` + universal workflow defaults (e.g., 6.1 Minimal Changes, 6.2 Read Before Write, 6.3 Search Before Building, 6.4 One Task At A Time, 6.5 Pre-flight Check, 6.6 Project-Specific Workflow). Universal sub-sections carry `tag = "universal"`; project-specific overrides (e.g., "PR titles must include ticket ID" extracted from `CONFIGURE_JSON`) carry `tag = "project-specific"`.
+Section 6 has fixed numbering. 6.1 Minimal Changes, 6.2 Semantic Understanding, 6.3 Read-First Principle and 6.4 Documentation are the four universal sub-sections, already in `.devforge/constitute.json`: Phase 1's `seed-universal` wrote them from the canonical constitution, and Phase 3 shows them as-is — compose nothing for them (a user override against one is applied in Phase 3). Compose 0-2 project-specific sub-sections, numbered consecutively at 6.5, then 6.6, and never beyond 6.6 (never at a universal number), drawing from `CONFIGURE_JSON.workflow_enforcement`. Their headings are the project's own dimensions: the canonical template's are typical (e.g., Deprecation Handling, Project-Specific Workflow) — use one when it fits, otherwise name the project's own dimension. Compose a sub-section only when the project has content for it — never invent one; when the project has more than two dimensions, merge related ones. Rules extracted from `CONFIGURE_JSON` (e.g., "PR titles must include ticket ID") carry `tag = "project-specific"`; never tag a composed rule `universal`.
 
 ### Section 7 — Scaffolding Guide (greenfield only)
 
@@ -217,7 +217,7 @@ When several `drop-rule` calls target one bucket, issue them in DESCENDING index
 
 ### Sections 2/3/5/6 echo template (rule-bearing sections with numbered sub-sections)
 
-Applies to Sections 2, 3, 5, 6 (each has numbered sub-sections like 2.1, 3.5, etc.). Section 4 uses its own template above. For each section, echo the proposed sub-sections, rules, tables, and code examples as a hierarchical list. Use the following template (substitute `<...>` with Phase 2 composed values):
+Applies to Sections 2, 3, 5, 6 (each has numbered sub-sections like 2.1, 3.1, etc.). Section 4 uses its own template above. For each section, echo the proposed sub-sections, rules, tables, and code examples as a hierarchical list, in sub-section number order. Sections 3 and 6 also hold seeded universal sub-sections (3.5-3.8, 6.1-6.4) that are not composed: echo what Phase 1's `seed-universal` wrote, read from `.devforge/constitute.json` (`code_quality_standards` for Section 3, `workflow_rules` for Section 6), in the seeded block form below — number, canonical title, one line per rule name, as-is. Overrides against them are accepted and map to setters against the seeded state (see the mapping paragraphs below the template). Sections 2 and 5 hold no seeded sub-section, so their echoes carry neither the seeded block form nor the closing drift sentence. The template shows each block form once; repeat the matching form per sub-section. Use the following template (substitute `<...>` with Phase 2 composed values, and in a seeded block with the seeded values):
 
 ````
 Here's what /devforge:constitute proposes for Section <N> — <Section Name>:
@@ -237,12 +237,29 @@ Code examples (<count>):
 - <label> (<language>): <first non-blank line of code, truncated to 80 chars>
 ...
 
+### <number> <title>  [<tag>] — seeded from the canonical constitution, shown as-is:
+- [<rule.tag>] <rule.name>
+- ...
+
 Reply 'yes' to apply this section, 'cancel' to abort the run, or list overrides one per line:
   - 'add rule <number>: [<tag>] <text>'             — append a rule to sub-section <number>
   - 'drop rule <number>:<index>'                    — remove rule at 1-based index from sub-section <number>
   - 'replace rule <number>:<index>: [<tag>] <text>' — replace rule at 1-based index
   - 'drop section <number>'                         — drop the entire sub-section
+
+Dropping or replacing a rule of a seeded sub-section, or dropping a seeded sub-section, is allowed, but the framework's constitution drift check (run on every update and on a reinstall over an existing constitution) will report it as drift until it is reverted.
 ````
+
+**Composed sub-sections.** `drop` / `replace` overrides operate against the Phase 2 composed values held in memory before any setter call — apply the merged final list once (`add-section`, then its `add-rule` / `add-table` / `add-code-example` calls), not delta-style. A `drop section` against a composed sub-section means it takes no setter call at all. An override never creates a sub-section: one naming a sub-section number the echo did not show issues nothing and is re-prompted (see "Parsing the user reply (per-section)" below), and `add-section` is never issued at a seeded number.
+
+**Seeded universal sub-sections (Sections 3 and 6).** Their rules are already in `.devforge/constitute.json`, so each override maps to setters against the seeded state; every `<index>` refers to the echoed list:
+
+- `drop rule <number>:<index>` → `drop-rule --section <number> --index <index>`.
+- `replace rule <number>:<index>: [<tag>] <text>` → that `drop-rule`, then `add-rule --section <number> --tag <tag> --text "<text>"`. The replacement is unnamed and lands at the sub-section's end.
+- `add rule <number>: [<tag>] <text>` → `add-rule --section <number> --tag <tag> --text "<text>"` (appended at the sub-section's end).
+- `drop section <number>` → `drop-section --number <number>`. It subsumes every other override of that sub-section in the same reply — issue the `drop-section` alone.
+
+When several `drop-rule` calls target one sub-section, issue them in DESCENDING index order so earlier removals do not shift later indices. An appended rule lands after every echoed rule, so it shifts none of their indices. A rule's `name` is never user-set: only `seed-universal` names rules, so no override call passes `add-rule --name`. A seeded sub-section the reply does not touch takes no setter call. Never issue `add-section` at a seeded number (3.5-3.8, 6.1-6.4) — `add-section` on an existing number replaces that sub-section's title, tag and description.
 
 For string-array fields whose values contain literal commas (e.g., TypeScript generic syntax `Either<DataError, T>`), supply the value as a JSON array — the helper's `_validate_string_array` accepts either form. Example: `add rule 3.2: [extracted] Errors propagate as ["Either<DataError, T>", "Result<Ok, Err>"]`.
 
@@ -337,11 +354,11 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 - Reply equals `yes` (case-insensitive, exact after strip) → apply this section's Phase 2 composed values via the setters listed in the "Setter mapping per section" table below.
 - Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`seed-universal` state (the `reset` defaults plus the seeded universal parts) plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
 - Otherwise → parse line-by-line per the override syntax shown in the section's echo template. Apply each accepted override in order; apply the Phase 2 composed value for every other rule/table/code-example. Tag values are case-insensitive (helper's `_validate_enum` normalizes mixed-case to canonical lowercase / uppercase per enum).
-- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values — never recorded or cited as confirmed by the user — and warn: "Proceeding with the proposed values for Section <N> WITHOUT your confirmation; re-run `/devforge:constitute` to revise."
+- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." In Sections 2, 3, 5 and 6, an override naming a sub-section number the echo did not show counts as not parsable — nothing is issued for it, and the re-prompt instead opens with the echoed numbers: "Sub-section <number> is not in this section — overrides can target <the echoed numbers, comma-separated>." (e.g., "Sub-section 3.4 is not in this section — overrides can target 3.1, 3.2, 3.5, 3.6, 3.7, 3.8."), followed by "Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values — never recorded or cited as confirmed by the user — and warn: "Proceeding with the proposed values for Section <N> WITHOUT your confirmation; re-run `/devforge:constitute` to revise."
 
 After parsing each section's reply, apply the resulting setter calls IN ORDER per section type:
 - Section 1: one `set-project-identity` call.
-- Sections 2, 3, 5, 6: `add-section` first (creates the sub-section record), then `add-rule` / `add-table` / `add-code-example` referencing that section's `--number`.
+- Sections 2, 3, 5, 6: per composed sub-section of the merged list, `add-section` first (creates the sub-section record), then `add-rule` / `add-table` / `add-code-example` referencing that section's `--number`; plus, in Sections 3 and 6, for each seeded universal sub-section the reply overrode, the `drop-rule` / `add-rule` / `drop-section` calls named in the Sections 2/3/5/6 echo template's "Seeded universal sub-sections" mapping. A seeded sub-section the reply does not touch takes no call — Phase 1's `seed-universal` already wrote it.
 - Forcing Functions config block: one `set-forcing-functions` call per offered rule (three calls when no design source exists; four when `design_token_provenance` was offered). Runs after Section 3's setters apply, before the next section's echo. Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section.
 - Section 4: `add-pattern-rule` per rule of the merged project-specific lists (no `add-section` prerequisite — Section 4 has no numbered sub-sections), plus, for each universal bucket the reply overrode, the `drop-rule` / `add-pattern-rule` calls named in the Section 4 echo template's "Universal buckets" mapping. A universal bucket the reply does not touch takes no call — Phase 1's `seed-universal` already wrote it.
 - Section 7: one `set-scaffolding-guide` call (greenfield only).
@@ -350,7 +367,7 @@ Then advance to the next section's echo (in the next turn — Phase 3 stop disci
 
 ### Setter mapping per section
 
-For every section in Sections 2, 3, 5, 6 (the rule-bearing sections with numbered sub-sections), the per-section setter sequence is:
+For every composed sub-section in Sections 2, 3, 5, 6 (the rule-bearing sections with numbered sub-sections), the setter sequence is:
 
 ```bash
 .devforge/lib/constitute_helper add-section \
@@ -361,11 +378,14 @@ For every section in Sections 2, 3, 5, 6 (the rule-bearing sections with numbere
 # add-section --tag is section_tag enum (3 values); does NOT accept
 # 'extracted' or 'enforced' — those belong to add-rule's rule_tag.
 # A section extracted from this codebase carries --tag project-specific.
+# Never at a seeded number (3.5-3.8, 6.1-6.4), and never --tag universal:
+# every universal sub-section is written by Phase 1's seed-universal.
 
 .devforge/lib/constitute_helper add-rule \
     --section <N.M> --tag <extracted|enforced|universal|project-specific> \
     --text "<rule text>"
 # add-rule --tag is rule_tag enum (4 values; required).
+# Never pass --name: only seed-universal names rules.
 # repeat per rule
 
 .devforge/lib/constitute_helper add-table \
@@ -391,6 +411,19 @@ Bucket-to-section mapping (locked by the helper's `_SECTION_BUCKET_TO_KEY`):
 | Section 3 (Code Quality Standards) | `code-quality` |
 | Section 5 (Domain Rules) | `domain` |
 | Section 6 (Workflow Rules) | `workflow` |
+
+Sections 3 and 6 also hold the seeded universal sub-sections (3.5-3.8, 6.1-6.4). Phase 1's `seed-universal` already wrote them, so they take a call only when the user overrode them — `drop-rule` removes a seeded rule, `add-rule` (above) appends one, `drop-section` removes the whole sub-section:
+
+```bash
+.devforge/lib/constitute_helper drop-rule \
+    --section <N.M> \
+    --index <1-based index into the echoed sub-section>
+# seeded-sub-section overrides only; per sub-section, DESCENDING index order
+
+.devforge/lib/constitute_helper drop-section \
+    --number <N.M>
+# seeded-sub-section overrides only
+```
 
 Section 4 (Patterns & Anti-Patterns) uses `add-pattern-rule` instead. The three project-specific buckets are written from the merged composed lists. Phase 1's `seed-universal` already wrote the three universal buckets, so they take a call only when the user overrode them — `drop-rule` removes a seeded rule, `add-pattern-rule --scope universal` appends one:
 

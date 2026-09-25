@@ -1,16 +1,16 @@
 # Section shapes — per-section authoring guidance
 
-`/devforge:constitute` Phase 2 composes section content from Phase 1 JSON outputs. The structural shape (section numbers, bucket assignment, rule-tag enum, table column/row consistency) is locked by `constitute_helper`; only the rule TEXT, table CELLS, code-example CONTENT, and section DESCRIPTION are LLM-composed. This file documents per-section authoring expectations: opening prose template, tag distribution rules, sub-section count expectations, table shape examples, and code-example selection criteria.
+`/devforge:constitute` Phase 2 composes section content from Phase 1 JSON outputs. The structural shape (section numbers, bucket assignment, rule-tag enum, table column/row consistency) is locked by `constitute_helper`; only the rule TEXT, table CELLS, code-example CONTENT, and section DESCRIPTION are LLM-composed. The universal parts — sub-sections 3.5-3.8 and 6.1-6.4, and Section 4's three universal buckets — are not composed at all: Phase 1's `constitute_helper seed-universal` writes them verbatim from the canonical constitution, with their numbers, headings, tags and rule identities. This file documents per-section authoring expectations: opening prose template, tag distribution rules, sub-section count expectations, table shape examples, and code-example selection criteria.
 
 ## Cross-section numbering convention
 
 Sub-section numbers are bucket-prefixed and non-overlapping:
 
 - Section 2 (Architecture Rules) → sub-sections numbered `2.1`, `2.2`, `2.3`, ...
-- Section 3 (Code Quality Standards) → sub-sections numbered `3.1`, `3.2`, ...
-- Section 4 (Patterns & Anti-Patterns) → no numbered sub-sections; six fixed buckets via `add-pattern-rule`
+- Section 3 (Code Quality Standards) → fixed numbers `3.1`-`3.8`: 0-4 composed, numbered consecutively from `3.1` and never beyond `3.4`; `3.5`-`3.8` seeded by `seed-universal`
+- Section 4 (Patterns & Anti-Patterns) → no numbered sub-sections; six fixed buckets — the three universal ones seeded by `seed-universal`, the three project-specific ones composed via `add-pattern-rule`
 - Section 5 (Domain Rules) → sub-sections numbered `5.1`, `5.2`, `5.3`
-- Section 6 (Workflow Rules) → sub-sections numbered `6.1`, `6.2`, ...
+- Section 6 (Workflow Rules) → fixed numbers `6.1`-`6.6`: `6.1`-`6.4` seeded by `seed-universal`; 0-2 composed, numbered `6.5` then `6.6`
 - Section 7 (Scaffolding Guide) → no numbered sub-sections; single `set-scaffolding-guide` call
 
 The helper's `_find_section` does first-match across the four section_array buckets keyed by the `--number` argument, so non-overlapping numbering is required: do NOT use `2.1` for both an architecture sub-section and a workflow sub-section.
@@ -19,8 +19,8 @@ The helper's `_find_section` does first-match across the four section_array buck
 
 **Two distinct enums — DO NOT confuse:**
 
-- **`section_tag`** (used by `add-section --tag`): `{universal, project-specific, greenfield-only}`. Optional. Describes the section's audience scope — universal sections apply to every project; project-specific sections describe THIS project's customisations; greenfield-only is reserved for Section 7. **Does NOT include `extracted` or `enforced`.** A section extracted from this codebase carries `--tag project-specific` (because it describes THIS project), NOT `--tag extracted`.
-- **`rule_tag`** (used by `add-rule --tag` + `add-pattern-rule --tag`): `{extracted, enforced, universal, project-specific}`. REQUIRED. Describes the rule's provenance / authority. The 4-value enum below is the rule_tag rubric.
+- **`section_tag`** (used by `add-section --tag`): `{universal, project-specific, greenfield-only}`. Optional. Describes the section's audience scope — universal sections apply to every project; project-specific sections describe THIS project's customisations; greenfield-only is reserved for Section 7. **Does NOT include `extracted` or `enforced`.** A section extracted from this codebase carries `--tag project-specific` (because it describes THIS project), NOT `--tag extracted`. `seed-universal` writes `universal` on the seeded sub-sections 3.5-3.8 and 6.1-6.4; Phase 2 never passes `--tag universal` to `add-section`.
+- **`rule_tag`** (used by `add-rule --tag` + `add-pattern-rule --tag`): `{extracted, enforced, universal, project-specific}`. REQUIRED. Describes the rule's provenance / authority. The 4-value enum below is the rule_tag rubric. A rule record may also carry `name`, its identity: `seed-universal` writes it on every canonical rule and the universal-section drift check matches rules by it; `add-rule` / `add-pattern-rule` accept `--name`, but Phase 2 never passes it.
 
 Common LLM confusion: passing a rule_tag value to `add-section --tag`. The helper rejects with `section_tag: invalid value 'extracted'` — re-emit with `project-specific` (the section_tag analog of the rule_tag `extracted`).
 
@@ -28,7 +28,7 @@ The `rule.tag` enum is `{extracted, enforced, universal, project-specific}`. Dec
 
 - **`extracted`** — rule is directly cited from the project's documentation (`docs/architecture.md`, `docs/glossary.md`, etc.). Use this when the rule reads as a paraphrase of source documentation. Default for most Section 2 + Section 5 rules.
 - **`enforced`** — rule is mechanically enforced by tooling (tsconfig `strict`, ESLint config, pre-commit hooks, CI checks). Use this when the rule would fail a build / lint / type-check if violated. Default for most Section 3 type-safety + lint rules.
-- **`universal`** — rule applies to every project regardless of stack or domain (e.g., "Read before write", "Never swallow errors"). Default for Section 4 universal-scope rules and most Section 6 workflow defaults.
+- **`universal`** — rule applies to every project regardless of stack or domain. `seed-universal` writes it on every canonical rule of sub-sections 3.5-3.8 and 6.1-6.4 and of Section 4's three universal buckets. Phase 2 never assigns it — every rule Phase 2 composes carries one of the other three tags.
 - **`project-specific`** — rule applies only to this project (e.g., a custom naming convention, a project-unique enforcement). Default for Section 4 project-specific-scope rules and project overrides in Sections 3, 5, 6.
 
 A rule may legitimately fit more than one tag (an extracted rule that is also enforced by tooling). Pick the tag that best signals intent — `enforced` wins over `extracted` when tooling is the source of authority.
@@ -64,11 +64,11 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 
 ## Section 3 — Code Quality Standards
 
-**Shape**: 4-7 sub-sections, each with rules + optional table + optional code examples.
+**Shape**: fixed numbering. The four universal sub-sections — 3.5 Universal Code Quality, 3.6 Design Principles, 3.7 Check Before You Build, 3.8 Design Fidelity — are seeded by `seed-universal`, numbers and headings included; Phase 2 composes nothing for them. Phase 2 composes only the project-specific sub-sections, numbered consecutively 3.1, 3.2, … and never beyond 3.4, each with rules + optional table + optional code examples.
 
-**Sub-section count expectation**: 6 typical. Common sub-sections: Type Safety, Error Handling, Naming Conventions, Testing Requirements, Documentation, Function Length / Complexity.
+**Sub-section count expectation**: 0-4 composed sub-sections, one per quality dimension the project has content for. Headings are the project's dimensions: the typical ones are Type Safety, Error Handling, Naming Conventions, Testing Requirements — use them when they fit, otherwise name the project's own dimension (e.g., "Import Style"). A project with more than four dimensions merges related ones until four or fewer remain.
 
-**Sub-section opening prose**: 1-2 sentences naming the quality dimension. Each sub-section carries an optional `--tag` (`universal` for stack-agnostic dimensions like "Function Length"; `project-specific` for project-customized dimensions like "Type Safety [project-specific]").
+**Sub-section opening prose**: 1-2 sentences naming the quality dimension. Each composed sub-section carries an optional `--tag`: `project-specific` (e.g., "Type Safety [project-specific]"). Phase 2 never passes `--tag universal`.
 
 **Table shapes**:
 - **Naming Conventions** — 3 columns: `What | Convention | Example`. One row per naming convention (entity class, repository, use case, etc.).
@@ -78,25 +78,23 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 - Prefer **EXAMPLE** label for Section 3 (illustrative single-block snippets).
 - CORRECT/WRONG pairs work well for Type Safety + Error Handling sub-sections (e.g., showing `any` type as WRONG and `unknown` + type guard as CORRECT).
 
-**Tag distribution typical for Section 3**: mix of `enforced` (tsconfig strict, ESLint strictness rules), `extracted` (project naming conventions documented in architecture.md), and `universal` (function length defaults).
-
-**CBM-first protocol rule (Section 3 Documentation sub-section)**: when `.claude/settings.json` exists with the AIDevTeamForge CBM hooks (`cbm-code-discovery-gate`, `bash-ban-raw-tools`, `cbm-mcp-marker`, `cbm-session-reminder`), Phase 2 MUST add an `[enforced]` rule to the Documentation sub-section: structural code queries route through `codebase-memory-mcp` tools (`search_graph` / `trace_path` / `get_code_snippet` / `search_code` / `query_graph`) — NOT raw `Read` / `Grep` / `Glob` over source files. The hooks block raw discovery at `PreToolUse` on the first match per session. Optional companion `[universal]` rule: `docs/` is LLM-context-source first, dev-greppable second; concern prose lives in `docs/<pkg>/<concern>/index.md`; structural metadata stays in CBM (queried live), never embedded in `docs/`. Phase 2 detects CBM-hook presence via `test -f .claude/settings.json` + grep for the hook script names; absence → skip both rules.
+**Tag distribution typical for Section 3**: the composed 3.1-3.4 carry a mix of `enforced` (tsconfig strict, ESLint strictness rules), `extracted` (project naming conventions documented in architecture.md), and `project-specific` (conventions implicit in the codebase but not explicitly documented). The seeded 3.5-3.8 rules carry `universal`; Phase 2 tags no rule `universal`.
 
 ## Section 4 — Patterns & Anti-Patterns
 
-**Shape**: 6 fixed buckets via `add-pattern-rule`. No sub-section numbering, no tables, no code examples.
+**Shape**: 6 fixed buckets, one per `--bucket` × `--scope` combination. The three universal buckets are seeded by `seed-universal` from canonical 4.1 ALWAYS Do, 4.2 NEVER Do and 4.3 PREFER; Phase 2 composes nothing for them. Phase 2 composes only the three project-specific buckets, via `add-pattern-rule --scope project-specific`. No sub-section numbering, no tables, no code examples.
 
 **Bucket × scope matrix**:
 
-| Bucket | Universal scope | Project-specific scope |
-|--------|-----------------|------------------------|
-| `always` | Always-do rules every project should follow | Always-do rules unique to this project |
-| `never` | Never-do rules every project should avoid | Never-do rules unique to this project |
-| `prefer` | Universal preferences | Project-specific preferences |
+| Bucket | Universal scope (seeded) | Project-specific scope (composed) |
+|--------|--------------------------|-----------------------------------|
+| `always` | Canonical 4.1 ALWAYS Do | Always-do rules unique to this project |
+| `never` | Canonical 4.2 NEVER Do | Never-do rules unique to this project |
+| `prefer` | Canonical 4.3 PREFER | Project-specific preferences |
 
-**Per-bucket count expectation**: 3-8 rules per bucket. Heavily-curated codebases (with strong coding conventions) push the project-specific buckets toward 8; new projects with thin conventions push them toward 3.
+**Per-bucket count expectation**: 3-8 rules per project-specific bucket. Heavily-curated codebases (with strong coding conventions) push them toward 8; new projects with thin conventions push them toward 3. The universal buckets hold the seeded canonical rules, so no count expectation applies to them.
 
-**Tag distribution typical for Section 4**: universal-scope rules → `tag = universal`; project-specific-scope rules → `tag = extracted` (when the rule is documented in architecture.md) or `tag = project-specific` (when implicit in the codebase but not explicitly documented).
+**Tag distribution typical for Section 4**: project-specific-scope rules → `tag = extracted` (when the rule is documented in architecture.md) or `tag = project-specific` (when implicit in the codebase but not explicitly documented). The seeded universal-bucket rules carry `tag = universal`; Phase 2 tags no rule `universal`.
 
 **Source for the project-specific buckets**: draw from two sources — (1) `DOCS_JSON.architecture.patterns` (the architecture.md Patterns section) and (2) the `**State Management**` bucket of `DOCS_JSON.architecture.conventions`. Classify each state-management convention into `always` / `never` / `prefer` by how the rule is phrased: a mandate → `always`; a prohibition → `never`; a preference → `prefer`. See `main.md` § "Section 4" for the full conventions-bucket routing table (which `DOCS_JSON.architecture.conventions` bucket lands where).
 
@@ -125,17 +123,19 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 
 ## Section 6 — Workflow Rules
 
-**Shape**: 4-6 sub-sections, each with rules. Tables and code examples are rare in Section 6.
+**Shape**: fixed numbering. The four universal sub-sections — 6.1 Minimal Changes, 6.2 Semantic Understanding, 6.3 Read-First Principle, 6.4 Documentation — are seeded by `seed-universal`, numbers and headings included; Phase 2 composes nothing for them. Phase 2 composes only the project-specific sub-sections, numbered consecutively 6.5, then 6.6, each with rules. Tables and code examples are rare in Section 6.
 
-**Sub-section count expectation**: 6 typical. Common sub-sections: Minimal Changes, Read Before Write, Search Before Building, One Task At A Time, Pre-flight Check, Project-Specific Workflow.
+**Sub-section count expectation**: 0-2 composed sub-sections, one per workflow concern the project has content for. Typical headings: Deprecation Handling, Project-Specific Workflow. A single composed sub-section takes 6.5, whatever its heading.
 
-**Sub-section opening prose**: 1 sentence stating the workflow rule's intent. Most universal sub-sections are 2-4 bullet rules under a single-sentence opener.
+**Sub-section opening prose**: 1 sentence stating the composed sub-section's intent.
 
 **Tag distribution typical for Section 6**:
-- Universal sub-sections (Minimal Changes, Read Before Write, etc.) → `tag = universal` for both the sub-section's `--tag` flag and the per-rule `--tag` flag.
-- Project-Specific Workflow sub-section → `--tag project-specific`; per-rule tags `extracted` (when documented) or `project-specific` (when implicit).
+- 6.1-6.4 → seeded by `seed-universal` with `universal` on the sub-section and on every rule. Phase 2 tags nothing there, because it composes nothing there.
+- The composed 6.5 / 6.6 → `--tag project-specific`; per-rule tags `extracted` (when documented), `enforced` (the CBM-first protocol rule below), or `project-specific` (when implicit).
 
-**Composition source**: extract project-specific workflow rules from `CONFIGURE_JSON.workflow_enforcement` value. The four canonical universal sub-sections are template content (no derivation from JSON inputs needed).
+**Composition source**: extract project-specific workflow rules from `CONFIGURE_JSON.workflow_enforcement` value. The four universal sub-sections 6.1-6.4 need no derivation from JSON inputs — `seed-universal` writes them from the canonical constitution.
+
+**CBM-first protocol rule (Section 6 project workflow sub-section)**: when `.claude/settings.json` exists with the AIDevTeamForge CBM hooks (`cbm-code-discovery-gate`, `bash-ban-raw-tools`, `cbm-mcp-marker`, `cbm-session-reminder`), Phase 2 MUST add an `[enforced]` rule to the Section 6 project-specific sub-section for project workflow — typically headed Project-Specific Workflow, at 6.6, or at 6.5 when it is the only composed one — composing that sub-section when it is absent: structural code queries route through `codebase-memory-mcp` tools (`search_graph` / `trace_path` / `get_code_snippet` / `search_code` / `query_graph`) — NOT raw `Read` / `Grep` / `Glob` over source files. The hooks block raw discovery at `PreToolUse` on the first match per session. Optional companion `[project-specific]` rule, in the same sub-section: `docs/` is LLM-context-source first, dev-greppable second; concern prose lives in `docs/<pkg>/<concern>/index.md`; structural metadata stays in CBM (queried live), never embedded in `docs/`. Phase 2 detects CBM-hook presence via `test -f .claude/settings.json` + grep for the hook script names; absence → skip both rules.
 
 ## Section 7 — Scaffolding Guide (greenfield only)
 
@@ -156,6 +156,6 @@ Each file's `content` is the full literal file content as a string (no placehold
 ## Common authoring mistakes
 
 - **Using a markdown table when a fenced code block fits better.** Module-structure trees, sample directory layouts, and ASCII flow diagrams render better as `add-code-example --label EXAMPLE --language text` than as `add-table`. Reserve tables for genuine tabular data with consistent columns.
-- **Mixing tag scope.** A rule tagged `universal` should NOT cite project-specific paths or names. If a rule mentions `foo-types`, it's `project-specific` or `extracted`, not `universal`.
-- **Sub-section count creep.** Sticking to the count expectations above keeps `constitution.md` in the 250-450 line range typical of a healthy reference shape. Adding a 9th Section 3 sub-section because "we have 9 quality dimensions" usually means three of them belong as bullet rules under existing sub-sections, not as standalone sub-sections.
+- **Tagging a composed rule `universal`.** `universal` belongs to the canonical rules `seed-universal` writes; Phase 2 never assigns it. A composed rule that reads as stack-agnostic is either already in the seeded canon — omit it — or a rule of this project, tagged `extracted`, `enforced` or `project-specific` per the rubric above. A rule that mentions `foo-types` is always one of those three.
+- **Sub-section count creep.** Sticking to the count expectations above keeps `constitution.md` in the 250-450 line range typical of a healthy reference shape. Sections 3 and 6 compose only at their project-specific numbers (consecutive from 3.1 up to 3.4; 6.5 then 6.6): a project with more than four quality dimensions merges related ones into four or fewer sub-sections — never composing at 3.5 or above (3.5-3.8 are seeded), never adding a 3.9.
 - **Overlapping numbers across buckets.** `2.1` is in the architecture bucket; `5.1` is in the domain bucket. Re-using `2.1` for a domain sub-section breaks the helper's `_find_section` first-match resolution.
