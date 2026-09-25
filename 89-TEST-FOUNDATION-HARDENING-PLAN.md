@@ -6,6 +6,7 @@
 - **Phases 1, 2, 2b, 3 and 4 DONE (build) 2026-08-27**, python-reviewer + instruction-reviewer both SHIP-READY, full `tests/lib` suite green (11124+ passed; `test_breakdown_helper` 426). Commits: `1ead52d` Phase 1 · `8f4ffec` Phases 2 + 2b · `27cb30e` Phase 3 · `77beba1` Phase 4.
 - **Phase 5 DONE (build) 2026-08-27**, in this commit. Both halves landed: **D6's note in `src/commands/configure/main.md`** (arm (b), documentation-only — no new prompt, no count edits) and the documentation/reconciliation sweep (this status block, the dated build amendments recorded against Phases 1/2b/3 and facts 4a-i / 4a-ii, `CHANGELOG.md`, the repo-root index entry, and the `PLAN-STATUS-ARCHIVE.md` mirror). **Its Verify criterion now passes: `grep -rn "REGRESSION_GATE" src/commands/` returns hits in BOTH `verify/main.md` and `configure/main.md`.**
 - **Phase 6 consumer e2e DEFERRED 2026-08-27 by explicit maintainer decision — the maintainer intends to run it (NOT waived; build-verified, NOT consumer-validated).** No anchor has been run, and nothing in Phases 1–5 may be read as evidence any of them would pass. **The five known-answer anchors are the recipe for that run**, unchanged: the configured-test-command task, the `null`-test-command task, the §3.5 drift finding, the Key Rule shipped and loaded (whose part (b) owes a `claude-code-guide` check BEFORE the run), and the planted vacuous test beside its genuine twin. ⚠ **Two PAIR-scorings survive into that run and are what make it falsifiable** — anchors 1+2 are scored as a pair, and so are anchor 5's two plants, because a reviewer that catches the plant by flagging everything passes one half and fails the other. **Anchor 5 remains the ONLY place D7's false-positive rate will ever be observed.**
+  ⚠ **AMENDED 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the text above is unchanged) — anchor 3's expected result, the §3.5 drift finding listed above, no longer holds as written.** See the amendment under anchor 3 in `### Phase 6 — Consumer e2e`.
 
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-26.
@@ -242,6 +243,19 @@ mismatch against any install whose `.devforge/constitute.json` predates this bui
 WARN-only update-time drift check will fire (fact 2d). **Back-porting into shipped installs is
 an explicit NON-GOAL** — they arrive via `install.sh` / `update.sh`. ⚠ **If this ships in the
 same release as plan 86, consumers see TWO drift findings (§3.5 and §3.6), not one.**
+
+**⚠ AMENDED 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the text
+above is unchanged) — the finding predicted here was indistinguishable from a comparator
+artifact.** One state was built through the real CLI to match the canonical constitution
+exactly — `constitute_helper reset`, then `seed-universal --canonical-path src/constitution.md`
+(canon at commit `6a786b3`) — and fed to `forge-internal:verify-universal-defaults` twice. The
+comparator as it stood before plan 104's comparison fix (lib at commit `9981148`) returned
+**exit 2 with 32 findings, all MISSING, across all eleven universal sections**; the fixed
+comparator (lib at commit `760b8b7`) returned **exit 0 with zero findings**. A state whose §3.5
+matched the canon exactly therefore drew a §3.5 finding too, so the finding this paragraph
+predicts could not tell a real §3.5 change from the artifact. **Not established:** whether any
+particular install ALSO had real drift. What the check reports since plan 104 is in the
+amendment to this plan's Phase 6 anchor 3.
 
 **Alternatives considered:**
 
@@ -1057,6 +1071,13 @@ Phase 0 dropped D7's clause 1 only, omit that paragraph and keep the other two.*
   (fact 2) and that this phase touched no Python.
 - **The expected drift is recorded, not fixed**: a note in the commit message that
   `verify-universal-defaults` will now report a §3.5 mismatch on pre-build installs by design.
+- ⚠ **AMENDED 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the
+  text above is unchanged) — the §3.5 mismatch this note announces could not be told apart
+  from a comparator artifact.** Before plan 104's comparison fix, `verify-universal-defaults`
+  reported every universal rule MISSING even on a state matching the canon exactly — exit 2
+  and 32 findings on the 2026-09-25 run, against exit 0 and zero findings after the fix. **Not
+  established:** whether any pre-build install also had real §3.5 drift. The full record is
+  D1's amendment above.
 - **D1's four sentences appear verbatim and in order** as the block's first paragraph — diff
   them against D7's rendering character for character.
 - **No judgment word reached the emitted text** — `grep -in "meaningful\|reasonable\|adequate\|
@@ -1332,6 +1353,19 @@ part of this has been observed in a consumer install.
 3. **The drift signal.** Run `constitute_helper forge-internal:verify-universal-defaults`
    against an install whose `.devforge/constitute.json` predates this build. **MUST** report a
    §3.5 finding and exit 2 — **this is the designed outcome, not a defect** (D1).
+   ⚠ **AMENDED 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the
+   text above is unchanged) — this anchor's known answer no longer holds as written.** Before
+   plan 104 the §3.5 finding could not distinguish drift from a comparator artifact: the
+   comparator reported every universal rule MISSING even on a state matching the canon exactly
+   (exit 2 and 32 findings on the 2026-09-25 run; exit 0 and zero findings after the fix). Since
+   plan 104, an install constituted before plan 104 carries no rule identities in its
+   `.devforge/constitute.json`, so the verb reports **one `PRE_IDENTITY` finding and exit 2**
+   (*"state predates rule identities; re-run /devforge:constitute"*), not a §3.5 finding. **A
+   §3.5-specific finding now requires an install constituted after plan 104** — its
+   `/devforge:constitute` run seeds the universal sections verbatim via
+   `constitute_helper seed-universal`, and a later canonical §3.5 edit then produces a real
+   per-rule finding. **Not established:** whether any particular install also had real §3.5
+   drift.
 4. **The Key Rule shipped and is loaded.** Two parts, both scored. **(a) On disk, checkable with
    no tool-behavior claim at all:** the consumer install's emitted root `CLAUDE.md` contains
    item 16 in its `### Always` list, with items 1–15 unchanged — a plain read of the installed
@@ -1604,6 +1638,11 @@ released. Re-check each from the code rather than from a Status line.
    noticer. **This is a pre-existing seam this plan neither creates nor closes**, and it bounds
    how much D1 can be claimed to guarantee. A plan that wants universal sections seeded
    mechanically has a real subject here.
+   ✅ **AMENDED 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, D3(a) — additive; the
+   text above is unchanged) — that plan took this subject.** `/devforge:constitute` now seeds the
+   universal sections verbatim from the canonical constitution via
+   `constitute_helper seed-universal`, and composes nothing for them; a user override against
+   one is still applied at its confirmation step.
 2. **`/devforge:constitute`'s Phase-2 example numbering does not match the shipped template.**
    `constitute/main.md:103` illustrates *"3.5 Documentation, 3.6 Function Length, 3.7 Check
    Before You Build"* while `src/constitution.md` ships §3.5 Universal Code Quality, §3.6 Design

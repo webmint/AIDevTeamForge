@@ -20,6 +20,7 @@ Same blind spot for the machine config: `.devforge/constitute.json`'s `forcing_f
 
 **Concrete instance (mintEnvoy, 2026-06-25):** on `template-version 2.0.1` with all commands/agents/lib byte-current, yet:
 - `constitution.md` from a much older template — no §3.7, no §3.8, drifted §3.5/§3.6 universal content; `forge-internal:verify-universal-defaults` reports **~30 MISSING** universal rules across §3.5/§3.6/§3.7/§3.8/§4/§6.
+  > **Amended 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the text above is unchanged):** this **~30 MISSING** count — and its two other records in this file, the *"exit 2 + 29 MISSING findings"* validation under `## The tooling already exists — it is just unwired` and this plan's OQ2 *"~30 MISSING lines"* — matches what the comparator as it stood before plan 104's comparison fix reported for a constituted install in sync with the canon or not: every universal rule MISSING, 32 of them on the 2026-09-25 canon. One state built through the real CLI to match the canonical constitution exactly (`constitute_helper reset`, then `seed-universal --canonical-path src/constitution.md`, canon at commit `6a786b3`) drew exit 2 and 32 findings — all MISSING, across all eleven universal sections — from that comparator (lib at commit `9981148`), and exit 0 with zero findings from the fixed comparator (lib at commit `760b8b7`). A count of that size therefore cannot show drift. **Not established:** whether the installs these three records describe also had real drift; this note bears on the counts only.
 - `constitute.json.forcing_functions` carries only the 3 original detectors (all `enabled:false`); the `design_token_provenance` key is **absent entirely**.
 - The irony: mintEnvoy is the *exact* design-drift project that **motivated plan 40**, and none of plan 40's constitutional/config layer reached it.
 
@@ -29,6 +30,8 @@ The drift detector was **built and validated** in the 18-May patch cycle (CONSTI
 - takes `--consumer-path <root>` + `--canonical-path <constitution.md>`,
 - diffs the consumer's `.devforge/constitute.json` universal sections vs the canonical `constitution.md` named by `--canonical-path`,
 - prints `MISSING §X.Y [Rule]` lines + a JSON findings array, exits non-zero on drift.
+
+> **Amended 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the text above is unchanged):** the *"exit 2 + 29 MISSING findings"* validation record above is qualified by the 2026-09-25 amendment under the **~30 MISSING** count in `## Problem`'s concrete instance.
 
 **The only gap is that nobody runs it on the consumer at update time.** It is namespaced `forge-internal:` and wired into no script. This plan wires it in. It does **not** build new detection from scratch — it closes a wiring gap around validated tooling.
 
@@ -58,6 +61,7 @@ Both are advisory. Both fail-soft (a check error warns "drift check skipped" and
 
 - **OQ1 — Greenfield/not-yet-constituted targets.** If `.devforge/constitute.json` is absent (installed but `/constitute` never run), A and D both no-op silently (nothing constituted = nothing to drift). Confirm silent-skip is the wanted behavior (vs an info line "constitution not yet synthesized").
 - **OQ2 — Warning verbosity cap.** mintEnvoy produced ~30 MISSING lines. Cap the per-section detail in the shell warning (e.g. summarize "§3.7, §3.8 and 4 other sections drifted — N rules missing") with the full list behind the raw verb output? Or print all? Lean: summarize sections + count, point at the verb for detail.
+  > **Amended 2026-09-25 (`104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`, OQ-2 — additive; the text above is unchanged):** the *"~30 MISSING lines"* record in this OQ is qualified by the 2026-09-25 amendment under the **~30 MISSING** count in `## Problem`'s concrete instance.
 - **OQ3 — Deeper structural fix (Option C) scope.** Split the universal sections out of the user-owned document into a framework-owned file that `update.sh` *does* overwrite (like lib), leaving only project-specific sections presence-guarded. This kills the drift class entirely instead of warning about it. It is a real refactor (two files, agents read both, a migration for existing installs) and is explicitly **out of scope here** — this plan is the cheap safety net. Decide whether C becomes its own follow-on plan now or is deferred pending evidence the warn-only net is insufficient.
 
 ---
