@@ -115,8 +115,8 @@ class TestTokenizeForOverlap(unittest.TestCase):
         The cause 'getConfigurationItems returns Promise void' and the rationale
         'widen the outcome to carry success or failure inline' encode the same
         mechanism (widen the return type) but share NO significant token after
-        filtering. This is a documented gap in the mechanical check; it is caught
-        by the Step-5 intake echo-back human gate, not by token-overlap.
+        filtering. This is a documented gap: token-overlap does not detect
+        semantic paraphrase.
         """
         cause = "getConfigurationItems returns Promise void"
         # Pure-paraphrase: same mechanism, entirely different vocabulary.

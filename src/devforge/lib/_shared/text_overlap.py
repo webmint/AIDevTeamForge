@@ -1,13 +1,16 @@
 """Shared token-overlap utilities.
 
-tokenize_for_overlap is the single authoritative tokenizer for token-overlap
-matching across devforge subpackages. It splits on non-alphanumeric boundaries,
-lowercases, and drops tokens shorter than min_len and any stopword.
+tokenize_for_overlap is the shared tokenizer that _research (imported as
+_tokenize_hypothesis) and _specify use for token-overlap matching.
+_discover/_topic.py keeps its own _tokenize_for_conflict rather than
+importing this module. It splits on non-alphanumeric boundaries, lowercases,
+and drops tokens shorter than min_len and any stopword. New callers should
+import from here rather than adding another divergent copy.
 
-Technique mirrors _discover/_topic.py:_tokenize_for_conflict and the prior
-_research/_cmds_render_verify.py:_tokenize_hypothesis. Those copies are NOT
-migrated in this round (tracked as a follow-up); new callers must import from
-here rather than adding a fourth divergent copy.
+Technique mirrors the two prior implementations this module consolidates:
+_discover/_topic.py:_tokenize_for_conflict (NOT migrated — tracked as a
+follow-up) and the former _research/_cmds_render_verify.py:_tokenize_hypothesis
+(migrated — that module now imports tokenize_for_overlap under the same name).
 
 The stopword set is the union of the two prior sets, expanded to cover common
 English function words that add no discriminating signal for vocabulary-overlap
@@ -22,10 +25,19 @@ detection:
     EARS-formatted AC shares "system" and "shall" with every OOS entry that
     contains those words, producing universal false positives.
 
-The check catches IDENTIFIER/VOCABULARY reuse, not semantic paraphrase.
-Pure-paraphrase approaches that encode the same mechanism with different
-vocabulary pass this check — that gap is intentional and is caught by the
-Step-5 intake echo-back human gate, not by this mechanical backstop.
+This module's defaults are the LOOSE end of the tree's overlap-detection
+policies. The hypothesis-suppression gate in _research/_cmds_render_verify.py
+applies a stricter policy on top of this tokenizer: it subtracts tokens
+already grounded in recorded evidence rows, then fires only when a surviving
+overlapping token is 8+ characters long. _specify's AC-vs-OOS check
+(_specify/_cmds_phase4_verify.py, verify-scope-coherence) uses this module's
+defaults as-is, with no additional layer.
+
+The check catches IDENTIFIER/VOCABULARY reuse only: two texts that reuse the
+same identifier or word trip it. Pure semantic paraphrase — the same
+mechanism described in different vocabulary — shares no token and does not
+trip it. That bound is intentional; this module names no downstream gate as
+catching paraphrase.
 """
 
 from __future__ import annotations

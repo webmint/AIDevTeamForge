@@ -80,6 +80,7 @@ Stdlib only. Python 3.8+.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -96,6 +97,14 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 import research_helper  # noqa: E402
+
+# Direct-import of an internal _research submodule, NOT re-exported through
+# the research_helper shim (the shim re-exports only constants/state/
+# validators/layer_package/topic_conflicts/probe_tier -- see its own
+# docstring). _LIB_DIR is already on sys.path (above), the same path
+# research_helper.py itself uses to reach `_research._constants` etc., so
+# this reaches the private submodule the same way the shim does internally.
+from _research._cmds_render_verify import _suppression_evidence_tokens  # noqa: E402
 
 
 def _run(argv, cwd=None):
@@ -12409,8 +12418,14 @@ class TestVerifyHypothesisSuppression(unittest.TestCase):
       5. Unverified hypothesis present but NOT overlapping the rationale → exit 0.
       6. Pure-paraphrase approach (same mechanism, disjoint vocabulary) → exit 0.
          KNOWN LIMITATION: the check catches identifier/vocabulary reuse only; it
-         does NOT catch semantic paraphrase. Pure-paraphrase leakage is caught by
-         the Step-5 intake echo-back human gate, not by this mechanical backstop.
+         does NOT catch semantic paraphrase. Paraphrase passes this check, and no
+         gate in /devforge:research catches that gap (the Step-5/Phase 0.5 intake
+         echo-back runs before any recommended approach exists to echo back).
+      7. Evidence-grounded subtraction, the specificity floor, and the sorted
+         surviving-token stderr message — see the tests below this docstring's
+         block (test_overlap_*, test_surviving_*, test_order_pin_*,
+         test_evidence_source_*, test_d2_*, test_oq2_*, test_f4_isolation_*);
+         not enumerated individually here.
     """
 
     def _build_base_and_inject(self, devforge, cause_text, rationale_text,
@@ -12594,8 +12609,9 @@ class TestVerifyHypothesisSuppression(unittest.TestCase):
         the same mechanism as "getConfigurationItems returns Promise<void>" but shares
         NO significant token with that cause text (no shared identifier or keyword passes
         the min_len=4 + stopword filter). The gate correctly exits 0 — it cannot detect
-        pure paraphrase by design. This gap is caught by the Step-5 intake echo-back
-        human gate, not by this mechanical check.
+        pure paraphrase by design. Paraphrase passes this check, and no gate in
+        /devforge:research catches that gap (the Step-5/Phase 0.5 intake echo-back
+        runs before any recommended approach exists to echo back).
         """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
@@ -12792,6 +12808,531 @@ class TestVerifyHypothesisSuppression(unittest.TestCase):
                 "hypotheses_addressed content: " + r.stderr,
             )
             self.assertIn("refreshsession", r.stderr.lower())
+
+    # -- 105-plan Phase 1: evidence-grounded subtraction (D2) + the
+    #    specificity floor (D3) + the sorted-token-list message (OQ-2). --
+
+    def test_overlap_solely_evidence_grounded_exits_zero(self):
+        """An overlap made ONLY of evidence-grounded tokens exits 0, including an 8+ char one.
+
+        This PINS the subtraction itself, not merely the floor: "products"
+        (8 chars) alone already clears the specificity floor, so if D2's
+        subtraction were removed (leaving only D3's floor active), "products"
+        would survive and the gate would fire. "admin", "helpers" and
+        "products" are all tokens of the default fixture's own recorded
+        findings/fix_path_helpers file_lines (src/admin/Products.vue:201,
+        src/admin/helpers.ts:45) -- no extra setter calls needed. The gated
+        hypothesis's cause and the rationale share exactly those three
+        tokens; every one is subtracted before the floor even applies, so
+        nothing survives.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "Products admin helpers realign"
+            rationale = "Products admin helpers extended"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_overlap_one_specific_token_no_evidence_exits_nonzero(self):
+        """A single overlapping token of 8+ characters, in no evidence row, exits 2.
+
+        "warehouse" (9 chars) is the only token the cause and rationale share;
+        it is not a token of any recorded consumer_chain/value_semantics/
+        dead_siblings/fix_path_helpers/findings row, so subtraction leaves it
+        untouched and it clears the specificity floor.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "warehouse fails intermittently"
+            rationale = "stabilize warehouse during retries"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("warehouse", r.stderr.lower())
+
+    def test_surviving_tokens_all_below_floor_exits_zero(self):
+        """An overlap of only sub-8-character tokens exits 0 (the floor, not evidence).
+
+        "cache", "miss", "retry", "loop" are shared between cause and rationale,
+        none is evidence-grounded, and all are shorter than the 8-character
+        floor -- the floor alone empties the surviving set.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "cache miss causes retry loop"
+            rationale = "retry loop after cache miss"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_order_pin_subtract_before_floor_exits_zero(self):
+        """ORDER PIN: a token that both clears the floor AND is evidence-grounded exits 0.
+
+        "products" (8 chars -- clears the floor on its own) is a token of the
+        default fixture's recorded finding/fix-path-helper file_line
+        (src/admin/Products.vue:201). A wrong implementation that decided
+        whether to fire from the RAW overlap's floor-pass, then subtracted
+        evidence only for the printed message, would still fire here (since
+        "products" alone clears the floor before subtraction). The correct
+        order -- subtract, then floor, as one expression that also drives the
+        fire decision -- exits 0.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "Products state mismatch"
+            rationale = "Products display update"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_evidence_source_consumer_chain_consumer_qn_exits_zero(self):
+        """Per-source pin: consumer_chain[].consumer_qn grounds an 8+ char token.
+
+        "CheckoutSessionManager" (22 chars) is recorded ONLY as a
+        consumer_chain[].consumer_qn -- record-consumer-chain's own --value
+        and --file-line use unrelated words, so no other admitted source
+        carries this token. Dropping the consumer_chain branch from the
+        evidence-token union would flip this test to exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "CheckoutSessionManager expires early"
+            rationale = "renew CheckoutSessionManager before expiry"
+            self._build_base_and_inject(devforge, cause, rationale)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "chk-session-1",
+                "--consumer-qn", "CheckoutSessionManager",
+                "--file-line", "src/checkout/session.ts:12",
+                "--role", "reader",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_evidence_source_invariant_value_semantics_evidence_exits_zero(self):
+        """Per-source pin: an invariant-classified value_semantics[].evidence grounds an 8+ char token.
+
+        "PaginationCursorToken" (21 chars) is recorded ONLY as the --evidence of
+        a value_semantics row classified invariant (--stable-across-calls true
+        avoids the presentation-layer/unknown gate). The companion
+        record-consumer-chain call satisfies set-value-semantics' own
+        precondition (a consumer_chain row must exist for --value first) using
+        an unrelated consumer_qn ("GenericPageConsumer") that does not overlap
+        the cause/rationale. Dropping the value_semantics branch (or widening
+        it back to every classification per D2's pre-amendment form) would
+        flip this test to exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "PaginationCursorToken drifts after timeout"
+            rationale = "cache PaginationCursorToken across renewal calls"
+            self._build_base_and_inject(devforge, cause, rationale)
+            chain_setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "cursor-token-xyz",
+                "--consumer-qn", "GenericPageConsumer",
+                "--file-line", "src/paging/consumer.ts:5",
+                "--role", "reader",
+            ])
+            self.assertEqual(chain_setter.returncode, 0, chain_setter.stderr)
+            value_setter = _run([
+                "--devforge-dir", str(devforge), "set-value-semantics",
+                "--value", "cursor-token-xyz",
+                "--classification", "invariant",
+                "--evidence", "PaginationCursorToken",
+                "--stable-across-calls", "true",
+            ])
+            self.assertEqual(value_setter.returncode, 0, value_setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_evidence_source_dead_sibling_method_qn_exits_zero(self):
+        """Per-source pin: dead_siblings[].method_qn grounds an 8+ char token.
+
+        "LegacyExportRoutine" (20 chars) is recorded ONLY as a
+        dead_siblings[].method_qn -- --class-qn uses an unrelated word
+        ("LegacyExportUtils"), so no other admitted source carries the
+        method_qn token. Dropping the dead_siblings branch would flip this
+        test to exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "LegacyExportRoutine still referenced somewhere"
+            rationale = "remove LegacyExportRoutine entirely soon"
+            self._build_base_and_inject(devforge, cause, rationale)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-dead-sibling",
+                "--class-qn", "LegacyExportUtils",
+                "--method-qn", "LegacyExportRoutine",
+                "--verified-via", "trace_path",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_evidence_source_fix_path_helpers_file_line_exits_zero(self):
+        """Per-source pin: fix_path_helpers[].file_line grounds an 8+ char token.
+
+        "invoicerenderer" is recorded via record-fix-path-helper's --file-line
+        (src/billing/InvoiceRenderer.ts:44). record-fix-path-helper's own
+        anchor gate REQUIRES a recorded finding at the same path (exact line or
+        within +/-5) before it will accept the helper, so the anchoring
+        record-finding call here necessarily ALSO admits this same token via
+        the findings[].file_line branch (same path => same tokenization).
+        This test therefore cannot isolate the fix_path_helpers branch from
+        the findings branch by construction -- see
+        test_evidence_source_findings_file_line_exits_zero for a finding with
+        no co-located helper, which DOES isolate the findings branch at the
+        gate level. The branch-level isolation this test cannot provide is
+        instead covered directly against _suppression_evidence_tokens itself
+        by TestSuppressionEvidenceTokens.test_fix_path_helpers_isolated_when_findings_removed,
+        which drops "findings" from an already-built report dict and asserts
+        the fix_path_helpers loop alone still yields the token. Both branches
+        remain independently required by D2's ratified set regardless (check
+        11 compels a subset of each); this test still pins that a
+        fix_path_helpers file_line is grounded, just not in isolation.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "invoiceRenderer duplicates line items"
+            rationale = "patch invoiceRenderer to dedupe line items"
+            self._build_base_and_inject(devforge, cause, rationale)
+            finding_setter = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "invoice renderer",
+                "--file-line", "src/billing/InvoiceRenderer.ts:44",
+                "--relevance", "renders duplicate line items on retry",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(finding_setter.returncode, 0, finding_setter.stderr)
+            helper_setter = _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "InvoiceHelper.renderTotal",
+                "--file-line", "src/billing/InvoiceRenderer.ts:44",
+            ])
+            self.assertEqual(helper_setter.returncode, 0, helper_setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_evidence_source_findings_file_line_exits_zero(self):
+        """Per-source pin: findings[].file_line grounds an 8+ char token, with no co-located helper.
+
+        "quarterlysummary" is recorded ONLY via record-finding's --file-line
+        (src/reports/QuarterlySummary.ts:77); no fix_path_helper is recorded
+        at that path, so this token is admitted exclusively through the
+        findings branch. Dropping the findings branch would flip this test
+        to exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "QuarterlySummary miscalculates totals"
+            rationale = "recompute QuarterlySummary before export"
+            self._build_base_and_inject(devforge, cause, rationale)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "quarterly summary report",
+                "--file-line", "src/reports/QuarterlySummary.ts:77",
+                "--relevance", "totals column sums the wrong rows",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_d2_over_breadth_cost_consumer_chain_masks_a_leak(self):
+        """D2's predicted cost: a consumer_chain[].consumer_qn can mask a genuine leak.
+
+        D2's own recorded counter-argument (over-breadth) predicts this
+        exactly: if a run records the suspected mechanism's own identifier in
+        a consumer_chain row -- plausible, since consumer_chain rows are
+        recorded along the call path the investigation traces -- that
+        identifier is subtracted from the overlap and the leak exits 0
+        instead of 2. "BillingReconciliationJob" (24 chars) is the ONLY
+        overlapping token of 8+ characters; it is also recorded (honestly,
+        not as a fixture artifact) as a consumer_chain[].consumer_qn. This is
+        the predicted cost, demonstrated on a planted fixture -- the same
+        shape as the pure-paraphrase known-limitation pin -- not an observed
+        instance.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "BillingReconciliationJob stalls midway"
+            rationale = "retry BillingReconciliationJob midway"
+            self._build_base_and_inject(devforge, cause, rationale)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "billing-job-1",
+                "--consumer-qn", "BillingReconciliationJob",
+                "--file-line", "src/billing/reconcile.ts:9",
+                "--role", "writer",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_d2_amendment_pin_preference_evidence_not_subtracted(self):
+        """D2's amendment: a NON-invariant value_semantics[].evidence is NOT evidence-grounded.
+
+        Before the Phase 0 amendment, D2's source 2 admitted every
+        value_semantics[].evidence row regardless of classification; the
+        amendment narrows it to invariant-classified rows only. "ArchivedSessionLog"
+        (18 chars) is recorded as the --evidence of a value_semantics row
+        classified 'preference' (not invariant) and appears in no other
+        ratified row, so it is NOT subtracted and the gate must still fire.
+        A source-2 widened back to every classification would flip this test
+        to exit 0.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "ArchivedSessionLog grows unbounded"
+            rationale = "prune ArchivedSessionLog weekly"
+            self._build_base_and_inject(devforge, cause, rationale)
+            setter = _run([
+                "--devforge-dir", str(devforge), "set-value-semantics",
+                "--value", "archived-log-1",
+                "--classification", "preference",
+                "--evidence", "ArchivedSessionLog",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("archivedsessionlog", r.stderr.lower())
+
+    def test_oq2_message_lists_every_surviving_token_sorted(self):
+        """OQ-2: the (tokens: ...) field lists every surviving token, sorted -- not min(overlap).
+
+        The overlap keeps 3 non-evidence tokens of 8+ characters --
+        "concurrencyguard", "replicationlag", "throughputmetric" -- plus
+        "products" (8 chars, evidence-grounded via the default fixture's
+        finding/fix-path-helper file_lines -- removed by SUBTRACTION) and
+        "retry" (5 chars -- removed by the FLOOR). The (tokens: ...) field --
+        parsed out of stderr, NOT stderr as a whole, since the cause is
+        printed verbatim and contains every overlapping token whether or not
+        it survived -- must equal the sorted surviving list exactly, and
+        neither removed token may appear in it.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = (
+                "throughputMetric concurrencyGuard replicationLag Products "
+                "retry looping"
+            )
+            rationale = (
+                "throughputMetric concurrencyGuard replicationLag Products "
+                "retry mitigation"
+            )
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            match = re.search(r"\(tokens: ([^)]*)\)", r.stderr)
+            self.assertIsNotNone(match, "no (tokens: ...) field in stderr: " + r.stderr)
+            parsed = re.findall(r"'([^']*)'", match.group(1))
+            self.assertEqual(
+                parsed,
+                sorted(["concurrencyguard", "replicationlag", "throughputmetric"]),
+            )
+            self.assertNotIn("products", parsed)
+            self.assertNotIn("retry", parsed)
+
+    def test_f4_isolation_unresolved_feasibility_not_treated_as_high_grade(self):
+        """F4 isolation: unresolved probe_feasibility must not be treated as HIGH-grade.
+
+        No probe_feasibility is injected (all five fields keep reset-report's
+        default -- None, i.e. unresolved). hypotheses_addressed=["A"] IS
+        injected. Hypothesis A's cause overlaps the rationale on one token of
+        8+ characters present in no row of the ratified evidence set, and the
+        rationale shares no token with the second hypothesis's cause ("race
+        between fetch and watch"), so an overlap with the second hypothesis
+        cannot explain an exit 2 whatever grade the session got. If unresolved
+        feasibility were ever treated as HIGH-grade (whether inside
+        _probe_tier_is_unverified or at its call site in
+        cmd_verify_hypothesis_suppression), label "A" would be confirmed,
+        hypothesis A would be exempt, and this would exit 0.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "OutboundWebhookDispatcher retries with backoff"
+            rationale = "harden OutboundWebhookDispatcher against retries"
+            self._build_base_and_inject(
+                devforge, cause, rationale, hypotheses_addressed=["A"],
+            )
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("OutboundWebhookDispatcher", r.stderr)
+
+
+class TestSuppressionEvidenceTokens(unittest.TestCase):
+    """_suppression_evidence_tokens: direct-import unit tests (D2 as amended).
+
+    Every case except test_missing_none_non_dict_rows_skipped_without_error
+    builds report state through real research_helper setters (subprocess),
+    loads the resulting research-report.json, then calls
+    _suppression_evidence_tokens(...) directly (imported at module level from
+    _research._cmds_render_verify -- see the import block near the top of
+    this file for why a direct submodule import was needed here rather than
+    a research_helper.<name> re-export).
+    """
+
+    def test_consumer_chain_consumer_qn_contributes_token(self):
+        """A recorded consumer_chain[].consumer_qn's tokens are returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "chk-session-1",
+                "--consumer-qn", "CheckoutSessionManager",
+                "--file-line", "src/checkout/session.ts:12",
+                "--role", "reader",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            tokens = _suppression_evidence_tokens(data)
+            self.assertIn("checkoutsessionmanager", tokens)
+
+    def test_invariant_value_semantics_evidence_contributes_token(self):
+        """An invariant-classified value_semantics[].evidence's tokens are returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            chain_setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "cursor-token-xyz",
+                "--consumer-qn", "GenericPageConsumer",
+                "--file-line", "src/paging/consumer.ts:5",
+                "--role", "reader",
+            ])
+            self.assertEqual(chain_setter.returncode, 0, chain_setter.stderr)
+            value_setter = _run([
+                "--devforge-dir", str(devforge), "set-value-semantics",
+                "--value", "cursor-token-xyz",
+                "--classification", "invariant",
+                "--evidence", "PaginationCursorToken",
+                "--stable-across-calls", "true",
+            ])
+            self.assertEqual(value_setter.returncode, 0, value_setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            tokens = _suppression_evidence_tokens(data)
+            self.assertIn("paginationcursortoken", tokens)
+
+    def test_dead_sibling_method_qn_contributes_token(self):
+        """A recorded dead_siblings[].method_qn's tokens are returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-dead-sibling",
+                "--class-qn", "LegacyExportUtils",
+                "--method-qn", "LegacyExportRoutine",
+                "--verified-via", "trace_path",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            tokens = _suppression_evidence_tokens(data)
+            self.assertIn("legacyexportroutine", tokens)
+
+    def test_findings_file_line_contributes_token(self):
+        """A recorded findings[].file_line's tokens are returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "quarterly summary report",
+                "--file-line", "src/reports/QuarterlySummary.ts:77",
+                "--relevance", "totals column sums the wrong rows",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            tokens = _suppression_evidence_tokens(data)
+            self.assertIn("quarterlysummary", tokens)
+
+    def test_fix_path_helpers_isolated_when_findings_removed(self):
+        """The fix_path_helpers[].file_line branch works on its own, with findings removed.
+
+        Closes the isolation gap test_evidence_source_fix_path_helpers_file_line_
+        exits_zero (in TestVerifyHypothesisSuppression) flags: record-fix-path-
+        helper's own anchor gate requires an anchoring finding at the same path,
+        so a report built through real setters ALWAYS has both a fix_path_helpers
+        row and a findings row carrying the same token -- no real-setter report
+        can isolate the fix_path_helpers branch from the findings branch by
+        having only one of the two admit the token. This test isolates the
+        BRANCH instead of the ROW: it builds a real report with a fix-path
+        helper anchored to a finding (both via real setters, both asserted
+        returncode 0), then deletes "findings" from the loaded dict before
+        calling _suppression_evidence_tokens -- simulating "what if there were
+        no findings data at all" -- and asserts the helper's file_line token
+        ("invoicerenderer") is still returned. Only the fix_path_helpers loop
+        can produce that token once "findings" is gone, so a maintainer who
+        drops the fix_path_helpers loop from the implementation fails this
+        test specifically.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            finding_setter = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "invoice renderer",
+                "--file-line", "src/billing/InvoiceRenderer.ts:44",
+                "--relevance", "renders duplicate line items on retry",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(finding_setter.returncode, 0, finding_setter.stderr)
+            helper_setter = _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "InvoiceHelper.renderTotal",
+                "--file-line", "src/billing/InvoiceRenderer.ts:44",
+            ])
+            self.assertEqual(helper_setter.returncode, 0, helper_setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            del data["findings"]
+            tokens = _suppression_evidence_tokens(data)
+            self.assertIn("invoicerenderer", tokens)
+
+    def test_preference_classified_evidence_not_contributed(self):
+        """A 'preference'-classified value_semantics[].evidence is NOT returned (D2 amendment)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "set-value-semantics",
+                "--value", "archived-log-1",
+                "--classification", "preference",
+                "--evidence", "ArchivedSessionLog",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            tokens = _suppression_evidence_tokens(data)
+            self.assertNotIn("archivedsessionlog", tokens)
+
+    def test_missing_none_non_dict_rows_skipped_without_error(self):
+        """Missing / None / non-dict / key-less rows are skipped without raising.
+
+        No real setter can produce a malformed row of any of these shapes
+        (every setter validates and appends a well-formed dict) -- this dict
+        is hand-built to exercise the defensive skip branches directly, the
+        one exception this file's round-trip-via-real-setters rule allows
+        for exactly the reason it does not apply: there is no setter call
+        shape that reaches this code path.
+        """
+        report = {
+            "consumer_chain": [None, "not-a-dict", {}, {"consumer_qn": None}],
+            "value_semantics": [
+                None, "not-a-dict", {},
+                {"classification": "invariant"},
+                {"classification": "invariant", "evidence": None},
+            ],
+            "dead_siblings": [None, "not-a-dict", {}, {"method_qn": None}],
+            "fix_path_helpers": [None, "not-a-dict", {}, {"file_line": None}],
+            "findings": [None, "not-a-dict", {}, {"file_line": None}],
+        }
+        tokens = _suppression_evidence_tokens(report)
+        self.assertEqual(tokens, set())
+        # Keys absent entirely (not even present in the dict) also skip cleanly.
+        self.assertEqual(_suppression_evidence_tokens({}), set())
 
 
 # ---------------------------------------------------------------------------

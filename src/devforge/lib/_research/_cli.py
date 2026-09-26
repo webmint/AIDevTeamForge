@@ -743,9 +743,11 @@ def _register_subcommands(subparsers) -> None:
     sp = subparsers.add_parser(
         "verify-hypothesis-suppression",
         help=(
-            "Gate: exit 2 when any unverified hypothesis cause overlaps the "
-            "recommended-approach rationale (MEDIUM/LOW probe tier or unresolved "
-            "feasibility discriminator). Exit 0 when clean or tier is HIGH."
+            "Gate: exit 2 when a gated hypothesis's cause shares with the "
+            "recommended-approach rationale a token of 8 or more characters "
+            "that no recorded evidence row carries. A hypothesis is exempt "
+            "only when the session is HIGH-grade AND its label is listed in "
+            "hypotheses_addressed."
         ),
     )
     sp.set_defaults(func=cmd_verify_hypothesis_suppression)

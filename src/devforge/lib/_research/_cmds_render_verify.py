@@ -3,10 +3,14 @@
 cmd_render emits the report markdown via _render_report_md. cmd_verify
 runs the 20-check cross-state validator. Each check enumerated in the
 cmd_verify docstring; violations accumulate then emit to stderr.
-cmd_verify_hypothesis_suppression is a dedicated gate that ensures an
-unverified suspected-cause hypothesis (probe tier 2 or 3, or feasibility
-discriminator unresolved) does not appear in plan_seeds direction
-(recommended_approach rationale). Exits non-zero on a match.
+cmd_verify_hypothesis_suppression is a dedicated gate: a hypothesis is
+confirmed only when this session is HIGH-grade (probe tier 1 or 1.5,
+feasibility discriminator resolved) AND its label is listed in
+recommended_approach.hypotheses_addressed; every other hypothesis is
+gated, even in a HIGH-grade session. A gated hypothesis's cause must not
+share, with the recommended-approach rationale (plan_seeds direction),
+any token of 8 or more characters that is not grounded in a recorded
+evidence row. Exits non-zero on a violation.
 """
 
 from __future__ import annotations
@@ -865,40 +869,104 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
-    """Gate: unverified hypothesis must not appear in recommended-approach direction.
+# The specificity floor for the suppression gate below: a surviving token
+# must be this many characters or longer to fire. ONE token, never a
+# count -- see the gate's own docstring. 8 keeps real 8-9-character
+# identifiers (e.g. "sortItems") visible to the gate while filtering
+# shorter generic words; it does not exclude every generic word (e.g.
+# "declared" is 8 characters and still clears it).
+_SUPPRESSION_MIN_SPECIFIC_TOKEN_LEN = 8
 
-    An unverified hypothesis is any recorded hypothesis (report.hypotheses[].cause)
-    that is NOT confirmed by the current session. A hypothesis is considered confirmed
-    (and exempt from the gate) only when BOTH conditions hold:
+
+def _suppression_evidence_tokens(report):
+    # type: (dict) -> set
+    """Tokenize the recorded evidence rows the suppression gate may not fire on.
+
+    Returns the union of _tokenize_hypothesis(...) over: consumer_chain[].
+    consumer_qn; value_semantics[].evidence, but only for rows whose
+    classification == "invariant"; dead_siblings[].method_qn;
+    fix_path_helpers[].file_line; findings[].file_line. A missing, None, or
+    non-dict row at any of those keys is skipped. No other recorded field
+    (fix_path_helpers[].qn, value_semantics[].value, consumer_chain[].
+    file_line or .value, dead_siblings[].class_qn) contributes a token here.
+    """
+    tokens = set()
+    for row in report.get("consumer_chain") or []:
+        if not isinstance(row, dict):
+            continue
+        qn = row.get("consumer_qn")
+        if qn:
+            tokens.update(_tokenize_hypothesis(qn))
+    for row in report.get("value_semantics") or []:
+        if not isinstance(row, dict) or row.get("classification") != "invariant":
+            continue
+        evidence = row.get("evidence")
+        if evidence:
+            tokens.update(_tokenize_hypothesis(evidence))
+    for row in report.get("dead_siblings") or []:
+        if not isinstance(row, dict):
+            continue
+        method_qn = row.get("method_qn")
+        if method_qn:
+            tokens.update(_tokenize_hypothesis(method_qn))
+    for row in report.get("fix_path_helpers") or []:
+        if not isinstance(row, dict):
+            continue
+        file_line = row.get("file_line")
+        if file_line:
+            tokens.update(_tokenize_hypothesis(file_line))
+    for row in report.get("findings") or []:
+        if not isinstance(row, dict):
+            continue
+        file_line = row.get("file_line")
+        if file_line:
+            tokens.update(_tokenize_hypothesis(file_line))
+    return tokens
+
+
+def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
+    """Gate: a hypothesis not confirmed by this session must not leak into recommended-approach direction.
+
+    A hypothesis is considered confirmed (and exempt from the gate) only when
+    BOTH conditions hold:
       1. The session's probe tier is HIGH-grade (tier 1 or 1.5, i.e. NOT MEDIUM/LOW
          grade per _classify_probe_tier and NOT feasibility-discriminator unresolved).
-      2. The hypothesis cause appears in report.recommended_approach.hypotheses_addressed
-         (it is the primary or an explicitly addressed confirmed hypothesis, NOT a runner-up
+      2. The hypothesis's LABEL (assigned at record-hypothesis time, e.g. "A", "B")
+         appears in report.recommended_approach.hypotheses_addressed (it is the
+         primary or an explicitly addressed confirmed hypothesis, NOT a runner-up
          whose confirmation status is unknown).
 
-    Any hypothesis that does not satisfy both conditions is treated as unverified.
-    This catches the concrete failure mode where a runner-up hypothesis in an otherwise
-    HIGH-grade session silently leaks into design direction without being confirmed.
+    Any hypothesis that does not satisfy both conditions is gated. This catches the
+    concrete failure mode where a runner-up hypothesis in an otherwise HIGH-grade
+    session silently leaks into design direction without being confirmed.
 
-    The check performs token-overlap between each unverified hypothesis's cause text
+    The check performs token-overlap between each gated hypothesis's cause text
     and report.recommended_approach.rationale (which becomes plan_seeds.recommended_
-    approach_summary in the handoff). Overlap is identifier/vocabulary matching: split
-    on non-alphanumeric boundaries, lowercase, drop tokens shorter than 4 chars and
-    stopwords. A match on any token means the unverified mechanism leaked into design
-    direction.
+    approach_summary in the handoff), using the shared identifier/vocabulary
+    tokenizer (split on non-alphanumeric boundaries, lowercase, drop tokens shorter
+    than 4 chars and stopwords). Two filters then narrow that raw overlap, applied
+    in this order:
+      1. Evidence-grounded subtraction: an overlapping token also present in the
+         tokenization of a recorded consumer_chain[].consumer_qn, an invariant-
+         classified value_semantics[].evidence, a dead_siblings[].method_qn, a
+         fix_path_helpers[].file_line, or a findings[].file_line is removed — the
+         rationale is allowed to cite what the run already recorded evidence for.
+      2. A specificity floor: of what survives subtraction, only a token of 8 or
+         more characters can fire the gate; shorter surviving tokens are dropped.
+    This is a STRICTER policy than the shared tokenizer's own bare overlap test
+    (imported here as _tokenize_hypothesis) — the shared tokenizer has no
+    evidence-subtraction step and no length floor of its own.
 
     Known limitation: this check catches IDENTIFIER/VOCABULARY reuse only, not
     semantic paraphrase. A recommended approach that encodes the same mechanism as
-    an unverified hypothesis using entirely different vocabulary will pass this check.
-    Pure-paraphrase leakage is caught by the Step-5 intake echo-back human gate,
-    not by this mechanical backstop.
+    a gated hypothesis using entirely different vocabulary passes this check, and
+    no gate in this command catches that gap.
 
     Exit codes:
-      0 — no unverified hypothesis overlaps the recommended approach (clean).
+      0 — no gated hypothesis has a surviving overlapping token (clean).
       1 — state files unreadable.
-      2 — at least one unverified hypothesis cause-token found in the recommended
-          approach; stderr names the hypothesis cause + overlapping tokens.
+      2 — at least one gated hypothesis has a surviving overlapping token; stderr
+          names the hypothesis cause and lists every surviving token, sorted.
 
     Recovery: move the mechanism into an open question ("confirm <mechanism> before
     designing") via record-gap, then remove it from the recommended approach rationale
@@ -950,6 +1018,10 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
     if not rationale_tokens:
         return 0
 
+    # Evidence-grounded tokens: subtracted from every hypothesis's overlap
+    # before the specificity floor is applied (see the function docstring).
+    evidence_tokens = _suppression_evidence_tokens(report)
+
     # Build the set of hypothesis LABELS that are explicitly confirmed by the
     # recommended approach. A hypothesis is confirmed when the session is HIGH-grade
     # AND its label (e.g. "A", "B") appears in recommended_approach.hypotheses_addressed.
@@ -984,15 +1056,22 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
             continue
         cause_tokens = set(_tokenize_hypothesis(cause))
         overlap = cause_tokens & rationale_tokens
-        if overlap:
-            # Report the first overlapping token (lexicographically) for determinism.
-            sample_token = min(overlap)
+        # Subtract evidence-grounded tokens, THEN apply the specificity floor
+        # (order is load-bearing -- see the function docstring). Sorted for
+        # determinism, and so every surviving token is named, not just one.
+        surviving = sorted(
+            t for t in (overlap - evidence_tokens)
+            if len(t) >= _SUPPRESSION_MIN_SPECIFIC_TOKEN_LEN
+        )
+        if surviving:
             sys.stderr.write(
                 "research_helper verify-hypothesis-suppression: "
                 "unverified hypothesis cause {0!r} overlaps recommended approach "
-                "(token: {1!r}); move the mechanism to an open question via "
+                "(tokens: {1}); move the mechanism to an open question via "
                 "record-gap and remove it from the recommended approach "
-                "rationale via set-recommended-approach\n".format(cause, sample_token)
+                "rationale via set-recommended-approach\n".format(
+                    cause, ", ".join(repr(t) for t in surviving)
+                )
             )
             violations_found = True
 
