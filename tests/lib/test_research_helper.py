@@ -104,7 +104,11 @@ import research_helper  # noqa: E402
 # docstring). _LIB_DIR is already on sys.path (above), the same path
 # research_helper.py itself uses to reach `_research._constants` etc., so
 # this reaches the private submodule the same way the shim does internally.
-from _research._cmds_render_verify import _suppression_evidence_tokens  # noqa: E402
+from _research._cmds_render_verify import (  # noqa: E402
+    _accepted_overlap_tokens_by_label,
+    _suppression_evidence_tokens,
+)
+from _research._cmds_overlap import _grounded_declaration_values  # noqa: E402
 
 
 def _run(argv, cwd=None):
@@ -174,6 +178,8 @@ class TestSchemas(unittest.TestCase):
             "literal_archaeology",
             # Step 5 probe scripts
             "probe_scripts",
+            # Plan 105 D5/OQ-1 — grounded-overlap declarations
+            "overlap_declarations",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         for dict_field in (
@@ -6476,6 +6482,66 @@ class TestSingleLayerRenderAndSummary(unittest.TestCase):
             _build_enhancement_state(devforge)
             out = self._summary(devforge)
             self.assertNotIn("recommended_approach.single_layer", out)
+
+
+class TestOverlapDeclarationsRenderAndSummary(unittest.TestCase):
+    """Render + summary output for report.overlap_declarations (plan 105 D5/OQ-1)."""
+
+    def test_summary_shows_zero_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("overlap_declarations: 0", r.stdout)
+
+    def test_summary_shows_declaration_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["overlap_declarations"] = [
+                {"hypothesis": "A", "tokens": ["formattotals"], "grounded_in": "x"},
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("overlap_declarations: 1", r.stdout)
+
+    def test_render_omits_section_when_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("## Overlap Declarations", r.stdout)
+
+    def test_render_includes_section_with_declaration_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["overlap_declarations"] = [
+                {
+                    "hypothesis": "A",
+                    "tokens": ["formattotals"],
+                    "grounded_in": "InvoiceRenderer.formatTotals",
+                },
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("## Overlap Declarations", r.stdout)
+            self.assertIn("| Hypothesis | Accepted tokens | Grounded in |", r.stdout)
+            self.assertIn("| A | formattotals | InvoiceRenderer.formatTotals |", r.stdout)
+            # Section placement: after Approaches, before Constitution Constraints.
+            approaches_idx = r.stdout.index("## Approaches (HOW to change)")
+            overlap_idx = r.stdout.index("## Overlap Declarations")
+            constraints_idx = r.stdout.index("## Constitution Constraints")
+            self.assertLess(approaches_idx, overlap_idx)
+            self.assertLess(overlap_idx, constraints_idx)
 
 
 # ---------------------------------------------------------------------------
@@ -13515,6 +13581,494 @@ class TestVerifyHypothesisSuppression(unittest.TestCase):
             self.assertIn("OutboundWebhookDispatcher", r.stderr)
 
 
+class TestDeclareGroundedOverlap(unittest.TestCase):
+    """declare-grounded-overlap: plan 105 D5's second admissible exit from
+    verify-hypothesis-suppression's exit 2 (the other is record-gap).
+
+    Builds state via _build_bug_state (real setters) plus the canonical
+    grounding row the plan's Phase 3 section names: record-finding at
+    pkg-alpha-core/billing.ts:40, then record-fix-path-helper --helper-qn
+    InvoiceRenderer.formatTotals --file-line pkg-alpha-core/billing.ts:40.
+    "formattotals" (12 chars) is not a token of any DEFAULT _build_bug_state
+    evidence row (it is recorded only via the helper's --helper-qn, which
+    the gate's own evidence-token subtraction never reads -- only
+    fix_path_helpers[].file_line is), so an overlap on it fires the gate
+    before any declaration is recorded.
+    """
+
+    _GROUNDING_QN = "InvoiceRenderer.formatTotals"
+    _GROUNDING_FILE_LINE = "pkg-alpha-core/billing.ts:40"
+
+    def _build_grounded(self, devforge, cause_a, rationale, cause_b=None):
+        """_build_bug_state + the canonical grounding row + custom cause(s)/rationale.
+
+        hypotheses[0] (label "A") gets cause_a; hypotheses[1] (label "B")
+        gets cause_b when supplied (else left at _build_bug_state's default,
+        which shares no token with any rationale used in this class).
+        recommended_approach.rationale becomes rationale.
+        """
+        _build_bug_state(devforge)
+        finding = _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "invoice renderer",
+            "--file-line", self._GROUNDING_FILE_LINE,
+            "--relevance", "duplicates line items on retry",
+            "--rests-on-literal", "none",
+        ])
+        self.assertEqual(finding.returncode, 0, finding.stderr)
+        helper = _run([
+            "--devforge-dir", str(devforge), "record-fix-path-helper",
+            "--helper-qn", self._GROUNDING_QN,
+            "--file-line", self._GROUNDING_FILE_LINE,
+        ])
+        self.assertEqual(helper.returncode, 0, helper.stderr)
+
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        data["hypotheses"][0]["cause"] = cause_a
+        if cause_b is not None:
+            data["hypotheses"][1]["cause"] = cause_b
+        data["recommended_approach"]["rationale"] = rationale
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def _declare(self, devforge, hypothesis, tokens, grounded_in):
+        return _run([
+            "--devforge-dir", str(devforge), "declare-grounded-overlap",
+            "--hypothesis", hypothesis,
+            "--tokens", json.dumps(tokens),
+            "--grounded-in", grounded_in,
+        ])
+
+    def test_grounded_declaration_exempts_hypothesis_exit_zero(self):
+        """A grounded declaration for A removes A's only surviving token → gate exits 0.
+
+        Before the declaration the gate exits 2 on "formattotals"; "invoice"
+        (7 chars) also raw-overlaps but never clears the specificity floor
+        either way, declared or not.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+
+            before = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(before.returncode, 2, before.stderr)
+            self.assertIn("formattotals", before.stderr.lower())
+
+            declare = self._declare(devforge, "A", ["formatTotals"], self._GROUNDING_QN)
+            self.assertEqual(declare.returncode, 0, declare.stderr)
+
+            after = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(after.returncode, 0, after.stderr)
+
+    def test_declaration_ungrounded_grounded_in_exits_two_prints_recorded_values(self):
+        """--grounded-in matching no recorded row → exit 2 from the setter,
+        printing the recorded values (the --cites shape, F13)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+
+            r = self._declare(devforge, "A", ["formatTotals"], "NoSuchRecordedRow")
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("does not match any recorded evidence row", r.stderr)
+            self.assertIn("Recorded values:", r.stderr)
+            self.assertIn(self._GROUNDING_QN, r.stderr)
+
+    def test_declaration_for_a_does_not_exempt_b(self):
+        """A declaration for hypothesis A does not exempt the SAME token on
+        hypothesis B's cause -- B is still gated, naming B."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            cause_b = "formatTotals also miscounts refunds during export"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale, cause_b=cause_b)
+
+            declare = self._declare(devforge, "A", ["formatTotals"], self._GROUNDING_QN)
+            self.assertEqual(declare.returncode, 0, declare.stderr)
+
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("gated hypothesis B", r.stderr)
+            self.assertNotIn("gated hypothesis A", r.stderr)
+
+    def test_declared_token_does_not_exempt_undeclared_token_same_hypothesis(self):
+        """A declared token does not exempt an UNDECLARED overlapping token
+        on the same hypothesis -- gate still exits 2, naming only the
+        undeclared token."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts totals while throughputMetric spikes"
+            rationale = "patch formatTotals and monitor throughputMetric closely"
+            self._build_grounded(devforge, cause_a, rationale)
+
+            declare = self._declare(devforge, "A", ["formatTotals"], self._GROUNDING_QN)
+            self.assertEqual(declare.returncode, 0, declare.stderr)
+
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            match = re.search(r"\(tokens: ([^)]*)\)", r.stderr)
+            self.assertIsNotNone(match, "no (tokens: ...) field in stderr: " + r.stderr)
+            parsed = re.findall(r"'([^']*)'", match.group(1))
+            self.assertEqual(parsed, ["throughputmetric"])
+
+    def test_no_hypothesis_recorded_exits_two_names_record_hypothesis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # 11 chars -- clears the specificity-floor check (finding 4)
+            # so this call reaches the hypothesis-recorded check under test.
+            r = self._declare(devforge, "A", ["placeholder"], "whatever")
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("record-hypothesis", r.stderr)
+
+    def test_unknown_hypothesis_label_exits_two_lists_recorded_labels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # 11 chars -- clears the specificity-floor check (finding 4)
+            # so this call reaches the label check under test.
+            r = self._declare(devforge, "C", ["placeholder"], "whatever")
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("not a recorded hypothesis label", r.stderr)
+            self.assertIn("'A'", r.stderr)
+            self.assertIn("'B'", r.stderr)
+
+    def test_declared_token_not_in_grounded_in_tokens_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            # "notpresent" (10 chars) clears the specificity floor (unlike
+            # the shorter "nomatch" this test used before finding 4 added
+            # the floor check ahead of this one) but is still not a token
+            # of the grounding row.
+            r = self._declare(devforge, "A", ["notpresent"], self._GROUNDING_QN)
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("are not tokens of --grounded-in", r.stderr)
+
+    def test_declared_token_not_in_hypothesis_cause_exits_two(self):
+        """"invoicerenderer" IS a token of --grounded-in but is NOT a token
+        of hypothesis A's cause (which shares only "formattotals" with the
+        grounding row)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            r = self._declare(devforge, "A", ["invoicerenderer"], self._GROUNDING_QN)
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("are not tokens of hypothesis", r.stderr)
+
+    def test_empty_tokens_array_exits_two_report_unchanged(self):
+        """--tokens '[]' decodes fine (empty JSON array IS accepted by the
+        shared array validator) but is rejected here -- a declaration with
+        no tokens declares nothing. Nothing is written: this check runs
+        before the state transaction opens, so the report file is not
+        even read/re-serialized for this failure."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            rep_path = devforge / "research-report.json"
+            before = rep_path.read_bytes()
+            r = self._declare(devforge, "A", [], self._GROUNDING_QN)
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn(
+                "--tokens must be a non-empty JSON array", r.stderr
+            )
+            after = rep_path.read_bytes()
+            self.assertEqual(before, after)
+
+    def test_declared_token_below_specificity_floor_exits_two_report_unchanged(self):
+        """A declared token shorter than the gate's own specificity floor
+        (8 characters) can never survive that floor, so declaring it
+        would be inert theatre -- a declaration that could never once
+        matter. "totals" (6 chars) is a real word of hypothesis A's own
+        cause text, chosen so the rejection is unambiguously about length,
+        not about a token the cause never contained. This check runs
+        before the state transaction opens, so nothing is written; it
+        also runs before every grounding check, so it fires here
+        regardless of what --grounded-in names."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            rep_path = devforge / "research-report.json"
+            before = rep_path.read_bytes()
+            r = self._declare(devforge, "A", ["totals"], self._GROUNDING_QN)
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn("specificity floor", r.stderr)
+            self.assertIn("'totals'", r.stderr)
+            after = rep_path.read_bytes()
+            self.assertEqual(before, after)
+
+    def test_identical_declaration_twice_stores_one_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            first = self._declare(devforge, "A", ["formatTotals"], self._GROUNDING_QN)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            second = self._declare(devforge, "A", ["formatTotals"], self._GROUNDING_QN)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            self.assertEqual(len(data["overlap_declarations"]), 1)
+            self.assertEqual(
+                data["overlap_declarations"][0],
+                {
+                    "hypothesis": "A",
+                    "tokens": ["formattotals"],
+                    "grounded_in": self._GROUNDING_QN,
+                },
+            )
+
+    def test_gate_message_names_label_and_both_exits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("gated hypothesis A", r.stderr)
+            self.assertIn("record-gap", r.stderr)
+            self.assertIn("declare-grounded-overlap", r.stderr)
+            self.assertIn("--hypothesis A", r.stderr)
+
+    def test_gate_message_unlabelled_hypothesis(self):
+        """A legacy hypothesis with no recorded label renders as '(unlabelled)'
+        and offers only the record-gap exit -- declare-grounded-overlap
+        always rejects a --hypothesis it cannot resolve to a recorded
+        label (there is none to declare against), so the hint naming it
+        is dropped entirely rather than printing an unusable
+        '--hypothesis (unlabelled)' invocation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause_a = "formatTotals corrupts invoice totals under concurrency"
+            rationale = "rework formatTotals for consistent invoice math"
+            self._build_grounded(devforge, cause_a, rationale)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            del data["hypotheses"][0]["label"]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("gated hypothesis (unlabelled)", r.stderr)
+            self.assertIn("record-gap", r.stderr)
+            self.assertNotIn("declare-grounded-overlap", r.stderr)
+
+
+class TestGroundedDeclarationValues(unittest.TestCase):
+    """_grounded_declaration_values: direct-import unit tests (plan 105 D5).
+
+    Wider than _suppression_evidence_tokens's own source set on purpose
+    (see _cmds_overlap.py's module docstring). Every case except
+    test_missing_none_non_dict_rows_skipped_without_error builds report
+    state through real research_helper setters (subprocess), then calls
+    _grounded_declaration_values(...) directly on the loaded JSON.
+    """
+
+    def test_consumer_chain_all_three_fields_contribute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "chk-session-1",
+                "--consumer-qn", "CheckoutSessionManager",
+                "--file-line", "src/checkout/session.ts:12",
+                "--role", "reader",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            values = _grounded_declaration_values(data)
+            self.assertIn("chk-session-1", values)
+            self.assertIn("CheckoutSessionManager", values)
+            self.assertIn("src/checkout/session.ts:12", values)
+
+    def test_value_semantics_value_and_evidence_any_classification(self):
+        """Unlike the gate's own evidence-token subtraction (invariant-only
+        evidence), the grounding set admits a preference-classified row's
+        .value and .evidence too."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            chain = _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "archived-log-1",
+                "--consumer-qn", "GenericPageConsumer",
+                "--file-line", "src/paging/consumer.ts:5",
+                "--role", "reader",
+            ])
+            self.assertEqual(chain.returncode, 0, chain.stderr)
+            setter = _run([
+                "--devforge-dir", str(devforge), "set-value-semantics",
+                "--value", "archived-log-1",
+                "--classification", "preference",
+                "--evidence", "ArchivedSessionLog",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            values = _grounded_declaration_values(data)
+            self.assertIn("archived-log-1", values)
+            self.assertIn("ArchivedSessionLog", values)
+
+    def test_dead_siblings_method_qn_and_class_qn_both_contribute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-dead-sibling",
+                "--class-qn", "LegacyExportUtils",
+                "--method-qn", "LegacyExportRoutine",
+                "--verified-via", "trace_path",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            values = _grounded_declaration_values(data)
+            self.assertIn("LegacyExportUtils", values)
+            self.assertIn("LegacyExportRoutine", values)
+
+    def test_fix_path_helpers_qn_and_file_line_both_contribute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            finding = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "invoice renderer",
+                "--file-line", "pkg-alpha-core/billing.ts:40",
+                "--relevance", "duplicates line items on retry",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(finding.returncode, 0, finding.stderr)
+            helper = _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "InvoiceRenderer.formatTotals",
+                "--file-line", "pkg-alpha-core/billing.ts:40",
+            ])
+            self.assertEqual(helper.returncode, 0, helper.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            values = _grounded_declaration_values(data)
+            self.assertIn("InvoiceRenderer.formatTotals", values)
+            self.assertIn("pkg-alpha-core/billing.ts:40", values)
+
+    def test_findings_file_line_contributes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            setter = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "quarterly summary report",
+                "--file-line", "src/reports/QuarterlySummary.ts:77",
+                "--relevance", "totals column sums the wrong rows",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(setter.returncode, 0, setter.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            values = _grounded_declaration_values(data)
+            self.assertIn("src/reports/QuarterlySummary.ts:77", values)
+
+    def test_missing_none_non_dict_rows_skipped_without_error(self):
+        """No real setter can produce a malformed row of any of these shapes
+        -- this dict is hand-built to exercise the defensive skip branches
+        directly, mirroring TestSuppressionEvidenceTokens's own equivalent
+        test for the same reason. Includes a non-string field value (a
+        list and an int) at one field per source, alongside the existing
+        None/missing/non-dict-row cases -- a list is unhashable (would
+        raise on values.add(v) with no isinstance guard) and an int is
+        hashable but not the string --grounded-in is compared against, so
+        both must be skipped without raising."""
+        report = {
+            "consumer_chain": [
+                None, "not-a-dict", {}, {"consumer_qn": None},
+                {"consumer_qn": ["a", "list"]},
+            ],
+            "value_semantics": [
+                None, "not-a-dict", {}, {"value": None}, {"value": 42},
+            ],
+            "dead_siblings": [
+                None, "not-a-dict", {}, {"method_qn": None},
+                {"method_qn": {"nested": "dict"}},
+            ],
+            "fix_path_helpers": [
+                None, "not-a-dict", {}, {"qn": None}, {"qn": 7},
+            ],
+            "findings": [
+                None, "not-a-dict", {}, {"file_line": None},
+                {"file_line": ["a", "list"]},
+            ],
+        }
+        self.assertEqual(_grounded_declaration_values(report), set())
+        self.assertEqual(_grounded_declaration_values({}), set())
+
+
+class TestAcceptedOverlapTokensByLabel(unittest.TestCase):
+    """_accepted_overlap_tokens_by_label: direct-import unit tests (plan 105 D5)."""
+
+    def test_declared_tokens_grouped_by_label_round_trip(self):
+        """Real declare-grounded-overlap state, read back through the helper."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            finding = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "invoice renderer",
+                "--file-line", "pkg-alpha-core/billing.ts:40",
+                "--relevance", "duplicates line items on retry",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(finding.returncode, 0, finding.stderr)
+            helper = _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "InvoiceRenderer.formatTotals",
+                "--file-line", "pkg-alpha-core/billing.ts:40",
+            ])
+            self.assertEqual(helper.returncode, 0, helper.stderr)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["hypotheses"][0]["cause"] = "formatTotals corrupts invoice totals"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            declare = _run([
+                "--devforge-dir", str(devforge), "declare-grounded-overlap",
+                "--hypothesis", "A",
+                "--tokens", json.dumps(["formatTotals"]),
+                "--grounded-in", "InvoiceRenderer.formatTotals",
+            ])
+            self.assertEqual(declare.returncode, 0, declare.stderr)
+            data = json.loads(rep_path.read_text())
+            accepted = _accepted_overlap_tokens_by_label(data)
+            self.assertEqual(accepted, {"A": {"formattotals"}})
+
+    def test_two_declarations_same_label_union(self):
+        report = {
+            "overlap_declarations": [
+                {"hypothesis": "A", "tokens": ["alpha"], "grounded_in": "x"},
+                {"hypothesis": "A", "tokens": ["beta"], "grounded_in": "y"},
+                {"hypothesis": "B", "tokens": ["gamma"], "grounded_in": "z"},
+            ]
+        }
+        accepted = _accepted_overlap_tokens_by_label(report)
+        self.assertEqual(accepted, {"A": {"alpha", "beta"}, "B": {"gamma"}})
+
+    def test_missing_none_non_dict_and_labelless_entries_skipped(self):
+        report = {
+            "overlap_declarations": [
+                None, "not-a-dict", {}, {"tokens": ["orphan"]},
+                {"hypothesis": "", "tokens": ["also-orphan"]},
+            ]
+        }
+        self.assertEqual(_accepted_overlap_tokens_by_label(report), {})
+        self.assertEqual(_accepted_overlap_tokens_by_label({}), {})
+
+
 class TestSuppressionEvidenceTokens(unittest.TestCase):
     """_suppression_evidence_tokens: direct-import unit tests (D2 as amended).
 
@@ -13661,25 +14215,42 @@ class TestSuppressionEvidenceTokens(unittest.TestCase):
             self.assertNotIn("archivedsessionlog", tokens)
 
     def test_missing_none_non_dict_rows_skipped_without_error(self):
-        """Missing / None / non-dict / key-less rows are skipped without raising.
+        """Missing / None / non-dict / key-less / non-string-value rows are
+        skipped without raising.
 
         No real setter can produce a malformed row of any of these shapes
         (every setter validates and appends a well-formed dict) -- this dict
         is hand-built to exercise the defensive skip branches directly, the
         one exception this file's round-trip-via-real-setters rule allows
         for exactly the reason it does not apply: there is no setter call
-        shape that reaches this code path.
+        shape that reaches this code path. Includes a non-string field
+        value (a list and an int) at one field per source -- a list would
+        crash `_tokenize_hypothesis`'s `.lower()` call with no isinstance
+        guard; an int does not carry `.lower()` either.
         """
         report = {
-            "consumer_chain": [None, "not-a-dict", {}, {"consumer_qn": None}],
+            "consumer_chain": [
+                None, "not-a-dict", {}, {"consumer_qn": None},
+                {"consumer_qn": ["a", "list"]},
+            ],
             "value_semantics": [
                 None, "not-a-dict", {},
                 {"classification": "invariant"},
                 {"classification": "invariant", "evidence": None},
+                {"classification": "invariant", "evidence": 42},
             ],
-            "dead_siblings": [None, "not-a-dict", {}, {"method_qn": None}],
-            "fix_path_helpers": [None, "not-a-dict", {}, {"file_line": None}],
-            "findings": [None, "not-a-dict", {}, {"file_line": None}],
+            "dead_siblings": [
+                None, "not-a-dict", {}, {"method_qn": None},
+                {"method_qn": {"nested": "dict"}},
+            ],
+            "fix_path_helpers": [
+                None, "not-a-dict", {}, {"file_line": None},
+                {"file_line": 7},
+            ],
+            "findings": [
+                None, "not-a-dict", {}, {"file_line": None},
+                {"file_line": ["a", "list"]},
+            ],
         }
         tokens = _suppression_evidence_tokens(report)
         self.assertEqual(tokens, set())

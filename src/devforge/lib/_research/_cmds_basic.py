@@ -318,6 +318,8 @@ def cmd_summary(args: argparse.Namespace) -> int:
     ))
     lines.append("  verify_step: {0}".format("set" if report.get("verify_step") else "(unset)"))
     lines.append("  next_step_text: {0}".format("set" if report.get("next_step_text") else "(unset)"))
+    # Plan 105 D5/OQ-1: overlap-declaration count (declare-grounded-overlap).
+    lines.append("  overlap_declarations: {0}".format(len(report.get("overlap_declarations") or [])))
     # Rejection log: surface count when non-empty (useful debug signal for anchor gate).
     rejection_log_for_summary = report.get("helper_rejection_log") or []
     if rejection_log_for_summary:

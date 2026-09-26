@@ -75,6 +75,7 @@ from ._cmds_dataflow import (
     cmd_set_value_semantics,
 )
 from ._cmds_render_verify import cmd_render, cmd_verify, cmd_verify_hypothesis_suppression
+from ._cmds_overlap import cmd_declare_grounded_overlap
 from ._cmds_intake import (
     INTAKE_CONFIRMATION_STATE_ENUM,
     INTAKE_KIND_ENUM,
@@ -767,6 +768,50 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_verify_hypothesis_suppression)
+
+    sp = subparsers.add_parser(
+        "declare-grounded-overlap",
+        help=(
+            "Declare an accepted overlap between a gated hypothesis's cause "
+            "and the recommended-approach rationale, anchored to a recorded "
+            "evidence row (plan 105 D5's second admissible exit from "
+            "verify-hypothesis-suppression's exit 2 -- the other is "
+            "record-gap). The gate then treats every declared token of "
+            "that hypothesis as accepted; a declaration only ever "
+            "subtracts from the overlap, it never makes the gate fire."
+        ),
+    )
+    sp.add_argument(
+        "--hypothesis",
+        required=True,
+        help="A recorded hypotheses[].label (e.g. \"A\", \"B\") whose overlap is accepted.",
+    )
+    sp.add_argument(
+        "--tokens",
+        required=True,
+        help=(
+            "JSON array of the overlapping tokens accepted, as the gate "
+            "prints them (e.g. '[\"formattotals\"]'). Non-empty; each entry "
+            "is lowercased and stripped, must be at least 8 characters "
+            "(the gate's own specificity floor -- a shorter token can "
+            "never fire it, so there is nothing to declare), and must be "
+            "a token of both --grounded-in and this hypothesis's own cause."
+        ),
+    )
+    sp.add_argument(
+        "--grounded-in",
+        required=True,
+        dest="grounded_in",
+        help=(
+            "The verbatim value of a recorded evidence row -- a "
+            "consumer_chain[].consumer_qn/.value/.file_line, a "
+            "value_semantics[].value/.evidence, a "
+            "dead_siblings[].method_qn/.class_qn, a "
+            "fix_path_helpers[].qn/.file_line, or a findings[].file_line -- "
+            "that every --tokens entry must tokenize out of."
+        ),
+    )
+    sp.set_defaults(func=cmd_declare_grounded_overlap)
 
     # Phase 2.4c setters
     sp = subparsers.add_parser(

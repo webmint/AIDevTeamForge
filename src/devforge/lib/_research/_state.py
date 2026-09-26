@@ -193,6 +193,14 @@ def default_report_state() -> dict:
             "runtime_probe": None,
             "history": None,
         },
+        # Plan 105 D5/OQ-1 — grounded-overlap declarations, the second
+        # admissible exit from verify-hypothesis-suppression's exit 2 (the
+        # other is record-gap). Each entry: {hypothesis, tokens, grounded_in}.
+        # Appended by declare-grounded-overlap (_cmds_overlap.py); read by
+        # the gate (_cmds_render_verify.py) and rendered as a conditional
+        # section (_render.py). Empty list is the valid default -- no run
+        # has declared an overlap.
+        "overlap_declarations": [],
     }
 
 

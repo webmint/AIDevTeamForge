@@ -30,6 +30,10 @@ def _render_report_md(memo: dict, report: dict) -> str:
       7. Hypothesis Enumeration
       8. Recommended Verify Step (when present)
       9. Approaches
+      9b. Overlap Declarations (when report.overlap_declarations is
+          non-empty; plan 105 D5/OQ-1 -- omitted entirely, no heading and
+          no blank line, when empty or missing, so both round-trip
+          fixtures -- built with no declaration -- stay byte-identical)
       10. Constitution Constraints
       11. Complexity Assessment
       12. Value Semantics (when present)
@@ -270,6 +274,25 @@ def _render_report_md(memo: dict, report: dict) -> str:
             out.append("")
     else:
         out.append("(no approaches recorded)")
+        out.append("")
+
+    # Overlap Declarations (plan 105 D5/OQ-1): the declare-grounded-overlap
+    # record's rendered face. Conditional on purpose -- omitted entirely
+    # (no heading, no blank line) when no declaration was ever recorded, so
+    # a report with an empty overlap_declarations list renders byte-
+    # identical to one written before this field existed.
+    overlap_declarations = report.get("overlap_declarations") or []
+    if overlap_declarations:
+        out.append("## Overlap Declarations")
+        out.append("")
+        out.append("| Hypothesis | Accepted tokens | Grounded in |")
+        out.append("|---|---|---|")
+        for decl in overlap_declarations:
+            out.append("| {0} | {1} | {2} |".format(
+                _md_escape_cell(decl.get("hypothesis") or ""),
+                _md_escape_cell(", ".join(decl.get("tokens") or [])),
+                _md_escape_cell(decl.get("grounded_in") or ""),
+            ))
         out.append("")
 
     out.append("## Constitution Constraints")

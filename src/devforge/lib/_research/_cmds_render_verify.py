@@ -886,7 +886,10 @@ def _suppression_evidence_tokens(report):
     consumer_qn; value_semantics[].evidence, but only for rows whose
     classification == "invariant"; dead_siblings[].method_qn;
     fix_path_helpers[].file_line; findings[].file_line. A missing, None, or
-    non-dict row at any of those keys is skipped. No other recorded field
+    non-dict row at any of those keys is skipped, and so is a field value
+    that is not itself a string (a list/dict/int, e.g. from direct state
+    mutation) -- _tokenize_hypothesis calls .lower() on its argument, which
+    a non-string value does not support.  No other recorded field
     (fix_path_helpers[].qn, value_semantics[].value, consumer_chain[].
     file_line or .value, dead_siblings[].class_qn) contributes a token here.
     """
@@ -895,33 +898,59 @@ def _suppression_evidence_tokens(report):
         if not isinstance(row, dict):
             continue
         qn = row.get("consumer_qn")
-        if qn:
+        if isinstance(qn, str) and qn:
             tokens.update(_tokenize_hypothesis(qn))
     for row in report.get("value_semantics") or []:
         if not isinstance(row, dict) or row.get("classification") != "invariant":
             continue
         evidence = row.get("evidence")
-        if evidence:
+        if isinstance(evidence, str) and evidence:
             tokens.update(_tokenize_hypothesis(evidence))
     for row in report.get("dead_siblings") or []:
         if not isinstance(row, dict):
             continue
         method_qn = row.get("method_qn")
-        if method_qn:
+        if isinstance(method_qn, str) and method_qn:
             tokens.update(_tokenize_hypothesis(method_qn))
     for row in report.get("fix_path_helpers") or []:
         if not isinstance(row, dict):
             continue
         file_line = row.get("file_line")
-        if file_line:
+        if isinstance(file_line, str) and file_line:
             tokens.update(_tokenize_hypothesis(file_line))
     for row in report.get("findings") or []:
         if not isinstance(row, dict):
             continue
         file_line = row.get("file_line")
-        if file_line:
+        if isinstance(file_line, str) and file_line:
             tokens.update(_tokenize_hypothesis(file_line))
     return tokens
+
+
+def _accepted_overlap_tokens_by_label(report):
+    # type: (dict) -> dict
+    """Group report["overlap_declarations"] tokens by hypothesis label.
+
+    Plan 105 D5 — the declared-overlap subtraction the gate below applies
+    THIRD, after evidence-grounded subtraction and before the specificity
+    floor. Returns a dict mapping each declared hypothesis label to the
+    union of its declarations' tokens (already lowercased + deduped at
+    declare-grounded-overlap time, _cmds_overlap.py). A label with no
+    declaration is simply absent from the returned dict; callers use
+    ``.get(label, set())``. Non-dict entries and entries with no
+    "hypothesis" key are skipped -- defensive against direct state
+    mutation, matching _suppression_evidence_tokens's own guards on the
+    same report.
+    """
+    accepted = {}  # type: dict
+    for decl in report.get("overlap_declarations") or []:
+        if not isinstance(decl, dict):
+            continue
+        label = decl.get("hypothesis")
+        if not label:
+            continue
+        accepted.setdefault(label, set()).update(decl.get("tokens") or [])
+    return accepted
 
 
 def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
@@ -936,7 +965,7 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
          primary or an explicitly addressed confirmed hypothesis, NOT a runner-up
          whose confirmation status is unknown).
 
-    Any hypothesis that does not satisfy both conditions is gated. This catches the
+    Any hypothesis that does not satisfy both conditions is GATED. This catches the
     concrete failure mode where a runner-up hypothesis in an otherwise HIGH-grade
     session silently leaks into design direction without being confirmed.
 
@@ -944,14 +973,22 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
     and report.recommended_approach.rationale (which becomes plan_seeds.recommended_
     approach_summary in the handoff), using the shared identifier/vocabulary
     tokenizer (split on non-alphanumeric boundaries, lowercase, drop tokens shorter
-    than 4 chars and stopwords). Two filters then narrow that raw overlap, applied
+    than 4 chars and stopwords). Three filters then narrow that raw overlap, applied
     in this order:
       1. Evidence-grounded subtraction: an overlapping token also present in the
          tokenization of a recorded consumer_chain[].consumer_qn, an invariant-
          classified value_semantics[].evidence, a dead_siblings[].method_qn, a
          fix_path_helpers[].file_line, or a findings[].file_line is removed — the
          rationale is allowed to cite what the run already recorded evidence for.
-      2. A specificity floor: of what survives subtraction, only a token of 8 or
+      2. Declared-overlap subtraction (plan 105 D5): an overlapping token also
+         present in a declare-grounded-overlap record (_cmds_overlap.py) whose
+         "hypothesis" equals THIS hypothesis's label is removed. Scoped per
+         hypothesis: declaring an overlap for hypothesis A never exempts the
+         same token for hypothesis B, and a token never declared for this
+         hypothesis stays subject to the gate even when a different token of
+         the same hypothesis was declared. A declaration only ever subtracts —
+         it can never make the gate fire.
+      3. A specificity floor: of what survives subtraction, only a token of 8 or
          more characters can fire the gate; shorter surviving tokens are dropped.
     This is a STRICTER policy than the shared tokenizer's own bare overlap test
     (imported here as _tokenize_hypothesis) — the shared tokenizer has no
@@ -966,11 +1003,17 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
       0 — no gated hypothesis has a surviving overlapping token (clean).
       1 — state files unreadable.
       2 — at least one gated hypothesis has a surviving overlapping token; stderr
-          names the hypothesis cause and lists every surviving token, sorted.
+          names the hypothesis LABEL, its cause verbatim, and lists every
+          surviving token, sorted.
 
-    Recovery: move the mechanism into an open question ("confirm <mechanism> before
-    designing") via record-gap, then remove it from the recommended approach rationale
-    via set-recommended-approach.
+    Recovery: exactly two exits are admissible (plan 105 D5). Move the mechanism
+    into an open question ("confirm <mechanism> before designing") via record-gap,
+    then remove it from the recommended approach rationale via
+    set-recommended-approach; OR, when the overlap is legitimate, declare it via
+    declare-grounded-overlap, anchored to a recorded evidence row. A rationale
+    reword that merely drops the shared vocabulary is not a third exit — it
+    satisfies this gate the same way either admissible exit does, but leaves no
+    trail a reviewer can read.
     """
     import json as _json
     try:
@@ -1022,6 +1065,11 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
     # before the specificity floor is applied (see the function docstring).
     evidence_tokens = _suppression_evidence_tokens(report)
 
+    # Declared-overlap tokens (plan 105 D5), grouped by hypothesis label:
+    # subtracted per-hypothesis alongside evidence_tokens, also before the
+    # specificity floor (see the function docstring's filter list, item 2).
+    accepted_by_label = _accepted_overlap_tokens_by_label(report)
+
     # Build the set of hypothesis LABELS that are explicitly confirmed by the
     # recommended approach. A hypothesis is confirmed when the session is HIGH-grade
     # AND its label (e.g. "A", "B") appears in recommended_approach.hypotheses_addressed.
@@ -1056,21 +1104,50 @@ def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
             continue
         cause_tokens = set(_tokenize_hypothesis(cause))
         overlap = cause_tokens & rationale_tokens
-        # Subtract evidence-grounded tokens, THEN apply the specificity floor
-        # (order is load-bearing -- see the function docstring). Sorted for
-        # determinism, and so every surviving token is named, not just one.
+        # This hypothesis's own declared-accepted tokens only -- a
+        # declaration for a DIFFERENT label never reaches here (plan 105 D5:
+        # accepted is scoped per label, never global). An unlabelled
+        # hypothesis (legacy state) has no declaration to look up.
+        accepted = accepted_by_label.get(hyp_label, set()) if hyp_label else set()
+        # Subtract evidence-grounded + declared-accepted tokens, THEN apply
+        # the specificity floor (order is load-bearing -- see the function
+        # docstring). Sorted for determinism, and so every surviving token
+        # is named, not just one.
         surviving = sorted(
-            t for t in (overlap - evidence_tokens)
+            t for t in (overlap - evidence_tokens - accepted)
             if len(t) >= _SUPPRESSION_MIN_SPECIFIC_TOKEN_LEN
         )
         if surviving:
+            label_display = hyp_label or "(unlabelled)"
+            if hyp_label:
+                # Both admissible exits: declare-grounded-overlap always
+                # rejects a --hypothesis it cannot resolve to a recorded
+                # label (_cmds_overlap.py), so this hint is only offered
+                # when the hypothesis actually carries one.
+                recovery = (
+                    "either record the mechanism as an open question via "
+                    "record-gap and remove it from the rationale via "
+                    "set-recommended-approach, or, if the overlap is "
+                    "legitimate, declare it via declare-grounded-overlap "
+                    "--hypothesis {0} --tokens '[...]' --grounded-in "
+                    "'<a recorded evidence value>'".format(label_display)
+                )
+            else:
+                # Legacy state with no recorded label: the declaration
+                # route needs a recorded hypotheses[].label to declare
+                # against, which this hypothesis does not carry, so that
+                # clause is dropped entirely rather than naming a verb the
+                # setter would reject. Only record-gap is offered.
+                recovery = (
+                    "record the mechanism as an open question via record-gap "
+                    "and remove it from the rationale via "
+                    "set-recommended-approach"
+                )
             sys.stderr.write(
                 "research_helper verify-hypothesis-suppression: "
-                "unverified hypothesis cause {0!r} overlaps recommended approach "
-                "(tokens: {1}); move the mechanism to an open question via "
-                "record-gap and remove it from the recommended approach "
-                "rationale via set-recommended-approach\n".format(
-                    cause, ", ".join(repr(t) for t in surviving)
+                "gated hypothesis {0} (cause {1!r}) overlaps recommended approach "
+                "(tokens: {2}); {3}\n".format(
+                    label_display, cause, ", ".join(repr(t) for t in surviving), recovery
                 )
             )
             violations_found = True
