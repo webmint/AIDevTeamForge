@@ -191,7 +191,7 @@ def _build_research_handoff(devforge: Path, feature_dir: Path) -> Path:
         ("Option A: add refresh timer", "Add background timer to refresh token", "Low"),
         ("Option B: check on request", "Check expiry before each request", "Med"),
     ):
-        _run_research([
+        r_approach = _run_research([
             "--devforge-dir", df, "set-approach",
             "--name", name,
             "--description", desc,
@@ -201,14 +201,20 @@ def _build_research_handoff(devforge: Path, feature_dir: Path) -> Path:
             "--cons", "[]",
             "--complexity", complexity,
         ])
+        assert r_approach.returncode == 0, (
+            "set-approach fixture setup failed: " + r_approach.stderr
+        )
 
-    _run_research([
+    r_recommended = _run_research([
         "--devforge-dir", df, "set-recommended-approach",
         "--name", "Option B: check on request",
         "--rationale", "Simpler; avoids background timer complexity",
         "--hypotheses-addressed", "[]",
         "--hypotheses-not-covered", "[]",
     ])
+    assert r_recommended.returncode == 0, (
+        "set-recommended-approach fixture setup failed: " + r_recommended.stderr
+    )
     _run_research([
         "--devforge-dir", df, "set-constitution-constraints",
         "--rule", "Auth must be deterministic",

@@ -44,10 +44,10 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 
 ## Hypothesis Enumeration
 
-| Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
-|---|---|---|
-| Serial DB fetch is the bottleneck | Profile DB time vs total runtime | yes |
-| Serializer hot loop dominates | Profile serializer vs fetch | yes |
+| Label | Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
+|---|---|---|---|
+| A | Serial DB fetch is the bottleneck | Profile DB time vs total runtime | yes |
+| B | Serializer hot loop dominates | Profile serializer vs fetch | yes |
 
 ## Recommended Verify Step
 
@@ -61,7 +61,7 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 
 ### Option A: Async via JobsQueue
 - **Description**: Move export to background job; user polls progress
-- **Addresses hypothesis**: Serial DB fetch is the bottleneck, Serializer hot loop dominates
+- **Addresses hypothesis**: A, B
 - **Does NOT cover**: (none)
 - **Pros**: unblocks UI; reuses JobsQueue
 - **Cons**: progress UI required
@@ -69,8 +69,8 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 
 ### Option B: Streaming response
 - **Description**: Chunked streaming serializer
-- **Addresses hypothesis**: Serializer hot loop dominates
-- **Does NOT cover**: Serial DB fetch is the bottleneck
+- **Addresses hypothesis**: B
+- **Does NOT cover**: A
 - **Pros**: no new infra
 - **Cons**: request thread still busy
 - **Complexity**: Low
@@ -113,7 +113,7 @@ Key facts:
 - Symptom: Export should be faster on large datasets
 - Desired: under 30 seconds OR async with progress
 - Recommended approach: Option A: Async via JobsQueue
-- Hypothesis addressed: Serial DB fetch is the bottleneck, Serializer hot loop dominates
+- Hypothesis addressed: A, B
 - Hypotheses NOT covered: (none)
 - Open uncertainties: 0 (see research doc §Open Uncertainties)
 ~~~

@@ -197,10 +197,11 @@ def _render_report_md(memo: dict, report: dict) -> str:
     out.append("")
     hypotheses = report.get("hypotheses", []) or []
     if hypotheses:
-        out.append("| Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |")
-        out.append("|---|---|---|")
+        out.append("| Label | Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |")
+        out.append("|---|---|---|---|")
         for h in hypotheses:
-            out.append("| {0} | {1} | {2} |".format(
+            out.append("| {0} | {1} | {2} | {3} |".format(
+                _md_escape_cell(h.get("label") or "(unset)"),
                 _md_escape_cell(h.get("cause", "")),
                 _md_escape_cell(h.get("falsifier", "")),
                 "yes" if h.get("runtime_probe_needed") else "no",

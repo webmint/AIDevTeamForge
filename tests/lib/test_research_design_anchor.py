@@ -241,7 +241,7 @@ def _build_minimal_bug_state(devforge):
         "--value", "Font renders wrong; build to design/reference.html .fooBar",
     ])
     _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-07-06"])
-    _run([
+    r_approach = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Bind token",
         "--description", "bind font token",
@@ -251,13 +251,19 @@ def _build_minimal_bug_state(devforge):
         "--cons", json.dumps([]),
         "--complexity", "Low",
     ])
-    _run([
+    assert r_approach.returncode == 0, (
+        "set-approach fixture setup failed: " + r_approach.stderr
+    )
+    r_recommended = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Bind token",
         "--rationale", "bind the design token to the component",
         "--hypotheses-addressed", json.dumps([]),
         "--hypotheses-not-covered", json.dumps([]),
     ])
+    assert r_recommended.returncode == 0, (
+        "set-recommended-approach fixture setup failed: " + r_recommended.stderr
+    )
     _run([
         "--devforge-dir", str(devforge), "set-complexity",
         "--codebase-changes", "Low", "--codebase-notes", "1 file",

@@ -1024,12 +1024,24 @@ class TestPhase2Setters(unittest.TestCase):
     def test_set_approach_full_payload(self):
         tmp, devforge = self._fresh()
         try:
+            r_h1 = _run([
+                "--devforge-dir", str(devforge), "record-hypothesis",
+                "--cause", "hypothesis one", "--falsifier", "falsifier one",
+                "--runtime-probe-needed", "no",
+            ])
+            self.assertEqual(r_h1.returncode, 0, r_h1.stderr)
+            r_h2 = _run([
+                "--devforge-dir", str(devforge), "record-hypothesis",
+                "--cause", "hypothesis two", "--falsifier", "falsifier two",
+                "--runtime-probe-needed", "no",
+            ])
+            self.assertEqual(r_h2.returncode, 0, r_h2.stderr)
             r = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option A",
                 "--description", "desc A",
-                "--addresses-hypotheses", '["H1"]',
-                "--does-not-cover", '["H2"]',
+                "--addresses-hypotheses", '["A"]',
+                "--does-not-cover", '["B"]',
                 "--pros", '["fast"]',
                 "--cons", '["partial"]',
                 "--complexity", "Low",
@@ -1041,6 +1053,12 @@ class TestPhase2Setters(unittest.TestCase):
             tmp.cleanup()
 
     def test_set_recommended_approach_rejects_unknown_name(self):
+        """Single call: unknown approach name AND an unrecorded label, with
+        no hypothesis recorded. Plan 105 D4's order pin: the approach-name
+        check runs before the new label check, so this one call fires
+        exactly the name rejection -- asserted on the substring "does not
+        match an existing approach" (not the bare "does not match", which
+        a label rejection worded similarly could also satisfy)."""
         tmp, devforge = self._fresh()
         try:
             r = _run([
@@ -1051,7 +1069,7 @@ class TestPhase2Setters(unittest.TestCase):
                 "--hypotheses-not-covered", '[]',
             ])
             self.assertEqual(r.returncode, 2)
-            self.assertIn("does not match", r.stderr)
+            self.assertIn("does not match an existing approach", r.stderr)
         finally:
             tmp.cleanup()
 
@@ -1129,32 +1147,45 @@ class TestPhase2Setters(unittest.TestCase):
     def test_set_next_step_text_emits_on_feasible(self):
         tmp, devforge = self._fresh()
         try:
-            _run([
+            r = _run([
                 "--devforge-dir", str(devforge), "set-symptom",
                 "--value", "should add WebSocket", "--state", "Clear",
             ])
-            _run([
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
                 "--devforge-dir", str(devforge), "set-desired",
                 "--value", "real-time push", "--state", "Clear",
             ])
-            _run(["--devforge-dir", str(devforge), "detect-mode"])
-            _run([
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run(["--devforge-dir", str(devforge), "detect-mode"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-hypothesis",
+                "--cause", "push relies on polling",
+                "--falsifier", "switch to SSE and observe latency",
+                "--runtime-probe-needed", "no",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option A", "--description", "use SSE",
-                "--addresses-hypotheses", '["H1"]', "--does-not-cover", '[]',
+                "--addresses-hypotheses", '["A"]', "--does-not-cover", '[]',
                 "--pros", '["simple"]', "--cons", '["less interactive"]',
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A", "--rationale", "fits stack",
-                "--hypotheses-addressed", '["H1"]',
+                "--hypotheses-addressed", '["A"]',
                 "--hypotheses-not-covered", '[]',
             ])
-            _run([
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
                 "--devforge-dir", str(devforge), "set-verdict",
                 "--value", "Feasible",
             ])
+            self.assertEqual(r.returncode, 0, r.stderr)
             r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -1165,30 +1196,50 @@ class TestPhase2Setters(unittest.TestCase):
             tmp.cleanup()
 
     def _build_feasible_state_for_next_step(self, devforge):
-        """Shared setup: minimal state that reaches VERDICT_PROCEEDING."""
-        _run([
+        """Shared setup: minimal state that reaches VERDICT_PROCEEDING.
+
+        Migrated for plan 105 D4: records one hypothesis and passes its
+        recorded label ("A") to both hypothesis-list setters, and asserts
+        each setter call's returncode 0 so a rejected setter (e.g. from a
+        regression in the label validation this shares with other tests)
+        fails here rather than silently leaving state unbuilt.
+        """
+        r = _run([
             "--devforge-dir", str(devforge), "set-symptom",
             "--value", "should add WebSocket", "--state", "Clear",
         ])
-        _run([
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run([
             "--devforge-dir", str(devforge), "set-desired",
             "--value", "real-time push", "--state", "Clear",
         ])
-        _run(["--devforge-dir", str(devforge), "detect-mode"])
-        _run([
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run(["--devforge-dir", str(devforge), "detect-mode"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run([
+            "--devforge-dir", str(devforge), "record-hypothesis",
+            "--cause", "push relies on polling",
+            "--falsifier", "switch to SSE and observe latency",
+            "--runtime-probe-needed", "no",
+        ])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run([
             "--devforge-dir", str(devforge), "set-approach",
             "--name", "Option A", "--description", "use SSE",
-            "--addresses-hypotheses", '["H1"]', "--does-not-cover", '[]',
+            "--addresses-hypotheses", '["A"]', "--does-not-cover", '[]',
             "--pros", '["simple"]', "--cons", '["less interactive"]',
             "--complexity", "Low",
         ])
-        _run([
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run([
             "--devforge-dir", str(devforge), "set-recommended-approach",
             "--name", "Option A", "--rationale", "fits stack",
-            "--hypotheses-addressed", '["H1"]',
+            "--hypotheses-addressed", '["A"]',
             "--hypotheses-not-covered", '[]',
         ])
-        _run(["--devforge-dir", str(devforge), "set-verdict", "--value", "Feasible"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run(["--devforge-dir", str(devforge), "set-verdict", "--value", "Feasible"])
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_set_next_step_text_research_reference_placeholder_when_omitted(self):
         """Plan 68: omitting --research-path renders a path-free placeholder,
@@ -1225,6 +1276,307 @@ class TestPhase2Setters(unittest.TestCase):
             self.assertIn(
                 "Research reference: specs/001-cart-fix/research-report.md",
                 rep["next_step_text"],
+            )
+        finally:
+            tmp.cleanup()
+
+
+class TestHypothesisLabelValidation(unittest.TestCase):
+    """Plan 105 D4 (amended at the Phase 0 close to all four fields):
+    set-approach --addresses-hypotheses / --does-not-cover and
+    set-recommended-approach --hypotheses-addressed /
+    --hypotheses-not-covered each reject an entry that is not a recorded
+    hypotheses[].label.
+
+    Every test builds state through real setters (reset-memo, reset-report,
+    record-hypothesis, set-approach) -- no hand-authored report JSON --
+    EXCEPT test_render_label_unset_for_legacy_hypothesis_without_label,
+    which hand-builds a hypothesis record with no `label` key to simulate
+    pre-D4 legacy state. That is the one case a real setter cannot produce
+    (record-hypothesis always writes a label), so hand-authoring is the
+    only way to exercise the renderer's own "(unset)" fallback; every other
+    test in this class goes through the CLI.
+    """
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        r = _run(["--devforge-dir", str(devforge), "reset-memo"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run(["--devforge-dir", str(devforge), "reset-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _record_two_hypotheses(self, devforge):
+        """Records label "A" (cause: unstable comparator in inline sort)
+        and label "B" (cause: race between fetch and watch), in that
+        order."""
+        r = _run([
+            "--devforge-dir", str(devforge), "record-hypothesis",
+            "--cause", "unstable comparator in inline sort",
+            "--falsifier", "swap comparator; verify order stable",
+            "--runtime-probe-needed", "no",
+        ])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _run([
+            "--devforge-dir", str(devforge), "record-hypothesis",
+            "--cause", "race between fetch and watch",
+            "--falsifier", "log fetch ids before sort",
+            "--runtime-probe-needed", "yes",
+        ])
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def _set_approach(self, devforge, addresses, does_not_cover, name="Option A"):
+        return _run([
+            "--devforge-dir", str(devforge), "set-approach",
+            "--name", name, "--description", "desc",
+            "--addresses-hypotheses", json.dumps(addresses),
+            "--does-not-cover", json.dumps(does_not_cover),
+            "--pros", '["fast"]', "--cons", '["partial"]',
+            "--complexity", "Low",
+        ])
+
+    def _set_recommended_approach(
+        self, devforge, hypotheses_addressed, hypotheses_not_covered, name="Option A"
+    ):
+        return _run([
+            "--devforge-dir", str(devforge), "set-recommended-approach",
+            "--name", name, "--rationale", "fits stack",
+            "--hypotheses-addressed", json.dumps(hypotheses_addressed),
+            "--hypotheses-not-covered", json.dumps(hypotheses_not_covered),
+        ])
+
+    # -- a recorded label is accepted, per field --
+
+    def test_addresses_hypotheses_accepts_recorded_label(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["approaches"][0]["addresses_hypotheses"], ["A"])
+        finally:
+            tmp.cleanup()
+
+    def test_does_not_cover_accepts_recorded_label(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A"], ["B"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["approaches"][0]["does_not_cover"], ["B"])
+        finally:
+            tmp.cleanup()
+
+    def test_hypotheses_addressed_accepts_recorded_label(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A", "B"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._set_recommended_approach(devforge, ["A"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["recommended_approach"]["hypotheses_addressed"], ["A"])
+        finally:
+            tmp.cleanup()
+
+    def test_hypotheses_not_covered_accepts_recorded_label(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A", "B"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._set_recommended_approach(devforge, ["A"], ["B"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["recommended_approach"]["hypotheses_not_covered"], ["B"])
+        finally:
+            tmp.cleanup()
+
+    # -- a cause-text entry is rejected, per field by name, message lists
+    #    the recorded labels --
+
+    def test_addresses_hypotheses_rejects_cause_text(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["unstable comparator in inline sort"], [])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--addresses-hypotheses", r.stderr)
+            self.assertIn("['A', 'B']", r.stderr)
+            self.assertNotIn("does not match an existing approach", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_does_not_cover_rejects_cause_text(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A"], ["race between fetch and watch"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--does-not-cover", r.stderr)
+            self.assertIn("['A', 'B']", r.stderr)
+            self.assertNotIn("does not match an existing approach", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_hypotheses_addressed_rejects_cause_text(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A", "B"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._set_recommended_approach(
+                devforge, ["unstable comparator in inline sort"], [],
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--hypotheses-addressed", r.stderr)
+            self.assertIn("['A', 'B']", r.stderr)
+            self.assertNotIn("does not match an existing approach", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_hypotheses_not_covered_rejects_cause_text(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A", "B"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._set_recommended_approach(
+                devforge, ["A"], ["race between fetch and watch"],
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--hypotheses-not-covered", r.stderr)
+            self.assertIn("['A', 'B']", r.stderr)
+            self.assertNotIn("does not match an existing approach", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_unrecorded_label_rejected_with_two_recorded(self):
+        """"C" looks like a label but was never recorded -- two are: A, B."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["C"], [])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("['A', 'B']", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_entry_supplied_with_no_hypothesis_recorded_is_rejected(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._set_approach(devforge, ["A"], [])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("record-hypothesis", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_empty_array_accepted_with_no_hypothesis_recorded_set_approach(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._set_approach(devforge, [], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_empty_array_accepted_with_no_hypothesis_recorded_set_recommended_approach(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._set_approach(devforge, [], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._set_recommended_approach(devforge, [], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_rejection_leaves_report_state_unchanged_set_approach(self):
+        tmp, devforge = self._fresh()
+        try:
+            before = self._read_report(devforge)
+            r = self._set_approach(devforge, ["cause text, not a label"], [])
+            self.assertEqual(r.returncode, 2)
+            after = self._read_report(devforge)
+            self.assertEqual(after, before)
+            self.assertEqual(after["approaches"], [])
+        finally:
+            tmp.cleanup()
+
+    def test_rejection_leaves_report_state_unchanged_set_recommended_approach(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = self._set_approach(devforge, ["A", "B"], [])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            before = self._read_report(devforge)
+            r = self._set_recommended_approach(devforge, ["cause text, not a label"], [])
+            self.assertEqual(r.returncode, 2)
+            after = self._read_report(devforge)
+            self.assertEqual(after, before)
+            self.assertIsNone(after["recommended_approach"])
+        finally:
+            tmp.cleanup()
+
+    def test_check_order_unknown_name_before_label_rejection(self):
+        """set-recommended-approach with an unknown --name AND an unrecorded
+        label -> exit 2 with the name rejection; the label-rejection text
+        must not appear (plan 105 D4's order pin)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._set_recommended_approach(
+                devforge, ["not-a-recorded-label"], [], name="Nonexistent",
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not match an existing approach", r.stderr)
+            self.assertNotIn("are not recorded hypothesis labels", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_render_label_column_in_record_order(self):
+        tmp, devforge = self._fresh()
+        try:
+            self._record_two_hypotheses(devforge)
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = r.stdout.splitlines()
+            header_idx = lines.index(
+                "| Label | Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |"
+            )
+            self.assertEqual(lines[header_idx + 1], "|---|---|---|---|")
+            self.assertTrue(lines[header_idx + 2].startswith("| A |"))
+            self.assertTrue(lines[header_idx + 3].startswith("| B |"))
+        finally:
+            tmp.cleanup()
+
+    def test_render_label_unset_for_legacy_hypothesis_without_label(self):
+        """A hypothesis record with no `label` key -- pre-D4 legacy state a
+        real setter cannot produce (record-hypothesis always writes one) --
+        renders "(unset)" in the Label column. Hand-built JSON is the only
+        way to construct this shape; see the class docstring."""
+        tmp, devforge = self._fresh()
+        try:
+            report_path = devforge / "research-report.json"
+            report = json.loads(report_path.read_text())
+            report["hypotheses"] = [
+                {
+                    "cause": "legacy cause",
+                    "falsifier": "legacy falsifier",
+                    "runtime_probe_needed": False,
+                },
+            ]
+            report_path.write_text(json.dumps(report))
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(
+                "| (unset) | legacy cause | legacy falsifier | no |", r.stdout
             )
         finally:
             tmp.cleanup()
@@ -1326,39 +1678,36 @@ def _build_bug_state(devforge):
         "--discriminator", "if sort-input randomized then race; if input ordered + output not then comparator; both ordered then render",
     ])
 
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: Replace inline sort with shared comparator",
         "--description", "Use existing helper",
-        "--addresses-hypotheses", json.dumps(["unstable comparator in inline sort"]),
-        "--does-not-cover", json.dumps(["race between fetch and watch"]),
+        "--addresses-hypotheses", json.dumps(["A"]),
+        "--does-not-cover", json.dumps(["B"]),
         "--pros", json.dumps(["small diff", "reuses helper"]),
         "--cons", json.dumps(["does not address race"]),
         "--complexity", "Low",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option B: Move sort to derived computed + stabilize comparator",
         "--description", "Reactive computed instead of watch body",
-        "--addresses-hypotheses", json.dumps([
-            "unstable comparator in inline sort",
-            "race between fetch and watch",
-        ]),
+        "--addresses-hypotheses", json.dumps(["A", "B"]),
         "--does-not-cover", json.dumps([]),
         "--pros", json.dumps(["covers both", "reactive primitive"]),
         "--cons", json.dumps(["bigger refactor"]),
         "--complexity", "Med",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Option B: Move sort to derived computed + stabilize comparator",
         "--rationale", "Closes both hypotheses; preserves pagination + filter behavior",
-        "--hypotheses-addressed", json.dumps([
-            "unstable comparator in inline sort",
-            "race between fetch and watch",
-        ]),
+        "--hypotheses-addressed", json.dumps(["A", "B"]),
         "--hypotheses-not-covered", json.dumps([]),
     ])
+    assert r.returncode == 0, r.stderr
     _run([
         "--devforge-dir", str(devforge), "set-constitution-constraints",
         "--rule", "Rule 2.1 — UI sort logic must be deterministic",
@@ -1548,39 +1897,36 @@ def _build_enhancement_state(devforge):
         "--discriminator", "if fetch > 80% then DB; if serialize > 80% then serializer; otherwise mixed",
     ])
 
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: Async via JobsQueue",
         "--description", "Move export to background job; user polls progress",
-        "--addresses-hypotheses", json.dumps([
-            "Serial DB fetch is the bottleneck",
-            "Serializer hot loop dominates",
-        ]),
+        "--addresses-hypotheses", json.dumps(["A", "B"]),
         "--does-not-cover", json.dumps([]),
         "--pros", json.dumps(["unblocks UI", "reuses JobsQueue"]),
         "--cons", json.dumps(["progress UI required"]),
         "--complexity", "Med",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option B: Streaming response",
         "--description", "Chunked streaming serializer",
-        "--addresses-hypotheses", json.dumps(["Serializer hot loop dominates"]),
-        "--does-not-cover", json.dumps(["Serial DB fetch is the bottleneck"]),
+        "--addresses-hypotheses", json.dumps(["B"]),
+        "--does-not-cover", json.dumps(["A"]),
         "--pros", json.dumps(["no new infra"]),
         "--cons", json.dumps(["request thread still busy"]),
         "--complexity", "Low",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Option A: Async via JobsQueue",
         "--rationale", "Closes both hypotheses; preserves small-dataset path",
-        "--hypotheses-addressed", json.dumps([
-            "Serial DB fetch is the bottleneck",
-            "Serializer hot loop dominates",
-        ]),
+        "--hypotheses-addressed", json.dumps(["A", "B"]),
         "--hypotheses-not-covered", json.dumps([]),
     ])
+    assert r.returncode == 0, r.stderr
     _run([
         "--devforge-dir", str(devforge), "set-constitution-constraints",
         "--rule", "Rule 4.2 — long-running work must move off request thread",
@@ -4606,23 +4952,25 @@ def _build_bug_state_same_package(devforge):
         "--value", "Inline sort in reactive body without stable comparator",
     ])
 
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: Use stable comparator",
         "--description", "Replace inline sort",
-        "--addresses-hypotheses", json.dumps(["unstable comparator in inline sort"]),
-        "--does-not-cover", json.dumps(["race between fetch and watch"]),
+        "--addresses-hypotheses", json.dumps(["A"]),
+        "--does-not-cover", json.dumps(["B"]),
         "--pros", json.dumps(["simple"]),
         "--cons", json.dumps(["partial"]),
         "--complexity", "Low",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Option A: Use stable comparator",
         "--rationale", "Closes primary hypothesis",
-        "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+        "--hypotheses-addressed", json.dumps(["A"]),
         "--hypotheses-not-covered", json.dumps([]),
     ])
+    assert r.returncode == 0, r.stderr
     _run([
         "--devforge-dir", str(devforge), "set-constitution-constraints",
         "--rule", "Rule 2.1 — sort must be deterministic",
@@ -5183,16 +5531,17 @@ def _build_single_layer_bug_state(devforge):
         "--discriminator", "if sort-input randomized then race; if ordered and output not then comparator",
     ])
 
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: comparator fix",
         "--description", "Fix the inline comparator in src/admin/Products.vue",
-        "--addresses-hypotheses", json.dumps(["unstable comparator in inline sort"]),
-        "--does-not-cover", json.dumps(["race between fetch and watch"]),
+        "--addresses-hypotheses", json.dumps(["A"]),
+        "--does-not-cover", json.dumps(["B"]),
         "--pros", json.dumps(["small diff"]),
         "--cons", json.dumps(["does not address race"]),
         "--complexity", "Low",
     ])
+    assert r.returncode == 0, r.stderr
     # Note: set-recommended-approach is NOT called here — each test calls it with
     # different args to exercise the gate. Callers must call it themselves.
 
@@ -5334,16 +5683,17 @@ def _build_domain_single_layer_bug_state(devforge):
         "--discriminator", "if older fetch wins then race; else state mutation",
     ])
 
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: fetch-id guard",
         "--description", "Add fetch-id guard inside Service.loadData",
-        "--addresses-hypotheses", json.dumps(["last-fetch-wins racing in loadData"]),
-        "--does-not-cover", json.dumps(["subscription resubscribed mid-stream"]),
+        "--addresses-hypotheses", json.dumps(["A"]),
+        "--does-not-cover", json.dumps(["B"]),
         "--pros", json.dumps(["small diff", "no public-API change"]),
         "--cons", json.dumps(["does not address resubscription"]),
         "--complexity", "Low",
     ])
+    assert r.returncode == 0, r.stderr
 
     _run([
         "--devforge-dir", str(devforge), "set-constitution-constraints",
@@ -5450,10 +5800,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option B: Move sort to derived computed + stabilize comparator",
                 "--rationale", "Closes both hypotheses; preserves pagination + filter behavior",
-                "--hypotheses-addressed", json.dumps([
-                    "unstable comparator in inline sort",
-                    "race between fetch and watch",
-                ]),
+                "--hypotheses-addressed", json.dumps(["A", "B"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -5472,7 +5819,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r.returncode, 2)
@@ -5491,7 +5838,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 # --cites deliberately omitted
@@ -5510,7 +5857,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", "[]",
@@ -5529,7 +5876,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["NotARecordedQN"]),
@@ -5551,7 +5898,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer; no cross-layer trace needed.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -5583,7 +5930,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC; OldFetchOrderMethod was already removed.",
                 "--cites", json.dumps(["OldFetchOrderMethod"]),
@@ -5621,7 +5968,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "fetchId is a BLoC-internal counter; bug is layer-local.",
                 "--cites", json.dumps(["fetchId"]),
@@ -5658,7 +6005,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "fetchId is a BLoC-internal counter scoped to Service.",
                 "--cites", json.dumps(["lib/blocs/order_bloc.dart:42"]),
@@ -5685,7 +6032,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: comparator fix",
                 "--rationale", "Comparator swap is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -5701,10 +6048,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: Async via JobsQueue",
                 "--rationale", "Closes both hypotheses; preserves small-dataset path",
-                "--hypotheses-addressed", json.dumps([
-                    "Serial DB fetch is the bottleneck",
-                    "Serializer hot loop dominates",
-                ]),
+                "--hypotheses-addressed", json.dumps(["A", "B"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -5830,7 +6174,7 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Enhancement change is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -5876,7 +6220,7 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r0.returncode, 0, r0.stderr)
@@ -5896,7 +6240,7 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Enhancement change is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -6004,7 +6348,7 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC layer; consumer chain confirms layer-locality.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -6030,13 +6374,14 @@ class TestVerifyCheck13(unittest.TestCase):
             _build_single_layer_bug_state(devforge)
             # Set a recommended_approach WITHOUT justification (setter gate also
             # suppressed by 8b, so this succeeds at write time).
-            _run([
+            r_set = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: comparator fix",
                 "--rationale", "Comparator swap is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
+            self.assertEqual(r_set.returncode, 0, r_set.stderr)
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("cross-layer rule", r.stderr)  # check 8b fires
@@ -8100,7 +8445,7 @@ class TestVerifyCheck17(unittest.TestCase):
             {
                 "name": "Fix flag literal",
                 "description": approach_desc,
-                "addresses_hypotheses": ["unstable comparator in inline sort"],
+                "addresses_hypotheses": ["A"],
                 "does_not_cover": [],
                 "pros": ["minimal change"],
                 "cons": [],
@@ -8110,7 +8455,7 @@ class TestVerifyCheck17(unittest.TestCase):
         data["recommended_approach"] = {
             "name": "Fix flag literal",
             "rationale": rationale,
-            "hypotheses_addressed": ["unstable comparator in inline sort"],
+            "hypotheses_addressed": ["A"],
             "hypotheses_not_covered": [],
         }
         rep_path.write_text(json.dumps(data, indent=2) + "\n")
@@ -8173,7 +8518,7 @@ class TestVerifyCheck17(unittest.TestCase):
             {
                 "name": "Fix literal",
                 "description": "change false to isExternalUser.value",
-                "addresses_hypotheses": ["export speed"],
+                "addresses_hypotheses": ["A"],
                 "does_not_cover": [],
                 "pros": [],
                 "cons": [],
@@ -8183,7 +8528,7 @@ class TestVerifyCheck17(unittest.TestCase):
         data["recommended_approach"] = {
             "name": "Fix literal",
             "rationale": "change false to isExternalUser.value",
-            "hypotheses_addressed": ["export speed"],
+            "hypotheses_addressed": ["A"],
             "hypotheses_not_covered": [],
         }
         rep_path.write_text(json.dumps(data, indent=2) + "\n")
@@ -8747,7 +9092,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -8770,10 +9115,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option B: Move sort to derived computed + stabilize comparator",
                 "--rationale", "replace false with isExternalUser.value",
-                "--hypotheses-addressed", json.dumps([
-                    "unstable comparator in inline sort",
-                    "race between fetch and watch",
-                ]),
+                "--hypotheses-addressed", json.dumps(["A", "B"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 # --proposed-call-shape deliberately omitted
             ])
@@ -8790,7 +9132,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -8812,7 +9154,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -8833,10 +9175,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option B: Move sort to derived computed + stabilize comparator",
                 "--rationale", "add wrapper function to centralize policy",
-                "--hypotheses-addressed", json.dumps([
-                    "unstable comparator in inline sort",
-                    "race between fetch and watch",
-                ]),
+                "--hypotheses-addressed", json.dumps(["A", "B"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 # --proposed-call-shape NOT provided
             ])
@@ -8852,7 +9191,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -8877,7 +9216,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -8901,7 +9240,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 {
                     "name": "Option A: Export speed boost",
                     "description": "replace false with isExternalUser.value",
-                    "addresses_hypotheses": ["export speed"],
+                    "addresses_hypotheses": ["A"],
                     "does_not_cover": [],
                     "pros": [],
                     "cons": [],
@@ -8913,7 +9252,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: Export speed boost",
                 "--rationale", "replace false with isExternalUser.value",
-                "--hypotheses-addressed", json.dumps(["export speed"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 # --proposed-call-shape deliberately omitted
             ])
@@ -8932,7 +9271,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 {
                     "name": "Option A: Export speed boost",
                     "description": "replace false with isExternalUser.value",
-                    "addresses_hypotheses": ["export speed"],
+                    "addresses_hypotheses": ["A"],
                     "does_not_cover": [],
                     "pros": [],
                     "cons": [],
@@ -8944,7 +9283,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: Export speed boost",
                 "--rationale", "replace false with isExternalUser.value",
-                "--hypotheses-addressed", json.dumps(["export speed"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--proposed-call-shape", "exportJob(userId, includeArchived)",
             ])
@@ -8973,7 +9312,7 @@ class TestVerifyCheck18(unittest.TestCase):
             {
                 "name": "Fix literal",
                 "description": "update the call",
-                "addresses_hypotheses": ["unstable comparator in inline sort"],
+                "addresses_hypotheses": ["A"],
                 "does_not_cover": [],
                 "pros": [],
                 "cons": [],
@@ -8983,7 +9322,7 @@ class TestVerifyCheck18(unittest.TestCase):
         rec = {
             "name": "Fix literal",
             "rationale": "apply fix",
-            "hypotheses_addressed": ["unstable comparator in inline sort"],
+            "hypotheses_addressed": ["A"],
             "hypotheses_not_covered": [],
         }
         if proposed_call_shape is not None:
@@ -9037,7 +9376,7 @@ class TestVerifyCheck18(unittest.TestCase):
                 {
                     "name": "Option A: Export speed boost",
                     "description": "update the call",
-                    "addresses_hypotheses": ["export speed"],
+                    "addresses_hypotheses": ["A"],
                     "does_not_cover": [],
                     "pros": [],
                     "cons": [],
@@ -9047,7 +9386,7 @@ class TestVerifyCheck18(unittest.TestCase):
             data["recommended_approach"] = {
                 "name": "Option A: Export speed boost",
                 "rationale": "apply fix",
-                "hypotheses_addressed": ["export speed"],
+                "hypotheses_addressed": ["A"],
                 "hypotheses_not_covered": [],
                 "proposed_call_shape": "f(x, x)",  # duplicating — mode-independent, gate must fire
             }
@@ -9082,7 +9421,7 @@ class TestRenderPatch9(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -9184,38 +9523,36 @@ def _build_minimal_bug_state_for_handoff(devforge):
     ])
 
     # Phase 2: approaches + recommended.
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: lazy load config",
         "--description", "Defer config loading until first use",
-        "--addresses-hypotheses", json.dumps(["env var read before process env is populated"]),
-        "--does-not-cover", json.dumps(["config key name mismatch in .env file"]),
+        "--addresses-hypotheses", json.dumps(["A"]),
+        "--does-not-cover", json.dumps(["B"]),
         "--pros", json.dumps(["simple"]),
         "--cons", json.dumps(["deferred errors"]),
         "--complexity", "Low",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option B: move load to after env init",
         "--description", "Ensure env is initialized before config.load()",
-        "--addresses-hypotheses", json.dumps([
-            "env var read before process env is populated",
-            "config key name mismatch in .env file",
-        ]),
+        "--addresses-hypotheses", json.dumps(["A", "B"]),
         "--does-not-cover", json.dumps([]),
         "--pros", json.dumps(["covers both", "explicit ordering"]),
         "--cons", json.dumps(["requires startup refactor"]),
         "--complexity", "Med",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Option B: move load to after env init",
         "--rationale", "Explicit startup ordering prevents env-before-config race",
-        "--hypotheses-addressed", json.dumps([
-            "env var read before process env is populated",
-        ]),
-        "--hypotheses-not-covered", json.dumps(["config key name mismatch in .env file"]),
+        "--hypotheses-addressed", json.dumps(["A"]),
+        "--hypotheses-not-covered", json.dumps(["B"]),
     ])
+    assert r.returncode == 0, r.stderr
     _run([
         "--devforge-dir", str(devforge), "set-constitution-constraints",
         "--rule", "Config loading must be deterministic at startup",
@@ -9352,7 +9689,7 @@ class TestFinalizeHandoff(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "set-topic", "--value", "test-topic"])
             _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
             # Add minimal approach + recommended.
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option A",
                 "--description", "fix it",
@@ -9362,13 +9699,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A",
                 "--rationale", "best option",
                 "--hypotheses-addressed", "[]",
                 "--hypotheses-not-covered", "[]",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             r = _run_finalize(devforge, Path(tmp) / "handoff.json")
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("complexity not set", r.stderr)
@@ -9387,7 +9726,7 @@ class TestFinalizeHandoff(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "set-topic", "--value", "config-not-applied"])
             _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
             # Intentionally skip set-verbatim-prompt.
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option A",
                 "--description", "fix it",
@@ -9397,13 +9736,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A",
                 "--rationale", "best option",
                 "--hypotheses-addressed", "[]",
                 "--hypotheses-not-covered", "[]",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             _run([
                 "--devforge-dir", str(devforge), "set-complexity",
                 "--codebase-changes", "Low", "--codebase-notes", "1 file",
@@ -9492,7 +9833,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--value", "Add an export endpoint to the API so users can download their data as CSV.",
             ])
             _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option A",
                 "--description", "add export endpoint",
@@ -9502,13 +9843,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A",
                 "--rationale", "minimal implementation",
                 "--hypotheses-addressed", "[]",
                 "--hypotheses-not-covered", "[]",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             _run([
                 "--devforge-dir", str(devforge), "set-complexity",
                 "--codebase-changes", "Low", "--codebase-notes", "1 endpoint",
@@ -9770,7 +10113,7 @@ class TestFinalizeHandoff(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             _build_minimal_bug_state_for_handoff(devforge)
             # Add a third approach.
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Option C: config validation layer",
                 "--description", "Add validation at load time",
@@ -9780,6 +10123,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "High",
             ])
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
             out = Path(tmp) / "handoff.json"
             r = _run_finalize(devforge, out)
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -9881,7 +10225,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--use", "evidence",
             ])
             self.assertEqual(r_arch.returncode, 0, r_arch.stderr)
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -9891,7 +10235,8 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -9904,6 +10249,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 # just a pre-existing sibling gate this fixture must satisfy.
                 "--proposed-call-shape", "renderRow(item)",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             _run([
                 "--devforge-dir", str(devforge), "set-complexity",
                 "--codebase-changes", "Low", "--codebase-notes", "1 file",
@@ -9985,7 +10331,7 @@ class TestFinalizeHandoff(unittest.TestCase):
             # approaches, etc. -- so overall rc is not asserted here).
             v = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertNotIn("check 20", v.stderr)
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -9995,7 +10341,8 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -10003,6 +10350,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--hypotheses-not-covered", "[]",
                 "--proposed-call-shape", "renderRow(item)",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             _run([
                 "--devforge-dir", str(devforge), "set-complexity",
                 "--codebase-changes", "Low", "--codebase-notes", "1 file",
@@ -10062,7 +10410,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--use", "fix-layer",
             ])
             self.assertEqual(r_arch.returncode, 0, r_arch.stderr)
-            _run([
+            r_approach = _run([
                 "--devforge-dir", str(devforge), "set-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -10072,7 +10420,8 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--cons", "[]",
                 "--complexity", "Low",
             ])
-            _run([
+            self.assertEqual(r_approach.returncode, 0, r_approach.stderr)
+            r_rec = _run([
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Remove dead legacy-widget prop",
                 "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
@@ -10085,6 +10434,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 # just a pre-existing sibling gate this fixture must satisfy.
                 "--proposed-call-shape", "renderRow(item)",
             ])
+            self.assertEqual(r_rec.returncode, 0, r_rec.stderr)
             _run([
                 "--devforge-dir", str(devforge), "set-complexity",
                 "--codebase-changes", "Low", "--codebase-notes", "1 file",
@@ -10221,8 +10571,8 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
-                "--hypotheses-not-covered", json.dumps(["subscription resubscribed mid-stream"]),
+                "--hypotheses-addressed", json.dumps(["A"]),
+                "--hypotheses-not-covered", json.dumps(["B"]),
                 "--single-layer-justification", "Bug is local to the BLoC layer; FetchConsumer confirms layer boundary.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
                 "--proposed-call-shape", "loadData(quoteId, fetchId)",
@@ -10442,7 +10792,7 @@ def _build_minimal_enhancement_state_no_callers(devforge):
         "--value", "Add an export endpoint to the API so users can download their data as CSV.",
     ])
     _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
-    _run([
+    r = _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A",
         "--description", "add export endpoint",
@@ -10452,13 +10802,15 @@ def _build_minimal_enhancement_state_no_callers(devforge):
         "--cons", "[]",
         "--complexity", "Low",
     ])
-    _run([
+    assert r.returncode == 0, r.stderr
+    r = _run([
         "--devforge-dir", str(devforge), "set-recommended-approach",
         "--name", "Option A",
         "--rationale", "minimal implementation",
         "--hypotheses-addressed", "[]",
         "--hypotheses-not-covered", "[]",
     ])
+    assert r.returncode == 0, r.stderr
     _run([
         "--devforge-dir", str(devforge), "set-complexity",
         "--codebase-changes", "Low", "--codebase-notes", "1 endpoint",

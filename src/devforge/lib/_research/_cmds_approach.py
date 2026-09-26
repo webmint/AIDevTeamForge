@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Optional
 
 from ._constants import COMPLEXITY_ENUM
 from ._layer_package import _compute_check_8b_would_fire, _extract_package
@@ -43,8 +44,61 @@ from ._validators import (
 )
 
 
+def _reject_unrecorded_labels(entries, report, verb, flag):
+    # type: (list, dict, str, str) -> Optional[str]
+    """Validate every entry of a hypothesis-list field against recorded
+    hypotheses[].label. Returns an error message string when validation
+    fails, or None when it passes. Caller passes a non-None return straight
+    to ``_die(..., code=2)``.
+
+    Applied to all four hypothesis-list fields (plan 105 D4, amended to all
+    four at the Phase 0 close): set-approach's --addresses-hypotheses and
+    --does-not-cover, and set-recommended-approach's --hypotheses-addressed
+    and --hypotheses-not-covered. `entries` is the already-JSON-decoded,
+    already-non-blank-checked list _validate_string_array_json returns.
+
+    One predicate, no escape hatch: every supplied entry must equal a
+    recorded hypotheses[].label.
+      - `entries` empty (`[]`) supplies no entry to check -> None.
+        Emptiness is verify's job (checks 1 and 2), never rejected here.
+      - `entries` non-empty and no hypothesis has been recorded -> rejected,
+        naming record-hypothesis as the remedy.
+      - `entries` non-empty and some entry is not a recorded label ->
+        rejected, naming the offending entries and the recorded labels —
+        the same shape --cites already uses in this module (it prints the
+        recorded tokens on rejection).
+      - Every entry matches a recorded label -> None.
+    """
+    if not entries:
+        return None
+    hypotheses = report.get("hypotheses") or []
+    recorded_labels = [
+        h["label"] for h in hypotheses if isinstance(h, dict) and h.get("label")
+    ]
+    if not recorded_labels:
+        return (
+            "{0}: {1} lists {2!r} but no hypothesis has been recorded; "
+            "call record-hypothesis first".format(verb, flag, entries)
+        )
+    recorded_set = set(recorded_labels)
+    unrecorded = [e for e in entries if e not in recorded_set]
+    if unrecorded:
+        return (
+            "{0}: {1} entries {2!r} are not recorded hypothesis labels; "
+            "recorded labels: {3!r}. Pass labels, not cause text.".format(
+                verb, flag, unrecorded, recorded_labels
+            )
+        )
+    return None
+
+
 def cmd_set_approach(args: argparse.Namespace) -> int:
-    """Append an Approach record."""
+    """Append an Approach record.
+
+    --addresses-hypotheses and --does-not-cover each carry a JSON array of
+    recorded hypotheses[].label values (plan 105 D4) — see
+    _reject_unrecorded_labels for the full predicate.
+    """
     try:
         name = _validate_scalar(args.name, "approach.name")
         desc = _validate_verbatim(args.description, "approach.description")
@@ -59,6 +113,16 @@ def cmd_set_approach(args: argparse.Namespace) -> int:
         return _die(str(err), code=2)
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
+            label_err = _reject_unrecorded_labels(
+                addresses, report, "set-approach", "--addresses-hypotheses"
+            )
+            if label_err is not None:
+                return _die(label_err, code=2)
+            label_err = _reject_unrecorded_labels(
+                not_covered, report, "set-approach", "--does-not-cover"
+            )
+            if label_err is not None:
+                return _die(label_err, code=2)
             report.setdefault("approaches", []).append(
                 {
                     "name": name,
@@ -81,6 +145,15 @@ def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
     Validates: name resolves to an existing approach, hypotheses lists are
     JSON arrays of strings, rationale non-empty. Does not run the
     unchanged_behavior cross-check at set time — that runs in `verify`.
+
+    The name check runs first: an unknown --name and an unrecorded label in
+    the same call reports the unknown-name rejection, not the label one
+    (plan 105 D4's order pin). After the name resolves, --hypotheses-addressed
+    and --hypotheses-not-covered are each validated against recorded
+    hypotheses[].label (plan 105 D4): every supplied entry must equal a
+    recorded label; a non-empty list supplied while no hypothesis has been
+    recorded is rejected naming record-hypothesis; `[]` is always accepted.
+    See _reject_unrecorded_labels for the full predicate.
 
     Single-layer gate (Gap 4 — Patch 4): when all fix_path_helpers resolve
     to the same package, --single-layer-justification + non-empty --cites
@@ -110,6 +183,17 @@ def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
                     "have {1}".format(name, sorted(names)),
                     code=2,
                 )
+
+            label_err = _reject_unrecorded_labels(
+                addressed, report, "set-recommended-approach", "--hypotheses-addressed"
+            )
+            if label_err is not None:
+                return _die(label_err, code=2)
+            label_err = _reject_unrecorded_labels(
+                not_covered, report, "set-recommended-approach", "--hypotheses-not-covered"
+            )
+            if label_err is not None:
+                return _die(label_err, code=2)
 
             recommended_record = {
                 "name": name,

@@ -592,13 +592,21 @@ def _register_subcommands(subparsers) -> None:
         "--addresses-hypotheses",
         required=True,
         dest="addresses",
-        help='JSON array of hypothesis-index strings (e.g. ["A","B"]).',
+        help=(
+            'JSON array of hypothesis labels recorded by record-hypothesis '
+            '("A", "B", ... in record order; e.g. ["A","B"]). Every entry '
+            'must equal a recorded hypotheses[].label; [] is allowed.'
+        ),
     )
     sp.add_argument(
         "--does-not-cover",
         required=True,
         dest="does_not_cover",
-        help='JSON array of hypothesis-index strings.',
+        help=(
+            'JSON array of hypothesis labels recorded by record-hypothesis '
+            '("A", "B", ... in record order). Every entry must equal a '
+            'recorded hypotheses[].label; [] is allowed.'
+        ),
     )
     sp.add_argument("--pros", required=True, help='JSON array of pros strings.')
     sp.add_argument("--cons", required=True, help='JSON array of cons strings.')
@@ -615,13 +623,21 @@ def _register_subcommands(subparsers) -> None:
         "--hypotheses-addressed",
         required=True,
         dest="hypotheses_addressed",
-        help="JSON array of hypothesis-index strings.",
+        help=(
+            'JSON array of hypothesis labels recorded by record-hypothesis '
+            '("A", "B", ... in record order). Every entry must equal a '
+            'recorded hypotheses[].label; [] is allowed.'
+        ),
     )
     sp.add_argument(
         "--hypotheses-not-covered",
         required=True,
         dest="hypotheses_not_covered",
-        help="JSON array of hypothesis-index strings.",
+        help=(
+            'JSON array of hypothesis labels recorded by record-hypothesis '
+            '("A", "B", ... in record order). Every entry must equal a '
+            'recorded hypotheses[].label; [] is allowed.'
+        ),
     )
     sp.add_argument(
         "--single-layer-justification",

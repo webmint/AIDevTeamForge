@@ -42,10 +42,10 @@ Tasks created in the workspace view never round-trip to the persistence layer; r
 
 ## Hypothesis Enumeration
 
-| Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
-|---|---|---|
-| missing await on persistence call | inject an await; verify task survives refresh | no |
-| optimistic store cleared on rejection | mock a network failure; verify task remains visible | yes |
+| Label | Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
+|---|---|---|---|
+| A | missing await on persistence call | inject an await; verify task survives refresh | no |
+| B | optimistic store cleared on rejection | mock a network failure; verify task remains visible | yes |
 
 ## Recommended Verify Step
 
@@ -59,15 +59,15 @@ Tasks created in the workspace view never round-trip to the persistence layer; r
 
 ### Option A: Await persistence in handler before clearing local state
 - **Description**: Add an `await` to the create handler so local state clears only after the persistence resolves.
-- **Addresses hypothesis**: missing await on persistence call
-- **Does NOT cover**: optimistic store cleared on rejection
+- **Addresses hypothesis**: A
+- **Does NOT cover**: B
 - **Pros**: small diff; mirrors existing edit handler shape
 - **Cons**: handler becomes async-only
 - **Complexity**: Low
 
 ### Option B: Move clear-state to a persistence-success callback
 - **Description**: Only clear the form when the persistence call confirms success; surface errors otherwise.
-- **Addresses hypothesis**: missing await on persistence call, optimistic store cleared on rejection
+- **Addresses hypothesis**: A, B
 - **Does NOT cover**: (none)
 - **Pros**: covers both hypotheses; adds error surface
 - **Cons**: extra branch; needs error UI
@@ -102,7 +102,7 @@ Key facts:
 - Symptom: Newly-created task disappears on view refresh
 - Desired: Task persists across refresh
 - Recommended approach: Option B: Move clear-state to a persistence-success callback
-- Hypothesis addressed: missing await on persistence call, optimistic store cleared on rejection
+- Hypothesis addressed: A, B
 - Hypotheses NOT covered: (none)
 - Open uncertainties: 0 (see research doc §Open Uncertainties)
 ~~~

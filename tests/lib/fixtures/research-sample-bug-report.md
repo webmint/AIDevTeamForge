@@ -53,10 +53,10 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 
 ## Hypothesis Enumeration
 
-| Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
-|---|---|---|
-| unstable comparator in inline sort | swap comparator; verify order stable | no |
-| race between fetch and watch | log fetch ids before sort | yes |
+| Label | Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |
+|---|---|---|---|
+| A | unstable comparator in inline sort | swap comparator; verify order stable | no |
+| B | race between fetch and watch | log fetch ids before sort | yes |
 
 ## Recommended Verify Step
 
@@ -70,15 +70,15 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 
 ### Option A: Replace inline sort with shared comparator
 - **Description**: Use existing helper
-- **Addresses hypothesis**: unstable comparator in inline sort
-- **Does NOT cover**: race between fetch and watch
+- **Addresses hypothesis**: A
+- **Does NOT cover**: B
 - **Pros**: small diff; reuses helper
 - **Cons**: does not address race
 - **Complexity**: Low
 
 ### Option B: Move sort to derived computed + stabilize comparator
 - **Description**: Reactive computed instead of watch body
-- **Addresses hypothesis**: unstable comparator in inline sort, race between fetch and watch
+- **Addresses hypothesis**: A, B
 - **Does NOT cover**: (none)
 - **Pros**: covers both; reactive primitive
 - **Cons**: bigger refactor
@@ -122,7 +122,7 @@ Key facts:
 - Symptom: Items not sorted in admin products list (sort fails)
 - Desired: alphabetical sort by name A->Z
 - Recommended approach: Option B: Move sort to derived computed + stabilize comparator
-- Hypothesis addressed: unstable comparator in inline sort, race between fetch and watch
+- Hypothesis addressed: A, B
 - Hypotheses NOT covered: (none)
 - Open uncertainties: 0 (see research doc §Open Uncertainties)
 ~~~

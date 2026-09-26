@@ -1651,12 +1651,24 @@ def _run_research_setup(devforge, research_helper_py):
     """Set up minimal bug-mode research state and run finalize-handoff.
 
     Returns the Path to the written handoff.json.
+
+    Every research_helper subcommand invoked here goes through _rrun, which
+    asserts returncode 0 on each call -- a setter call this builder makes
+    that is silently rejected (e.g. a hypotheses-list field carrying a
+    non-label value under 105-HYPOTHESIS-SUPPRESSION-PRECISION-PLAN.md's
+    D4) must fail loudly here, not carry on and produce a fixture the
+    setter never actually populated (plan 105 F17).
     """
     def _rrun(*argv):
-        return subprocess.run(
+        result = subprocess.run(
             [sys.executable, str(research_helper_py)] + list(argv),
             capture_output=True, text=True,
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "research_helper {0} failed rc={1}: {2}".format(
+                    argv[0], result.returncode, result.stderr))
+        return result
 
     _rrun("--devforge-dir", str(devforge), "reset-memo")
     _rrun("--devforge-dir", str(devforge), "reset-report")
@@ -1715,18 +1727,15 @@ def _run_research_setup(devforge, research_helper_py):
     _rrun("--devforge-dir", str(devforge), "set-approach",
           "--name", "Option A: invalidate cache on write",
           "--description", "Clear cache entry when catalog update occurs",
-          "--addresses-hypotheses", json.dumps(["cache not cleared on catalog update"]),
-          "--does-not-cover", json.dumps(["wrong cache key used for lookup after update"]),
+          "--addresses-hypotheses", json.dumps(["A"]),
+          "--does-not-cover", json.dumps(["B"]),
           "--pros", json.dumps(["simple"]),
           "--cons", json.dumps(["requires hook registration"]),
           "--complexity", "Low")
     _rrun("--devforge-dir", str(devforge), "set-approach",
           "--name", "Option B: remove cache entirely",
           "--description", "Fetch fresh data on every query",
-          "--addresses-hypotheses", json.dumps([
-              "cache not cleared on catalog update",
-              "wrong cache key used for lookup after update",
-          ]),
+          "--addresses-hypotheses", json.dumps(["A", "B"]),
           "--does-not-cover", json.dumps([]),
           "--pros", json.dumps(["always fresh"]),
           "--cons", json.dumps(["higher latency"]),
@@ -1735,9 +1744,9 @@ def _run_research_setup(devforge, research_helper_py):
           "--name", "Option A: invalidate cache on write",
           "--rationale", "Targeted invalidation avoids latency cost of full removal",
           "--hypotheses-addressed",
-          json.dumps(["cache not cleared on catalog update"]),
+          json.dumps(["A"]),
           "--hypotheses-not-covered",
-          json.dumps(["wrong cache key used for lookup after update"]))
+          json.dumps(["B"]))
     _rrun("--devforge-dir", str(devforge), "set-constitution-constraints",
           "--rule", "Cache invalidation must be deterministic",
           "--impact", "Prevents stale data serving")
