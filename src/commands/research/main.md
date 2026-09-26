@@ -1086,14 +1086,14 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    .devforge/lib/research_helper set-summary --value "<3-5 sentences>"
    ```
 
-2. **Approaches** (typically 2; each must cite which hypothesis indices it addresses + which it does NOT cover). Hypothesis index strings come from the order the hypotheses were recorded in Phase 2 — refer to them as `"A"`, `"B"`, ... For each approach:
+2. **Approaches** (typically 2; each must cite which hypothesis labels it addresses + which it does NOT cover). Hypothesis labels come from the order the hypotheses were recorded via `record-hypothesis` in Phase 2.6 — the first is `"A"`, the second `"B"`, and so on; refer to hypotheses by those labels. All four hypothesis-list flags — `--addresses-hypotheses` and `--does-not-cover` here, `--hypotheses-addressed` and `--hypotheses-not-covered` on `set-recommended-approach` — take recorded labels only: the helper rejects (exit 2) any entry that is not a recorded label, cause text included, and lists the recorded labels (or names `record-hypothesis` when none is recorded); `[]` is accepted. The examples below assume the minimum two hypotheses, `"A"` and `"B"`. For each approach:
 
    ```bash
    .devforge/lib/research_helper set-approach \
        --name "<approach name>" \
        --description "<1-2 sentences>" \
-       --addresses-hypotheses '["A","B"]' \
-       --does-not-cover '["C"]' \
+       --addresses-hypotheses '["A"]' \
+       --does-not-cover '["B"]' \
        --pros '["pro-1", "pro-2"]' \
        --cons '["con-1", "con-2"]' \
        --complexity <Low|Med|High>
@@ -1107,8 +1107,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    .devforge/lib/research_helper set-recommended-approach \
        --name "<must match an approach.name>" \
        --rationale "<why this approach + acknowledged uncertainty>" \
-       --hypotheses-addressed '["A","B"]' \
-       --hypotheses-not-covered '["C"]'
+       --hypotheses-addressed '["A"]' \
+       --hypotheses-not-covered '["B"]'
    ```
 
    **MANDATORY canonical-pattern citation.** If Phase 2.4b recorded any `Finding` row with `relevance` starting "canonical pattern — reusable", the `--rationale` MUST cite that pattern's `file:line` and state the recommended approach REUSES it (not reinvents). Only justify a fresh helper extraction when the canonical pattern's `file_line` was recorded as `(none)` in Phase 2.4b (no canonical found), and the `--rationale` must say so explicitly: "no canonical pattern exists project-wide; new helper justified".
@@ -1121,8 +1121,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    .devforge/lib/research_helper set-recommended-approach \
        --name "<must match an approach.name>" \
        --rationale "<why this approach + acknowledged uncertainty>" \
-       --hypotheses-addressed '["A","B"]' \
-       --hypotheses-not-covered '["C"]' \
+       --hypotheses-addressed '["A"]' \
+       --hypotheses-not-covered '["B"]' \
        --single-layer-justification "<prose: why symptom is layer-local>" \
        --cites '["<recorded row token>","<recorded row token>"]'
    ```
@@ -1162,7 +1162,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
    The description cites the surface's identity evidence as its Phase 2.4e finding or its Step 2b justification records it. For a suspected surface, which has none, the description says so instead: `<surface> may also show <feature> — no identity evidence found; why it may: <what the user sees there>; the recommended approach leaves it unchanged — cover it or leave it out?`.
 
-   Each gap renders under the report's `## Open Uncertainties`, which `/devforge:specify` reads as part of `research-report.md`. Research records the question and does not decide it — the scope decision is `/devforge:specify`'s. Put it in `record-gap`, never in `--rationale`: `/devforge:specify` sees the rationale only as an 80-character picker summary, and the hypothesis-suppression gate below token-matches the rationale against unverified hypotheses, so surface names written there can trip that gate. `record-gap` appends without dedupe and nothing removes a gap, so record each surface once; if a later `verify` retry re-calls `set-recommended-approach` with a different approach, add gaps only for surfaces not already recorded. When no surface meets both conditions, this step records nothing.
+   Each gap renders under the report's `## Open Uncertainties`, which `/devforge:specify` reads as part of `research-report.md`. Research records the question and does not decide it — the scope decision is `/devforge:specify`'s. Put it in `record-gap`, never in `--rationale`: `/devforge:specify` sees the rationale only as an 80-character picker summary, and the hypothesis-suppression gate below token-matches the rationale against the cause of every gated hypothesis, so surface names written there can trip that gate. `record-gap` appends without dedupe and nothing removes a gap, so record each surface once; if a later `verify` retry re-calls `set-recommended-approach` with a different approach, add gaps only for surfaces not already recorded. When no surface meets both conditions, this step records nothing.
 
 4. **Constitution constraints** — read `constitution.md` for rules that bear on the affected area + recommended approach. For each rule that constrains or enables the change:
 
@@ -1234,11 +1234,30 @@ After `verify` exits 0, run the dedicated hypothesis-suppression gate (this is a
 .devforge/lib/research_helper verify-hypothesis-suppression
 ```
 
-The gate defends the Phase 0.4 / Step 5 separation at finalize time: an UNVERIFIED suspected-cause hypothesis must not also reappear as design direction. Mechanically, the helper token-overlaps each unverified hypothesis's `--cause` text against `recommended_approach.rationale` (the text that becomes `plan_seeds.recommended_approach_summary` in the handoff) and exits 2 on any shared identifier/vocabulary token. A hypothesis is exempt from the gate ONLY when it is CONFIRMED, and confirmation requires BOTH conditions together: the session/probe grade is HIGH (tier 1 / 1.5 — not MEDIUM/LOW and not feasibility-discriminator-unresolved) AND the hypothesis is recorded as addressed in `recommended_approach.hypotheses_addressed` (matched by its label). Behaviorally: confirmed (HIGH-grade AND addressed) → exempt; anything else → gated. An unconfirmed hypothesis stays gated even in a HIGH-grade session — a runner-up that the session did not confirm but whose mechanism leaks into the rationale is still flagged, because HIGH grade alone is not confirmation without the addressed-label match. Exit 0 → clean (no recommended approach yet, or no unverified mechanism leaked); exit 1 → state unreadable; exit 2 → a leak was found.
+The gate defends the Phase 0.4 / Phase 0.5 separation at finalize time: a suspected-cause hypothesis this session did not confirm must not also reappear as design direction. A hypothesis is EXEMPT from the gate ONLY when BOTH conditions hold together: the session/probe grade is HIGH (tier 1 / 1.5 — not MEDIUM/LOW and not feasibility-discriminator-unresolved) AND the hypothesis's label is listed in `recommended_approach.hypotheses_addressed`. Every other hypothesis is GATED — including one in a HIGH-grade session whose label is not listed, such as a runner-up the session did not confirm, because HIGH grade alone is not confirmation. For each gated hypothesis, the helper tokenizes its `--cause` text and `recommended_approach.rationale` (the text that becomes `plan_seeds.recommended_approach_summary` in the handoff) into identifier/vocabulary tokens — lowercased, split on non-alphanumeric boundaries, tokens shorter than 4 characters and stopwords dropped — and takes the tokens the two share. Three filters then narrow that overlap, in this order: (1) a token that also occurs in a recorded evidence row — a `consumer_chain[].consumer_qn`, the `evidence` of a `value_semantics` row classified `invariant`, a `dead_siblings[].method_qn`, a `fix_path_helpers[].file_line`, or a `findings[].file_line` — is removed; (2) a token declared for THAT hypothesis via `declare-grounded-overlap` (the declaration exit in the recovery below) is removed; (3) of the tokens that survive, only one of 8 or more characters counts. A single such token fails the gate. Exit 0 → clean (no recommended approach yet, or no gated hypothesis has a surviving token); exit 1 → state unreadable; exit 2 → at least one gated hypothesis has a surviving token, and stderr carries one line per such hypothesis naming its label, its cause verbatim, and every surviving token, sorted.
 
-**Scope of this check (do not over-trust it).** This is a MODERATE mechanical backstop: it catches a leaked mechanism when the recommended approach REUSES the cause's identifiers/vocabulary — the common case, since an approach summary usually names the API / symbol it changes. It does NOT catch pure semantic paraphrase: a recommended approach that encodes the same mechanism in entirely different words shares zero tokens and passes. Paraphrase leakage is caught by Step 5's echo-back human gate (plan 18 Step 5), not by this check.
+**Scope of this check (do not over-trust it).** This is a MODERATE mechanical backstop, and it matches tokens, not meaning. It catches a gated hypothesis's specific identifier reused in the rationale: a token of 8 or more characters that no row read by filter (1) carries and no declaration for that hypothesis accepts. The length floor stands in for specificity without testing it — a generic word of 8 or more characters (`declared` is one) fires the gate as well. A token carried only by a recorded row that filter (1) does not read — a `fix_path_helpers[].qn`, for one — can still fire it; the declaration exit below is how that overlap is accepted. It does NOT fire on a token shorter than 8 characters, whether a short generic word or a short identifier. It does NOT catch semantic paraphrase: a rationale that encodes the same mechanism in different words shares no token and passes. Nothing in `/devforge:research` catches paraphrase — Phase 0.5's echo-back runs before any recommended approach exists, and the only question the command asks after this gate is Step 4.1's, which asks about saving the report, not about the rationale.
 
-On exit 2: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The recovery is exactly what the stderr names — move the mechanism into an open question via `record-gap` (record it against the `desired` dimension with a `"confirm <mechanism> before designing"` description), then remove the mechanism from the recommended approach by re-calling `set-recommended-approach` with a `--rationale` that no longer encodes the unverified cause. Re-run `verify-hypothesis-suppression` after the fix; cap at 3 iterations, then surface to the user and end the turn.
+On exit 2: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Exactly two exits are admissible — the stderr line of each labelled hypothesis names both — and every printed token clears through one of them.
+
+**Unverified mechanism → `record-gap`.** Move the mechanism into an open question — record it against the `desired` dimension with a `"confirm <mechanism> before designing"` description — then remove it from the recommended approach by re-calling `set-recommended-approach` with a `--rationale` that no longer carries the mechanism.
+
+**Legitimate overlap → `declare-grounded-overlap`.** Take this exit only when the token is in the rationale because it names something this investigation RECORDED. Declare the overlap for the hypothesis label the stderr line names:
+
+```bash
+.devforge/lib/research_helper declare-grounded-overlap \
+    --hypothesis "<label from the stderr line>" \
+    --tokens '["<token from the stderr line>"]' \
+    --grounded-in "<a recorded evidence value, verbatim>"
+```
+
+`--tokens` takes tokens the stderr line printed for that hypothesis — a non-empty JSON array, each entry 8 or more characters and a token of BOTH the `--grounded-in` value and that hypothesis's own cause. `--grounded-in` is the VERBATIM value of one recorded row: a `consumer_chain[].consumer_qn` / `.value` / `.file_line`, a `value_semantics[].value` / `.evidence`, a `dead_siblings[].method_qn` / `.class_qn`, a `fix_path_helpers[].qn` / `.file_line`, or a `findings[].file_line`. Read the recorded values from `read-report`, or from the `Recorded values:` list the helper prints when it rejects a `--grounded-in`; never compose one. When any of these fails, the helper exits 2 and writes nothing; an unrecorded `--hypothesis` is rejected with the recorded labels listed. The helper checks that the row exists and carries the token — it does not check that the row is WHY the token is in the rationale, so ground each declaration in the row that is. A declaration removes its tokens for that hypothesis only, and every declaration renders in the report's Overlap Declarations section (see Render below).
+
+A stderr line whose hypothesis prints as `(unlabelled)` names only the `record-gap` exit — that hypothesis carries no recorded label, so only the `record-gap` exit applies to it.
+
+**Rewording is not an exit.** Do not re-call `set-recommended-approach` with a rationale reworded only to drop the printed tokens, with no `record-gap` and no declaration behind it. The gate matches tokens, not meaning, so it may pass that rationale — and the report would then carry the mechanism with nothing in it saying so.
+
+Re-run `verify-hypothesis-suppression` after each fix. Cap at 3 re-run iterations. On the 4th failure (the third re-run still exiting 2), surface to the user and end the turn. Each re-run is one iteration, whichever exit the fix took; a rejected `record-gap` or `declare-grounded-overlap` call is not a re-run: copy its stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), fix the call from what the stderr prints, and re-call it before re-running the gate.
 
 ### Render
 
@@ -1246,7 +1265,7 @@ On exit 2: copy stderr VERBATIM into your next user-facing message as a fenced c
 .devforge/lib/research_helper render
 ```
 
-Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → optional Runner-up framing → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW) → Constitution Constraints → Complexity Assessment → optional Value Semantics → optional Value Production Sites → optional Literal Archaeology → Evidence Lanes Consulted → optional Open Uncertainties → optional Next Step), heading levels, and table shapes. The Runner-up framing section renders only when `runner_up_framing` is set (see Phase 2.3b). Evidence Lanes Consulted is the one section carrying no "optional" qualifier above: it renders on every report, listing each lane as `consulted` or `not consulted`, so a lane that never ran says so rather than vanishing from the report (see setter 8). The Codebase Findings table includes a `Framing` column showing the per-finding tag (`primary` or `runner-up`).
+Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → optional Intake interpretation → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → optional Runner-up framing → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW to change) → optional Overlap Declarations → Constitution Constraints → Complexity Assessment → optional Value Semantics → optional Value Production Sites → optional Literal Archaeology → Evidence Lanes Consulted → optional Open Uncertainties → optional Next Step), heading levels, and table shapes. The Runner-up framing section renders only when `runner_up_framing` is set (see Phase 2.3b). The Overlap Declarations section renders only when a declaration was recorded (see the `declare-grounded-overlap` exit under Hypothesis-suppression gate). Evidence Lanes Consulted is the one section carrying no "optional" qualifier above: it renders on every report, listing each lane as `consulted` or `not consulted`, so a lane that never ran says so rather than vanishing from the report (see setter 8). The Codebase Findings table includes a `Framing` column showing the per-finding tag (`primary` or `runner-up`).
 
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). This is the user's first look at the rendered report.
 
