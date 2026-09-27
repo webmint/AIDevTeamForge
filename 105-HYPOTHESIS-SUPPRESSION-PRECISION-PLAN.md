@@ -1,7 +1,7 @@
 # 105 — Hypothesis-Suppression Precision Plan
 
 **Created**: 2026-09-20
-**Status**: **Phase 0 CLOSED 2026-09-25 by an explicit maintainer pick — every item ratified, as recommended except D2 and D4, which were amended (see `## Phase 0 close record`).** `## Phase 0 close record` — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. **Nothing is built. Build phases MAY start.** Phase 6 is a user-driven consumer e2e HARD GATE that has not been run and is not waived. ⚠ **The close changes no evidence class** (the paragraph below). *(corrected 2026-09-25 at the Phase 0 close — until then this line read "Phase 0 PENDING" and barred every build phase until the close record carried an outcome for every decision and open question.)*
+**Status**: **✅ DONE (build) 2026-09-27 — Phases 1–5 BUILT: Phases 1–4 on 2026-09-26, Phase 5 (docs) on 2026-09-27. Phase 6 consumer e2e DEFERRED — user-driven HARD GATE, NOT run, NOT waived; build-verified, NOT consumer-validated — "built and reviewed" is the ceiling of every claim here.** *(corrected 2026-09-27 at Phase 5 — from the Phase 0 close until then this line read "**Nothing is built. Build phases MAY start.** Phase 6 is a user-driven consumer e2e HARD GATE that has not been run and is not waived."; before the close it read "Phase 0 PENDING" and barred every build phase until the close record carried an outcome for every decision and open question.)* Commits: Phase 0 close `d929fb9`; Phase 1 `e2400bc`; Phase 2 `f12e1d5`; Phase 3 `84a47cb`; Phase 4 `da58d94`; Phase 5 — the ledger commit, which carries this line. `## Build record — 2026-09-26/27` records each phase's commit, what it built, its tests and its review, then every build-time departure from the plan text. **Phase 0 CLOSED 2026-09-25 by an explicit maintainer pick — every item ratified, as recommended except D2 and D4, which were amended (see `## Phase 0 close record`).** `## Phase 0 close record` — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. ⚠ **Neither the close nor the build changes the evidence class** (the paragraph below).
 
 ⚠ **Evidence class, to be repeated in every summary of this plan: ONE observed instance, from a single consumer run — the gate fired and its stderr named a package-path segment rather than the informative token. Everything else is an audit of the code, read on 2026-09-20. NOTHING WAS MEASURED: the gate's false-positive rate is unknown, and no phase in this plan measures it.**
 
@@ -200,6 +200,7 @@ After D2's subtraction, the gate fires only when at least one surviving token is
 - **It is ONE token, not "2 or more".** The canonical trip-wire's overlap is **exactly one token** — `getconfigurationitems` (F21, case `:12451`) — so a two-token rule would turn the gate's own regression trip-wire green. Say so in the build, and never adopt a count-based rule without re-reading that case.
 - **Why 8 and not 10.** `sortItems` is 9 characters and is a real identifier in this repo's own fixture (`ProductsListComponent.sortItems`, F20). A floor of 10 would blind the gate to every 8- and 9-character real identifier, and all six exit-2 cases carry a token of 10 or more (F21), so a floor of 10 would have looked safe against the suite while quietly losing that class.
 - ⚠ **The honest cost of 8, stated plainly: it does not exclude every generic word.** `declared` is exactly 8 and still clears the floor. `core` (4), `live` (4) and `fields` (6) are excluded; `declared` is not. **The floor narrows Finding 1's class; it does not close it.** D5's declaration route is what covers the remainder, and that is a legibility answer, not a precision one.
+  - ⚠ **The sentence above, kept as drafted, overstates the built route.** The declaration accepts a token only when the value of a recorded evidence row carries it (`## Build record — 2026-09-26/27`), so it covers only the part of the remainder that recorded evidence carries. A generic word of 8 or more characters that no recorded row carries — `declared`, in a run where no row does — has `record-gap` as its only admissible exit. *(corrected 2026-09-27)*
 
 **RECOMMEND D3 as stated.**
 
@@ -288,7 +289,7 @@ Option (b) — demote the gate to a non-blocking WARN, on the precedents of plan
 
 ## Phase 0 close record
 
-**CLOSED 2026-09-25.** **D1, D3, D5, D6, OQ-1, OQ-2 and OQ-3 are ratified as recommended; D2 and D4 are ratified AMENDED** — D2's source 2 narrowed to rows classified `invariant`, D4 widened to all four hypothesis-list fields. Nothing was declined, no item is left open, and **build phases MAY start.** ⚠ **Nothing is built.**
+**CLOSED 2026-09-25.** **D1, D3, D5, D6, OQ-1, OQ-2 and OQ-3 are ratified as recommended; D2 and D4 are ratified AMENDED** — D2's source 2 narrowed to rows classified `invariant`, D4 widened to all four hypothesis-list fields. Nothing was declined, no item is left open, and **build phases MAY start.** ⚠ **Nothing is built.** *(True at the close. Added 2026-09-27 at build: Phases 1–5 are BUILT — `## Build record — 2026-09-26/27`; Phase 6 is NOT run.)*
 
 Every statement in this record is dated 2026-09-25 unless it names another date.
 
@@ -376,11 +377,93 @@ Each ratified item is checked here **by NAME, never against a range**, and the p
 
 **What this record does NOT close — 2026-09-25.**
 
-- **Nothing is built.** Phases 1–5 have not started, and Phase 6 is not run and not waived.
+- **Nothing is built.** Phases 1–5 have not started, and Phase 6 is not run and not waived. *(True at the close. Added 2026-09-27 at build: Phases 1–5 are BUILT — `## Build record — 2026-09-26/27`; Phase 6 is NOT run.)*
 - **No evidence class changed** (**How it closed**).
 - **No per-item deliberation happened for D1, D3, D6, OQ-1, OQ-2 or OQ-3**, so every counter-argument of theirs is live for re-opening on its own merits.
 - **D2's over-breadth exposure is narrowed, not closed**, and its trigger still comes only from a reviewer reading a report: an exit 0 is silent.
 - **"Build phases MAY start" means Phase 0 no longer bars them.** It is not a scheduling claim, and this record does not say which open root plan builds next.
+
+---
+
+## Build record — 2026-09-26/27
+
+*(added 2026-09-27)* **Phases 1–5 are BUILT: Phases 1–4 on 2026-09-26, Phase 5 on 2026-09-27. Phase 6 is NOT run and NOT waived.** ⚠ **Build-verified, never consumer-validated — "built and reviewed" is the ceiling of every claim in this record.** The commits and their timestamps were read from `git log` on 2026-09-27. Each test count is the one its phase's run reported at build time.
+
+⚠ **The build changes no evidence class:** ONE observed instance, from a single consumer run; Findings 2, 3 and 4 found by reading, predicted and not observed; nothing measured. **The build measured no false-positive rate.** Every green suite below shows that the rules behave on planted fixtures, never how often the gate over-fires on a real run.
+
+| Phase | Commit | Committed (+0300) | `tests/lib` after the phase | Review |
+|---|---|---|---|---|
+| Phase 0 close | `d929fb9` | 2026-09-26 12:43 — closed 2026-09-25 | — (the close record only) | instruction-author → instruction-reviewer |
+| Phase 1 | `e2400bc` | 2026-09-26 14:18 | 11888 passed, 16 skipped | python-reviewer SHIP-READY; one test-strength finding fixed |
+| Phase 2 | `f12e1d5` | 2026-09-26 16:36 | 11905 passed, 16 skipped | python-reviewer SHIP-READY; three small findings fixed |
+| Phase 3 | `84a47cb` | 2026-09-26 20:22 | 11929 passed, 16 skipped | python-reviewer NEEDS-FIXES → four fixed → SHIP-READY |
+| Phase 4 | `da58d94` | 2026-09-26 21:57 | — (instruction-only; the live-spec tests: 78 passed) | instruction-reviewer, looped to clean |
+| Phase 5 | the ledger commit | 2026-09-27 | — (docs only) | — (routed instruction-author → instruction-reviewer) |
+
+**Every item, by NAME, and the phase that built it:** D1 → Phase 1; D2 as amended → Phases 1 and 4; D3 → Phases 1 and 4; D4 as amended → Phases 2 and 4; D5 → Phases 3 and 4; OQ-1 → Phases 3 and 4; OQ-2 → Phase 1, and Phase 4's gate block describes its message; OQ-3 → Phase 1, a verified no-op. **D6 has no build step:** the gate keeps its hard exit 2, and Phase 4's gate block describes it.
+
+**Phase 1 — Python: evidence-grounded subtraction and the specificity floor — `e2400bc`, 2026-09-26.**
+- **D2 as amended:** `_suppression_evidence_tokens` in `src/devforge/lib/_research/_cmds_render_verify.py` tokenizes the ratified set — `consumer_chain[].consumer_qn`, the `evidence` of `value_semantics` rows classified `invariant`, `dead_siblings[].method_qn`, `fix_path_helpers[].file_line`, `findings[].file_line` — and `cmd_verify_hypothesis_suppression` subtracts those tokens before the floor.
+- **D3:** `_SUPPRESSION_MIN_SPECIFIC_TOKEN_LEN = 8` — one surviving token of 8 or more characters fires the gate; never a count.
+- **OQ-2:** stderr lists every surviving token, sorted, in place of `min(overlap)`.
+- **OQ-3:** `_probe_tier_is_unverified` is byte-unchanged.
+- **F1:** the gate subparser's help no longer says *"Exit 0 when clean or tier is HIGH."*
+- **F5, F22:** the gate's docstring and its module's docstring describe the built predicate. `Step-5 intake echo-back` returns 0 hits in Phase 1's four files (re-run 2026-09-27).
+- **D1:** docstring-only edits to `src/devforge/lib/_shared/text_overlap.py` and `tests/lib/test_shared_text_overlap.py`.
+- **Tests:** 13 new gate tests and 7 direct tests of `_suppression_evidence_tokens`. The evidence-grounded test was mutation-checked: it fails when the subtraction is removed.
+
+**Phase 2 — Python: label validation and the fixture migration — `f12e1d5`, 2026-09-26.**
+- **D4 as amended:** `_reject_unrecorded_labels` in `src/devforge/lib/_research/_cmds_approach.py` validates all four flags — `--addresses-hypotheses`, `--does-not-cover`, `--hypotheses-addressed`, `--hypotheses-not-covered`. The approach-name check runs first, and a rejection lists the recorded labels in record order.
+- The four flags' help strings in `_cli.py` state the label contract.
+- `render` gives the Hypothesis Enumeration table a leading `Label` column.
+- Every builder and test that calls `set-approach` or `set-recommended-approach` asserts its exit code, including 13 pre-existing calls that asserted none.
+- Both round-trip fixtures were re-rendered, and only the lines Phase 2's Verify enumerates changed. The companion fixture `tests/lib/fixtures/specify-sample-research-input.md` was migrated.
+- **Tests:** `TestHypothesisLabelValidation`, 17 tests.
+
+**Phase 3 — Python: the declaration route — `84a47cb`, 2026-09-26.**
+- **D5, OQ-1:** a new verb, `declare-grounded-overlap --hypothesis --tokens --grounded-in`, in `src/devforge/lib/_research/_cmds_overlap.py`.
+- **Grounding:** `--grounded-in` must equal the verbatim value of a recorded row, from a set WIDER than the gate's subtraction set — `consumer_chain[].consumer_qn` / `.value` / `.file_line`; `value_semantics[].value` / `.evidence`, any classification; `dead_siblings[].method_qn` / `.class_qn`; `fix_path_helpers[].qn` / `.file_line`; `findings[].file_line`. A rejection prints the recorded values, in the `--cites` shape (F13).
+- **Tokens:** every declared token is 8 or more characters and a token of BOTH the `--grounded-in` value and the named hypothesis's cause. Every rejection exits 2 before any write.
+- **The gate** subtracts a hypothesis's own declared tokens after the evidence subtraction and before the floor. A declaration for one label never reaches another.
+- **Stderr** reads "gated hypothesis <label>" and names both exits. A hypothesis with no recorded label is offered `record-gap` only.
+- **Render:** a conditional `## Overlap Declarations` section after Approaches, absent when nothing is declared. `overlap_declarations` is in the default report state, and a summary line counts the declarations.
+- A field value that is not a string is skipped in both the subtraction set and the grounding set.
+- **Plan 75's tripwire held, on the narrow reading:** the multiline pattern `add_parser\(\s*"verify` still returns 2 in `_cli.py`, and `cmd_verify` is untouched.
+- **Tests:** the research suite, re-run after the review fixes, 667 passed, 2 skipped.
+
+**Phase 4 — Instructions — `da58d94`, 2026-09-26.** In `src/commands/research/main.md`:
+- the gate block: the predicate, its three filters in order and its exits; *"Phase 0.4 / Step 5 separation"* renamed to Phase 0.4 / Phase 0.5;
+- the **Scope of this check (do not over-trust it).** paragraph: the false routing and the plan vocabulary are gone, and it states that nothing in `/devforge:research` catches paraphrase;
+- the recovery: the two admissible exits, the verb taught with an example, *"Rewording is not an exit."*, and a cap that counts gate re-runs;
+- the label prose; the examples' `"C"` → `"B"`, because the example flow records two hypotheses; Phase 3 step 3b's wording now says "gated";
+- the `render` section order gains the optional Intake interpretation and the optional Overlap Declarations, and names `Approaches (HOW to change)` literally;
+- `src/commands/discover/main.md` untouched (F24).
+
+**Phase 5 — Docs sweep — 2026-09-27.** Docs only, in two passes: this plan file — the Status line, this record, the per-phase pointer lines, the dated D3 correction with Honest bounds and Trap 9, `## When resuming work` and `## Context for next session` — and the ledger sites Phase 5 names: `PLAN-STATUS-ARCHIVE.md`'s `## Index` and `## Entries`, `CHANGELOG.md`, `DEVELOPMENT-STATUS.md` and `README.md`. The ledger commit carries the SHA. Each ledger site's edit or verified no-op, with its grep, is the ledger pass's to record.
+
+**The ledger pass — 2026-09-27: each site Phase 5 names, as an edit or an explicit verified no-op, with its grep.** Each ledger was read live immediately before its edit (F25), and every edit inserts new text only; no neighbour's line was rewritten. *(added 2026-09-27)*
+- **`PLAN-STATUS-ARCHIVE.md` `## Index` — EDIT.** One line for this plan, placed after `104-UNIVERSAL-SECTIONS-INTEGRITY-PLAN.md`'s index line, in the shape the plan 100, 101, 102 and 104 lines use. *(added 2026-09-27)*
+- **`PLAN-STATUS-ARCHIVE.md` `## Entries` — EDIT.** One full entry, placed after plan 104's entry and before the relocated-FINDING placeholders, in the house shape of the plan 102 and 104 entries. The pre-existing mention inside the Specify In-Place Revision Plan's entry is untouched: a grep for its sentence from `` (`105-HYPOTHESIS-SUPPRESSION-PRECISION-PLAN.md` as of 2026-09-24, its Phase 0 still pending) `` through *"What separates the two decisions is reasoning, not measurement"* still matches. The new entry states, as an FYI, that the mention's *"still pending"* is stale, and does not edit it. *(added 2026-09-27)*
+- **`CHANGELOG.md` — EDIT.** `## [Unreleased]`, read live, has one subheading, `### Changed`, holding the plan 101, 102 and 104 `- feat(...)` entries. One `- feat(research): …` entry was added after plan 104's, with the evidence class first and the honest bounds last. No released section was edited. *(added 2026-09-27)*
+- **`DEVELOPMENT-STATUS.md` — EDIT.** Before the edit, `/devforge:research|research_helper|hypothesis|suppression|declare-grounded` (case-insensitive) returned no hit for `research_helper`, `suppression` or `declare-grounded`. `hypothesis` hit only the `research.md` bullet's *"approaches with hypothesis citation"*, which is still true, and every `/devforge:research` hit was intake-role or allocation text. The file's `### Commands` list tracks per-command features, and that bullet already carries per-plan verbs and report lines, plans 67, 98 and 99 among them. So one clause was appended to it: the predicate, the label contract and the `Label` column, the two exits naming `declare-grounded-overlap` and `## Overlap Declarations`, the paraphrase bound and the evidence class. No Key Design Decision item was added, because plan 102's comparable gate change added none. *(added 2026-09-27)*
+- **`README.md` — VERIFIED NO-OP.** The same grep hits `/devforge:research` only: the requirements table, the flow diagram, the command's catalog bullet, the `/devforge:discover` and `/devforge:report-ticket` bullets and the artifact tree. Each hit names the command's use of the code graph, its place in the flow, its intake role, its feature-directory allocation or its file names. `research_helper`, `hypothesis`, `suppression` and `declare-grounded` return 0 hits. A second grep, `Overlap|Label|Enumeration|record-gap|verify-hypothesis|gate` (case-insensitive), hits only the pipeline's approval-gate paragraph and other commands' bullets. Nothing in the file describes the gate, the labels or the report's sections. *(added 2026-09-27)*
+- **Phase 5 Verify's counts, re-derived live after the edits.** `105-HYPOTHESIS` in `PLAN-STATUS-ARCHIVE.md` → **3** lines: the new `## Index` line, the pre-existing mention in the Specify In-Place Revision Plan's entry and the new `## Entries` entry, i.e. the pre-build 1 plus this plan's 2. `105-HYPOTHESIS` in the repo `CLAUDE.md` → **0**, and that file is untouched. *(added 2026-09-27)*
+- **No ledger sentence claims consumer validation**; "built and reviewed" is the ceiling in each. *(added 2026-09-27)*
+
+**Departures from the plan text, and additions beyond it — each by name:**
+- **Phase 1 — the `fix_path_helpers[].file_line` per-source test.** It cannot isolate that source through the CLI: `record-fix-path-helper`'s anchor gate requires a finding at the same path, so a `findings` row carries the same tokens. A direct unit test of `_suppression_evidence_tokens`, with the findings removed from the loaded state, isolates it.
+- **Phase 3 — the declaration's grounding and token rules were decided at build.** The plan left the carrier's details to Phase 3 (OQ-1). Built: the grounding set is wider than the subtraction set; each declared token must be a token of the grounded-in row AND of the hypothesis's cause; each declared token must be 8 or more characters. The 8-character rule came from review: a shorter token can never fire the gate, so declaring it is inert. The subtraction set is unchanged — a rationale naming a recorded `fix_path_helpers[].qn` still fires the gate, and the declaration is now how that overlap is accepted.
+- **D3's sentence *"D5's declaration route is what covers the remainder"* overstates the built route.** The declaration accepts only a token that a recorded evidence row's value carries, so a generic word of 8 or more characters that no recorded row carries — `declared`, in a run where no row does — has `record-gap` as its only admissible exit. A dated correction stands beside D3's sentence, and Honest bounds and Trap 9 agree with it.
+- **Phase 3 — a hypothesis with no recorded label is offered `record-gap` only**, because the declaration needs a recorded label.
+- **Phase 3 — the gate's stderr says "gated hypothesis"** (it said "unverified") and names the label and both exits.
+- **Phase 4 — the example labels changed `"C"` → `"B"`**, and the render section-order sentence also gained the optional Intake interpretation, which it had omitted before this plan.
+- **Plan citations in `_cli.py` help strings.** Phase 3 gave the new verb's help a citation of *"plan 105 D5"*, following that file's existing convention, which has 10 or more precedents. ⚠ `_cli.py` ships into consumer installs, and this plan's rule is that no emitted sentence names plan vocabulary (`## Decisions to ratify`), so **the citation was removed in Phase 5**: the help is reworded without plan vocabulary, and other plans' pre-existing citations in `_cli.py` are untouched. *(corrected 2026-09-27)*
+
+**Open after the build — 2026-09-27:**
+- **Phase 6, the user-driven consumer e2e HARD GATE, is NOT run and NOT waived**, so "built and reviewed" is the ceiling of every claim in this plan.
+- **One out-of-scope observation, owned by no phase and NOT filed in `FINDINGS.md`** — the research handoff's `open_questions` — is recorded under `## Context for next session`.
+- **No counter-argument the close record keeps live was answered by a measurement.** D2's over-breadth exposure and D3's unmeasured 8 stand as recorded.
+- ⚠ **The evidence class is unchanged:** one observed instance, three findings found by reading, nothing measured.
 
 ---
 
@@ -403,6 +486,8 @@ D1–D6 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - If any of D2, D3, D4 or D5 is declined or amended, the record states, for each such item, whether the repair that the Specify In-Place Revision Plan's Test 1 cites still stands (D6's dependency paragraph; `102-SPECIFY-IN-PLACE-REVISION-PLAN.md` as of 2026-09-25). That plan's text is not edited. *(added 2026-09-25)*
 
 ### Phase 1 — Python: evidence-grounded subtraction and the specificity floor
+
+**BUILT 2026-09-26 (`e2400bc`)** — see `## Build record — 2026-09-26/27`; the text and Verify list below are kept as drafted. *(added 2026-09-27)*
 
 **Route: python-engineer → python-reviewer. Every function gets a test written AND run in the same turn.** Commit by explicit path.
 
@@ -437,6 +522,8 @@ D1–D6 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 
 ### Phase 2 — Python: label validation and the fixture migration
 
+**BUILT 2026-09-26 (`f12e1d5`)** — see `## Build record — 2026-09-26/27`; the text and Verify list below are kept as drafted. *(added 2026-09-27)*
+
 **Route: python-engineer → python-reviewer.** Commit by explicit path.
 
 ⚠ **Phase 0 outcome (2026-09-25):** D4 is AMENDED to all four fields and its `Label` column is ratified. Every "if D4 was amended to four fields" / "if D4 was widened to four fields" branch and every "when D4's `Label` column is ratified" / "if D4's `Label` column was ratified" branch below is LIVE. `## Phase 0 close record` is authoritative for this phase's scope. *(added 2026-09-25)*
@@ -464,6 +551,8 @@ D1–D6 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 
 ### Phase 3 — Python: the declaration route
 
+**BUILT 2026-09-26 (`84a47cb`)** — see `## Build record — 2026-09-26/27`; the text and Verify list below are kept as drafted. *(added 2026-09-27)*
+
 **Route: python-engineer → python-reviewer.** Runs only if D5 is ratified. Commit by explicit path.
 
 ⚠ **Phase 0 outcome (2026-09-25):** D5 is ratified with the narrow reading of plan 75's tripwire, so **this phase runs**; OQ-1 is ratified, so the carrier is **a new verb**, and this phase picks its name. *(added 2026-09-25)*
@@ -481,6 +570,8 @@ D1–D6 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - python-reviewer returns SHIP-READY, or every finding is fixed.
 
 ### Phase 4 — Instructions
+
+**BUILT 2026-09-26 (`da58d94`)** — see `## Build record — 2026-09-26/27`; the text and Verify list below are kept as drafted. *(added 2026-09-27)*
 
 **Route: instruction-author → instruction-reviewer.** Instruction-only: no `.py` file changes in this phase. **Needs Phases 1 and 2 first, and Phase 3 too if D5 was ratified** — it describes the predicate they built and quotes their messages. If D5 was declined, Phase 3 does not exist and this phase's D5 bullets fall away with it.
 
@@ -509,6 +600,8 @@ D1–D6 and OQ-1–OQ-3 each get an outcome in `## Phase 0 close record`.
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
 ### Phase 5 — Docs sweep
+
+**BUILT 2026-09-27** — see `## Build record — 2026-09-26/27`; the ledger commit carries the SHA. The text and Verify list below are kept as drafted. *(added 2026-09-27)*
 
 **Route: instruction-author → instruction-reviewer.** Docs only. Apply F25 before touching any ledger.
 
@@ -553,8 +646,8 @@ The anchors are known-answer cases:
 
 - **The evidence is ONE observed instance, from a single consumer run.** Findings 2, 3 and 4 were found by reading. **Nothing was measured: the gate's false-positive rate is unknown before these fixes and unknown after them, and no phase in this plan measures it.**
 - **After every fix in this plan, semantic paraphrase still passes, and in `/devforge:research` nothing catches it.** The mechanical pass is unchanged and deliberate (F5, F22). That no human gate catches it either is a gap this plan records and does not close: the Phase 0.5 intake echo-back runs before any recommended approach exists, and Step 4.1 echoes the report but asks only whether to save it, under which feature name and under which ticket (F5). No sentence anywhere may claim a gate catches it. *(corrected 2026-09-25)*
-- **D3's floor narrows Finding 1's class; it does not close it.** `declared` is exactly 8 characters and still fires the gate.
-- **D2's evidence set is asymmetric.** A rationale naming a recorded `fix_path_helpers[].qn`, `value_semantics[].value`, `consumer_chain[].file_line`, `consumer_chain[].value` or `dead_siblings[].class_qn` is not subtracted and can still fire. *(corrected 2026-09-25)* Since the Phase 0 close, neither is the `evidence` of a `value_semantics` row not classified `invariant` (D2 as amended). *(added 2026-09-25)*
+- **D3's floor narrows Finding 1's class; it does not close it.** `declared` is exactly 8 characters and still fires the gate. The declaration route does not cover that remainder either: it accepts a token only when a recorded evidence row's value carries it, so where no recorded row carries `declared`, `record-gap` is its only admissible exit (D3). *(added 2026-09-27)*
+- **D2's evidence set is asymmetric.** A rationale naming a recorded `fix_path_helpers[].qn`, `value_semantics[].value`, `consumer_chain[].file_line`, `consumer_chain[].value` or `dead_siblings[].class_qn` is not subtracted and can still fire. *(corrected 2026-09-25)* Since the Phase 0 close, neither is the `evidence` of a `value_semantics` row not classified `invariant` (D2 as amended). *(added 2026-09-25)* Since the build, each of those fields is one a declaration may ground in, so such an overlap has the declaration exit; the subtraction set itself is unchanged (`## Build record — 2026-09-26/27`). *(added 2026-09-27)*
 - **D2 can pass a genuine leak** when the leaked identifier is also recorded evidence: the token is subtracted, and the gate's canonical leak exits 0. This is predicted, not observed, and the gate cannot report it — an exit 0 is silent (D2). *(added 2026-09-25)* The Phase 0 close narrowed this exposure and did not close it: tokens of `consumer_chain[].consumer_qn`, invariant-row `value_semantics[].evidence`, `dead_siblings[].method_qn`, `fix_path_helpers[].file_line` and `findings[].file_line` are still subtracted. *(added 2026-09-25)*
 - **D4 as ratified validates all four hypothesis-list fields**, and both canonical fixtures' not-covered cause text — the bug fixture's `**Does NOT cover**` line at `:74`, the enhancement fixture's at `:73` (F18) — is migrated to labels in Phase 2. It checks that each entry is a recorded label, not that it is the right one. *(corrected 2026-09-25)*
 - **If D4's `Label` column is declined, the report prints labels it never resolves** — on every approach and in the Next Step block (F12). **Even with the column, the Next Step block's labels resolve only against the report:** a fresh `/devforge:specify` session that never opens it reads `A, B` and nothing more (D4). *(added 2026-09-25)* *(The column was ratified at the Phase 0 close, 2026-09-25: the first sentence is the arm not taken, and the second stands.)*
@@ -601,6 +694,8 @@ The anchors are known-answer cases:
 
 **A built sibling took the opposite stance on D6's question.** The Specify In-Place Revision Plan (`102-SPECIFY-IN-PLACE-REVISION-PLAN.md` as of 2026-09-25) demoted its own over-firing blocking gate to a warning, and its `## Coordination with the Hypothesis-Suppression Precision Plan` section reasons about D6 — read it before ratifying D6. *(added 2026-09-25)* *(D6 was ratified as recommended at the Phase 0 close, 2026-09-25; that section is still where the opposite stance is reasoned, and the close record states that no premise of it is lost.)*
 
+**An out-of-scope observation from the build — owned by no phase here, and NOT filed in `FINDINGS.md`.** `/devforge:research`'s handoff builds `spec_seeds.open_questions` from `report.open_uncertainties` (`src/devforge/lib/_research/_handoff_build.py:561`), but no research setter writes that field: its one write in `_research` is the default `[]` (`_research/_state.py:119`). Recorded gaps go to `memo.gaps` and render into `## Open Uncertainties`, so the research handoff's `open_questions` is predicted to be always empty. `/devforge:discover`'s handoff reads both `report.open_uncertainties` and `memo.gaps`. ⚠ **Found by reading; not verified by a run.** *(added 2026-09-27)*
+
 **Trap 1 — putting the filters in the shared tokenizer.** `/devforge:specify`'s AC-vs-OOS check imports the same function (F7) and has no evidence rows at all. The filters live in `_research` (D1).
 
 **Trap 2 — a "2 or more tokens" specificity rule.** The canonical trip-wire's overlap is exactly one token (F21). A count-based rule turns the gate's own regression test green.
@@ -617,7 +712,7 @@ The anchors are known-answer cases:
 
 **Trap 8 — "fixing" Finding 3 by relaxing the unresolved-feasibility rule.** The squeeze holds on a resolved tier-2 or tier-3 run too, and relaxing it makes the default state silently ungated (OQ-3).
 
-**Trap 9 — believing the floor closed Finding 1.** `declared` is 8 characters and still fires (D3).
+**Trap 9 — believing the floor closed Finding 1.** `declared` is 8 characters and still fires (D3). The declaration does not close the rest either: it accepts only a token a recorded evidence row's value carries, so where no recorded row carries `declared`, `record-gap` is the only admissible exit (D3's dated correction). *(corrected 2026-09-27)*
 
 **Trap 10 — claiming paraphrase is now caught.** It is not, by design, and a unit test pins it as expected (F22). No human gate catches it either: routing it to the Step-5 echo-back is the false claim this plan removes (F5). *(corrected 2026-09-25)*
 
@@ -648,14 +743,14 @@ The anchors are known-answer cases:
 ## When resuming work
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation. **Before Phase 0 closes, also read `## Coordination with the Hypothesis-Suppression Precision Plan` in the Specify In-Place Revision Plan (`102-SPECIFY-IN-PLACE-REVISION-PLAN.md` as of 2026-09-25):** it reasons about D6, and its Test 1 leans on D2, D3, D4 and D5 (D6). *(added 2026-09-25)* *(Phase 0 closed 2026-09-25; the close record states, for each of D2, D3, D4 and D5, whether the repair that Test 1 cites still stands.)*
-2. **Check `## Phase 0 close record` first.** If it still reads *PENDING*, nothing is ratified and **no build phase may start.** **It reads CLOSED 2026-09-25:** every item has an outcome, D2 and D4 amended, build phases MAY start, and the build order in step 4 applies. The close record — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. *(added 2026-09-25)*
-3. **Re-verify F1–F25 against the live tree.** Grep the quoted text, never the digits: `sample_token = min(overlap)`, `_OVERLAP_MIN_TOKEN_LEN`, `Known limitation: this check catches`, `hypotheses_addressed: empty`, `cites neither a consumer_chain entry`, `JSON array of hypothesis-index strings`, `The label is what recommended_approach.hypotheses_addressed references`, `Scope of this check (do not over-trust it)`, `no longer encodes the unverified cause`, `no such verb exists for`. ⚠ After each build phase some of these are gone by design; zero hits for them is then the built state, not a regression. Three more anchors: `Step-5 intake echo-back` (F5) — after Phase 1 it has zero hits in Phase 1's four files by design; `Hypothesis addressed: {addr}` (F12, the Next Step format string in `_cmds_phase2.py`) — expected to survive the build, and changed only if Phase 0 adopts the label-expansion alternative D4's counter-argument records; `| Hypothesis | Falsifier` (F12, the Hypothesis Enumeration header in `_render.py`) — read the header line, not the hit count: today it opens with `| Hypothesis |`, and after a ratified `Label` column it opens with that column instead, by design. *(added 2026-09-25)* *(At the Phase 0 close, 2026-09-25, the label-expansion alternative was not adopted and the `Label` column was ratified.)*
-4. **Build order:** Phases 1, 2 and 3 are independent of each other and may land in any order. **Phase 4 needs every build phase that ran** — 1 and 2 always, 3 as well when D5 was ratified — because it describes the predicate they built and quotes their messages. *(D5 was ratified at the Phase 0 close, 2026-09-25, so Phase 4 needs Phases 1, 2 and 3.)* Phase 5 runs last, because it records what the earlier phases did.
+2. **Check `## Phase 0 close record` first.** If it still reads *PENDING*, nothing is ratified and **no build phase may start.** **It reads CLOSED 2026-09-25:** every item has an outcome, D2 and D4 amended, build phases MAY start, and the build order in step 4 applies. The close record — not the drafting-time text under `## Decisions to ratify` — says what each phase must do. *(added 2026-09-25)* **The plan is DONE (build): Phases 1–5 are BUILT.** Read the Status line, then `## Build record — 2026-09-26/27`, for every build-time decision and departure from the plan text. **Nothing remains but Phase 6** — the maintainer's user-driven consumer e2e HARD GATE, NOT run and NOT waived. *(added 2026-09-27)*
+3. **Re-verify F1–F25 against the live tree.** Grep the quoted text, never the digits: `sample_token = min(overlap)`, `_OVERLAP_MIN_TOKEN_LEN`, `Known limitation: this check catches`, `hypotheses_addressed: empty`, `cites neither a consumer_chain entry`, `JSON array of hypothesis-index strings`, `The label is what recommended_approach.hypotheses_addressed references`, `Scope of this check (do not over-trust it)`, `no longer encodes the unverified cause`, `no such verb exists for`. ⚠ After each build phase some of these are gone by design; zero hits for them is then the built state, not a regression. Three more anchors: `Step-5 intake echo-back` (F5) — after Phase 1 it has zero hits in Phase 1's four files by design; `Hypothesis addressed: {addr}` (F12, the Next Step format string in `_cmds_phase2.py`) — expected to survive the build, and changed only if Phase 0 adopts the label-expansion alternative D4's counter-argument records; `| Hypothesis | Falsifier` (F12, the Hypothesis Enumeration header in `_render.py`) — read the header line, not the hit count: today it opens with `| Hypothesis |`, and after a ratified `Label` column it opens with that column instead, by design. *(added 2026-09-25)* *(At the Phase 0 close, 2026-09-25, the label-expansion alternative was not adopted and the `Label` column was ratified.)* **Every anchor above is now at its built state** (re-run 2026-09-27): `sample_token = min(overlap)`, `JSON array of hypothesis-index strings` and `no longer encodes the unverified cause` return 0 hits outside plan files, and `Step-5 intake echo-back` returns 0 in Phase 1's four files — all by design; `Hypothesis addressed: {addr}` survived; the Hypothesis Enumeration header opens with `| Label |`. The other anchors still hit, with one caveat: `The label is what recommended_approach.hypotheses_addressed references` wraps across two docstring lines in `_cmds_phase1.py`, so a one-line grep of the whole phrase returns 0 — grep `The label is what`. *(added 2026-09-27)*
+4. **Build order:** Phases 1, 2 and 3 are independent of each other and may land in any order. **Phase 4 needs every build phase that ran** — 1 and 2 always, 3 as well when D5 was ratified — because it describes the predicate they built and quotes their messages. *(D5 was ratified at the Phase 0 close, 2026-09-25, so Phase 4 needs Phases 1, 2 and 3.)* Phase 5 runs last, because it records what the earlier phases did. **Every phase but Phase 6 has run** — Phases 1–4 on 2026-09-26, Phase 5 on 2026-09-27 (`## Build record — 2026-09-26/27`) — so no build order is left to apply. *(added 2026-09-27)*
 5. **Route every edit through the house flow:**
    - python-engineer → python-reviewer for every Python edit, with a test per function, run in the same turn;
    - instruction-author → instruction-reviewer for every markdown edit;
    - `claude-code-guide` for every new Claude-Code-integration fact.
 6. **Commit by explicit path, never `git add -A`.** Re-read `git status` first (F25).
 7. **After each phase, cross-check.** Grep every verb, flag, message string and section name touched — the gate verb, `--hypotheses-addressed`, `--addresses-hypotheses`, the rejection messages, the rendered section name — and fix any dangling reference in the SAME change.
-8. **Run Phase 5, then leave Phase 6 to the maintainer.**
+8. **Run Phase 5, then leave Phase 6 to the maintainer.** *(Added 2026-09-27: Phase 5 is run — `## Build record — 2026-09-26/27`. Phase 6 is the maintainer's, NOT run.)*
 9. **Keep the evidence class attached.** Any summary of this plan repeats it: **one observed instance, three findings found by reading, nothing measured.**

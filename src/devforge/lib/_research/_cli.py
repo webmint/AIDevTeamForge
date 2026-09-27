@@ -774,7 +774,7 @@ def _register_subcommands(subparsers) -> None:
         help=(
             "Declare an accepted overlap between a gated hypothesis's cause "
             "and the recommended-approach rationale, anchored to a recorded "
-            "evidence row (plan 105 D5's second admissible exit from "
+            "evidence row (the second admissible exit from "
             "verify-hypothesis-suppression's exit 2 -- the other is "
             "record-gap). The gate then treats every declared token of "
             "that hypothesis as accepted; a declaration only ever "
