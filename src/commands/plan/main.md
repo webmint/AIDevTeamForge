@@ -70,9 +70,9 @@ Check for a sibling handoff via the helper:
 .devforge/lib/plan_helper read-specify-handoff <resolved-path>
 ```
 
-- Stdout `no-handoff` → tell the user `"No upstream handoff; planning cold from the spec."` and proceed to Phase 0a.6 with the resolved path.
+- Stdout `no-handoff` → this branch's cold line is `"No upstream handoff; planning cold from the spec."`; run the intake-handoff check below (`.devforge/lib/plan_helper find-intake-handoff <resolved-path>`) and follow its arms, which tell the user that line.
 - A 4-line block (lines `spec-handoff:`, `spec_seeds:`, `upstream_handoff_path:`, `upstream_handoff_kind:`) → read its `upstream_handoff_path` line:
-  - value `none` → tell the user `"Spec has no upstream research/discover handoff; planning cold."` and proceed to Phase 0a.6 with the resolved path.
+  - value `none` → this branch's cold line is `"Spec has no upstream research/discover handoff; planning cold."`; run the intake-handoff check below (`.devforge/lib/plan_helper find-intake-handoff <resolved-path>`) and follow its arms, which tell the user that line.
   - a path → render the plan seeds via the helper, passing the `spec-handoff:` value from the 4-line block as the argument:
 
     ```bash
@@ -83,6 +83,27 @@ Check for a sibling handoff via the helper:
     - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Specialist Consultation" section — do not silently discard it. Then proceed to Phase 0a.6 with the resolved path.
 
 Exit 2 from either helper means the sibling handoff is malformed or the upstream pointer is dangling/unknown — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
+
+**Intake-handoff check (both cold branches).** Both cold branches above find no upstream pointer — no `handoff.json` beside the spec, or one whose `upstream_handoff_path` is `none` — yet the handoff `/devforge:research` or `/devforge:discover` wrote at intake (`research-handoff.json` or `discover-handoff.json`) may still sit beside the spec in `<feature_dir>`, carrying a HOW seed nothing above surfaces. Look for one before telling the user anything:
+
+```bash
+.devforge/lib/plan_helper find-intake-handoff <resolved-path>
+```
+
+Stdout is exactly one line: `none`, or `intake-handoff: ` followed by one field per file found — `research=<path>`, `discover=<path>`, or both, research first, each path absolute. The verb reports presence only: it reads neither file, so it names one even when `/devforge:specify`'s Phase 0.4 would skip it as unreadable, or as not a valid handoff of the kind its filename names, and the route in point 4 below then finds no line for it. It always exits 0 and never ends the turn — it is not one of the two helpers the exit-2 rule above covers (`read-specify-handoff` and `render-plan-seeds`), and on a spec path that is not a file it prints `none` plus one stderr line — so branch on the stdout line alone. The cold branch that sent you here names its cold line but does not tell it; these two arms are the only place it is told.
+
+- Stdout `none` → tell the user that branch's cold line alone, and proceed to Phase 0a.6 with the resolved path.
+- Stdout `intake-handoff: …` → tell the user that branch's cold line, then the intake-handoff notice below, and proceed to Phase 0a.6 with the resolved path. The notice is informational, like the rest of this phase: it asks nothing — no `AskUserQuestion` — and gates nothing.
+
+The intake-handoff notice tells the user, in this order:
+
+1. The intake handoff found, by the path the stdout line carries for it — both paths when the line carries both.
+2. On the `upstream_handoff_path` value `none` branch: that the spec's `handoff.json` records no import of it, so this plan does not use its HOW seed. On the `no-handoff` branch instead: that no `handoff.json` sits beside the spec to record whether the spec imported it, so this plan does not use its HOW seed.
+3. On the `upstream_handoff_path` value `none` branch only: that this is expected when the user answered `cold` to `/devforge:specify`'s question whether to pre-seed the spec from a handoff. Say nothing like it on the `no-handoff` branch: `/devforge:specify` writes `spec.md` before `handoff.json`, so a run that imported and a run that picked `cold` can each stop with no `handoff.json` written, and this phase reads nothing there that tells them apart.
+4. If the user wanted that seed, the route that reaches it — the user's to take, not this run's, and taken outside this run: the user stops this `/devforge:plan` run first (the plan it would write is a cold one), takes the route, and runs `/devforge:plan` again once the new spec is approved. This run does not wait for the route — it goes on to plan cold from the spec as it stands — and renaming `spec.md` while it continues would break its later phases that read it.
+   - **Taking it.** The user renames `spec.md` to `spec.md.bak` in the same feature directory, then re-runs `/devforge:specify`; its Phase 0.4 lists this directory again once `spec.md` is absent.
+   - **The reply.** At `/devforge:specify`'s Phase 0.4 question the user takes `pick-other` — not `yes-most-recent`, whose newest handoff need not be this one — and replies with the index of the line whose handoff path is the file point 1 named (when point 1 named two, the one the user wants).
+   - **Cleanup.** The re-run writes the spec again from the start, because `/devforge:specify` starts every run from fresh state, so `spec.md.bak` is the user's reference copy of the old spec, which no command reads unless the user points one at it. The user deletes it once the new spec is approved and before running `/devforge:finalize`, whose artifact safety-net commit stages the whole feature directory and would otherwise carry the file into the feature's squashed commit.
 
 ## PHASE 0a.6: Spec drift check
 
