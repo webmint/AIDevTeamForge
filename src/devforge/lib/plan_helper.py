@@ -59,6 +59,26 @@ Subcommands:
       Malformed or schema-invalid sibling: exit 2.
       spec-path is a directory or does not exist: exit 2.
 
+  find-intake-handoff <spec-path>
+      Read-only reporter -- never gates. For /devforge:plan PHASE 0a.5's
+      two cold branches (stdout "no-handoff" from read-specify-handoff, or
+      that command's block with upstream_handoff_path: none) --
+      neither of which looks in the spec's own directory, where
+      /devforge:research / /devforge:discover write research-handoff.json
+      / discover-handoff.json at intake.
+      Checks spec_path.parent / "research-handoff.json" and
+      spec_path.parent / "discover-handoff.json" for presence only
+      (is_file() -- no JSON read, no schema validation; a corrupt file
+      still counts, since this verb reports what is on disk).
+      Stdout is exactly one line, always:
+        neither present   -> none
+        one or both present -> intake-handoff: research=<abs-path>
+                                discover=<abs-path> (research first; each
+                                field present only when its file exists)
+      spec-path is not a file (nonexistent or a directory): stdout "none"
+      plus "spec not found: <arg>" on stderr (the raw argument as given).
+      ALWAYS exits 0 -- never raises, on any input.
+
   render-consultation-block
       Emit the content under the '## Specialist Consultation' heading —
       the intro paragraph, the five-column table, and the verdict-enum rule.
@@ -1167,6 +1187,110 @@ def cmd_read_specify_handoff(args: argparse.Namespace) -> int:
     sys.stdout.write(
         "upstream_handoff_kind: {0}\n".format(upstream_kind if upstream_kind else "none")
     )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: find-intake-handoff
+# ---------------------------------------------------------------------------
+
+
+def _safe_is_file(path: Path) -> bool:
+    """Return path.is_file(), degrading to False on any OSError or ValueError.
+
+    is_file() normally swallows the common stat-failure errnos itself, but
+    re-raises on others (e.g. a permission-denied parent directory yields
+    PermissionError, a subclass of OSError). It also raises ValueError, not
+    OSError, on a path string with an embedded NUL byte ("embedded null
+    character in path") -- OSError and ValueError are the only two
+    exception types pathlib raises here, so both are caught.
+    cmd_find_intake_handoff's contract is to never raise on any input, so
+    every is_file() probe in that function goes through here rather than
+    being called bare.
+    """
+    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False
+
+
+def cmd_find_intake_handoff(args: argparse.Namespace) -> int:
+    """Report whether a research/discover intake handoff sits beside spec_path.
+
+    Read-only reporter for /devforge:plan PHASE 0a.5's two cold branches --
+    stdout "no-handoff" from read-specify-handoff, or that command's
+    block with upstream_handoff_path: none -- neither of which looks in the
+    spec's own directory, where /devforge:research / /devforge:discover
+    write research-handoff.json / discover-handoff.json at intake. This
+    verb only REPORTS; it never gates.
+
+    Resolves spec_path exactly as cmd_read_specify_handoff does (relative
+    path -> Path.cwd() / p, then .resolve()). Checks
+    spec_path.parent / "research-handoff.json" and
+    spec_path.parent / "discover-handoff.json" for presence only
+    (is_file() -- no JSON read, no schema validation: a corrupt file still
+    counts, since this verb reports what is on disk).
+
+    Stdout is exactly one line, in every case:
+      neither sibling present   -> "none"
+      one or both siblings present -> "intake-handoff:" followed by one
+        space-separated "research=<abs path>" and/or "discover=<abs path>"
+        field per present file, research first.
+
+    spec_path not a file (nonexistent or a directory): stdout "none", plus
+    "plan_helper: find-intake-handoff: spec not found: <arg>" on stderr,
+    where <arg> is the raw argument as given (mirrors
+    cmd_read_specify_handoff's spec_path_raw usage). _die IS used here,
+    with an explicit code=0 override of its default 2, so the
+    "plan_helper: " prefix is formatted in one place rather than
+    duplicated.
+
+    Guards resolve()/is_file() against OSError and ValueError throughout
+    (a permission error on any path component is a real, reachable
+    failure on arbitrary filesystem input, not a defensive dead branch;
+    ValueError is pathlib's other exception reachable here, raised on a
+    path string with an embedded NUL byte -- these two types are the
+    only ones pathlib raises on this code path, narrower than
+    cmd_stakes_hint's deliberate broad Exception catch elsewhere in this
+    module): a spec_path that fails to resolve or stat degrades to the
+    not-found branch above; a sibling whose is_file() probe raises
+    degrades to "absent" for that one field only. Either way this
+    function never raises and always returns 0.
+    """
+    spec_path_raw = args.spec_path
+
+    spec_path = None
+    spec_is_file = False
+    try:
+        candidate = Path(spec_path_raw)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        candidate = candidate.resolve()
+        spec_is_file = _safe_is_file(candidate)
+        spec_path = candidate
+    except (OSError, ValueError):
+        spec_is_file = False
+
+    if not spec_is_file:
+        sys.stdout.write("none\n")
+        return _die(
+            "find-intake-handoff: spec not found: {0}".format(spec_path_raw),
+            code=0,
+        )
+
+    fields = []
+    research_path = spec_path.parent / "research-handoff.json"
+    if _safe_is_file(research_path):
+        fields.append("research={0}".format(str(research_path)))
+    discover_path = spec_path.parent / "discover-handoff.json"
+    if _safe_is_file(discover_path):
+        fields.append("discover={0}".format(str(discover_path)))
+
+    if not fields:
+        sys.stdout.write("none\n")
+        return 0
+
+    sys.stdout.write("intake-handoff: {0}\n".format(" ".join(fields)))
     return 0
 
 
@@ -2691,6 +2815,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("spec_path", help="Path to spec.md.")
     sp.set_defaults(func=cmd_read_specify_handoff)
+
+    # find-intake-handoff
+    sp = sub.add_parser(
+        "find-intake-handoff",
+        help=(
+            "Read-only reporter (never gates): checks whether a research/discover "
+            "intake handoff (research-handoff.json / discover-handoff.json) sits "
+            "beside spec_path. Prints 'none' or an 'intake-handoff: research=... "
+            "discover=...' line; always exits 0."
+        ),
+    )
+    sp.add_argument("spec_path", help="Path to spec.md.")
+    sp.set_defaults(func=cmd_find_intake_handoff)
 
     # render-consultation-block
     sp = sub.add_parser(

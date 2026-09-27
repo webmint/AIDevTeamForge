@@ -1797,6 +1797,93 @@ def _run_research_setup(devforge, research_helper_py):
           "--history", "false")
 
 
+def _run_discover_setup(devforge, discover_helper_py):
+    """Set up minimal 'Worth pursuing' discover state via the real CLI.
+
+    Mirrors _run_research_setup's role for the discover intake lane: every
+    discover_helper subcommand invoked here goes through _drun, which
+    asserts returncode 0 on each call. The setter sequence is replicated
+    from tests/lib/test_specify_helper.py's _build_minimal_discover_handoff
+    (106-INTAKE-PROVENANCE-CONTINUITY-PLAN.md Phase 3, fix 3) rather than
+    imported from it -- test_specify_helper.py is out of scope for this
+    change and is neither touched nor run here. Does NOT call
+    finalize-handoff; the caller runs that separately with --feature-dir so
+    the written path is <feature-dir>/discover-handoff.json.
+    """
+    def _drun(*argv):
+        result = subprocess.run(
+            [sys.executable, str(discover_helper_py)] + list(argv),
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "discover_helper {0} failed rc={1}: {2}".format(
+                    argv[0], result.returncode, result.stderr))
+        return result
+
+    df = str(devforge)
+    _drun("--devforge-dir", df, "reset-memo")
+    _drun("--devforge-dir", df, "reset-report")
+
+    _drun("--devforge-dir", df, "set-topic", "--value", "audit-log-persistence")
+    _drun("--devforge-dir", df, "set-verbatim-prompt", "--value",
+          "Build an audit log persistence system for tracking state changes")
+    _drun("--devforge-dir", df, "set-date", "--value", "2026-05-20")
+
+    for dim, val in (
+        ("functional-scope", "Persist audit events to DB"),
+        ("users", "Backend services"),
+        ("inputs-outputs", "AuditEvent -> DB"),
+        ("integration-points", "ORM layer"),
+        ("constraints", "100ms p99 write latency"),
+        ("non-goals", "No real-time alerting"),
+        ("success-criteria", "All state changes logged"),
+        ("edge-cases", "DB down: queue and retry"),
+    ):
+        _drun("--devforge-dir", df, "set-scope-" + dim,
+              "--value", val, "--state", "Clear")
+
+    _drun("--devforge-dir", df, "set-summary",
+          "--value", "Audit log persistence system")
+    _drun("--devforge-dir", df, "set-overall-fit", "--value", "Good")
+    _drun("--devforge-dir", df, "set-effort-estimate", "--value", "Low")
+    _drun("--devforge-dir", df, "set-fit-rationale",
+          "--value", "Straightforward ORM extension")
+    _drun("--devforge-dir", df, "set-verdict", "--value", "Worth pursuing")
+    _drun("--devforge-dir", df, "record-integration-touchpoint",
+          "--name", "ORM layer", "--module-path", "src/db/orm.py",
+          "--reason", "Audit writes through ORM")
+    _drun("--devforge-dir", df, "set-design-option",
+          "--name", "PostgreSQL table", "--shape", "ORM table",
+          "--pros", '["Simple"]', "--cons", '["Single DB"]',
+          "--complexity", "Low")
+    _drun("--devforge-dir", df, "set-recommended-option",
+          "--name", "PostgreSQL table",
+          "--rationale", "Lowest complexity for current scale")
+    _drun("--devforge-dir", df, "set-build-vs-buy",
+          "--recommendation", "Build",
+          "--build", "Extend ORM with new table",
+          "--buy", "Third-party audit library",
+          "--reasoning", "ORM already in place; avoid external dependency")
+    # Plan 73 D6: Build + zero internal prior-art hits is an absence-founded
+    # conclusion -- finalize-handoff's declaration-exists guard requires a
+    # record-absence-probe call before it will emit.
+    _drun("--devforge-dir", df, "record-absence-probe",
+          "--claim", "no existing internal audit-log implementation",
+          "--symbol", "AuditLogPersistence", "--path", "none",
+          "--found", "false")
+    _drun("--devforge-dir", df, "set-derisk-plan",
+          "--items", '["Spike: write load test against ORM layer before committing"]')
+    _drun("--devforge-dir", df, "set-recommendation",
+          "--action", "Proceed with PostgreSQL table approach",
+          "--next", "Run /specify audit-log-persistence")
+    # set-next-step-text auto-composes from memo + report state; the
+    # --feature-dir value here is text only (no filesystem check), so it
+    # need not match the real feature dir the caller finalizes into.
+    _drun("--devforge-dir", df, "set-next-step-text",
+          "--feature-dir", "specs/030-audit-log-persistence")
+
+
 # ---------------------------------------------------------------------------
 # Tests: read-specify-handoff
 # ---------------------------------------------------------------------------
@@ -1967,6 +2054,369 @@ class ReadSpecifyHandoffTests(unittest.TestCase):
         result = self._run("read-specify-handoff", str(spec_path))
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("upstream_handoff_path and upstream_handoff_kind", result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Tests: find-intake-handoff
+# ---------------------------------------------------------------------------
+
+
+class FindIntakeHandoffTests(unittest.TestCase):
+    """Tests for plan_helper find-intake-handoff subcommand."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, *args):
+        """Run plan_helper.py with args from self.tmp as cwd."""
+        return subprocess.run(
+            [sys.executable, str(HELPER_PY)] + list(args),
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+
+    def test_research_sibling_present_reports_research(self):
+        """A research-handoff.json sibling -> 'intake-handoff: research=<abs>'."""
+        spec_dir = self.tmp / "specs" / "020-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        research_path = spec_dir / "research-handoff.json"
+        research_path.write_text("{}", encoding="utf-8")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(
+            lines[0],
+            "intake-handoff: research={0}".format(str(research_path.resolve())),
+        )
+        self.assertTrue(lines[0].startswith("intake-handoff:"))
+
+    def test_discover_sibling_present_reports_discover(self):
+        """A discover-handoff.json sibling -> 'intake-handoff: discover=<abs>'."""
+        spec_dir = self.tmp / "specs" / "021-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        discover_path = spec_dir / "discover-handoff.json"
+        discover_path.write_text("{}", encoding="utf-8")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(
+            lines[0],
+            "intake-handoff: discover={0}".format(str(discover_path.resolve())),
+        )
+
+    def test_both_siblings_present_reports_both_research_first(self):
+        """Both siblings present -> both fields, research before discover."""
+        spec_dir = self.tmp / "specs" / "022-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        research_path = spec_dir / "research-handoff.json"
+        research_path.write_text("{}", encoding="utf-8")
+        discover_path = spec_dir / "discover-handoff.json"
+        discover_path.write_text("{}", encoding="utf-8")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(
+            lines[0],
+            "intake-handoff: research={0} discover={1}".format(
+                str(research_path.resolve()), str(discover_path.resolve())
+            ),
+        )
+
+    def test_neither_sibling_present_reports_none(self):
+        """spec.md + its own handoff.json only, no intake sibling -> 'none'."""
+        spec_dir = self.tmp / "specs" / "023-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        (spec_dir / "handoff.json").write_text("{}", encoding="utf-8")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], "none")
+        self.assertFalse(lines[0].startswith("intake-handoff:"))
+
+    def test_nonexistent_spec_path_reports_none_with_stderr(self):
+        """spec_path does not exist -> stdout 'none', dedicated stderr line, exit 0."""
+        missing = "/nonexistent/path/spec.md"
+        result = self._run("find-intake-handoff", missing)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], "none")
+        self.assertEqual(
+            result.stderr.strip(),
+            "plan_helper: find-intake-handoff: spec not found: {0}".format(missing),
+        )
+
+    def test_directory_spec_path_reports_none_with_stderr(self):
+        """spec_path is a directory, not a file -> same shape as nonexistent."""
+        spec_dir = self.tmp / "specs" / "024-a-directory"
+        spec_dir.mkdir(parents=True)
+
+        result = self._run("find-intake-handoff", str(spec_dir))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], "none")
+        self.assertEqual(
+            result.stderr.strip(),
+            "plan_helper: find-intake-handoff: spec not found: {0}".format(
+                str(spec_dir)
+            ),
+        )
+
+    def test_own_handoff_json_absent_still_reports_research_sibling(self):
+        """No handoff.json at all beside spec.md -- the research hit is
+        reported independently of the specify handoff's own presence."""
+        spec_dir = self.tmp / "specs" / "025-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        research_path = spec_dir / "research-handoff.json"
+        research_path.write_text("{}", encoding="utf-8")
+        self.assertFalse((spec_dir / "handoff.json").exists())
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.strip(),
+            "intake-handoff: research={0}".format(str(research_path.resolve())),
+        )
+
+    def test_non_json_research_handoff_still_reported(self):
+        """A malformed (non-JSON) research-handoff.json is still reported --
+        presence only, no JSON read, no schema validation."""
+        spec_dir = self.tmp / "specs" / "026-widget-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        research_path = spec_dir / "research-handoff.json"
+        research_path.write_text("not valid json{{{", encoding="utf-8")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.strip(),
+            "intake-handoff: research={0}".format(str(research_path.resolve())),
+        )
+
+    def test_relative_spec_path_resolves_against_subprocess_cwd(self):
+        """A spec path relative to the subprocess cwd resolves the same way
+        as an absolute one."""
+        spec_dir = self.tmp / "specs" / "027-relative-case"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        research_path = spec_dir / "research-handoff.json"
+        research_path.write_text("{}", encoding="utf-8")
+
+        rel_path = str(Path("specs") / "027-relative-case" / "spec.md")
+        result = self._run("find-intake-handoff", rel_path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.strip(),
+            "intake-handoff: research={0}".format(str(research_path.resolve())),
+        )
+
+    def test_real_research_producer_round_trip(self):
+        """Real research_helper finalize-handoff output is detected.
+
+        House rule: round-trip via the real producer. _run_research_setup
+        populates research state through the real research_helper CLI;
+        finalize-handoff --feature-dir writes exactly
+        <feature-dir>/research-handoff.json -- the same filename
+        find-intake-handoff's own presence check looks for.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        feature_dir = self.tmp / "specs" / "028-widget-catalog-search"
+        feature_dir.mkdir(parents=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            proc.returncode, 0,
+            "research finalize-handoff failed: " + proc.stderr,
+        )
+
+        spec_path = feature_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected_research_path = feature_dir / "research-handoff.json"
+        self.assertTrue(expected_research_path.is_file())
+        self.assertEqual(
+            result.stdout.strip(),
+            "intake-handoff: research={0}".format(
+                str(expected_research_path.resolve())
+            ),
+        )
+
+    def test_real_discover_producer_round_trip(self):
+        """Real discover_helper finalize-handoff output is detected.
+
+        House rule: round-trip via the real producer, mirroring
+        test_real_research_producer_round_trip above. _run_discover_setup
+        populates discover state through the real discover_helper CLI;
+        finalize-handoff --feature-dir writes exactly
+        <feature-dir>/discover-handoff.json -- the same filename
+        find-intake-handoff's own presence check looks for.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True)
+        _run_discover_setup(devforge, DISCOVER_HELPER_PY)
+
+        feature_dir = self.tmp / "specs" / "030-audit-log-persistence"
+        feature_dir.mkdir(parents=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(DISCOVER_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            proc.returncode, 0,
+            "discover finalize-handoff failed: " + proc.stderr,
+        )
+
+        spec_path = feature_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("find-intake-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected_discover_path = feature_dir / "discover-handoff.json"
+        self.assertTrue(expected_discover_path.is_file())
+        self.assertEqual(
+            result.stdout.strip(),
+            "intake-handoff: discover={0}".format(
+                str(expected_discover_path.resolve())
+            ),
+        )
+
+
+class FindIntakeHandoffGuardTests(unittest.TestCase):
+    """Direct-import tests pinning cmd_find_intake_handoff's OSError/
+    ValueError guards.
+
+    The contract requires the verb to never raise, on any input;
+    permission-denied stat() calls are a real (not merely defensive)
+    OSError source when probing arbitrary filesystem paths, so both guards
+    (resolve()/is_file() on the spec path itself, and is_file() on each
+    sibling) are pinned here via monkeypatching pathlib.Path, mirroring
+    VerifySpecCheckZ3Tests's z3-probe monkeypatch pattern elsewhere in
+    this file. A third test below pins the ValueError case directly (an
+    embedded NUL byte in the path string) with no monkeypatch needed,
+    since real Path.resolve() already raises it unassisted.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.spec_dir = self.tmp / "specs" / "029-guard-case"
+        self.spec_dir.mkdir(parents=True)
+        self.spec_path = self.spec_dir / "spec.md"
+        _write_minimal_spec(str(self.spec_path))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _call(self, spec_path_raw):
+        ns = types.SimpleNamespace(spec_path=spec_path_raw)
+        stderr_capture = io.StringIO()
+        stdout_capture = io.StringIO()
+        with unittest.mock.patch("sys.stderr", stderr_capture), \
+                unittest.mock.patch("sys.stdout", stdout_capture):
+            rc = plan_helper.cmd_find_intake_handoff(ns)
+        return rc, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+    def test_resolve_oserror_degrades_to_not_found(self):
+        """Path.resolve() raising OSError -> the not-found branch (stdout
+        'none', stderr naming the raw arg) -- never a raised exception."""
+        with unittest.mock.patch.object(
+            plan_helper.Path, "resolve",
+            side_effect=OSError("simulated resolve failure"),
+        ):
+            rc, out, err = self._call(str(self.spec_path))
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "none")
+        self.assertIn(
+            "plan_helper: find-intake-handoff: spec not found: {0}".format(
+                self.spec_path
+            ),
+            err,
+        )
+
+    def test_sibling_is_file_oserror_treated_as_absent(self):
+        """A sibling whose is_file() probe raises OSError (e.g. permission
+        denied) is treated as absent, not a crash -- the verb still exits 0
+        with 'none' when that raising sibling is the only one that would
+        otherwise have hit."""
+        real_is_file = Path.is_file
+
+        def _flaky_is_file(self):
+            if self.name == "research-handoff.json":
+                raise OSError("simulated permission error")
+            return real_is_file(self)
+
+        with unittest.mock.patch.object(
+            plan_helper.Path, "is_file", _flaky_is_file,
+        ):
+            rc, out, err = self._call(str(self.spec_path))
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "none")
+        self.assertEqual(err, "")
+
+    def test_embedded_nul_byte_degrades_to_not_found(self):
+        """A spec_path string with an embedded NUL byte makes real
+        Path.resolve() raise ValueError ('embedded null character in
+        path'), not OSError -- the guard must catch that too, degrading to
+        the same not-found branch as any other bad path: exit 0, stdout
+        'none', and the dedicated stderr not-found line naming the raw
+        argument verbatim. No monkeypatch: this is the real pathlib
+        behavior on this exact input."""
+        bad = "a\x00b"
+        rc, out, err = self._call(bad)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "none")
+        self.assertIn(
+            "plan_helper: find-intake-handoff: spec not found: {0}".format(bad),
+            err,
+        )
 
 
 # ---------------------------------------------------------------------------
