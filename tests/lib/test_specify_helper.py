@@ -2251,6 +2251,296 @@ class TestClassifySpecType(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
 
 
+class TestClassifySpecTypeFromHandoff(unittest.TestCase):
+    """--from-handoff (106-INTAKE-PROVENANCE-CONTINUITY-PLAN.md Phase 2):
+    composes classify-spec-type's rationale from the handoff this run
+    imported (state["source"]) instead of taking an argv literal --
+    closing the incident where a hand-written --rationale named an
+    upstream research handoff while source.handoff_kind reported none.
+
+    Real-producer fixtures throughout: state is built via reset-state /
+    import-handoff (fed by _build_minimal_handoff /
+    _build_minimal_discover_handoff, the same real research_helper /
+    discover_helper CLI round trips TestImportHandoff and
+    TestImportHandoffDiscover use) and record-handoff-path -- never
+    hand-authored state JSON.
+    """
+
+    def _make_devforge(self, tmp) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_from_handoff_research_reproduces_producer1_literal(self):
+        """Case 1: research import -> --from-handoff reproduces EXACTLY
+        the literal /devforge:specify main.md's precondition-1 accept arm
+        hand-writes today."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+            handoff_out = tmp_path / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_import = _run([
+                "--devforge-dir", str(devforge), "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_import.returncode, 0, r_import.stderr)
+
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_type"], "feature_addition")
+            self.assertIs(state["spec_type_seeded_by_upstream"], True)
+            self.assertEqual(
+                state["spec_type_rationale"],
+                "pre-seeded from research handoff at "
+                + state["source"]["handoff_path"],
+            )
+
+    def test_from_handoff_discover_names_discover_handoff(self):
+        """Case 2: discover import -> rationale names 'discover handoff'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            discover_df = tmp_path / "discover_devforge"
+            discover_df.mkdir()
+            discover_dir = tmp_path / "discover"
+            discover_dir.mkdir()
+            handoff_out = (
+                discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
+            )
+
+            r = _build_minimal_discover_handoff(discover_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_import = _run([
+                "--devforge-dir", str(devforge), "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_import.returncode, 0, r_import.stderr)
+
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "greenfield_feature",
+                "--from-handoff",
+            ])
+            self.assertEqual(r_classify.returncode, 0, r_classify.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIs(state["spec_type_seeded_by_upstream"], True)
+            self.assertEqual(
+                state["spec_type_rationale"],
+                "pre-seeded from discover handoff at "
+                + state["source"]["handoff_path"],
+            )
+
+    def test_from_handoff_fresh_state_exits_2_state_unchanged(self):
+        """Case 3: fresh state after reset-state (no import ever ran) ->
+        --from-handoff exits 2, state byte-identical before/after."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r_reset = _run(["--devforge-dir", str(devforge), "reset-state"])
+            self.assertEqual(r_reset.returncode, 0, r_reset.stderr)
+
+            state_path = devforge / "specify-state.json"
+            before = state_path.read_bytes()
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("handoff_kind", r.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_from_handoff_cold_record_handoff_path_only_exits_2(self):
+        """Case 4 (the incident shape): record-handoff-path sets
+        source.handoff_path but deliberately leaves source.handoff_kind
+        at its default None (the Phase 0.4 `cold` arm) -- --from-handoff
+        must exit 2 rather than compose a rationale that names an
+        upstream handoff whose content was never imported."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+            handoff_out = tmp_path / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_reset = _run(["--devforge-dir", str(devforge), "reset-state"])
+            self.assertEqual(r_reset.returncode, 0, r_reset.stderr)
+
+            r_record = _run([
+                "--devforge-dir", str(devforge), "record-handoff-path",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_record.returncode, 0, r_record.stderr)
+
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIsNone(state["source"]["handoff_kind"])
+            self.assertIsNotNone(state["source"]["handoff_path"])
+            before = state_path.read_bytes()
+
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+            ])
+            self.assertEqual(r_classify.returncode, 2)
+            self.assertIn("handoff_kind", r_classify.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_producer2_seeded_by_upstream_without_from_handoff_still_works(self):
+        """Case 5 (regression pin -- producer 2): on all-None source (a
+        fresh reset-state), the origin-based discover pre-seed producer's
+        own literal call shape (--rationale + --seeded-by-upstream, no
+        --from-handoff) must keep working byte-identically."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r_reset = _run(["--devforge-dir", str(devforge), "reset-state"])
+            self.assertEqual(r_reset.returncode, 0, r_reset.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(state["source"]["handoff_kind"])
+            self.assertIsNone(state["source"]["handoff_path"])
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "greenfield_feature",
+                "--rationale",
+                "origin-based discover pre-seed cites the discovery report",
+                "--seeded-by-upstream",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_type"], "greenfield_feature")
+            self.assertIs(state["spec_type_seeded_by_upstream"], True)
+
+    def test_from_handoff_with_seeded_by_upstream_exits_2(self):
+        """Case 6: --from-handoff + --seeded-by-upstream -> exit 2, state
+        byte-identical (rejected before any state read)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r_reset = _run(["--devforge-dir", str(devforge), "reset-state"])
+            self.assertEqual(r_reset.returncode, 0, r_reset.stderr)
+            state_path = devforge / "specify-state.json"
+            before = state_path.read_bytes()
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+                "--seeded-by-upstream",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--from-handoff", r.stderr)
+            self.assertIn("--seeded-by-upstream", r.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_from_handoff_with_seeded_by_upstream_after_import_exits_2(self):
+        """Case 6b: same combination as Case 6, but AFTER a real
+        import-handoff has populated source.handoff_kind/handoff_path --
+        rules out the confound where Case 6's fresh-state exit 2 could
+        instead be explained by the separate "no imported handoff" gate
+        rather than the mutual-exclusion check itself. --from-handoff +
+        --seeded-by-upstream must still exit 2 (rejected up front, before
+        the handoff-presence check ever runs), state byte-identical
+        before/after the classify-spec-type call."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_devforge"
+            research_df.mkdir()
+            handoff_out = tmp_path / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r_import = _run([
+                "--devforge-dir", str(devforge), "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r_import.returncode, 0, r_import.stderr)
+
+            state_path = devforge / "specify-state.json"
+            before = state_path.read_bytes()
+
+            r_classify = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+                "--seeded-by-upstream",
+            ])
+            self.assertEqual(r_classify.returncode, 2)
+            self.assertIn("--from-handoff", r_classify.stderr)
+            self.assertIn("--seeded-by-upstream", r_classify.stderr)
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_from_handoff_with_rationale_is_argparse_error(self):
+        """Case 7: --from-handoff + --rationale together is an argparse-
+        level mutually-exclusive-group error (exit 2)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+                "--rationale", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_classify_spec_type_requires_rationale_or_from_handoff(self):
+        """Case 8: neither --rationale nor --from-handoff -> argparse
+        required-group error (exit 2)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_from_handoff_no_state_file_exits_2(self):
+        """Case 9: fresh .devforge dir, reset-state never run -- _load_state
+        falls back to default_state() for a missing file, so --from-handoff
+        still exits 2 (source.handoff_kind is None in that default)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            state_path = devforge / "specify-state.json"
+            self.assertFalse(state_path.exists())
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--from-handoff",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertFalse(state_path.exists())
+
+
 # ---------------------------------------------------------------------------
 # Phase 3 — record-mandatory-read + verify-mandatory-reads.
 # ---------------------------------------------------------------------------

@@ -263,13 +263,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "classify-spec-type",
-        help="Set spec_type + rationale + (optional) seeded-by-upstream flag.",
+        help="Set spec_type + rationale (or --from-handoff) + (optional) "
+             "seeded-by-upstream flag.",
     )
     sp.add_argument(
         "--spec-type", required=True, dest="spec_type",
         choices=list(SPEC_TYPE_ENUM),
     )
-    sp.add_argument("--rationale", required=True)
+    rationale_group = sp.add_mutually_exclusive_group(required=True)
+    rationale_group.add_argument("--rationale", default=None)
+    rationale_group.add_argument(
+        "--from-handoff", action="store_true", default=False,
+        dest="from_handoff",
+        help="Compose the rationale from the handoff this run imported "
+             "(state[\"source\"]); exits 2 when no handoff was imported. "
+             "Cannot be combined with --seeded-by-upstream (it sets that "
+             "flag itself).",
+    )
     sp.add_argument(
         "--seeded-by-upstream", action="store_true", default=False,
         dest="seeded_by_upstream",

@@ -36,21 +36,70 @@ def _slot_matches_path(slot_pattern: str, read_path: str) -> bool:
 
 
 def cmd_classify_spec_type(args: argparse.Namespace) -> int:
-    """Set spec_type + rationale. Helper does NOT auto-derive the type."""
+    """Set spec_type + rationale. Helper does NOT auto-derive the type.
+
+    --rationale (an argv-supplied literal) and --from-handoff (composes
+    the rationale from the handoff this run imported, read back from
+    state["source"]) are mutually exclusive at the CLI -- exactly one is
+    required. --from-handoff reads state read-only, before any write,
+    and exits 2 with state left untouched when no imported handoff is
+    recorded there (source.handoff_kind / source.handoff_path falsy --
+    e.g. a fresh reset-state, or the record-handoff-path cold arm, which
+    sets handoff_path but deliberately leaves handoff_kind at its
+    default None). Combining --from-handoff with --seeded-by-upstream is
+    rejected up front, before any state read, since --from-handoff
+    already sets spec_type_seeded_by_upstream itself.
+    """
+    from_handoff = bool(getattr(args, "from_handoff", False))
+    if from_handoff and args.seeded_by_upstream:
+        return _die(
+            "classify-spec-type: --from-handoff and --seeded-by-upstream "
+            "are mutually exclusive (--from-handoff already sets "
+            "spec_type_seeded_by_upstream)",
+            code=2,
+        )
     try:
         spec_type = _validate_enum(
             args.spec_type, "spec_type", SPEC_TYPE_ENUM,
         )
-        rationale = _validate_scalar(args.rationale, "rationale")
     except ValueError as err:
         return _die(str(err), code=2)
+
+    if from_handoff:
+        try:
+            ro_state = _load_state(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("classify-spec-type: {0}".format(err))
+        source = ro_state.get("source") or {}
+        handoff_kind = source.get("handoff_kind")
+        handoff_path = source.get("handoff_path")
+        if not handoff_kind or not handoff_path:
+            return _die(
+                "classify-spec-type: --from-handoff requires an imported "
+                "handoff recorded in state, but source.handoff_kind is "
+                "{0!r} -- run import-handoff first".format(handoff_kind),
+                code=2,
+            )
+        # No try/except here: handoff_kind and handoff_path are both
+        # guaranteed non-empty by the guard above, and the template text
+        # is non-empty, so the formatted string can never be empty --
+        # _validate_scalar's ValueError branch is unreachable.
+        rationale = "pre-seeded from {0} handoff at {1}".format(
+            handoff_kind, handoff_path,
+        )
+        seeded_by_upstream = True
+    else:
+        try:
+            rationale = _validate_scalar(args.rationale, "rationale")
+        except ValueError as err:
+            return _die(str(err), code=2)
+        seeded_by_upstream = bool(args.seeded_by_upstream)
+
     try:
         with _state_transaction(args.devforge_dir) as state:
             state["spec_type"] = spec_type
             state["spec_type_rationale"] = rationale
-            state["spec_type_seeded_by_upstream"] = bool(
-                args.seeded_by_upstream
-            )
+            state["spec_type_seeded_by_upstream"] = seeded_by_upstream
     except (OSError, json.JSONDecodeError) as err:
         return _die("classify-spec-type: {0}".format(err))
     return 0
