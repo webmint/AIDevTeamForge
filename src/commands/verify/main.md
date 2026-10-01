@@ -204,7 +204,7 @@ Dispatch the `ac-verifier` agent in ALL four modes. Compose its brief from the i
 - **`ac_verification_mode`** — the value from `$WORKDIR/ac-config.json`.
 - **`ac_runtime_url`**, **`ac_runtime_api_base`**, **`ac_runtime_cli_command`** — the three runtime values from `$WORKDIR/ac-config.json` (each may be empty).
 - **`CHROME_MCP_AVAILABLE`** — `true`/`false` from the 3.2 probe.
-- **Changed files** — the `files` list from `$WORKDIR/scope.json` (the assembled-feature diff; the agent code-reads these for any AC it cannot observe at runtime).
+- **Changed files** — the `files` list from `$WORKDIR/scope.json` (the assembled-feature diff; the agent code-reads these for any AC it cannot observe at runtime, and — per the Changed files item of its `## Input` section — also reads, in every mode, the construction site of any user-facing surface an AC names, including code outside this `files` list; the agent identifies that site itself, and the brief carries no extra list for it).
 
 Dispatch with `subagent_type: ac-verifier` (this loads the agent's persona from `.claude/agents/ac-verifier.md` as the subagent's system context — do NOT prepend or re-inline the persona into the brief; the brief carries only the inputs above on top of it). Instruct the agent to write its `## AC Verification Report` (its `### Results` table) to `$WORKDIR/ac-report.md` via Bash shell redirection — the agent carries `Bash`, so it writes the file with a `cat > "$WORKDIR/ac-report.md" << 'EOF' … EOF` heredoc; no Write tool needed. The four modes map to PHASE-3 behavior as:
 

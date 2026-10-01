@@ -28,7 +28,7 @@ You receive:
 4. **`ac_runtime_api_base`** — base URL for API calls (e.g., `http://localhost:3000/api`); may be empty.
 5. **`ac_runtime_cli_command`** — the CLI command to launch/drive the runtime (e.g., `npm run dev`); may be empty.
 6. **`CHROME_MCP_AVAILABLE`** — whether Chrome DevTools MCP is active (`true`/`false`).
-7. **Changed files** — files changed during implementation (for the code-reading fallback).
+7. **Changed files** — files changed during implementation (for the code-reading fallback). When an AC names a user-facing surface, also read that surface's construction site — the code that builds, mounts, or registers what it depends on — in every mode, including code outside this list; a surface can take a change through shared code while its wiring stays unchanged. That read shows how the surface is wired, not how it behaves at runtime: where the wiring contradicts the AC, record `FAIL` / `PARTIAL` cited to the contradicting `file:line` (`FAIL (code)` / `PARTIAL (code)` when the verdict is reached by code-reading); but where an observation of the surface shows the AC holding while the wiring contradicts it, record `PARTIAL` citing both the observation and the contradicting `file:line` — never `PASS`.
 
 ## Verification modes
 
@@ -60,7 +60,7 @@ The classification and loops below are the machinery of `runtime-assisted`. Unde
    - **Set up preconditions**: establish required state through the app's own UI (`fill`, `click`) or inject it via `evaluate_script` (localStorage, cookies, fetch). Read the AC's "Given" clause for hints.
    - **Perform the action**: execute the AC's interaction with `click`, `fill`, `fill_form`, `press_key`, or `hover`; `wait_for` the expected result after each interaction.
    - **Observe**: `take_snapshot` (a11y tree, preferred for programmatic checks); `take_screenshot` (visual evidence); `list_console_messages` (new errors are noteworthy); `list_network_requests` (verify expected API calls).
-   - **Evaluate and record**: compare the observed state against the AC; record `PASS` / `FAIL` / `PARTIAL` with concrete evidence; mark the task complete and advance.
+   - **Evaluate and record**: compare the observed state against the AC; record `PASS` / `FAIL` / `PARTIAL` with concrete evidence — `PARTIAL`, never `PASS`, when the construction site of a surface the AC names contradicts a passing observation (see **Changed files** under `## Input`); mark the task complete and advance.
 
 4. **Backend verification loop** — for each `backend` item, one at a time:
    - **Identify the endpoint** from the AC and source code (search routes if needed); determine method, headers, and payload.
@@ -68,7 +68,7 @@ The classification and loops below are the machinery of `runtime-assisted`. Unde
    - **Execute**: call the endpoint (base `ac_runtime_api_base`) with proper headers (Content-Type, Authorization if needed).
    - **Check the response**: verify the status code, parse the body against the AC, check response headers if specified.
    - **Verify side effects**: for persistence, make a follow-up GET; for a state change, verify via another endpoint; for a computed result, verify the computation.
-   - **Record** `PASS` / `FAIL` / `PARTIAL` with the request/response summary as evidence.
+   - **Record** `PASS` / `FAIL` / `PARTIAL` with the request/response summary as evidence — `PARTIAL`, never `PASS`, when the construction site of a surface the AC names contradicts a passing observation (see **Changed files** under `## Input`).
 
 5. **Code-reading fallback** — for each `code-fallback` item (reclassified due to unavailable MCP or API): read the relevant changed files, trace whether the code logic satisfies the AC, check the AC's edge cases, and record `PASS (code)` / `FAIL (code)` / `PARTIAL (code)` — the `(code)` suffix marks a verdict reached by reading, not observation.
 
