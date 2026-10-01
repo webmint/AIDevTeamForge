@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ._schema import (
     AC_SUBSECTION_ENUM,
     AC_UBIQUITOUS_ONLY_SUBSECTIONS,
+    CHANGE_KIND_ENUM,
     CONSTRAINT_KIND_ENUM,
     DESIGN_SOURCE_DEFAULT,
     DESIGN_SOURCE_SCHEME_ENUM,
@@ -30,6 +31,7 @@ from ._validators import (
     _validate_enum,
     _validate_external_system,
     _validate_nfr_quantifier,
+    _validate_path_evidence,
     _validate_scalar,
 )
 from _shared.feature_alloc import (  # type: ignore[import]
@@ -273,10 +275,25 @@ def cmd_set_desired_behavior(args: argparse.Namespace) -> int:
 
 
 def cmd_record_affected_area(args: argparse.Namespace) -> int:
-    """Append a §4 Affected Areas row {area, files, impact}."""
+    """Append a §4 Affected Areas row {area, files, impact, change_kind, path_evidence}."""
     try:
         area = _validate_scalar(args.area, "area")
         impact = _validate_scalar(args.impact, "impact")
+        change_kind = _validate_enum(
+            args.change_kind, "change_kind", CHANGE_KIND_ENUM,
+        )
+        path_evidence = (args.path_evidence or "").strip()
+        if change_kind == "no-code-change" and not path_evidence:
+            return _die(
+                "path_evidence: required when change_kind is no-code-change "
+                "-- cite the file:line of the construction site the surface "
+                "is reached through; if none can be cited, record the row as "
+                "code-change and raise the unproven path claim as an open "
+                "question (record-open-question)",
+                code=2,
+            )
+        if path_evidence:
+            path_evidence = _validate_path_evidence(path_evidence)
     except ValueError as err:
         return _die(str(err), code=2)
     try:
@@ -298,6 +315,8 @@ def cmd_record_affected_area(args: argparse.Namespace) -> int:
                 "area": area,
                 "files": cleaned_files,
                 "impact": impact,
+                "change_kind": change_kind,
+                "path_evidence": path_evidence,
             })
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-affected-area: {0}".format(err))

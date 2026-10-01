@@ -243,17 +243,24 @@ def render_spec(state: Dict[str, Any]) -> str:
 
     out.append("## 4. Affected Areas")
     out.append("")
-    out.append("| Area | Files | Impact |")
-    out.append("|------|-------|--------|")
+    out.append("| Area | Files | Impact | Change kind | Path evidence |")
+    out.append("|------|-------|--------|-------------|---------------|")
     if state["affected_areas"]:
         for a in state["affected_areas"]:
-            out.append("| {0} | {1} | {2} |".format(
+            # An absent key (a row written before change_kind existed, or
+            # a seeded row) renders as an EMPTY cell, never a placeholder.
+            evidence = (a.get("path_evidence") or "").strip()
+            out.append("| {0} | {1} | {2} | {3} | {4} |".format(
                 a.get("area", ""),
                 ", ".join(a.get("files", [])),
                 a.get("impact", ""),
+                a.get("change_kind", ""),
+                "`{0}`".format(evidence) if evidence else "",
             ))
     else:
-        out.append("| _(none)_ | _(none)_ | _(none)_ |")
+        out.append(
+            "| _(none)_ | _(none)_ | _(none)_ | _(none)_ | _(none)_ |"
+        )
     out.append("")
 
     out.append("## 5. Acceptance Criteria")

@@ -81,6 +81,7 @@ from ._cmds_phase5 import (
 )
 from ._schema import (
     AC_SUBSECTION_ENUM,
+    CHANGE_KIND_ENUM,
     CONSTRAINT_KIND_ENUM,
     DESIGN_SOURCE_SCHEME_ENUM,
     DP_DEFERRAL_KIND_ENUM,
@@ -429,7 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "record-affected-area",
-        help="Append §4 row {area, files, impact}.",
+        help="Append §4 row {area, files, impact, change_kind, path_evidence}.",
     )
     sp.add_argument("--area", required=True)
     sp.add_argument(
@@ -437,6 +438,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON array of strings.",
     )
     sp.add_argument("--impact", required=True)
+    sp.add_argument(
+        "--change-kind", required=True, dest="change_kind",
+        choices=list(CHANGE_KIND_ENUM),
+    )
+    sp.add_argument(
+        "--path-evidence", default="", dest="path_evidence",
+        help="file:line of the construction site the surface is reached "
+        "through; required when --change-kind no-code-change.",
+    )
     sp.set_defaults(func=cmd_record_affected_area)
 
     sp = sub.add_parser(

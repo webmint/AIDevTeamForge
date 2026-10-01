@@ -18,9 +18,9 @@ Workspace uses pnpm workspaces for orchestration. Lockfile is pnpm-lock.yaml. Co
 
 ## 4. Affected Areas
 
-| Area | Files | Impact |
-|------|-------|--------|
-| Root tooling | package.json, pnpm-workspace.yaml | switch package manager and workspace layout |
+| Area | Files | Impact | Change kind | Path evidence |
+|------|-------|--------|-------------|---------------|
+| Root tooling | package.json, pnpm-workspace.yaml | switch package manager and workspace layout | code-change |  |
 
 ## 5. Acceptance Criteria
 

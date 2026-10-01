@@ -8,7 +8,12 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
-from ._schema import NFR_NAMED_CLASS_RE, NFR_NUMERIC_THRESHOLD_RE, NFR_VAGUE_BLOCKLIST
+from ._schema import (
+    NFR_NAMED_CLASS_RE,
+    NFR_NUMERIC_THRESHOLD_RE,
+    NFR_VAGUE_BLOCKLIST,
+    PATH_EVIDENCE_RE,
+)
 
 
 def _die(message: str, code: int = 1) -> int:
@@ -33,6 +38,23 @@ def _validate_enum(
             )
         )
     return value
+
+
+def _validate_path_evidence(value: str) -> str:
+    """Return the stripped value if it is a `file:line` citation.
+
+    Raises ValueError otherwise (a sentence, bare path, line 0, range, ...).
+    """
+    cleaned = (value or "").strip()
+    if not PATH_EVIDENCE_RE.fullmatch(cleaned):
+        raise ValueError(
+            "path_evidence: {0!r} is not a file:line citation "
+            "(expected e.g. src/app/screens/Feed.tsx:412 -- a path with no "
+            "spaces or colons, a colon, then a positive line number)".format(
+                value,
+            )
+        )
+    return cleaned
 
 
 def _validate_nfr_quantifier(quantifier: str) -> Tuple[bool, str]:

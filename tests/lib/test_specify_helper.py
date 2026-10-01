@@ -3251,6 +3251,7 @@ class TestPhase4SectionSetters(unittest.TestCase):
             dev = self._dev(td)
             _run([
                 "--devforge-dir", str(dev), "record-affected-area",
+                "--change-kind", "code-change",
                 "--area", "Tooling",
                 "--files", json.dumps(["pkg.json", "tsconfig.json"]),
                 "--impact", "rewrite",
@@ -3268,11 +3269,64 @@ class TestPhase4SectionSetters(unittest.TestCase):
             dev = self._dev(td)
             r = _run([
                 "--devforge-dir", str(dev), "record-affected-area",
+                "--change-kind", "code-change",
                 "--area", "X",
                 "--files", json.dumps({"oops": "bad"}),
                 "--impact", "Y",
             ])
             self.assertEqual(r.returncode, 2)
+
+    def _affected_area(self, dev, *extra):
+        return _run([
+            "--devforge-dir", str(dev), "record-affected-area",
+            "--area", "Feed", "--files", json.dumps(["a.ts"]),
+            "--impact", "none", *extra,
+        ])
+
+    def _areas(self, dev):
+        return json.loads(
+            (dev / "specify-state.json").read_text()
+        )["affected_areas"]
+
+    def test_record_affected_area_change_kind_exit2_cases(self):
+        sentence = "reached through the feed screen"
+        cases = [
+            ("invalid change_kind", ["--change-kind", "maybe"]),
+            ("no-code-change without evidence",
+             ["--change-kind", "no-code-change"]),
+            ("no-code-change with sentence",
+             ["--change-kind", "no-code-change",
+              "--path-evidence", sentence]),
+            ("code-change with sentence",
+             ["--change-kind", "code-change",
+              "--path-evidence", sentence]),
+            ("missing change-kind", []),
+        ]
+        for label, extra in cases:
+            with self.subTest(label), tempfile.TemporaryDirectory() as td:
+                dev = self._dev(td)
+                r = self._affected_area(dev, *extra)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertEqual(self._areas(dev), [])
+
+    def test_record_affected_area_change_kind_succeeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            # No --path-evidence: proves argparse does not require it.
+            r = self._affected_area(dev, "--change-kind", "code-change")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._affected_area(
+                dev, "--change-kind", "no-code-change",
+                "--path-evidence", "src/app/screens/Feed.tsx:412",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = self._areas(dev)
+            self.assertEqual(rows[0]["change_kind"], "code-change")
+            self.assertEqual(rows[0]["path_evidence"], "")
+            self.assertEqual(rows[1]["change_kind"], "no-code-change")
+            self.assertEqual(
+                rows[1]["path_evidence"], "src/app/screens/Feed.tsx:412",
+            )
 
     def test_record_out_of_scope_with_finding_ref(self):
         with tempfile.TemporaryDirectory() as td:
@@ -4809,6 +4863,7 @@ class TestPhase4VerifyScopeCoherence(unittest.TestCase):
             # §4 affected area whose impact description mentions retry behaviour.
             _run([
                 "--devforge-dir", str(dev), "record-affected-area",
+                "--change-kind", "code-change",
                 "--area", "API client",
                 "--files", '["src/api/client.py"]',
                 "--impact",
@@ -5233,6 +5288,7 @@ class TestPhase5RenderSummary(unittest.TestCase):
                   "--content", "Migrate the thing."])
             _run([
                 "--devforge-dir", str(dev), "record-affected-area",
+                "--change-kind", "code-change",
                 "--area", "Tooling",
                 "--files", json.dumps(["a.json", "b.json"]),
                 "--impact", "rewrite",
@@ -5374,6 +5430,7 @@ class TestPhase5RenderSummary(unittest.TestCase):
                   "--content", "Migrate the thing."])
             _run([
                 "--devforge-dir", str(dev), "record-affected-area",
+                "--change-kind", "code-change",
                 "--area", "Tooling",
                 "--files", json.dumps(["a.json", "b.json"]),
                 "--impact", "rewrite",
@@ -5930,6 +5987,7 @@ def _build_migration_fixture_state(td_path: Path) -> Path:
     ])
     _run([
         "--devforge-dir", str(dev), "record-affected-area",
+        "--change-kind", "code-change",
         "--area", "Root tooling",
         "--files", json.dumps([
             "package.json", "pnpm-workspace.yaml",
@@ -6196,6 +6254,7 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
     ])
     _run([
         "--devforge-dir", str(dev), "record-affected-area",
+        "--change-kind", "code-change",
         "--area", "Jobs",
         "--files", json.dumps([
             "src/jobs/exports.ts", "src/jobs/registry.ts",

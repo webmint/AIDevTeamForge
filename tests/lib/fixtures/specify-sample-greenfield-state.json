@@ -23,27 +23,28 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-08-13T10:02:37Z"
+      "read_timestamp": "2026-10-01T04:57:31Z"
     },
     {
       "path": ".devforge/memory.md",
       "source_origin": "context",
-      "read_timestamp": "2026-08-13T10:02:37Z"
+      "read_timestamp": "2026-10-01T04:57:31Z",
+      "memory_state": "absent"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-08-13T10:02:37Z"
+      "read_timestamp": "2026-10-01T04:57:32Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-08-13T10:02:37Z"
+      "read_timestamp": "2026-10-01T04:57:32Z"
     },
     {
       "path": "discover/2026-05-14-scheduled-export-jobs.md",
       "source_origin": "discover",
-      "read_timestamp": "2026-08-13T10:02:37Z"
+      "read_timestamp": "2026-10-01T04:57:32Z"
     }
   ],
   "phase1_finalized": true,
@@ -190,7 +191,6 @@
     }
   ],
   "dp_finalized": true,
-  "mode": "auto",
   "mandatory_reads": [
     {
       "spec_type": "greenfield_feature",
@@ -229,7 +229,9 @@
         "src/jobs/exports.ts",
         "src/jobs/registry.ts"
       ],
-      "impact": "add new job registration and runner glue"
+      "impact": "add new job registration and runner glue",
+      "change_kind": "code-change",
+      "path_evidence": ""
     }
   ],
   "acceptance_criteria": [

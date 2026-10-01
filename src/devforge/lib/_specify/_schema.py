@@ -123,6 +123,14 @@ CONFLICT_TYPE_ENUM: Tuple[str, ...] = ("direct", "drift", "refinement")
 LIKELIHOOD_ENUM: Tuple[str, ...] = ("Low", "Med", "High")
 IMPACT_ENUM: Tuple[str, ...] = ("Low", "Med", "High")
 
+# §4 Affected Areas row classification. A "no-code-change" row must cite the
+# construction site through which the surface is reached (path_evidence).
+CHANGE_KIND_ENUM: Tuple[str, ...] = ("code-change", "no-code-change")
+# path_evidence shape: a path token (no whitespace, no colon), ":", then a
+# positive integer line number. Use fullmatch (no `$`, which admits a
+# trailing newline).
+PATH_EVIDENCE_RE = re.compile(r"[^\s:]+:[1-9][0-9]*")
+
 CONSTRAINT_KIND_ENUM: Tuple[str, ...] = (
     "follow",
     "not_break",

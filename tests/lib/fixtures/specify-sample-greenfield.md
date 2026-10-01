@@ -18,9 +18,9 @@ Tenants can register a recurring export job and receive a result file via the ex
 
 ## 4. Affected Areas
 
-| Area | Files | Impact |
-|------|-------|--------|
-| Jobs | src/jobs/exports.ts, src/jobs/registry.ts | add new job registration and runner glue |
+| Area | Files | Impact | Change kind | Path evidence |
+|------|-------|--------|-------------|---------------|
+| Jobs | src/jobs/exports.ts, src/jobs/registry.ts | add new job registration and runner glue | code-change |  |
 
 ## 5. Acceptance Criteria
 
