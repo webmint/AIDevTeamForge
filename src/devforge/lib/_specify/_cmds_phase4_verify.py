@@ -339,6 +339,94 @@ def cmd_verify_scope_coherence(args: argparse.Namespace) -> int:
     return 0
 
 
+def _norm_for_substring(text: str) -> str:
+    """Lowercase + collapse every whitespace run to one space + strip."""
+    return " ".join((text or "").lower().split())
+
+
+def _change_kind_pairs(state: Dict) -> List[Tuple[Dict, Dict]]:
+    """Return (row, ac) pairs where a no-code-change §4 row's area is named
+    by a §5 AC outside the exempt §5.2 Behavior preservation subsection.
+
+    A no-code-change row claims the change is inherited: the area's own code
+    does not change, yet its behavior does. A pair is returned when:
+      1. row["change_kind"] == "no-code-change" (rows with no key, i.e.
+         unclassified, or "code-change" are never examined);
+      2. the normalized row["area"] is a non-empty substring of the
+         normalized ac["statement"];
+      3. ac["subsection"] != "behavior_preservation" (§5.2 is exempt: it
+         carries its own construction-site citation rule).
+    The predicate is exact and enum-keyed, deliberately NOT the fuzzy token
+    overlap verify-scope-coherence uses.
+    Known misses (silence is not proof the spec is clean):
+      - an AC that asserts a change on the area in words that do not contain
+        the area string is not matched;
+      - a behavior_preservation AC that names the area yet asserts a change
+        on it is exempt and so never flagged (whether or not the row's
+        claim is true).
+    A short area string can also substring-match inside a longer word (e.g.
+    "home" in "homework"); that comes from the ratified substring predicate.
+    Order: §4 row order, then §5 AC order.
+    """
+    pairs: List[Tuple[Dict, Dict]] = []
+    acs = state.get("acceptance_criteria", [])
+    for row in state.get("affected_areas", []):
+        if row.get("change_kind") != "no-code-change":
+            continue
+        area = _norm_for_substring(row.get("area"))
+        if not area:
+            continue
+        for ac in acs:
+            if ac.get("subsection") == "behavior_preservation":
+                continue
+            if area in _norm_for_substring(ac.get("statement")):
+                pairs.append((row, ac))
+    return pairs
+
+
+def cmd_verify_change_kind_coherence(args: argparse.Namespace) -> int:
+    """Non-blocking §4 <-> §5 cross-check for no-code-change rows.
+
+    Warns when a §4 row claims its area takes the change with none of its
+    own code changing (the change is inherited) while a §5 AC outside §5.2
+    asserts behavior on that area. The AC is often the correct shape; the
+    row's cited construction site is what to confirm. Always exits 0 unless
+    the helper itself fails; warnings go to stderr.
+    """
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        # Handler parity with verify-scope-coherence is deliberate.
+        sys.stderr.write(
+            "verify-change-kind-coherence: state read failed: "
+            "{0} (non-blocking)\n".format(err)
+        )
+        return 0
+    pairs = _change_kind_pairs(state)
+    if pairs:
+        sys.stderr.write(
+            "verify-change-kind-coherence: WARNING — a §4 row claims this "
+            "area takes the change with none of its own code changing, and "
+            "a §5 AC asserts behavior on it (non-blocking — confirm the "
+            "row's cited construction site reaches the area through the "
+            "changed code; if it does not, correct the row first, and "
+            "leave a correct AC alone):\n"
+        )
+        for row, ac in pairs:
+            sys.stderr.write(
+                "  - §4 row {0!r} (no-code-change)\n"
+                "    path evidence: {1}\n"
+                "    {2} ({3}): {4}\n".format(
+                    row.get("area", "?"),
+                    row.get("path_evidence", ""),
+                    ac.get("ac_id", "?"),
+                    ac.get("subsection", "?"),
+                    (ac.get("statement") or "")[:120],
+                )
+            )
+    return 0
+
+
 def _with_resolved_run_by(state: Dict, devforge_dir: str) -> Dict:
     """Return a shallow copy of `state` with "run_by" resolved (D9/OQ-7).
 

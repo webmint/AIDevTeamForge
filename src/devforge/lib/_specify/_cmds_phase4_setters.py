@@ -286,7 +286,7 @@ def cmd_record_affected_area(args: argparse.Namespace) -> int:
         if change_kind == "no-code-change" and not path_evidence:
             return _die(
                 "path_evidence: required when change_kind is no-code-change "
-                "-- cite the file:line of the construction site the surface "
+                "-- cite the file:line of the construction site the area "
                 "is reached through; if none can be cited, record the row as "
                 "code-change and raise the unproven path claim as an open "
                 "question (record-open-question)",

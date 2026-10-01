@@ -60,6 +60,7 @@ from ._cmds_phase4_verify import (
     cmd_render,
     cmd_verify_ac_shape,
     cmd_verify_ac_subsection_coverage,
+    cmd_verify_change_kind_coherence,
     cmd_verify_coverage,
     cmd_verify_numerical_consistency,
     cmd_verify_rendered,
@@ -444,7 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--path-evidence", default="", dest="path_evidence",
-        help="file:line of the construction site the surface is reached "
+        help="file:line of the construction site the area is reached "
         "through; required when --change-kind no-code-change.",
     )
     sp.set_defaults(func=cmd_record_affected_area)
@@ -676,6 +677,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_verify_scope_coherence)
+
+    sp = sub.add_parser(
+        "verify-change-kind-coherence",
+        help=(
+            "Non-blocking: flag a §5 AC (outside §5.2) that names the "
+            "area of a no-code-change §4 row. Exits 0 always; "
+            "warnings to stderr."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_change_kind_coherence)
 
     sp = sub.add_parser(
         "render", help="Emit 9-section spec markdown to stdout.",
