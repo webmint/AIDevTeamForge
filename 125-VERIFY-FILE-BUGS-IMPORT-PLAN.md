@@ -1,7 +1,7 @@
 # 125 — Verify File-Bugs Import Plan
 
 **Created**: 2026-10-02
-**Status**: **Phase 0 CLOSED 2026-10-02 by blanket directive — D1, D2, D3, D4, D5, D6 and OQ-1 are each ratified as recommended (`### Phase 0 close record`).** **Phase 1 BUILT 2026-10-02 (`1bbd37a`; `#### Phase 1 record`). Phase 2 BUILT 2026-10-02, committed with its record (`#### Phase 2 record`). Phase 3 is next. Phase 4 waits on D6's frozen-install confirmation, which has NOT been given.** ⚠ **Numbered 125 because a glob of `1[0-2][0-9]-*.md` at the repo root on 2026-10-02 returns 100–102 and 104–124 and no 125. The gap at 103 is vacated and must not be reused.**
+**Status**: **DONE (build) 2026-10-02 — Phases 1–3 BUILT; Phase 4 NOT run; the maintainer has not closed the plan.** **Phase 0 CLOSED 2026-10-02 by blanket directive — D1, D2, D3, D4, D5, D6 and OQ-1 are each ratified as recommended (`### Phase 0 close record`).** **Phase 1 BUILT 2026-10-02 (`1bbd37a`; `#### Phase 1 record`). Phase 2 BUILT 2026-10-02 (`43c0c9b`; `#### Phase 2 record`). Phase 3 BUILT 2026-10-02, committed with its record (`#### Phase 3 record`). Phase 4 waits on D6's frozen-install confirmation, which has NOT been given.** ⚠ **Numbered 125 because a glob of `1[0-2][0-9]-*.md` at the repo root on 2026-10-02 returns 100–102 and 104–124 and no 125. The gap at 103 is vacated and must not be reused.**
 
 `verify_helper file-bugs` — the verb `/devforge:verify` PHASE 9 calls when the user elects to file bugs on a NEEDS WORK verdict — **raises `ImportError: attempted relative import beyond top-level package` on every call.** *(added 2026-10-02 — Phase 1: the verb is fixed in this tree; this paragraph describes the pre-fix state, and installs not yet carrying the fix still raise — see `#### Phase 1 record`)* **The cause is one line:** `cmd_file_bugs` imports `from .._shared.bug_file import file_bugs`, and the launcher loads `_verify` as a TOP-LEVEL package, so `..` has no parent package to resolve against (F1, F2). **The fix is one line:** the absolute form every other importer of `_shared.bug_file` uses, and the form the same file already uses for `_shared.feature_scope` (F3, D1). **The suite never saw it because the import is function-local and no test calls the verb** (F6). D2 closes that gap for this verb; D3 proposes a guard for the whole class; D4 records, and does not fix, a second defect the same consumer run exposed (F11).
 
@@ -278,7 +278,35 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 
 #### Phase 3 record
 
-**NOT RUN.**
+**BUILT 2026-10-02, committed with this record.** **The ledgers carry the plan: `CHANGELOG.md` has its `- fix(verify):` line under `## [Unreleased]` → `### Fixed`; `FINDINGS.md` has F11 as entry 8; `PLAN-STATUS-ARCHIVE.md` has this plan's `## Index` line, its `## Entries` record and the FINDINGS paragraph at "Eight".** Route: instruction-author → instruction-reviewer, looped until clean. **With Phases 1–3 built, the plan is DONE (build).** ⚠ **Phase 4 has not run — it waits on D6's frozen-install confirmation, which has NOT been given — so this plan has delivered nothing to the consumer install. The maintainer has not closed the plan.**
+
+Every statement in this record is dated 2026-10-02 unless it names another date.
+
+⚠ **The ledgers change no evidence class:** ONE observed consumer incident; the mechanism REPRODUCED in this tree; the fix verified in a SCRATCH COPY, then in this tree by Phase 1; nothing measured. The `CHANGELOG.md` line and the `PLAN-STATUS-ARCHIVE.md` index line and entry each state the class in this form.
+
+**Built.**
+
+- **`CHANGELOG.md`.** OQ-1 was re-verified live: `## [Unreleased]` carried only `### Changed`. A `### Fixed` sub-heading now follows the whole `### Changed` block, the order `[2.0.12]` and `[2.0.11]` use, with one `- fix(verify): …` line. It says that the verb raised on every call since `027bdd4` (2026-06-19) and wrote no bug file, that one consumer install observed it, that the import now resolves, that `TestFileBugsCliVerb` calls the verb, and that `tests/lib/test_relative_import_depth.py` fails on any relative import under `src/devforge/lib` that climbs above its top-level package; it states the evidence class and claims nothing measured. No released block was edited.
+- **`FINDINGS.md`.** Entry `## 8.` records F11 per D4 Option A, in entry 7's shape: the *"FINDING (no plan file, no owner)"* lead, *"Recorded 2026-10-02, surfaced by …"*, the body, and a closing NOTE ON THIS ENTRY'S SHAPE naming it the EIGHTH file-less finding and the third recorded after the 2026-08-17 relocation. Its heading carries no `— original position:` clause. It names this plan as the originating plan, which records F11 and owns no fix. Its anchors were re-verified live: `src/commands/verify/main.md:441` reads *"On a non-zero exit, copy the helper's stderr VERBATIM and end the turn."*, `## Cleanup` is at `:445`, and *"VERBATIM and end the turn"* appears in 11 files under `src/commands/`. Entries 1–7, their ordinal notes included, are unedited.
+- **`PLAN-STATUS-ARCHIVE.md`** — three edits in one change: (1) this plan's `## Index` line, after plan 107's; (2) its `## Entries` record, after plan 107's and before the two relocated-FINDING placeholders; (3) the FINDINGS paragraph, "Seven file-less FINDINGS" → "Eight file-less FINDINGS", with an "(8) …" clause after the (7) clause. Both shapes say DONE (build), the delegation close, Phases 1–3 BUILT and Phase 4 NOT run, and both state the evidence class; the entry also names the full-suite results (12003 → 12005 → 12015 passed, 16 skipped) and the declared departures.
+- **This plan** — the Status line and this record.
+
+**SHAs owed by earlier records.** Phase 1's commit is **`1bbd37a`** (owed by `#### Phase 1 record`). Phase 2's commit is **`43c0c9b`** (owed by `#### Phase 2 record`). This record cannot carry the Phase 3 commit's own SHA; `git log --oneline -- 125-VERIFY-FILE-BUGS-IMPORT-PLAN.md` lists it.
+
+**Verify, item by item.**
+
+- **`grep -n "fix(verify)" CHANGELOG.md`** returns two lines: the new one, under `## [Unreleased]` → `### Fixed` and above `## [2.0.12]`, and a released `[2.0.8]` `### Fixed` line further down, which this phase did not touch.
+- **`FINDINGS.md`.** `grep -n "^## " FINDINGS.md` shows `## 8.` last, and `grep -n "EIGHTH file-less finding" FINDINGS.md` finds its closing note. The change inserts a `---` separator and entry 8 after entry 7 and edits no existing line, so `git diff FINDINGS.md` is additions only. The dated note's **record it** branch did not occur, so there is no gap entry and no NINTH note.
+- **`PLAN-STATUS-ARCHIVE.md`.** `grep -n` finds each of the three lines: this plan's `## Index` line above `## Entries`, its `## Entries` record below it, and the paragraph opening *"Eight file-less FINDINGS"* with its "(8)" clause. The dated note's **record it** branch did not occur, so the paragraph does not read "Nine".
+- **The identifier grep.** The orchestrator ran it over the diff on 2026-10-02 and got no hit, and re-runs it over the staged diff at commit; the commit carrying this record is made only on that result, so the commit confirms it. ⚠ The bullet names the maintainer — a departure, recorded below.
+- **`git show --stat`.** This record ships inside the Phase 3 commit, so it states that commit's content instead of quoting its output: exactly `CHANGELOG.md`, `FINDINGS.md`, `PLAN-STATUS-ARCHIVE.md` and this plan.
+- **Both SHAs.** This record names `1bbd37a` and `43c0c9b`, and each resolves under `git show -s --format=%h <sha>`, run by the orchestrator.
+- **The `pr_review_helper` launcher gap: no decision given by the time Phase 3 is built.** The maintainer was asked twice and gave no answer. So the gap stays unrecorded by this plan: there is no second `FINDINGS.md` entry, and the "EIGHTH" and "Eight" counts stand as the Deliverables write them.
+- **Review.** The commit carrying this record is made only after instruction-reviewer returns SHIP-READY or every finding is fixed, so that commit confirms this bullet; the review rounds are not counted here.
+
+**Departures from the plan text — each by name:**
+
+- **The identifier grep was run by the orchestrator, not the maintainer.** Phase 3's Verify names the maintainer; the orchestrator ran it because it holds the consumer's identifiers from the session.
 
 ### Phase 4 — Consumer delivery (D6) — user-driven, NOT run by default
 
@@ -365,7 +393,7 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 ## When resuming work
 
 1. **Read this plan in full** before touching anything — it encodes context that is not in the conversation.
-2. **Check `### Phase 0 close record` first.** Phase 0 closed 2026-10-02: D1–D6 and OQ-1 are ratified as recommended, so Phases 1, 2 and 3 may build, in that order. **Phase 4 does NOT start until the maintainer gives D6's frozen-install confirmation** — the blanket directive was not that confirmation, and the record still says so. *(corrected 2026-10-02 — Phase 0 close: this step read "While it reads PENDING, nothing is ratified and no build phase may start.", which held until the close)*
+2. **Check `### Phase 0 close record` first.** Phase 0 closed 2026-10-02: D1–D6 and OQ-1 are ratified as recommended, so Phases 1, 2 and 3 may build, in that order. **Phase 4 does NOT start until the maintainer gives D6's frozen-install confirmation** — the blanket directive was not that confirmation, and the record still says so. *(added 2026-10-02 — Phase 3: Phases 1–3 are all BUILT — see the three phase records — so only Phase 4 remains, and it waits on the frozen-install confirmation above)* *(corrected 2026-10-02 — Phase 0 close: this step read "While it reads PENDING, nothing is ratified and no build phase may start.", which held until the close)*
 3. **See what landed:** `git log --oneline -- src/devforge/lib/_verify/_cli.py tests/lib/_verify/test_bugs.py`.
 4. **Re-run the F7 launcher repro.** Before Phase 1 it raises the F1 ImportError; after Phase 1 it exits 0. ⚠ **After Phase 1, `grep -rn "from \.\._shared.bug_file" src/` returning nothing is the built state, not drift.**
 5. **Re-verify F1–F11 by grepping the quoted text, never the digits.** F5's and F10's commit facts are re-derived with `git`, not with a file read.
