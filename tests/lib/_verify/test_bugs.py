@@ -46,10 +46,19 @@ Coverage:
       - Missing optional fields (title, description, etc.) → placeholders used
       - bugs_dir created if absent
       - Empty bugs_dir → scanning gives 0 → starts at 001
+
+  TestFileBugsCliVerb (the `file-bugs` verb via _verify._cli.main, in-process):
+      - Verb exits 0, writes one bug file, stdout is a JSON array of the
+        written paths, and the file carries "**Source**: verify"
+        (regression: function-local `from .._shared...` import raised
+        ImportError under the launcher's top-level `_verify` package)
+      - Empty issues list → exit 0, stdout "[]", no bugs dir created
 """
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import sys
 import tempfile
@@ -63,6 +72,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _shared.bug_file import file_bugs, slugify, scan_highest_number  # noqa: E402
+from _verify._cli import main as verify_main  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +549,62 @@ class TestFileBugsEdgeCases(unittest.TestCase):
         self.assertEqual(len(paths), 2)
         for p in paths:
             self.assertTrue(os.path.isfile(p))
+
+
+def _capture(argv):
+    """Run verify_main(argv) capturing stdout/stderr. Returns (stdout, stderr, rc)."""
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = buf_out, buf_err
+    try:
+        rc = verify_main(argv)
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else 2
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+    return buf_out.getvalue(), buf_err.getvalue(), rc
+
+
+class TestFileBugsCliVerb(unittest.TestCase):
+    """The `file-bugs` verb end to end through _verify._cli.main."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.bugs_dir = os.path.join(self.tmp, "bugs")
+        self.issues_path = os.path.join(self.tmp, "issues.json")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_issues(self, issues):
+        with open(self.issues_path, "w", encoding="utf-8") as fh:
+            json.dump(issues, fh)
+
+    def _run(self):
+        return _capture([
+            "file-bugs", "--issues", self.issues_path,
+            "--bugs-dir", self.bugs_dir, "--date", "2026-10-02",
+        ])
+
+    def test_verb_writes_bug_file_and_prints_paths(self):
+        self._write_issues([_issue()])
+        out, err, rc = self._run()
+        self.assertEqual(rc, 0, err)
+        files = os.listdir(self.bugs_dir)
+        self.assertEqual(len(files), 1)
+        written = [os.path.join(self.bugs_dir, files[0])]
+        self.assertEqual(json.loads(out), written)
+        with open(written[0], encoding="utf-8") as fh:
+            self.assertIn("**Source**: verify", fh.read())
+
+    def test_verb_empty_issues_prints_empty_array(self):
+        self._write_issues([])
+        out, err, rc = self._run()
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out), [])
+        self.assertFalse(os.path.exists(self.bugs_dir))
 
 
 if __name__ == "__main__":
