@@ -1,7 +1,7 @@
 # 125 — Verify File-Bugs Import Plan
 
 **Created**: 2026-10-02
-**Status**: **Phase 0 CLOSED 2026-10-02 by blanket directive — D1, D2, D3, D4, D5, D6 and OQ-1 are each ratified as recommended (`### Phase 0 close record`).** **Phase 1 BUILT 2026-10-02, committed with its record (`#### Phase 1 record`). Phase 2 (built, under its full-suite Verify) is committed next, then Phase 3. Phase 4 waits on D6's frozen-install confirmation, which has NOT been given.** ⚠ **Numbered 125 because a glob of `1[0-2][0-9]-*.md` at the repo root on 2026-10-02 returns 100–102 and 104–124 and no 125. The gap at 103 is vacated and must not be reused.**
+**Status**: **Phase 0 CLOSED 2026-10-02 by blanket directive — D1, D2, D3, D4, D5, D6 and OQ-1 are each ratified as recommended (`### Phase 0 close record`).** **Phase 1 BUILT 2026-10-02 (`1bbd37a`; `#### Phase 1 record`). Phase 2 BUILT 2026-10-02, committed with its record (`#### Phase 2 record`). Phase 3 is next. Phase 4 waits on D6's frozen-install confirmation, which has NOT been given.** ⚠ **Numbered 125 because a glob of `1[0-2][0-9]-*.md` at the repo root on 2026-10-02 returns 100–102 and 104–124 and no 125. The gap at 103 is vacated and must not be reused.**
 
 `verify_helper file-bugs` — the verb `/devforge:verify` PHASE 9 calls when the user elects to file bugs on a NEEDS WORK verdict — **raises `ImportError: attempted relative import beyond top-level package` on every call.** *(added 2026-10-02 — Phase 1: the verb is fixed in this tree; this paragraph describes the pre-fix state, and installs not yet carrying the fix still raise — see `#### Phase 1 record`)* **The cause is one line:** `cmd_file_bugs` imports `from .._shared.bug_file import file_bugs`, and the launcher loads `_verify` as a TOP-LEVEL package, so `..` has no parent package to resolve against (F1, F2). **The fix is one line:** the absolute form every other importer of `_shared.bug_file` uses, and the form the same file already uses for `_shared.feature_scope` (F3, D1). **The suite never saw it because the import is function-local and no test calls the verb** (F6). D2 closes that gap for this verb; D3 proposes a guard for the whole class; D4 records, and does not fix, a second defect the same consumer run exposed (F11).
 
@@ -142,7 +142,7 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 
 ## Phases
 
-Phase 0 is the section above; **nothing below starts before its close record exists.** **Build order: Phase 1 → Phase 2 → Phase 3.** Phase 2 follows Phase 1 because its mutation check reverts and restores the fixed line. Phase 4 needs only Phase 1's commit.
+Phase 0 is the section above; **nothing below starts before its close record exists.** **Build order: Phase 1 → Phase 2 → Phase 3.** Phase 2 follows Phase 1 because its mutation check reverts and restores the fixed line. *(added 2026-10-02 — Phase 2: the check ran on a scratch copy, so the live line was never reverted — see `#### Phase 2 record`)* Phase 4 needs only Phase 1's commit.
 
 Every phase commits by explicit path — **never `git add -A`** — because another session builds in this checkout. Commit subjects take the `<type>(plan-125): Phase N — …` form, matching the `feat(plan-107): Phase 3 — …` style `git log --oneline -5` shows.
 
@@ -219,7 +219,38 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 
 #### Phase 2 record
 
-**NOT RUN.**
+**BUILT 2026-10-02.** **D3's guard is in the tree: `tests/lib/test_relative_import_depth.py`, under D3's ratified name, fails on any relative import under `src/devforge/lib/` that climbs above its top-level package.** Route: python-engineer → python-reviewer, looped until clean. ⚠ **Phase 4 has not run, so this plan has delivered nothing to the consumer install.**
+
+Every statement in this record is dated 2026-10-02 unless it names another date.
+
+⚠ **The build changes no evidence class:** ONE observed consumer incident; the mechanism REPRODUCED in this tree; the fix verified in a SCRATCH COPY, then in this tree by Phase 1; nothing measured. The guard shows that no relative import under `src/devforge/lib/` climbs above its top-level package today; it says nothing about how many installs hit F1.
+
+**Built.**
+
+- **`tests/lib/test_relative_import_depth.py`** — new, 137 lines.
+  - `find_relative_import_violations(lib_root) -> (violations, parse_errors)` is a module-level function that returns its findings and writes nothing. It walks `rglob("*.py")`, skips any path with a `__pycache__` part, takes depth as `len(rel.parts) - 1`, and flags every `ast.ImportFrom` that `ast.walk` finds with `level > depth`, each as `relpath:lineno level=N depth=M`. A `SyntaxError` or `ValueError` becomes a parse error naming the file, which is never skipped; `UnicodeDecodeError` is a `ValueError` subclass, so a non-UTF-8 file is reported too, as the reviewer verified. It applies no warning filter and has no allow-list.
+  - `TestLiveTree.test_no_relative_import_beyond_top_level` scans the real `src/devforge/lib` and fails with every violation and parse error in one message. It resolves the repo root as `Path(__file__).resolve().parent.parent.parent`, the idiom `tests/lib/test_agent_reachability.py` uses.
+  - `TestFindViolations` holds 9 synthetic-tree tests: `test_depth1_double_dot_flagged`, `test_depth1_single_dot_clean`, `test_depth2_double_dot_clean`, `test_depth0_single_dot_flagged`, `test_nested_in_function_still_flagged`, `test_unparseable_file_reported_as_parse_error`, `test_pycache_ignored`, `test_every_violation_reported`, `test_init_follows_same_rule`.
+- **D3's contract, clause by clause.** Depth below `lib/` → the four `test_depth*` tests; a function-local import, the shape F1 had → `test_nested_in_function_still_flagged`; `__init__.py` under the same rule → `test_init_follows_same_rule`; every offending `file:line` in one failure message → `test_every_violation_reported` and the live test's joined message; a file that fails to parse fails the guard, named → `test_unparseable_file_reported_as_parse_error`, and the live test fails on any parse error; `__pycache__` excluded → `test_pycache_ignored`. The guard scans `src/devforge/lib` only, never `scripts/` (`## Non-goals`).
+- **The function stays test-local**, not under `scripts/lib/`, because D3 asked for a test file. The AST walk in `tests/lib/_review/test_report.py` is test-local too.
+
+**Verify, item by item.**
+
+- **The guard passes on the tree, and the 12 healthy F9 sites need no allow-list entry.** The guard file alone: 10 passed, 3 warnings. The guard has no allow-list. `grep -rn 'from \.\.' src/devforge/lib --include='*.py'` now returns 13 lines: the 12 F9 sites and the comment at `_design/_source.py:49`. F9's fourteenth hit, `_verify/_cli.py:1080`, has been gone since Phase 1.
+- **The 3 `SyntaxWarning`s are EXPECTED.** They are exactly plan 121's, at `_configure/_lint_ignore.py:632`, `_generate_docs/_md_frontmatter.py:21` and `_generate_docs/_md_frontmatter.py:92` — Trap 8's three sites.
+- **Mutation check — run on a COPY, a departure recorded below.** With `from .._shared.bug_file import file_bugs` restored in the copy, the guard failed (`1 failed`) with `VIOLATION _verify/_cli.py:1080 level=2 depth=1`, a message that names `_verify/_cli.py`. A direct call of `find_relative_import_violations` on the copy returned `(['_verify/_cli.py:1080 level=2 depth=1'], [])`. The python-reviewer redid the check independently on its own scratch copy and got `1 failed, 9 passed` with the same message. The live `src/devforge/lib/_verify/_cli.py` was never edited, so the bullet's restore step had nothing to undo and its empty-`git diff` condition holds trivially.
+- **Targeted first.** `python3 -m pytest tests/lib/test_relative_import_depth.py tests/lib/_verify -q`: 669 passed, 3 warnings, 17 subtests passed. That was the engineer's run, before the round-1 docstring rewording; the rewording changes only the module docstring, and the guard file alone re-ran afterwards at 10 passed.
+- **Then the full suite.** `python3 -m pytest tests/lib -q -p no:cacheprovider`: **12015 passed, 16 skipped, 30 warnings, 238 subtests passed in 971.83s (0:16:11)**, exit 0. That is Phase 1's 12005 plus the guard's 10 tests; the 30 warnings are Phase 1's 27 plus the 3 `SyntaxWarning`s the guard's `ast.parse` emits. The run started AFTER Phase 1's round-1 nit fix and AFTER the guard's docstring rewording, so it covers the final form of both `test_bugs.py` and the guard. **This discharges the forward reference in `#### Phase 1 record`'s honest bound.**
+- **Review.** Round 1 returned SHIP-READY with one LOW finding, fixed as recorded below. Round 2 returned SHIP-READY.
+
+**Commit scope** — Trap 3's `git show --stat` check, which Phase 2's Verify does not list. This record ships inside the Phase 2 commit, so it states that commit's content instead of quoting its output: exactly `tests/lib/test_relative_import_depth.py` and this plan. The commit's SHA is recorded in `#### Phase 3 record`.
+
+**Departures from the plan text, and additions beyond it — each by name:**
+
+- **The mutation check ran on a COPY, not on the tree.** Phase 2's Verify says to revert `:1080` temporarily in the tree. Instead, the engineer copied `src/devforge/lib` (without `__pycache__`) and the guard file into a temp dir with the same layout, restored `from .._shared.bug_file import file_bugs` in the copy only, and ran the guard there. The reason: a full `tests/lib` run was going in the background against this tree at the time, and another session shares the checkout (Trap 3), so reverting the live line would have shown both of them a broken import. The outcome is the one the bullet asks for: the guard fails and names `_verify/_cli.py`.
+- **The round-1 LOW finding, fixed in the module docstring.** The docstring said helpers are "launched as `python3 .devforge/lib/<x>_helper.py`" and that "each launcher puts `lib/` on `sys.path`". Commands call extension-less POSIX launchers such as `src/devforge/lib/verify_helper`, which exec `python3`, `py -3` or `python` on `<x>_helper.py`; running a script puts its directory on `sys.path`, and 24 of the 26 `src/devforge/lib/*_helper.py` files also call `sys.path.insert`. The docstring now says that helpers run through extension-less POSIX launchers that exec a Python 3 interpreter on `<x>_helper.py`, that running a script puts `lib/` on `sys.path`, and that most `*_helper.py` files also insert it.
+
+⚠ **Outside this plan — raised by the Phase 2 python-reviewer.** `src/commands/pr-review/main.md` names `.devforge/lib/pr_review_helper` on 13 lines, from `:23` to `:269`, but `src/devforge/lib/` carries `pr_review_helper.py` and no extension-less `pr_review_helper` launcher, which each of the other 25 `*_helper.py` files has. It was surfaced to the maintainer and was, as of this record, neither fixed nor recorded by this plan; `#### Phase 3 record` states which of three outcomes holds for this gap — see the note on Phase 3's **This plan** deliverable.
 
 ### Phase 3 — Ledgers
 
@@ -232,15 +263,17 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 - **`PLAN-STATUS-ARCHIVE.md`** — three edits, in one change:
   - **(1)** this plan's `## Index` line and **(2)** its `## Entries` record, **both shapes or neither**, per that file's `## Index` preamble (`:9`);
   - **(3)** the `## Index` paragraph that summarizes `FINDINGS.md` (`:99`), which opens with the literal *"Seven file-less FINDINGS"*: "Seven" becomes "Eight", and an "(8) …" clause naming the new finding is appended after the existing (7) clause. Otherwise it under-counts the file it summarizes.
-- **This plan** — its Status line and `#### Phase 3 record` below.
+- **This plan** — its Status line and `#### Phase 3 record` below. *(added 2026-10-02 — Phase 2: `#### Phase 3 record` also carries the Phase 1 commit's SHA (`1bbd37a`), owed by `#### Phase 1 record`; the Phase 2 commit's SHA, owed by `#### Phase 2 record`; and the maintainer's decision on the `pr_review_helper` launcher gap — see `#### Phase 2 record`'s outside-this-plan note — stated as exactly one of three outcomes: record it; do not record it; or no decision given by the time Phase 3 is built. On **record it**, Phase 3 adds a second new `FINDINGS.md` entry, numbered right after the F11 entry, in the same entry-7 shape: its closing note reads "NINTH file-less finding and the fourth recorded after the 2026-08-17 relocation"; the `PLAN-STATUS-ARCHIVE.md:99` paragraph then reads "Nine file-less FINDINGS", with both an "(8) …" clause and a "(9) …" clause; and `#### Phase 3 record` names the entry. On **do not record it** and on **no decision given**, there is no second entry, the "EIGHTH" and "Eight" counts in the deliverables above stay as written, and `#### Phase 3 record` says the gap stays unrecorded by this plan)*
 
 #### Verify
 
 - `grep -n "fix(verify)" CHANGELOG.md` shows the new line above `## [2.0.12]`, under the OQ-1 heading.
-- `grep -n "^## " FINDINGS.md` shows the new entry last; `grep -n "EIGHTH file-less finding" FINDINGS.md` finds its closing note; `git diff FINDINGS.md` shows additions only.
-- In `PLAN-STATUS-ARCHIVE.md`, `grep -n` finds each of the three lines: this plan's `## Index` line (above `## Entries`), its `## Entries` record (below `## Entries`), and the FINDINGS paragraph opening *"Eight file-less FINDINGS"* with its "(8)" clause.
+- `grep -n "^## " FINDINGS.md` shows the new entry last; `grep -n "EIGHTH file-less finding" FINDINGS.md` finds its closing note; `git diff FINDINGS.md` shows additions only. *(added 2026-10-02 — Phase 2: on the gap's **record it** outcome, the gap's entry is last with the F11 entry right before it, and `grep -n "NINTH file-less finding" FINDINGS.md` finds the gap entry's closing note)*
+- In `PLAN-STATUS-ARCHIVE.md`, `grep -n` finds each of the three lines: this plan's `## Index` line (above `## Entries`), its `## Entries` record (below `## Entries`), and the FINDINGS paragraph opening *"Eight file-less FINDINGS"* with its "(8)" clause. *(added 2026-10-02 — Phase 2: on the gap's **record it** outcome, the paragraph opens "Nine file-less FINDINGS" with its "(8)" and "(9)" clauses)*
 - The maintainer greps the staged diff for the consumer's identifiers (held outside this repo) and gets no hit.
 - `git show --stat` lists only this phase's files.
+- `#### Phase 3 record` names both SHAs, and each resolves under `git show -s --format=%h <sha>`. *(added 2026-10-02 — Phase 2: `#### Phase 1 record` and `#### Phase 2 record` each defer their commit's SHA to `#### Phase 3 record`)*
+- `#### Phase 3 record` states which of the three outcomes holds for the `pr_review_helper` launcher gap. *(added 2026-10-02 — Phase 2: the three outcomes are listed in the Deliverables note on `#### Phase 3 record`)*
 - instruction-reviewer returns SHIP-READY, or every finding is fixed.
 
 #### Phase 3 record
@@ -284,7 +317,7 @@ Every statement in this record is dated 2026-10-02 unless it names another date.
 ### Honest bounds
 
 - **One incident, nothing measured.** How many installs reached an elected PHASE 9 filing since 2026-06-19 is unknown.
-- **D2 protects one verb.** Without D3, the next lazy over-deep relative import is as invisible as this one was.
+- **D2 protects one verb.** Without D3, the next lazy over-deep relative import is as invisible as this one was. *(added 2026-10-02 — Phase 2: D3's guard is built — see `#### Phase 2 record`; the sentence now records what D2 alone would leave open)*
 - **D3 catches one shape:** a relative import that climbs above its top-level package under `src/devforge/lib/`. It does not catch an absolute import of a package an install does not ship.
 - **F8 is not a tree verification.** Until Phase 1's Verify passes, the tree's line is broken. *(added 2026-10-02 — Phase 1: Phase 1's Verify passed, so the tree's line is fixed — see `#### Phase 1 record`)*
 - **The fix restores the verb; it does not make PHASE 9's failure path safe.** F11 stays open in `FINDINGS.md`.
