@@ -73,9 +73,9 @@ Step 1 coverage:
     → exit 1; malformed yaml → exit 2.
   read-docs — overview-only fixture (Tech Stack table + Project Structure
     fenced block + Key Commands table); architecture-only fixture (Patterns
-    sub-headings + Conventions); both files together (testForge20 sample
-    copied to tmpdir); overview missing → exit 1; architecture missing →
-    exit 1; malformed markdown → graceful exit 0.
+    sub-headings + Conventions); both files together (docs written by the
+    real generate_docs_helper verbs); overview missing → exit 1;
+    architecture missing → exit 1; malformed markdown → graceful exit 0.
   read-glossary — 3-term hand-authored fixture; file missing → exit 1; empty
     file → exit 0 with empty list [].
 
@@ -105,7 +105,7 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 _HELPER_PY = _LIB_DIR / "constitute_helper.py"
 _INIT_HELPER_PY = _LIB_DIR / "init_helper.py"
 _CONFIGURE_HELPER_PY = _LIB_DIR / "configure_helper.py"
-_TESTFORGE20 = Path("/Users/mykolakudlyk/Projects/testForge20")
+_GENERATE_DOCS_HELPER_PY = _LIB_DIR / "generate_docs_helper.py"
 
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
@@ -130,6 +130,77 @@ def _run(argv, cwd=None, env=None):
         check=False,
         env=env,
     )
+
+
+def _gd(devforge, *argv):
+    """Run generate_docs_helper.py (the real docs producer); assert exit 0."""
+    result = subprocess.run(
+        [sys.executable, str(_GENERATE_DOCS_HELPER_PY)] + list(argv)
+        + ["--devforge-dir", str(devforge)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, "generate_docs_helper {0} failed: {1}".format(
+        argv[0], result.stderr
+    )
+    return result
+
+
+def _produce_overview_and_architecture(root):
+    """Write <root>/docs/overview.md + architecture.md via generate_docs_helper."""
+    devforge = Path(root) / ".devforge"
+    fm = json.dumps({"project": "sample", "last_indexed": "2026-05-08", "source_stamp": "p1"})
+    ov = ("--tier", "project-overview", "--target", "sample")
+    _gd(devforge, "init-doc", *ov, "--frontmatter", fm)
+    _gd(devforge, "set-doc-purpose", *ov, "--text", "Sample project purpose.")
+    _gd(devforge, "set-overview-tech-stack", *ov, "--tech-stack", json.dumps(
+        [{"layer": "Framework", "technology": "Vue 3"},
+         {"layer": "Language", "technology": "TypeScript"}]))
+    _gd(devforge, "render-doc", *ov)
+    ar = ("--tier", "project-architecture", "--target", "sample")
+    _gd(devforge, "init-doc", *ar, "--frontmatter", fm)
+    _gd(devforge, "set-architecture-overview-narrative", *ar, "--text", "Layered architecture.")
+    _gd(devforge, "set-architecture-patterns", *ar, "--patterns", json.dumps(
+        [{"name": "Repository", "applies_in": "data layer", "rule": "Access storage via repositories.",
+          "language": "ts", "code_snippet": "repo.find(id)", "cite": "src/repo.ts:1"}]))
+    _gd(devforge, "render-doc", *ar)
+
+
+def _produce_glossary(root):
+    """Write <root>/docs/glossary.md via generate_docs_helper set-glossary-entries.
+
+    Needs a bundles file (build-glossary-bundles output shape, prose-only class
+    so no code index is required) and the cited docs to exist. The glossary
+    command enforces >= 30 entries, so this always writes exactly 30.
+    Returns the number of terms written.
+
+    The per-bundle keys below mirror what build-glossary-bundles emits
+    (term, class, doc_context, code_anchor, related_set, cite_md_paths;
+    see cmd_build_glossary_bundles in _generate_docs/_glossary.py). The
+    producer exposes no importable key constant, and the emitter needs the
+    code index, so this fixture is tied to it by this comment only.
+    """
+    root = Path(root)
+    devforge = root / ".devforge"
+    devforge.mkdir(parents=True, exist_ok=True)
+    count = 30  # set-glossary-entries enforces a minimum of 30 entries
+    bundles, entries = [], []
+    for i in range(count):
+        term = "Term{0}".format(i)
+        cites = ["file{0}a.md".format(i), "file{0}b.md".format(i)]
+        for c in cites:
+            (root / "docs").mkdir(exist_ok=True)
+            (root / "docs" / c).write_text("# {0}\n".format(term), encoding="utf-8")
+        bundles.append({"term": term, "class": "prose-only", "doc_context": "ctx",
+                        "code_anchor": None, "related_set": [], "cite_md_paths": cites})
+        entries.append({"term": term, "definition": "Definition of {0}.".format(term),
+                        "related_terms": []})
+    bundles_file = devforge / "bundles.json"
+    bundles_file.write_text(json.dumps(bundles), encoding="utf-8")
+    _gd(devforge, "set-glossary-entries", "--entries", json.dumps(entries),
+        "--bundles-file", str(bundles_file))
+    return count
 
 
 def _run_init(devforge_dir, *extra_args):
@@ -692,14 +763,11 @@ class TestReadDocs(unittest.TestCase):
             overview = parsed["architecture"]["architecture_overview"]
             self.assertIn("architecture overview", overview)
 
-    @unittest.skipUnless(_TESTFORGE20.exists(), "testForge20 not present on this machine")
-    def test_read_docs_testforge20_real_sample(self):
-        """read-docs with testForge20 sample emits tech_stack + patterns."""
+    def test_read_docs_round_trip_from_generate_docs(self):
+        """read-docs parses overview/architecture written by generate_docs_helper."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            docs_src = _TESTFORGE20 / "docs"
-            docs_dst = tmp_path / "docs"
-            shutil.copytree(str(docs_src), str(docs_dst))
+            _produce_overview_and_architecture(tmp_path)
             devforge = tmp_path / ".devforge"
 
             result = _run(
@@ -935,19 +1003,11 @@ class TestReadGlossarySubprocess(unittest.TestCase):
             terms = json.loads(result.stdout)
             self.assertEqual(terms, [])
 
-    @unittest.skipUnless(_TESTFORGE20.exists(), "testForge20 not present on this machine")
-    def test_read_glossary_testforge20_real_sample(self):
-        """read-glossary parses real testForge20 glossary without error."""
+    def test_read_glossary_round_trip_from_generate_docs(self):
+        """read-glossary parses a glossary written by generate_docs_helper."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            docs_src = _TESTFORGE20 / "docs"
-            docs_dst = tmp_path / "docs"
-            docs_dst.mkdir()
-            # Copy only glossary.md to keep test lightweight.
-            shutil.copy(
-                str(docs_src / "glossary.md"),
-                str(docs_dst / "glossary.md"),
-            )
+            produced = _produce_glossary(tmp_path)
             devforge = tmp_path / ".devforge"
 
             result = _run(
@@ -959,7 +1019,8 @@ class TestReadGlossarySubprocess(unittest.TestCase):
 
             terms = json.loads(result.stdout)
             self.assertIsInstance(terms, list)
-            self.assertGreater(len(terms), 10, "Expected >10 terms in testForge20 glossary")
+            self.assertGreater(len(terms), 10, "Expected >10 terms in produced glossary")
+            self.assertEqual(len(terms), produced)
             # Each term has required keys.
             for t in terms:
                 self.assertIn("term", t)
