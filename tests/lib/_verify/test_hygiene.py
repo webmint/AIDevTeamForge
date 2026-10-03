@@ -1191,6 +1191,7 @@ _FRAMEWORK_MENTION_TOKEN_LINES = [
     "# open summary.md now",
     "# apply fix-seed now",
     "# apply grill-seed now",
+    "# apply intake-rerun now",
     "# uses devforge internally",
     "# run /devforge:verify now",
     "# see Task 001 for context",
@@ -1304,7 +1305,21 @@ class TestFrameworkMentionWrapper(_WrapperHygieneTestCase):
         mentions, _ = self._mentions_for("# cfg.devforge is a name\n")
         self.assertEqual(mentions, [])
 
+    def test_my_intake_rerun_not_flagged(self):
+        mentions, _ = self._mentions_for("# my-intake-rerun is a name\n")
+        self.assertEqual(mentions, [])
+
+    def test_intake_rerunner_not_flagged(self):
+        mentions, _ = self._mentions_for("# intake-rerunner is a name\n")
+        self.assertEqual(mentions, [])
+
     # --- Positive edge cases ---
+
+    def test_intake_rerun_json_filename_flagged(self):
+        mentions, _ = self._mentions_for("# see specs/x/intake-rerun.json\n")
+        self.assertEqual(len(mentions), 1)
+        mentions, _ = self._mentions_for("# read intake-rerun.json now\n")
+        self.assertEqual(len(mentions), 1)
 
     def test_specs_path_with_ticket_and_slash_flagged(self):
         mentions, _ = self._mentions_for("# see specs/2026/09/PROJ-7/spec.md\n")

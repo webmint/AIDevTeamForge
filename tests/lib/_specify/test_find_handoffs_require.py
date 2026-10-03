@@ -1001,5 +1001,61 @@ class TestFindHandoffsAccessorMigration(unittest.TestCase):
             self.assertIn("specs/2026/08/PROJ-123", lines[0])
 
 
+class TestFindHandoffsIntakeReentryDeadEnd(unittest.TestCase):
+    """Pins the marker-LESS dead-end of 109-REENTRY-CHAIN-CONTINUITY-PLAN.md
+    (its Phase 6 anchor 4's case, in-repo).
+
+    /devforge:grill writes grill-seed.json with target_stage "research" (or
+    "discovery"); the intake command re-runs in ATTACH MODE into the same
+    feature dir, and /specify's gate then blocks: spec.md exists and the only
+    seed targets the intake lane, not "spec".
+
+    This class stays green and UNEDITED after arm (c) lands, because its
+    fixture carries no `intake-rerun.json` marker and arm (c) admits only a
+    dir whose marker's recorded spec hash matches the current spec.md. The
+    marker-present case is a SEPARATE test. Never "fix" this test by planting
+    a marker in its fixture -- that destroys the in-repo proof of the
+    dead-end.
+    """
+
+    def _devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _assert_blocked(self, devforge: Path):
+        r = _run_specify([
+            "--devforge-dir", str(devforge), "find-handoffs", "--require",
+        ])
+        self.assertEqual(r.returncode, 2, "stderr={0}".format(r.stderr))
+        self.assertEqual(r.stdout.strip(), "", "no hit line expected: " + r.stdout)
+
+    def test_research_lane_seed_with_spec_md_is_dead_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="research")
+            self.assertFalse((feature_dir / "intake-rerun.json").exists())
+            self._assert_blocked(devforge)
+
+    def test_discovery_lane_seed_with_spec_md_is_dead_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+            feature_dir = tmp_path / "specs" / "001-audit-log-persistence"
+            _build_discover_handoff(df_d, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="discovery")
+            self.assertFalse((feature_dir / "intake-rerun.json").exists())
+            self._assert_blocked(devforge)
+
+
 if __name__ == "__main__":
     unittest.main()

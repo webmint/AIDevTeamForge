@@ -163,23 +163,25 @@ Leftover-artifact patterns (conservative)
    "task", "feature", and "forge" are deliberately NOT tokens (they are
    ordinary English words far too common in legitimate source).  Every token
    below is fixed; regexes may be refined for correctness but no token may be
-   added or removed without a fresh ratification.
+   added or removed without a fresh ratification.  ``intake-rerun`` was added
+   by a fresh ratification: 109-REENTRY-CHAIN-CONTINUITY-PLAN.md, Phase 0
+   close, OQ-2 (2026-10-03).
 
    Filename/path tokens are CASE-SENSITIVE (a real path segment has one true
    case): ``spec.md``, ``plan.md``, ``specs/``, ``tasks/README.md``,
    ``constitution.md``, ``CLAUDE.md``, ``.devforge``, ``.claude/``,
    ``breakdown-handoff``, ``research-handoff``, ``discover-handoff``,
    ``plan-handoff``, ``grill.md``, ``verification.md``, ``review.md``,
-   ``summary.md``, ``fix-seed``, ``grill-seed``.  Each is wrapped with a
-   negative lookbehind ``(?<![\\w-])`` so a token embedded inside a longer
-   identifier or filename does not fire (``myspecs/`` does NOT match
-   ``specs/``; ``my-spec.md`` does NOT match ``spec.md``); tokens NOT ending
-   in ``/`` additionally get a trailing negative lookahead ``(?![\\w-])`` so
-   ``specfile.md`` does not match ``spec.md``.  Tokens ending in ``/`` get NO
-   trailing lookahead — ``specs/2026/…`` must match, and the character after
-   the ``/`` is legitimately a word character.  ``.devforge`` still matches
-   ``.devforge/`` under the trailing lookahead because ``/`` is not
-   ``[\\w-]``.
+   ``summary.md``, ``fix-seed``, ``grill-seed``, ``intake-rerun``.
+   Each is wrapped with a negative lookbehind ``(?<![\\w-])`` so a token
+   embedded inside a longer identifier or filename does not fire
+   (``myspecs/`` does NOT match ``specs/``; ``my-spec.md`` does NOT match
+   ``spec.md``); tokens NOT ending in ``/`` additionally get a trailing
+   negative lookahead ``(?![\\w-])`` so ``specfile.md`` does not match
+   ``spec.md``.  Tokens ending in ``/`` get NO trailing lookahead —
+   ``specs/2026/…`` must match, and the character after the ``/`` is
+   legitimately a word character.  ``.devforge`` still matches ``.devforge/``
+   under the trailing lookahead because ``/`` is not ``[\\w-]``.
 
    Vocabulary tokens are word-bounded and case-INSENSITIVE, with two named
    exceptions kept case-sensitive because a case-insensitive match would
@@ -423,6 +425,7 @@ _FRAMEWORK_MENTION_PATTERNS = [
     r"(?<![\w-])summary\.md(?![\w-])",
     r"(?<![\w-])fix-seed(?![\w-])",
     r"(?<![\w-])grill-seed(?![\w-])",
+    r"(?<![\w-])intake-rerun(?![\w-])",
     # --- Vocabulary tokens ---
     # Refined boundary (module docstring "Refinement recorded"): excludes a
     # leading "." too, so "cfg.devforge" does not fire via the bare word.
