@@ -95,6 +95,7 @@ from ._cmds_fit import (  # noqa: E402
 )
 from ._cmds_handoff import (  # noqa: E402
     cmd_append_outcome,
+    cmd_check_seed_consumed,
     cmd_finalize_handoff,
 )
 from ._cmds_feature_alloc import (  # noqa: E402
@@ -701,7 +702,11 @@ def _register_subcommands(subparsers) -> None:
     # Step 3 -- finalize-handoff.
     sp = subparsers.add_parser(
         "finalize-handoff",
-        help="Emit discover-handoff.json from discover state (terminal phase).",
+        help=(
+            "Emit discover-handoff.json from discover state (terminal phase). "
+            "With --feature-dir over an already-specified dir (spec.md present) "
+            "also writes the intake-rerun.json marker."
+        ),
     )
     sp.add_argument(
         "--feature-dir",
@@ -728,6 +733,15 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_finalize_handoff)
+
+    # 109 D6 -- consumed-seed check (read-only).
+    sp = subparsers.add_parser(
+        "check-seed-consumed",
+        help="Print 'consumed' or 'not-consumed' for a grill-seed.json.",
+    )
+    sp.add_argument("--seed", required=True, dest="seed",
+                    help="Path to the grill-seed.json file.")
+    sp.set_defaults(func=cmd_check_seed_consumed)
 
     # Step 5 -- append-outcome.
     sp = subparsers.add_parser(

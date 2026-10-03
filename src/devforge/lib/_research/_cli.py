@@ -86,6 +86,7 @@ from ._cmds_intake import (
 from ._cmds_handoff import (
     cmd_append_outcome,
     cmd_check_outcome,
+    cmd_check_seed_consumed,
     cmd_finalize_handoff,
     cmd_set_probe_feasibility,
 )
@@ -283,7 +284,11 @@ def _register_subcommands(subparsers) -> None:
 
     sp = subparsers.add_parser(
         "finalize-handoff",
-        help="Emit research-handoff.json from research state (terminal phase).",
+        help=(
+            "Emit research-handoff.json from research state (terminal phase). "
+            "With --feature-dir over an already-specified dir (spec.md present) "
+            "also writes the intake-rerun.json marker."
+        ),
     )
     sp.add_argument(
         "--feature-dir",
@@ -1228,6 +1233,15 @@ def _register_subcommands(subparsers) -> None:
     sp.add_argument("--handoff-path", required=True, dest="handoff_path",
                     help="Path to the handoff.json file.")
     sp.set_defaults(func=cmd_check_outcome)
+
+    # 109 D6 -- consumed-seed check (read-only).
+    sp = subparsers.add_parser(
+        "check-seed-consumed",
+        help="Print 'consumed' or 'not-consumed' for a grill-seed.json.",
+    )
+    sp.add_argument("--seed", required=True, dest="seed",
+                    help="Path to the grill-seed.json file.")
+    sp.set_defaults(func=cmd_check_seed_consumed)
 
     # Plan 68 Phase 1 — feature-dir allocation substrate (stateless verbs;
     # see _cmds_feature_alloc.py).

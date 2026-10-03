@@ -2,7 +2,9 @@
 
 set-probe-feasibility (Step 4 — 5 booleans), finalize-handoff (terminal
 phase: memo+report → handoff.json), append-outcome (Step 7 — record
-post-probe outcome), check-outcome (Step 7 — unmarked / marked status).
+post-probe outcome), check-outcome (Step 7 — unmarked / marked status),
+check-seed-consumed (109 D6 — has this grill seed already been consumed by an
+attach-mode run).
 """
 
 from __future__ import annotations
@@ -13,6 +15,8 @@ import json
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
+
+from _shared.intake_rerun import seed_consumed, write_marker  # type: ignore[import]
 
 from . import handoff_schema
 from ._handoff_build import _asdict_handoff, _build_handoff_from_state
@@ -72,6 +76,31 @@ def cmd_set_probe_feasibility(args):
 # ---------------------------------------------------------------------------
 
 
+def _write_rerun_marker(handoff_path, stage):
+    # type: (Path, str) -> int
+    """Write the intake-rerun marker beside handoff_path; return the exit code.
+
+    Prints "wrote-marker: <path>" when a marker was written; prints nothing
+    when write_marker returns None (spec.md absent). OSError -> exit 3 with
+    the handoff kept (109 D4(b)).
+    """
+    marker_dir = handoff_path.parent
+    try:
+        marker = write_marker(marker_dir, stage)
+    except OSError as err:
+        return _die(
+            "finalize-handoff: wrote {0} but could not write the "
+            "intake-rerun.json marker in {1}: {2}. The handoff is kept; fix "
+            "the cause and re-run finalize-handoff --feature-dir {1}.".format(
+                handoff_path, marker_dir, err
+            ),
+            code=3,
+        )
+    if marker is not None:
+        sys.stdout.write("wrote-marker: {0}\n".format(marker))
+    return 0
+
+
 def cmd_finalize_handoff(args):
     # type: (argparse.Namespace) -> int
     """Read research state → build Handoff → validate → write research-handoff.json.
@@ -87,6 +116,26 @@ def cmd_finalize_handoff(args):
     formula in both branches (D2's flat-sibling-file naming, generalized to
     whichever directory anchored the run), so no code path here can emit
     the retired `research/<date>-<slug>.md` default.
+
+    Intake re-run marker (109-REENTRY-CHAIN-CONTINUITY-PLAN.md D4(b) / D6 /
+    OQ-4), --feature-dir branch ONLY: after the handoff is written and the
+    "wrote:" line printed, research calls
+    _shared.intake_rerun.write_marker(<handoff's parent dir>, "research").
+    spec.md already existing in the feature dir implies this run is an
+    attach-mode re-run over an already-specified feature (a fresh allocation
+    never reuses a directory), so the marker records sha256(spec.md) (and,
+    when a matching grill-seed.json sits there, the sha256 of its bytes) for
+    find-handoffs arm (c). --emit-handoff-json NEVER writes a
+    marker, even with a spec.md beside the emitted file.
+    Stdout contract: line 1 "wrote: <handoff path>" (unchanged); when a
+    marker was written, line 2 "wrote-marker: <abs marker path>". When
+    spec.md is absent (OQ-4) write_marker writes nothing and stdout is the
+    single "wrote:" line. Exit 0 either way.
+    Exit 3: the marker write raised OSError. The handoff WAS written and is
+    KEPT; stderr says so and tells the caller to re-run finalize-handoff
+    --feature-dir. Re-running from unchanged state rewrites the handoff (its
+    completed_at timestamp is re-stamped) and rewrites a byte-identical
+    marker.
     """
     feature_dir = getattr(args, "feature_dir", None)
     emit_arg = getattr(args, "emit_handoff_json", None)
@@ -209,7 +258,9 @@ def cmd_finalize_handoff(args):
         )
 
     sys.stdout.write("wrote: {0}\n".format(target))
-    return 0
+    if not feature_dir:
+        return 0
+    return _write_rerun_marker(target, "research")
 
 
 # ---------------------------------------------------------------------------
@@ -467,4 +518,32 @@ def cmd_check_outcome(args):
         sys.stdout.write(
             "marked: {0} (confidence={1}, evidence={2})\n".format(hypothesis, grade, evidence)
         )
+    return 0
+
+
+def cmd_check_seed_consumed(args):
+    # type: (argparse.Namespace) -> int
+    """Print 'consumed' or 'not-consumed' for a grill seed (109 D6).
+
+    Provenance: 109-REENTRY-CHAIN-CONTINUITY-PLAN.md D6.
+
+    Answers: does the sibling intake-rerun.json record the sha256 of this
+    seed's CURRENT bytes, i.e. did an earlier attach-mode run of /research
+    already consume it. Intended caller: the /devforge:research Phase 0.6
+    seed check, before it enters attach mode on a matching seed (wired by
+    109-REENTRY-CHAIN-CONTINUITY-PLAN.md Phase 4). Thin wrapper over
+    _shared.intake_rerun.seed_consumed; read-only (never touches the seed or
+    the marker). Bound: a byte-identical rewrite of grill-seed.json reads as
+    consumed.
+
+    Missing seed file -> exit 2. Otherwise stdout is exactly 'consumed' or
+    'not-consumed' and the exit is 0.
+    """
+    seed = Path(args.seed)
+    if not seed.is_file():
+        return _die(
+            "check-seed-consumed: seed file not found: {0}".format(args.seed),
+            code=2,
+        )
+    sys.stdout.write("consumed\n" if seed_consumed(seed) else "not-consumed\n")
     return 0
