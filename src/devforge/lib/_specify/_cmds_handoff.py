@@ -54,24 +54,31 @@ find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   across both the legacy specs/NNN-slug/ shape and the Phase-3
   specs/YYYY/MM/<leaf>/ shape -- and checks each returned dir directly
   for research-handoff.json / discover-handoff.json, filtered to feature
-  dirs that are PENDING -- D5's structural predicate, extended by D10: a
-  feature dir is pending when its intake
-  handoff is present AND (spec.md is absent OR a sibling *-seed.json file
-  (grill-seed.json / spec-check-seed.json / fix-seed.json) exists whose
-  target_stage == "spec").  The second arm exists because a /grill
-  RE-ENTER-UPSTREAM, /spec-check REVISE-SPEC, or /fix scope-change bounce
-  seed (fix source added by plan 83; its producer is that plan's Phases 2-3)
-  asks the user to re-run /specify on a
+  dirs that are PENDING -- D5's structural predicate, extended by D10 and by
+  109-REENTRY-CHAIN-CONTINUITY-PLAN.md D2: a feature dir is pending when its
+  intake handoff is present AND (a) spec.md is absent OR (b) a sibling
+  *-seed.json file (grill-seed.json / spec-check-seed.json / fix-seed.json)
+  exists whose target_stage == "spec" OR (c) spec.md exists and a sibling
+  intake-rerun.json records that /research or /discover re-ran over the
+  feature after spec.md was written (marker_admits).  Arm (b) exists because
+  a /grill RE-ENTER-UPSTREAM, /spec-check REVISE-SPEC, or /fix scope-change
+  bounce seed (fix source added by plan 83; its producer is that plan's
+  Phases 2-3) asks the user to re-run /specify on a
   feature whose spec.md ALREADY exists -- without it, Phase 0.4 would exit
   2 BLOCKED before Phase 0.5's re-entry-seed consumption ever runs,
-  making re-entry structurally unreachable.  A dir admitted only via the
-  seed arm is marked with a trailing " | re-entry" token on its output
-  line (see cmd_find_handoffs) so the caller can tell the two arms apart
-  without a second walk of specs_root.  mtime is used only to ORDER hits,
-  most-recent first -- --since is accepted-but-ignored, kept only so pre-Phase-4
-  callers do not break (see cmd_find_handoffs).  Emit one line per hit;
-  skip corrupt or schema-invalid files silently.  Exit 0 on zero hits
-  (unless --require is passed; see cmd_find_handoffs for gate behavior).
+  making re-entry structurally unreachable.  Arm (c) exists because a /grill
+  seed targeting research or discovery sends the user upstream; the intake
+  re-run rewrites the handoff but no seed targets "spec", so without it the
+  gate blocks forever.  A dir admitted via arm (b) -- whether or not arm (c)
+  also holds -- is marked with a trailing " | re-entry" token on its output
+  line; a dir admitted ONLY via arm (c) is marked " | intake-rerun"; arm (a)
+  carries no sixth field (see cmd_find_handoffs), so the caller can tell the
+  arms apart without a second walk of specs_root.  mtime is used only to
+  ORDER hits, most-recent first -- --since is accepted-but-ignored, kept
+  only so pre-Phase-4 callers do not break (see cmd_find_handoffs).  Emit
+  one line per hit; skip corrupt or schema-invalid files silently.  Exit 0
+  on zero hits (unless --require is passed; see cmd_find_handoffs for gate
+  behavior).
 
 Stdlib only. Python 3.8+.
 """
@@ -108,6 +115,7 @@ from _shared.feature_alloc import (  # noqa: E402  type: ignore[import]
     iter_feature_dirs,
     specs_root_for,
 )
+from _shared.intake_rerun import marker_admits  # noqa: E402  type: ignore[import]
 
 # Legacy alias used by the existing function signatures that reference
 # handoff_schema.Handoff, handoff_schema.Constraint, etc.
@@ -1082,19 +1090,29 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     specs/NNN-slug/ shape and the Phase-3 specs/YYYY/MM/<leaf>/ shape --
     and checks each returned dir directly for research-handoff.json /
     discover-handoff.json, filtered to feature dirs that are
-    PENDING: an intake handoff is present AND EITHER (a) spec.md is absent
+    PENDING: an intake handoff is present AND ONE OF (a) spec.md is absent
     (D5's original predicate: "the feature has not already been consumed
-    by /specify") OR (b) spec.md IS present but a sibling *-seed.json file
+    by /specify"), (b) spec.md IS present but a sibling *-seed.json file
     has target_stage == "spec" (D10: a /grill RE-ENTER-UPSTREAM or
     /spec-check REVISE-SPEC seed asks the user to re-run /specify on a
     feature whose spec.md already exists -- without arm (b), Phase 0.4
-    would BLOCK before Phase 0.5's re-entry-seed consumption ever ran).
-    A dir admitted ONLY via arm (b) gets a trailing " | re-entry" marker
-    on every one of its output lines (see the Output format note below);
-    a dir admitted via arm (a) is unmarked, byte-identical to pre-D10
-    output. A feature dir may legitimately surface both a research hit and
-    a discover hit if both files happen to be present (independent of
-    which arm admitted it).
+    would BLOCK before Phase 0.5's re-entry-seed consumption ever ran), or
+    (c) spec.md IS present and a sibling intake-rerun.json records that
+    /research or /discover re-ran over the feature after spec.md was
+    written (109-REENTRY-CHAIN-CONTINUITY-PLAN.md D2/D3: a /grill seed
+    targeting research or discovery sends the user upstream, the intake
+    re-run rewrites the handoff, but no seed targets "spec" -- without
+    arm (c) Phase 0.4 would BLOCK forever).  Arm (c) is self-clearing: a
+    changed re-render of spec.md moves its hash and closes the arm; the
+    marker is never deleted.
+    A dir admitted via arm (b) -- whether or not arm (c) also holds -- gets
+    a trailing " | re-entry" marker on every one of its output lines (see
+    the Output format note below); a dir admitted ONLY via arm (c) gets
+    " | intake-rerun"; a dir admitted via arm (a) is unmarked,
+    byte-identical to pre-D10 output.
+    A feature dir may legitimately surface both a research hit and a
+    discover hit if both files happen to be present (independent of which
+    arm admitted it).
 
     --since is DEPRECATED, accepted-but-ignored (plan 68 Phase 4 / OQ-2):
     the old --since mtime window existed to avoid resurfacing a stale
@@ -1114,13 +1132,15 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
 
     Output format (most-recent mtime first; ties broken by handoff_path for
     determinism):
-      <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>[ | re-entry]
-    The trailing " | re-entry" field is OPTIONAL and appended only for a
-    D10 arm-(b) hit -- a caller that splits on " | " and reads only the
-    first 5 fields (mtime, handoff_path, kind, mode_or_verdict, summary)
-    by position sees byte-identical output to before D10; only a caller
-    that inspects the tail can observe the marker. This is a deliberate
-    backward-compatible extension, not a reformat of the existing 5 fields.
+      <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>[ | <token>]
+    The sixth field is OPTIONAL, at most ONE token per line: " | re-entry"
+    for any arm-(b) hit (including one arm (c) also admits), " | intake-rerun"
+    for an arm-(c)-only hit, none for an arm-(a) hit.  A caller that splits
+    on " | " and reads only the first 5 fields (mtime, handoff_path, kind,
+    mode_or_verdict, summary) by position sees byte-identical output to
+    before D10; only a caller that inspects the tail can observe the marker.
+    This is a deliberate backward-compatible extension, not a reformat of
+    the existing 5 fields.
     For research: mode_or_verdict = "mode=<mode>", summary from plan_seeds.recommended_approach_summary.
     For discover: mode_or_verdict = "verdict=<verdict>", summary from plan_seeds.recommended_option_rationale.
     Summary truncated to 80 chars.
@@ -1148,21 +1168,26 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     # regardless of scan order (see this function's own test file).
     for feature_dir in iter_feature_dirs(specs_root):
         reentry = False
+        intake_rerun = False
         if (feature_dir / "spec.md").exists():
-            # D5 arm (a) fails (already consumed) -- D10 arm (b): only
-            # pending if a re-entry seed targets this (spec) stage.
+            # D5 arm (a) fails (already consumed) -- D10 arm (b): pending
+            # if a re-entry seed targets this (spec) stage; arm (c): pending
+            # if an intake re-run marker still matches spec.md.
             reentry = _has_spec_reentry_seed(feature_dir)
-            if not reentry:
+            intake_rerun = (not reentry) and marker_admits(feature_dir)
+            if not (reentry or intake_rerun):
                 continue
 
         research_hit = _try_research_hit(feature_dir / "research-handoff.json")
         if research_hit is not None:
             research_hit["reentry"] = reentry
+            research_hit["intake_rerun"] = intake_rerun
             hits.append(research_hit)
 
         discover_hit = _try_discover_hit(feature_dir / "discover-handoff.json")
         if discover_hit is not None:
             discover_hit["reentry"] = reentry
+            discover_hit["intake_rerun"] = intake_rerun
             hits.append(discover_hit)
 
     # Most-recent mtime first; ties broken by handoff_path for determinism.
@@ -1172,12 +1197,18 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     require = getattr(args, "require", False)
     if require and not hits:
         sys.stderr.write(
-            "BLOCKED: /devforge:specify requires a pending research or discover handoff.\n"
-            "No feature dir under specs/ carries an intake handoff"
-            " (specs/*/research-handoff.json or specs/*/discover-handoff.json)"
-            " that is pending -- either its spec.md does not yet exist, or"
-            " (re-entry) a sibling *-seed.json targets this stage"
-            " (target_stage == \"spec\").\n"
+            "BLOCKED: no feature dir under specs/ has a PENDING research or"
+            " discover handoff -- /devforge:specify needs one.\n"
+            "An intake handoff (specs/*/research-handoff.json or"
+            " specs/*/discover-handoff.json) may exist and still not be"
+            " pending. It is pending only when one of these holds:\n"
+            "  (a) its spec.md does not yet exist;\n"
+            "  (b) spec.md exists and a sibling *-seed.json targets this stage"
+            " (target_stage == \"spec\");\n"
+            "  (c) spec.md exists and a sibling intake-rerun.json records that"
+            " /devforge:research or /devforge:discover re-ran over the feature"
+            " after spec.md was written (the spec.md hash it recorded still"
+            " matches).\n"
             "\n"
             "Run one of the following first, then retry /devforge:specify:\n"
             "  /devforge:research \"<topic>\"  — for a bug or enhancement against existing code\n"
@@ -1195,6 +1226,8 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
         )
         if h.get("reentry"):
             line += " | re-entry"
+        elif h.get("intake_rerun"):
+            line += " | intake-rerun"
         sys.stdout.write(line + "\n")
 
     return 0

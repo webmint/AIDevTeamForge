@@ -84,6 +84,7 @@ RESEARCH_HELPER = LIB / "research_helper.py"
 DISCOVER_HELPER = LIB / "discover_helper.py"
 
 from _shared.seed_schema import ReEntrySeed, SEED_SCHEMA_VERSION  # noqa: E402
+from _shared.intake_rerun import write_marker  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1055,6 +1056,166 @@ class TestFindHandoffsIntakeReentryDeadEnd(unittest.TestCase):
             _write_reentry_seed(feature_dir, target_stage="discovery")
             self.assertFalse((feature_dir / "intake-rerun.json").exists())
             self._assert_blocked(devforge)
+
+
+class TestFindHandoffsArmCIntakeRerun(unittest.TestCase):
+    """109-REENTRY-CHAIN-CONTINUITY-PLAN.md D2/D3: arm (c) admits a dir whose
+    spec.md exists and whose intake-rerun.json (built through the real
+    write_marker) still matches the current spec.md hash."""
+
+    def _devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _find(self, devforge: Path, require: bool = True):
+        argv = ["--devforge-dir", str(devforge), "find-handoffs"]
+        if require:
+            argv.append("--require")
+        return _run_specify(argv)
+
+    def _research_dir(self, tmp: str, seed_stage="research"):
+        tmp_path = Path(tmp)
+        df_r = tmp_path / "df_r"
+        df_r.mkdir()
+        feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+        _build_research_handoff(df_r, feature_dir)
+        (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+        if seed_stage:
+            _write_reentry_seed(feature_dir, target_stage=seed_stage)
+        return feature_dir
+
+    def _lines(self, r):
+        return [l for l in r.stdout.strip().split("\n") if l.strip()]
+
+    def test_research_marker_admits_with_intake_rerun_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            fd = self._research_dir(tmp)
+            self.assertIsNotNone(write_marker(fd, "research"))
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = self._lines(r)
+            self.assertEqual(len(lines), 1, r.stdout)
+            self.assertIn("kind=research", lines[0])
+            self.assertTrue(lines[0].endswith(" | intake-rerun"), lines[0])
+
+    def test_discovery_marker_admits_with_intake_rerun_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+            fd = tmp_path / "specs" / "001-audit-log-persistence"
+            _build_discover_handoff(df_d, fd)
+            (fd / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(fd, target_stage="discovery")
+            self.assertIsNotNone(write_marker(fd, "discovery"))
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = self._lines(r)
+            self.assertEqual(len(lines), 1, r.stdout)
+            self.assertIn("kind=discover", lines[0])
+            self.assertTrue(lines[0].endswith(" | intake-rerun"), lines[0])
+
+    def test_diverged_spec_hash_closes_arm_c(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            fd = self._research_dir(tmp)
+            write_marker(fd, "research")
+            (fd / "spec.md").write_text("# spec re-rendered\n", encoding="utf-8")
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+
+    def test_marker_without_intake_handoff_admits_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            fd = Path(tmp) / "specs" / "001-no-handoff"
+            fd.mkdir(parents=True)
+            (fd / "spec.md").write_text("# spec\n", encoding="utf-8")
+            self.assertIsNotNone(write_marker(fd, "research"))
+            r = self._find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+            r2 = self._find(devforge, require=True)
+            self.assertEqual(r2.returncode, 2, r2.stderr)
+
+    def test_dual_admitted_carries_only_reentry_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            fd = self._research_dir(tmp, seed_stage="spec")
+            write_marker(fd, "research")
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = self._lines(r)
+            self.assertEqual(len(lines), 1, r.stdout)
+            fields = lines[0].split(" | ")
+            self.assertEqual(len(fields), 6, lines[0])
+            self.assertEqual(fields[5], "re-entry")
+            self.assertNotIn("intake-rerun", lines[0])
+
+    def test_first_five_fields_identical_across_arms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            tmp_path = Path(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            fd = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, fd)
+            # Arm (a).
+            ra = self._find(devforge)
+            self.assertEqual(ra.returncode, 0, ra.stderr)
+            a = self._lines(ra)[0].split(" | ")
+            # Arm (b).
+            (fd / "spec.md").write_text("# spec\n", encoding="utf-8")
+            seed = _write_reentry_seed(fd, target_stage="spec")
+            rb = self._find(devforge)
+            self.assertEqual(rb.returncode, 0, rb.stderr)
+            b = self._lines(rb)[0].split(" | ")
+            # Arm (c) only.
+            seed.unlink()
+            write_marker(fd, "research")
+            rc = self._find(devforge)
+            self.assertEqual(rc.returncode, 0, rc.stderr)
+            c = self._lines(rc)[0].split(" | ")
+            self.assertEqual(len(a), 5)
+            self.assertEqual(a[:5], b[:5])
+            self.assertEqual(a[:5], c[:5])
+            self.assertEqual(b[5], "re-entry")
+            self.assertEqual(c[5], "intake-rerun")
+            self.assertEqual(len(c), 6)
+
+    def test_byte_identical_rerender_keeps_arm_c_open(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            fd = self._research_dir(tmp)
+            write_marker(fd, "research")
+            (fd / "spec.md").write_bytes((fd / "spec.md").read_bytes())
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = self._lines(r)
+            self.assertEqual(len(lines), 1, r.stdout)
+            self.assertTrue(lines[0].endswith(" | intake-rerun"), lines[0])
+
+    def test_require_stderr_names_pendingness_and_three_conditions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            (Path(tmp) / "specs").mkdir()
+            r = self._find(devforge)
+            self.assertEqual(r.returncode, 2)
+            err = r.stderr
+            self.assertIn("BLOCKED", err)
+            self.assertNotIn("requires a pending research or discover handoff", err)
+            self.assertIn("PENDING", err)
+            self.assertIn("intake-rerun.json", err)
+            self.assertIn("(a) its spec.md does not yet exist", err)
+            self.assertIn('target_stage == "spec"', err)
+            self.assertIn("re-ran over the feature after spec.md was written", err)
+            self.assertIn("specs/*/research-handoff.json", err)
+            self.assertIn("specs/*/discover-handoff.json", err)
+            self.assertIn('/devforge:research "<topic>"', err)
+            self.assertIn('/devforge:discover "<idea>"', err)
 
 
 if __name__ == "__main__":
