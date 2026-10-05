@@ -22,6 +22,8 @@ Coverage:
   6. Absent target dir → benign no-op.
   7. Idempotency — running the migration twice does not error the second
      time (nothing left to untrack).
+  8. A tracked `.devforge/wip.md` (EPHEMERAL crash-recovery marker) untracks
+     while the working-tree file and tracked VERSIONED `memory.md` survive.
 
 Stdlib only. Python 3.8+.
 """
@@ -173,6 +175,24 @@ class DevforgeStateMigrateTests(unittest.TestCase):
         # Nothing further to untrack on the second pass.
         after = _tracked_files(self.target)
         self.assertNotIn(".devforge/command-refs/audit/adversarial-preamble.md", after)
+        self.assertIn(".devforge/memory.md", after)
+
+    # 8 ── EPHEMERAL wip.md marker untracks; VERSIONED memory.md stays
+    def test_wip_marker_untracked_while_memory_stays_tracked(self):
+        for rel, content in ((".devforge/wip.md", "wip\n"), (".devforge/memory.md", "mem\n")):
+            p = self.target / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content)
+        _run_git(self.target, "add", "-A")
+        _run_git(self.target, "commit", "-m", "seed wip marker")
+        self.assertIn(".devforge/wip.md", _tracked_files(self.target))
+
+        result = _run_migrate(self.target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        after = _tracked_files(self.target)
+        self.assertNotIn(".devforge/wip.md", after)
+        self.assertTrue((self.target / ".devforge" / "wip.md").is_file())
         self.assertIn(".devforge/memory.md", after)
 
 

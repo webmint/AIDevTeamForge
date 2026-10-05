@@ -11,7 +11,9 @@ combining two git queries:
      starting with '??' in porcelain output) that `git diff` would miss
      because the files were never committed.
 
-The union of both sets is emitted as a JSON array of path strings to
+The union of both sets, minus the standalone-mode crash-recovery marker
+path `.devforge/wip.md` (dropped by exact match; wrapper mode drops
+nothing), is emitted as a JSON array of path strings to
 stdout, one JSON payload per invocation.  Paths are relative to the
 **source** repository root (as git reports them), which is the form that
 verify-touched and wip-commit expect.
@@ -76,6 +78,11 @@ EXIT_USAGE = 2
 
 _GIT_TIMEOUT = 30  # seconds
 
+# The /devforge:implement crash-recovery marker, as git prints it (repository-
+# root-relative). Composed independently in _cmds_preflight.py and _wip.py;
+# there is no shared constant to import.
+_WIP_MARKER_PATH = ".devforge/wip.md"
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -86,6 +93,23 @@ def _validate_sha(sha):
     # type: (str) -> bool
     """Return True if sha looks like a valid git SHA (4-40 hex chars)."""
     return bool(_SHA_RE.match(sha))
+
+
+def _drop_wip_marker(paths, is_wrapper):
+    # type: (List[str], bool) -> List[str]
+    """Return a new list without the exact path `.devforge/wip.md`, order kept.
+
+    Why (plan 111): on an install where the marker is still tracked, the
+    checkpoint SHA tracks it, so `git diff --name-only` reports it and
+    `wip-commit`'s `git add` then fails (exit 2) on the now-ignored path.
+    Standalone mode only: in wrapper mode the capture runs against the nested
+    source repo, whose own `.devforge/wip.md` (if any) is real source and is
+    kept. Exact equality, never a `.devforge/` prefix, so tracked VERSIONED
+    files such as `.devforge/memory.md` stay.
+    """
+    if is_wrapper:
+        return list(paths)
+    return [p for p in paths if p != _WIP_MARKER_PATH]
 
 
 def _git_diff_files(checkpoint_sha, cwd):
@@ -239,6 +263,7 @@ def cmd_capture_touched_files(args):
         if path not in seen:
             seen.add(path)
             result.append(path)
+    result = _drop_wip_marker(result, workspace.is_wrapper)
 
     sys.stdout.write(json.dumps(result))
     sys.stdout.write("\n")

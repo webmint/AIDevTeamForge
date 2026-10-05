@@ -27,6 +27,7 @@ forge_migrate_devforge_state() {
 
   for _ep in \
     .devforge/session-state.md \
+    .devforge/wip.md \
     .devforge/specify-state.json \
     .devforge/research-state.json \
     .devforge/research-report.json \

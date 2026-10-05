@@ -60,6 +60,7 @@ if _LIB_DIR not in sys.path:
 
 from _implement._cmds_capture import (  # noqa: E402
     _validate_sha,
+    _drop_wip_marker,
     _git_diff_files,
     _git_untracked_files,
     cmd_capture_touched_files,
@@ -309,6 +310,36 @@ class FakeArgs:
         self.root = root
 
 
+class TestDropWipMarker(unittest.TestCase):
+
+    def test_standalone_drops_exact_path_only(self):
+        self.assertEqual(
+            _drop_wip_marker(["a.py", ".devforge/wip.md", "b.py"], False),
+            ["a.py", "b.py"],
+        )
+
+    def test_keeps_memory_md(self):
+        self.assertEqual(
+            _drop_wip_marker([".devforge/memory.md", ".devforge/wip.md"], False),
+            [".devforge/memory.md"],
+        )
+
+    def test_keeps_lookalike_paths(self):
+        paths = ["src/.devforge/wip.md", ".devforge/wip.md.bak", ".devforge"]
+        self.assertEqual(_drop_wip_marker(paths, False), paths)
+
+    def test_wrapper_returns_input_unchanged(self):
+        paths = [".devforge/wip.md", "x.py"]
+        out = _drop_wip_marker(paths, True)
+        self.assertEqual(out, paths)
+        self.assertIsNot(out, paths)
+
+    def test_order_preserved_and_input_not_mutated(self):
+        paths = ["z", ".devforge/wip.md", "a", "m"]
+        self.assertEqual(_drop_wip_marker(paths, False), ["z", "a", "m"])
+        self.assertEqual(paths, ["z", ".devforge/wip.md", "a", "m"])
+
+
 class TestCmdCaptureTouchedFiles(unittest.TestCase):
 
     def _make_repo(self):
@@ -438,6 +469,65 @@ class TestCmdCaptureTouchedFiles(unittest.TestCase):
         with patch("sys.stderr", err_buf):
             rc = cmd_capture_touched_files(FakeArgs(checkpoint="", root=tmpdir))
         self.assertEqual(rc, EXIT_USAGE)
+
+    def _seed_devforge_dir(self, tmpdir):
+        # A tracked file under .devforge/ keeps porcelain from collapsing an
+        # untracked marker to `?? .devforge/`. Returns the checkpoint SHA.
+        _write_file(tmpdir, ".devforge/memory.md", "memory\n")
+        _git_add(tmpdir, ".devforge/memory.md")
+        _git_commit(tmpdir, "seed devforge")
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmpdir, capture_output=True,
+            text=True, check=True,
+        ).stdout.strip()
+
+    def test_untracked_wip_marker_dropped(self):
+        tmpdir, _ = self._make_repo()
+        sha = self._seed_devforge_dir(tmpdir)
+        _write_file(tmpdir, ".devforge/wip.md", "marker\n")
+        _write_file(tmpdir, "real.py", "x = 1\n")
+        rc, result = self._capture(checkpoint=sha, root=tmpdir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(result, ["real.py"])
+
+    def test_tracked_modified_wip_marker_dropped(self):
+        tmpdir, _ = self._make_repo()
+        _write_file(tmpdir, ".devforge/wip.md", "marker\n")
+        _git_add(tmpdir, ".devforge/wip.md")
+        _git_commit(tmpdir, "checkpoint tracks marker")
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmpdir, capture_output=True,
+            text=True, check=True,
+        ).stdout.strip()
+        _write_file(tmpdir, ".devforge/wip.md", "changed\n")
+        _write_file(tmpdir, "real.py", "x = 1\n")
+        # Sanity: the marker really arrives via git diff.
+        self.assertIn(".devforge/wip.md", _git_diff_files(sha, tmpdir))
+        rc, result = self._capture(checkpoint=sha, root=tmpdir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(result, ["real.py"])
+
+    def test_tracked_deleted_wip_marker_dropped(self):
+        tmpdir, _ = self._make_repo()
+        _write_file(tmpdir, ".devforge/wip.md", "marker\n")
+        _git_add(tmpdir, ".devforge/wip.md")
+        _git_commit(tmpdir, "checkpoint tracks marker")
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmpdir, capture_output=True,
+            text=True, check=True,
+        ).stdout.strip()
+        os.remove(os.path.join(tmpdir, ".devforge", "wip.md"))
+        rc, result = self._capture(checkpoint=sha, root=tmpdir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(result, [])
+
+    def test_modified_memory_md_stays(self):
+        tmpdir, _ = self._make_repo()
+        sha = self._seed_devforge_dir(tmpdir)
+        _write_file(tmpdir, ".devforge/memory.md", "changed memory\n")
+        rc, result = self._capture(checkpoint=sha, root=tmpdir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(result, [".devforge/memory.md"])
 
     def test_committed_after_checkpoint_appears(self):
         """Files committed AFTER the checkpoint appear (git diff walks history)."""
@@ -579,6 +669,30 @@ class TestCmdCaptureTouchedFilesWrapper(unittest.TestCase):
         rc, result = self._capture(checkpoint=sha, root=self.install_dir)
         self.assertEqual(rc, EXIT_OK)
         self.assertEqual(result, [])
+
+    def test_wrapper_source_repo_wip_named_path_stays(self):
+        """A source-repo path named .devforge/wip.md is real source: kept."""
+        _init_wrapper_install(self.install_dir, "src-repo")
+        source_dir = os.path.join(self.install_dir, "src-repo")
+        _write_file(source_dir, ".devforge/memory.md", "m\n")
+        _git_add(source_dir, ".devforge/memory.md")
+        _git_commit(source_dir, "seed")
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=source_dir, capture_output=True,
+            text=True, check=True,
+        ).stdout.strip()
+        # Untracked route.
+        _write_file(source_dir, ".devforge/wip.md", "source file\n")
+        rc, result = self._capture(checkpoint=sha, root=self.install_dir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertIn(".devforge/wip.md", result)
+        # Tracked-and-changed route.
+        _git_add(source_dir, ".devforge/wip.md")
+        _git_commit(source_dir, "track it")
+        _write_file(source_dir, ".devforge/wip.md", "changed\n")
+        rc, result = self._capture(checkpoint=sha, root=self.install_dir)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertIn(".devforge/wip.md", result)
 
     def test_wrapper_install_root_equals_source_root_standalone(self):
         """Standalone (PROJECT_ROOT=".") behaves identically to before: sees install-root changes."""

@@ -109,6 +109,7 @@ consolidation, not a replacement.
 | `project-config.json`, `index.json` | VERSIONED | Tracked; render/index artifacts, stable across cycles |
 | `storage-rules.md` | VERSIONED | Tracked; installed framework file |
 | `session-state.md` | EPHEMERAL | gitignored (crash recovery reads it from DISK, not git) |
+| `wip.md` | EPHEMERAL | gitignored; `/devforge:implement`'s crash-recovery marker (plan 111), which the next run's PHASE 0 reads from DISK, not git — crash state for one checkout only |
 | `specify-state.json`, `research-state.json`, `discover-scope.json` | EPHEMERAL | gitignored; per-cycle working state |
 | `research-report.json`, `discover-report.json` | EPHEMERAL | gitignored; single-slot scratch output |
 | `.preflight-stamp`, `cbm-last-indexed-sha` | EPHEMERAL | gitignored; pointers/timestamps |

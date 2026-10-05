@@ -165,7 +165,7 @@ Capture the files the agent changed since the checkpoint via the helper:
 .devforge/lib/implement_helper capture-touched-files --checkpoint <checkpoint-sha>
 ```
 
-Pass the checkpoint SHA from PHASE 2. The helper runs `git diff --name-only <checkpoint-sha>` (tracked changes) + the untracked-file column of `git status --porcelain` (new files the agent created) against the **source** repo (it resolves `<source_root>` internally from the install-root `--root`) and emits a JSON array of **source-root-relative** paths on stdout (exit 0). Capture this array as `<touched-files-json>`; PHASE 5, PHASE 6, and PHASE 7 all pass it on. In standalone mode the source repo is the install root, so the paths are repo-root-relative as today.
+Pass the checkpoint SHA from PHASE 2. The helper runs `git diff --name-only <checkpoint-sha>` (tracked changes) + the untracked-file column of `git status --porcelain` (new files the agent created) against the **source** repo (it resolves `<source_root>` internally from the install-root `--root`) and emits a JSON array of **source-root-relative** paths on stdout (exit 0). In standalone mode the helper drops `.devforge/wip.md` (the WIP marker PHASE 2 writes) from that array, so the marker is not captured as a touched file. Capture this array as `<touched-files-json>`; PHASE 5, PHASE 6, and PHASE 7 all pass it on. In standalone mode the source repo is the install root, so the paths are repo-root-relative as today.
 
 Exit 1 (git/subprocess failure) or exit 2 (invalid checkpoint SHA) — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
