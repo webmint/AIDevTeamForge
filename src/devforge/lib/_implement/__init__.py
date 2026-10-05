@@ -5,8 +5,8 @@ Domains owned by this package:
 - Task resolution: scan breakdown-handoff.json to find the next runnable task
   (the first feature in _cmds_resolve's resolution order, lowest
   dependency-ready task within it).
-- WIP marker: write/read/clear the .devforge/wip.md interrupted-session marker
-  (Command: /implement field distinguishes from a marker written by a different command).
+- WIP marker: clear the .devforge/wip.md interrupted-session marker after an
+  approved per-task WIP commit (the orchestrator writes and reads the file itself).
 - Scope-aware verification: match touched files against PACKAGE_STACKS config,
   run the appropriate type_check_command + lint_command per package, cap
   self-repair at 3 iterations.
@@ -17,7 +17,7 @@ Domains owned by this package:
   compose the commit message per wrapper/non-wrapper convention, honor
   COMMIT_ATTRIBUTION from project-config.json.
 
-Public surface: _state, _handoff_reader, _wip, _cmds_resolve,
-_cmds_preflight, _cli.
+Public surface: _handoff_reader, _wip, _cmds_resolve, _cmds_preflight,
+_cli.
 All submodules are implementation-private (underscore prefix).
 """
