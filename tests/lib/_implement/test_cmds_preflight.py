@@ -447,6 +447,13 @@ class TestCheckWipMarker(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("wip.md", result)
 
+    def test_error_names_phase_0_recovery_branch(self):
+        wip = self.tmp / ".devforge" / "wip.md"
+        wip.write_text("# WIP Marker\n", encoding="utf-8")
+        result = _check_wip_marker(self.tmp)
+        self.assertIn("PHASE 0 crash-recovery branch", result)
+        self.assertNotIn("Phase 9", result)
+
     def test_error_mentions_recovery(self):
         wip = self.tmp / ".devforge" / "wip.md"
         wip.write_text("# WIP Marker\n", encoding="utf-8")

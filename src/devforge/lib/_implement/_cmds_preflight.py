@@ -9,7 +9,7 @@ Checks that the project is ready for /devforge:implement to start a task:
      main / master / trunk and the source repo's actual default branch
      detected dynamically via `git symbolic-ref --quiet refs/remotes/origin/HEAD`;
      require a feature branch.  On git failure, exit 2.
-  3. Defensive wip.md assert: the Phase 9 recovery branch (loop entry) is the
+  3. Defensive wip.md assert: the PHASE 0 recovery branch (loop entry) is the
      SOLE interrupted-session detector.  Preflight only asserts that no stale
      wip.md remains at per-task entry (wip.md is in the install root).
      If one is unexpectedly present, exit 2.
@@ -307,7 +307,7 @@ def _check_wip_marker(root):
     # type: (Path) -> Optional[str]
     """Assert that no stale wip.md remains from a previous interrupted task.
 
-    The Phase 9 recovery branch (loop entry) is the SOLE interrupted-session
+    The PHASE 0 recovery branch (loop entry) is the SOLE interrupted-session
     detector.  Preflight only asserts here.  If wip.md is unexpectedly present,
     instruct the user to resolve the previous session first.
 
@@ -320,7 +320,7 @@ def _check_wip_marker(root):
             "stale .devforge/wip.md detected; "
             "a previous task was interrupted. "
             "Re-run /devforge:implement (or restart the loop) to enter the "
-            "Phase 9 crash-recovery branch (resume / rollback / skip / manual)."
+            "PHASE 0 crash-recovery branch (resume / rollback / skip / manual)."
         )
     return None
 
