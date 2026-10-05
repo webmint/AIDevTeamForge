@@ -128,10 +128,10 @@ Adversarial commands: `devils-advocate` (`/devforge:grill` — model-invocable s
 ### Crash Recovery (Phase 0 + WIP Checkpoints)
 - `/devforge:implement` creates a WIP marker (`.devforge/wip.md`) and git checkpoint commits during execution
 - Recovery Check (owned by `src/commands/implement/references/crash-recovery.md`) detects interrupted sessions and offers 4 options: resume, rollback+retry, rollback+skip, keep manual. WIP markers include a `Command` field identifying which command was interrupted, to prevent cross-command recovery confusion
-- Git `[WIP]` commits preserve partial work at each phase. For `/devforge:implement`: WIP commits accumulate across tasks and are squashed by `/devforge:finalize` using `git merge-base`
+- One WIP commit per APPROVED task, made by `implement_helper wip-commit` in PHASE 7 Stage B's `approve` arm, after the hard gate; an interrupted task's edits stay uncommitted in the working tree. For `/devforge:implement`: WIP commits accumulate across tasks and are squashed by `/devforge:finalize` using `git merge-base`
 - All workflow commits use scoped `git add` (specific files only, never `git add -A`) to prevent accidentally committing secrets or unwanted files
-- `wip.md` is gitignored — only exists during active task execution
-- In wrapper mode, WIP marker includes `## Source Repo Checkpoint` section; Phase 0 recovery also rolls back source repo WIP commits
+- `wip.md` is gitignored — EPHEMERAL per `src/devforge/storage-rules.md` (plan 111): `src/files/devforge.gitignore` carries a `.devforge/wip.md` line, which `install.sh` and `update.sh` union into the consumer's root `.gitignore`, and `scripts/devforge-state-migrate.sh` untracks a marker an install already tracks (it stages `git rm --cached` and commits nothing). It can outlive the run that wrote it: the PHASE 7 `stop` and `fix-tooling` arms, PHASE 0's `manual`, PHASE 3's two HALTs and the helper-failure halts all leave it in place
+- The marker has one layout in both modes — a title line plus seven `**Key**:` fields, no `## ` section (`src/commands/implement/references/crash-recovery.md`). In wrapper mode it lives at the install root, and its `**Checkpoint**` is the SOURCE repo HEAD at task start; PHASE 0's `rollback` and `skip` run `git -C <source_root> reset --hard <Checkpoint>`, reaching back only to the current task's start — no earlier task's WIP commit is rolled back
 
 ## What's Left / Potential Enhancements
 
