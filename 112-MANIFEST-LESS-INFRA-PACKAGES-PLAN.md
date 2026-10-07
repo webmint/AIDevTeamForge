@@ -1,7 +1,7 @@
 # 112 — Manifest-less Infra Packages Plan
 
 **Created**: 2026-09-25
-**Status**: **Phase 0 CLOSED 2026-10-07 — NOTHING is built yet; build phases may start, in this plan's build order (`## Phases`).** *(corrected 2026-10-07 at the Phase 0 close — until then this line read "Phase 0 OPEN — nothing is ratified and NOTHING is built." and said D1–D5 and OQ-1–OQ-5 awaited the maintainer)* D1 and OQ-1 were closed by explicit pick — D1 (a), both gates, as recommended; OQ-1, which carried no recommendation, answered: only Terraform was present in the observed project — and every other item, D2, D3, D4, D5, OQ-2, OQ-3, OQ-4 and OQ-5, was ratified as recommended by one blanket pick, with no per-item deliberation supplied; nothing was amended or declined. See `### Phase 0 close record`. The 2026-09-25 stub carried the problem statement only; the body below — findings, decisions, phases — was drafted 2026-10-07. ⚠ **Evidence class, to be repeated in every summary of this plan: ONE consumer observation, with NO artifact of it in this repo and NOTHING measured; plus one PLANTED codebase-graph probe (F14) and direct helper calls (F12, F15). Every other statement is a read of this tree on 2026-10-07.**
+**Status**: **Phase 0 CLOSED 2026-10-07; build IN PROGRESS since 2026-10-07 — `git log --oneline --grep 'plan-112'` lists this plan's commits, the build commits' subjects name their phases, and that log, not this line, is the record of what is built; Phase 9 rewrites this line from that log.** *(corrected 2026-10-07, mid-build — until then this line read "Phase 0 CLOSED 2026-10-07 — NOTHING is built yet; build phases may start, in this plan's build order (`## Phases`)."; the plan's build commits made "NOTHING is built yet" false)* *(corrected 2026-10-07 at the Phase 0 close — until then this line read "Phase 0 OPEN — nothing is ratified and NOTHING is built." and said D1–D5 and OQ-1–OQ-5 awaited the maintainer)* D1 and OQ-1 were closed by explicit pick — D1 (a), both gates, as recommended; OQ-1, which carried no recommendation, answered: only Terraform was present in the observed project — and every other item, D2, D3, D4, D5, OQ-2, OQ-3, OQ-4 and OQ-5, was ratified as recommended by one blanket pick, with no per-item deliberation supplied; nothing was amended or declined. See `### Phase 0 close record`. **After the close, three amendments to D4 were ruled by explicit pick on 2026-10-07, mid-build — see `### Post-close amendments — 2026-10-07`, which overrides the close record where they conflict.** The 2026-09-25 stub carried the problem statement only; the body below — findings, decisions, phases — was drafted 2026-10-07. ⚠ **Evidence class, to be repeated in every summary of this plan: ONE consumer observation, with NO artifact of it in this repo and NOTHING measured; plus one PLANTED codebase-graph probe (F14) and direct helper calls (F12, F15). Every other statement is a read of this tree on 2026-10-07.**
 
 ## Problem
 
@@ -184,6 +184,8 @@ Step 4 runs the manifest walk first, then the verb, and puts the candidates to t
 
 ### D4 — `/devforge:configure` composition for a null-manifest package
 
+*(amended after the close, 2026-10-07 — `### Post-close amendments — 2026-10-07` amends (a)'s manifest-less signal, extends (b) to a project whose registered packages are all manifest-less, and corrects the "Phase 3 override" claims of (a) and (c); that subsection is the ruling, and the text below stays as drafted)*
+
 **(a) The per-package record. RECOMMEND:**
 - `read-manifests` gains a Python-derived **`language_hint`** — ⚠ a NEW output field, following the existing `*_hint` pattern (F10). It is computed from the package's `index.json` `files[]` through a closed extension map — `.tf` → `HCL`, `.sql` → `SQL`, `.yaml` / `.yml` → `YAML` — **for packages whose `manifest_file` is null only**. It is `null` on every other entry and when no mapped extension occurs; when several occur it is the language with the most files, ties broken by the map's order. The key is present on every entry, so the output shape stays uniform.
 - The configure spec gains a rule for a package whose `manifest` is null: `language` = `language_hint`, and that value joins `LANGUAGES`; `framework` and `build_tool` are null, which the existing verbatim rules already produce (F10); `build_command`, `type_check_command` and `lint_command` are `N/A`; `test_command` is `null` — **no invented command**, mirroring the existing `test_command` rule.
@@ -303,6 +305,42 @@ Every statement in this record is dated 2026-10-07 unless it names another date.
 - **Every counter-argument above is still present, unshortened.**
 - **The record repeats the evidence class unchanged**: ONE consumer observation with no artifact here and nothing measured; one planted probe; direct helper calls. **Ratification changes no evidence class.**
 
+### Post-close amendments — 2026-10-07
+
+Every statement in this subsection is dated 2026-10-07 unless it names another date.
+
+**How it was decided — 2026-10-07.** During Phase 5's authoring, the Phase 5 author reported three problems in the ratified D4, and the orchestrator confirmed each against the code by reading it — nothing was run on a consumer. The maintainer was then asked through ONE `AskUserQuestion` call carrying three questions, recorded here by English paraphrase; each question listed its recommended option first, labelled `(Recommended)`. **The maintainer picked the recommended option on all three — explicit picks, not a delegation.**
+
+**Rulings — 2026-10-07.**
+
+- **A — D4 (a) AMENDED: the manifest-less signal.**
+  - **Problem.** `index_helper` re-detects a package's manifest from `_MANIFEST_REGISTRY` only and ignores the `init.yaml` `manifest` value (F4). Step 4 also registers packages by `pubspec.yaml`, `*.gemspec` and `mix.exs` (F1), none of which `_MANIFEST_REGISTRY` carries — F3's disagreeing lists — so such a package indexes as `manifest_file: null`. D4 (a) as ratified computes `language_hint` *"for packages whose `manifest_file` is null only"*, so a Flutter package holding `pubspec.yaml` and `analysis_options.yaml`, whose `.dart` files the closed map does not carry, would get a `language_hint` of `YAML`, `N/A` build, type-check and lint commands, and no flat-array entry.
+  - **Ruling.** A package is manifest-less exactly when its `init.yaml` record has `manifest: null` — the value only `add-package --no-manifest` writes (D3, Phase 1).
+  - **Consequence.** Phase 3's `read-manifests` reads `init.yaml` and emits a non-null `language_hint` only for such a package, and `null` on every entry when `init.yaml` is unreadable. Once that change lands, two F5 sentences stop holding — *"No Python reader branches on the `init.yaml` `manifest` value"* and *"`configure_helper read-manifests` reads `index.json` records, not `init.yaml`"* — and F10's *"spreads each `index.json` record into the package dict it reads"* no longer names everything `cmd_read_manifests` reads. F5 and F10 stay as written: they are dated reads. Phase 5's rules key on `INIT_JSON.packages_detected[].manifest` — the `init.yaml` value. Phase 3 was committed before this amendment (`0699d40`); a follow-up commit brings it in line, and `git log --oneline --grep 'plan-112'` lists that commit once it is made.
+  - **Not picked.** Keeping D4 (a) as ratified; extending `_MANIFEST_REGISTRY` — plan 118's territory (Trap 2).
+- **B — D4 (b) EXTENDED: packages registered, none manifest-bearing.**
+  - **Problem.** Under D4 (b) (i), a project whose registered packages are all manifest-less — a repo of Terraform root modules only, for instance — composes four EMPTY flat arrays. The `set-*-commands` setters refuse an empty array (*"value cannot be empty"*, `_configure/_validators.py`), and `configure_helper verify` flags one (*"required field {0} is empty"*, `_configure/_cmds_verify.py`).
+  - **Ruling.** When at least one package is registered and none is manifest-bearing, each of `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` and `TEST_COMMANDS` is the single entry `N/A`. Every index-0 reader (F16) skips `N/A`: `cmd_verify_touched` silently (F12), `_get_test_command` by returning `None`, and the configure probe by skipping the command. Trap 9's effect still holds — a file inside no package then runs nothing — but such a project has no manifest-bearing command for `N/A` to displace.
+  - **Consequence.** Phase 5 writes this rule beside D4 (b) (i)'s.
+  - **Not picked.** Making the setters and `verify` accept an empty array — a Python change; leaving it as ratified — a project of manifest-less packages only would then fail at `/devforge:configure`.
+  - ⚠ **Not addressed, recorded honestly:** a project with ZERO registered packages already composed four empty arrays before this plan — the per-package alignment rules (F10) give it no entry — and this amendment leaves that pre-existing case as it is.
+- **C — D4 (a)'s and (c)'s "Phase 3 override" claim was FALSE; AMENDED.**
+  - **Problem.** D4 (a) says *"An operator can set commands by hand as a Phase 3 override at `/devforge:configure`'s bulk confirmation."*, and D4 (c) says the user corrects `Unknown` *"as a Phase 3 override"*. But before Phase 5 — as of `ef98d8c` — `src/commands/configure/main.md`'s `## Phase 3 — Bulk-confirmation prompt` echoed `package_stacks` as one line, *"package_stacks: <count> packages — <list path entries>"*, and its `### Parsing the user reply` read overrides only as lines it could *"parse line-by-line as `<field>: <value>`"* — it had no per-record override for `package_stacks`.
+  - **Ruling.** Phase 5 adds a per-record override form to that Phase 3 — `package_stacks <path> <key>: <value>` — and the echo lists each record as `<path> (<language>)`.
+  - **Consequence.** Phase 5's deliverables widen to that section's echo template, its `### Parsing the user reply` and its `### Setter mapping`. Two other sections of the same file parse a reply of their own — `### Phase 5.2 — Prune agents`' `#### Parsing the user reply` and `## Phase 6 — Exclude framework folders from project linters`' `### Parsing the user reply` — and this amendment reaches neither.
+  - **Not picked.** Dropping the promise; recording the gap in `FINDINGS.md`.
+
+**What stands — 2026-10-07.**
+
+- **What the amendments do NOT change.** D4 (a)'s closed extension map, its majority and tie rules, and its composition rule for a manifest-less package; D4 (b) (i) wherever at least one registered package is manifest-bearing; D4 (c)'s `Unknown`. No other item's outcome moves.
+- **D4's drafting text and the close record stay as written.** Dated pointers under `### D4` and under Phase 3's and Phase 5's `#### Deliverables` name this subsection, and the close record's *"Nothing is built."* describes the state at the close — `**Status**:` says where the build stands. **This subsection is the ruling for these three points: where the close record — its D4 row, or its Phase 3 and Phase 5 bullets under *What the outcomes put in scope* — conflicts with it or falls short of it, this subsection wins.**
+- ⚠ **Evidence class unchanged.** The amendments rest on code reads of this tree; nothing was run. The evidence class stays ONE consumer observation, with NO artifact of it in this repo and NOTHING measured; plus one PLANTED codebase-graph probe (F14) and direct helper calls (F12, F15).
+
+**Orchestration note — 2026-10-07 (not a maintainer ruling).**
+
+- **The build departed from `## Phases`' order 1 → 2 → … → 9.** Phase 6 (`6a23837`) was committed before Phase 4 (`1d8e6fb`) and before Phase 5, because Phase 6 depends on neither — `## Phases` names no prerequisite for it — and Phase 7 needs its owner. Phase 7 (`ef98d8c`) also landed before Phase 5, after its prerequisites, Phases 1 and 6, were committed. Every prerequisite `## Phases`' dependency statements name — Phases 1 and 2 for Phase 4, Phase 3 for Phase 5, Phases 1 and 6 for Phase 7 — was committed before Phase 4, the first dependent phase to land. **The build log, `git log --oneline --grep 'plan-112'`, is the authoritative order;** `## Phases`' build-order sentence stays as drafted.
+- **A Phase 7 follow-up implements D5 (iii) in wrapper installs — a fix, not an amendment.** D5 (iii) keeps the project root (`index.json` key `.`) on the `src/` requirement. Phase 7's code as committed (`ef98d8c`) recognized the root by comparing the bridged package path to `"."`, which a wrapper install's bridged root, `<inner>`, never equals — so a wrapper's inner root with no `src/` fell back to a single concern, contrary to ratified D5 (iii). The fix makes the project root never fall back in wrapper installs too, implementing D5 (iii) as written. It landed as a separate follow-up commit, `7330117`.
+
 ---
 
 ## Phases
@@ -354,12 +392,15 @@ Phase 0 is the section above; **nothing below starts before its close record exi
 
 #### Deliverables
 
+*(amended after the close, 2026-10-07 — amendment A of `### Post-close amendments — 2026-10-07`: `read-manifests` reads `init.yaml`, and `language_hint` is non-null only for a package whose `init.yaml` record has `manifest: null`; that subsection governs the bullets below, Verify included, where they conflict)*
+
 - `_configure/_cmds_read.py` `cmd_read_manifests`: `language_hint` on every entry, per D4 (a), with the extension map as one closed constant.
 - Tests in `tests/lib/test_configure_helper.py`.
 
 #### Verify
 
 - Fixtures come from `init_helper` + `index_helper build-index` output, never a hand-authored `index.json`: a null-manifest package of `*.tf` files → `HCL`; of `*.sql` → `SQL`; of `*.yaml` / `*.yml` → `YAML`; mixed `*.tf` and `*.yaml` → the majority, and the map's order on a tie; no mapped extension → `null`; a manifest-bearing package → `null`.
+- Under amendment A, fixtures built the same way: a package registered with `--manifest pubspec.yaml` and holding `*.yaml` files → `language_hint: null`; the same tree registered with `--no-manifest` → `YAML`; `init.yaml` deleted, or overwritten with unparseable content, after `build-index` → `read-manifests` exits 0 and every `language_hint` is `null`.
 - The existing `read-manifests` tests pass unchanged apart from the added key.
 - The full `tests/lib` suite is green; the python-reviewer loop runs until a review returns no findings.
 
@@ -383,12 +424,15 @@ Phase 0 is the section above; **nothing below starts before its close record exi
 - If OQ-3's F19 recommendation is declined: Step 6's per-package bullet, re-read after the edit, states no 500-file cap, and the commit body quotes its corrected cap clause beside `index_helper._MAX_FILES_PER_PACKAGE` as read at build time.
 - The instruction-reviewer loop runs until a review returns no findings.
 
-### Phase 5 — `/devforge:configure` Phase 2 rules (D4)
+### Phase 5 — `/devforge:configure` Phase 2 rules and Phase 3 per-record override (D4, amendments A–C)
 
 #### Deliverables
 
+*(amended after the close, 2026-10-07 — amendments A, B and C of `### Post-close amendments — 2026-10-07`: the rules key on `INIT_JSON.packages_detected[].manifest` (A); with packages registered but none manifest-bearing, each flat array is the single entry `N/A` (B); and the deliverables widen to configure's `## Phase 3 — Bulk-confirmation prompt` — its echo template, `### Parsing the user reply` and `### Setter mapping` (C); that subsection governs the bullets below, Verify included, where they conflict)*
+
 - `src/commands/configure/main.md`: the `read-manifests` shape sentence names `language_hint`; the `LANGUAGES` and `PACKAGE_STACKS` `language` rules cover a null manifest; the commands rule per D4 (a); the flat arrays per D4 (b); `language` per D4 (c).
 - The five `**Per-package**` bullets D4 (b)'s ruling reaches, each edited so it is true for a null-manifest package — which, under (i), has `N/A` in its `PACKAGE_STACKS` record and no entry in the flat arrays: `BUILD_COMMANDS`' *"comma-separated list aligned per-package; each entry is the package's `scripts.build` from `MANIFESTS_JSON.packages[]`."*; `TYPE_CHECK_COMMANDS`' *"comma-separated; per-package `scripts.typecheck` or `scripts.tsc` from `MANIFESTS_JSON`."*; `LINT_COMMANDS`' *"comma-separated; per-package `scripts.lint`. When absent, emit `N/A`."*; `TEST_COMMANDS`' *"comma-separated; per-package `scripts.test`. When absent, emit `N/A`."*; and `PACKAGE_STACKS`' `build_command` / `type_check_command` / `lint_command` bullet, *"same per-package values used by the flat string-arrays above; `test_command` is derived separately (see the next bullet) — it does NOT follow the flat arrays' `N/A`-when-absent rule."*
+- Under amendment C, `src/commands/configure/main.md`'s `## Phase 3 — Bulk-confirmation prompt`: the echo template lists each `package_stacks` record as `<path> (<language>)`; `### Parsing the user reply` gains the per-record override form `package_stacks <path> <key>: <value>`; `### Setter mapping` applies those overrides to the composed records before the single `set-package-stacks` call, and recomputes `languages` from the final records when a per-record `language` override was given without a `languages:` line.
 
 #### Verify
 
@@ -396,7 +440,11 @@ Phase 0 is the section above; **nothing below starts before its close record exi
 - Each of the five bullets listed above is re-read after the edit and quoted in the commit body as true for both a manifest-bearing and a null-manifest package.
 - `BUILD_COMMANDS`' *"emit the ecosystem default"* sentence no longer reaches a null-manifest package.
 - The existing *"do NOT invent an ecosystem-default guess"* rule is unchanged.
-- Under D4 (b) (i): the edited flat-array rules give a null-manifest package no entry, so index 0 — read by `cmd_verify_touched`'s `primary_type_check`, `primary_lint`, `primary_build` and `primary_test` assignments, by `_get_test_command` and by the configure probe (F16) — never holds its `N/A`; the commit body quotes the reworded rules beside those four assignments.
+- Under D4 (b) (i): the edited flat-array rules give a null-manifest package no entry, so index 0 — read by `cmd_verify_touched`'s `primary_type_check`, `primary_lint`, `primary_build` and `primary_test` assignments, by `_get_test_command` and by the configure probe (F16) — never holds its `N/A`, except amendment B's all-`N/A` placeholder; the commit body quotes the reworded rules beside those four assignments.
+- Under amendment B: when at least one package is registered and none is manifest-bearing, the edited rules make each of `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` and `TEST_COMMANDS` exactly `["N/A"]` — the only case that puts `N/A` at index 0; the commit body quotes that rule.
+- Under amendment C: the echo template under `## Phase 3 — Bulk-confirmation prompt` lists each `package_stacks` record as `<path> (<language>)`, and that section's `### Parsing the user reply` defines the `package_stacks <path> <key>: <value>` override line.
+- Under amendment C: that section's `### Setter mapping` applies every per-record override to the composed records before the single `set-package-stacks` call, and recomputes `languages` from the final records when a per-record `language` override was given without a `languages:` line.
+- Under amendment C: the file's other reply-parsing sections — `### Phase 5.2 — Prune agents`' `#### Parsing the user reply` and `## Phase 6 — Exclude framework folders from project linters`' `### Parsing the user reply` — are untouched; this phase's diff of `src/commands/configure/main.md` changes neither.
 - The instruction-reviewer loop runs until a review returns no findings.
 
 ### Phase 6 — One concern-root owner, behavior-preserving (D5 (i))
@@ -461,6 +509,7 @@ Each statement below is re-read against the post-Phase-7 code, and its classific
 - `PLAN-STATUS-ARCHIVE.md` — this plan's `## Index` line and its `## Entries` record — both, in the same commit.
 - `FINDINGS.md` — the entries OQ-3 ruled; under OQ-3's F20 / F21 ownership rule, that includes the F20 / F21 entry exactly as the Phase 0 close record states its case.
 - Under D1 (c): the new Gate 2 stub.
+- This plan's `**Status**:` line — rewritten from the build record, `git log --oneline --grep 'plan-112'`.
 - The root `CLAUDE.md` router — grep it for each new identifier (`--no-manifest`; `language_hint`; the ratified verb name, working name `detect-manifest-less`; under D1 (a), the owner module's name, working name `_concern_root.py`) and record the grep result in the ledger line.
 
 #### Verify
@@ -477,7 +526,7 @@ Run by the maintainer, on a consumer install the maintainer picks — **never th
 - (a) Step 4 proposes the Terraform directories.
 - (b) `.devforge/index.json` carries them with `manifest_file: null`.
 - (c) Under D1 (a): `/devforge:generate-docs` writes concern and package docs for them. Under (b) or (c): RECORD ONLY — none are expected.
-- (d) `/devforge:configure`'s `PACKAGE_STACKS` records them with `HCL` and no commands, and index 0 of the flat arrays is not theirs.
+- (d) `/devforge:configure`'s `PACKAGE_STACKS` records them with `HCL` and no commands, and index 0 of the flat arrays is not theirs (except amendment B's all-`N/A` placeholder).
 - (e) A `.tf` edit in `/devforge:implement` matches its package in `verify-touched`.
 
 **Until this phase runs, "built and build-verified" is the ceiling of every claim this plan makes.**
@@ -515,6 +564,7 @@ Run by the maintainer, on a consumer install the maintainer picks — **never th
 - **D5 changes output for existing installs** with flat-layout non-`.` packages: new docs appear where none existed. Under D5 (v) it also changes output for `src/`-layout packages whose path holds a `_TRIVIAL_LEAF_DIRS` name: their concerns gain the files the walk drops today (F21).
 - **A root holding `*.tf` files still gets no docs.** D2's verb proposes `.` for it when no `.` record exists, `.` registers with `manifest: null`, and D5 (iii) keeps `.` on the `src/` requirement — so a pure-Terraform standalone repo whose root module sits at the project root yields zero concerns. A residual of this plan, recorded, not fixed.
 - **D4 leaves infra edits unverified, silently.**
+- **A project with ZERO registered packages still composes empty flat arrays.** The per-package alignment rules (F10) give it no entry, before this plan as after it; amendment B's `N/A` placeholder covers a project whose registered packages are all manifest-less, not one with none (`### Post-close amendments — 2026-10-07`). Pre-existing, and not addressed by this plan.
 - **Plans execute in numeric order.** When this plan's Phase 0 closes, read each lower-numbered open plan's `**Status**:` line before building; **do not carry a count of them from this document.**
 
 ### Traps
@@ -535,7 +585,7 @@ Run by the maintainer, on a consumer install the maintainer picks — **never th
 
 **Trap 8 — `.terraform/` in the concern walk** (F17). The fallback root makes the hidden-dir non-skip live; D5 (iv) closes it.
 
-**Trap 9 — index 0 of the flat command arrays** (F16). An `N/A` there disables the primary-stack fallback, the regression gate's test command and the configure probe's primary check.
+**Trap 9 — index 0 of the flat command arrays** (F16). An `N/A` there disables the primary-stack fallback, the regression gate's test command and the configure probe's primary check — the outcome D4 (b) (i) keeps a null-manifest package from causing (except amendment B's all-`N/A` placeholder).
 
 **Trap 10 — two file sets.** The prefix sites read `index.json`'s `files[]` (hidden directories and `_FILE_WALK_SKIP_DIRS` excluded); the walk sites rglob the filesystem with only the trivial-leaf filter, applied to the full project-relative path (F7, F17, F21). They already differ; the fallback root widens the gap.
 
@@ -559,11 +609,11 @@ Run by the maintainer, on a consumer install the maintainer picks — **never th
 - `tests/lib/test_index_helper.py`, `tests/lib/test_configure_helper.py` — the chain tests (Phases 1, 3).
 - `src/devforge/lib/_configure/_cmds_read.py` — `cmd_read_manifests` (Phase 3).
 - `src/commands/init-forge/main.md` — Step 4, `## Outputs of this phase`, Step 5, and Step 6's per-package bullet: its manifest clause (D3) and its cap clause, under OQ-3's F19 recommendation and when it is declined (Phase 4).
-- `src/commands/configure/main.md` — Phase 2's composition rules and the `read-manifests` shape sentence (Phase 5).
+- `src/commands/configure/main.md` — Phase 2's composition rules, the `read-manifests` shape sentence and, under amendment C, `## Phase 3 — Bulk-confirmation prompt`'s echo template, `### Parsing the user reply` and `### Setter mapping` (Phase 5).
 - `src/devforge/lib/_generate_docs/` — the new owner module and `_preflight.py`, `_concern_input.py`, `_package_input.py`, `_setters_concern.py`, `_setters_concern_files.py`, `_validators_concern.py`, `_validate_doc.py`, `_validators_decomposition.py` (Phases 6–7, D1 (a) only). Phase 7 also edits every docstring, comment and user-facing message that its `src/` grep classifies as edited, in these modules and in every other module under `src/devforge/lib/_generate_docs/` that the grep reaches — its 2026-10-07 baseline reaches two more, `_doc_setters/_renderers.py` and `_doc_setters/_cmds_project.py`.
 - `docs/v2/ARCHITECTURE.md` — F19's three stale-cap hits, under OQ-3 (Phase 4, every D1 outcome).
 - `src/commands/generate-docs/main.md`, `src/CLAUDE.md`, `src/agents/tech-writer.md`, `src/devforge/storage-rules.md`, `docs/v2/ARCHITECTURE.md` (Phase 8, D1 (a) only; in `docs/v2/ARCHITECTURE.md`, the `_concern_input.py` row's layout wording — and that row's cap clause if OQ-3's F19 recommendation is declined — and the owner-module row).
-- `CHANGELOG.md`, `DEVELOPMENT-STATUS.md`, `PLAN-STATUS-ARCHIVE.md`, `FINDINGS.md`, the root `CLAUDE.md` router (Phase 9).
+- `CHANGELOG.md`, `DEVELOPMENT-STATUS.md`, `PLAN-STATUS-ARCHIVE.md`, `FINDINGS.md`, the root `CLAUDE.md` router, and this plan's `**Status**:` line (Phase 9).
 
 **READ-ONLY anchors** — read, never edited by this plan, except where an entry names its exception:
 - `src/devforge/lib/index_helper.py` — `cmd_build_index`, `_build_package_record`, `_list_package_files`, `_MANIFEST_REGISTRY`, `_MAX_FILES_PER_PACKAGE` (F3, F4, F19); read-only except the Phase 1 docstring line listed under EDIT targets.
@@ -583,7 +633,7 @@ Run by the maintainer, on a consumer install the maintainer picks — **never th
 
 1. **Read this plan in full** before touching anything. Find any sibling plan by its TITLE.
 2. **Re-run `git status --short` and classify every changed file as yours or another session's** — another session may share the checkout. Never stage a file you did not change.
-3. **Check `### Phase 0 close record`.** While its opening line does not read CLOSED, nothing builds; it reads *CLOSED 2026-10-07* now. Quote the ratified outcomes from the record, never from a decision's drafting text — that text keeps the options not taken.
+3. **Check `### Phase 0 close record`.** While its opening line does not read CLOSED, nothing builds; it reads *CLOSED 2026-10-07* now. Quote the ratified outcomes from the record and from the `### Post-close amendments — 2026-10-07` subsection, which overrides the close record where they conflict; never quote them from a decision's drafting text — that text keeps the options not taken.
 4. **Re-verify F1–F21 by grepping their quoted text**, never by digits: `Step 4: Discover packages`, `use your knowledge of which ecosystem uses which`, `required=True`, `Closed enum — do not expand at runtime`, `_MANIFEST_REGISTRY`, `"manifest_file": None`, `skipped silently`, `has no \`src/<concern>/\` subdirs`, `some ecosystems use a flat package layout`, `Hidden dotfile-prefixed dirs are NOT skipped`, `missing required field 'language'`, `Only the FIRST entry of each primary array is probed`, `type_check_commands[0] if type_check_commands else None`, `sort_keys=True`, `applies_to: ["all"]`, `capped at 500 files`, `capped at 500)`, `500 entries per package`, `name in ("node_modules", "dist", "build", "target")`, `Return True if any path component of rel_path is a trivial-leaf dir.`, and F7's three-pattern sweep. ⚠ **Use `git grep -n` for every site under `src/` or `tests/`** — a plain recursive grep also matches compiled `__pycache__` files. ⚠ **F12, F14 and F15 are runs, not reads:** re-derive F12 and F15 with a direct `_match_package` call; F14 is re-derivable only by planting a new scratch repo.
 5. **Then check each lower-numbered open plan's `**Status**:` line** — plans execute in numeric order.
 6. **Build in `## Phases` order**, each phase through its route, each committed by explicit path.
