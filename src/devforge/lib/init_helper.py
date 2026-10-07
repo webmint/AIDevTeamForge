@@ -80,8 +80,10 @@ SUMMARY_WORKSPACE_FIELDS = (
     "default_branch",
 )
 
-# Built-in skip list for find-nested-git. Mirrors detect_report's set
-# verbatim so /init-forge and the legacy wizard agree on which dirs to ignore.
+# Built-in skip list shared by find-nested-git, detect-manifest-less,
+# _scan_for_manifests (verify's manifest check) and _detect_test_infra.
+# Mirrors detect_report's set verbatim so /init-forge and the legacy wizard
+# agree on which dirs to ignore.
 NESTED_GIT_SKIP = {
     "node_modules",
     "target",

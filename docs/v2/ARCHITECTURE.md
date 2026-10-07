@@ -47,7 +47,8 @@ Subcommand surface:
 | `set-project-state <empty\|brownfield>` | Set scalar field |
 | `set-default-branch <name>` | Set scalar field |
 | `find-nested-git` | Depth-1 scan for `<dir>/.git/`; returns candidate list (read-only) |
-| `add-package --path <p> --manifest <m>` | Append package record |
+| `detect-manifest-less` | Scan under `project_root` for Terraform `*.tf` root modules; prints manifest-less candidate dirs, one per line (read-only) |
+| `add-package --path <p> (--manifest <m>\|--no-manifest)` | Append package record (exactly one of the two flags); `--no-manifest` records `manifest: null` and requires `<p>` to be a directory under `project_root` |
 | `summary` | Render human-readable report to stdout |
 
 Schema (locked field order, used by the YAML emitter):
@@ -66,7 +67,7 @@ ENUM_FIELDS = {
 }
 ```
 
-Each scalar defaults to `None`; the array defaults to `[]`. Loud-fail downstream when a required field is `None` is the design — no "sensible default" overrides. `reset` writes a defaults file; it never deletes. `NESTED_GIT_SKIP` (hidden directories + standard build/dependency dirs) is a fixed set used by `find-nested-git`.
+Each scalar defaults to `None`; the array defaults to `[]`. Loud-fail downstream when a required field is `None` is the design — no "sensible default" overrides. `reset` writes a defaults file; it never deletes. `NESTED_GIT_SKIP` is a fixed set of directory names (`node_modules`, `target`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.git`), used by `find-nested-git`, `detect-manifest-less`, `_scan_for_manifests` (`verify`'s manifest check) and `_detect_test_infra`; each of them also skips any dot-prefixed directory.
 
 #### `index_helper.py`
 
@@ -77,7 +78,7 @@ Owns `.devforge/index.json` + `<install_root>/docs/structure.md`. Single subcomm
 | `build-index` | Walk packages from `init.yaml`; write both artifacts atomically |
 
 For each package in `init.yaml.packages_detected`:
-- Walk source tree (capped at 500 files; `files_truncated: true` flag set on overflow).
+- Walk source tree (capped at 10000 files per package — `_MAX_FILES_PER_PACKAGE`; `files_truncated: true` flag set on overflow).
 - Skip dirs: `_FILE_WALK_SKIP_DIRS` (`node_modules`, `dist`, `build`, `target`, `out`, `.git`, `__pycache__`, `.venv`, `venv`, `.idea`, `.vscode`, `.next`, `.nuxt`, `.turbo`, `bin`, `obj`) plus any dot-prefixed directory.
 - Read manifest by filename match against `_MANIFEST_REGISTRY`. Extract scripts + dependencies. Malformed manifest → `manifest_parse_skipped: true`, stderr warning, continue (not a hard failure).
 
@@ -109,7 +110,7 @@ The spec's six numbered steps map onto helper subcommands:
 | 1. Workspace mode | `find-nested-git` (read-only scan) → `set-workspace-mode` + `set-project-root` |
 | 2. Project state | (LLM ls + classify) → `set-project-state` |
 | 3. Default branch | (LLM git probes) → `set-default-branch` |
-| 4. Discover packages | (LLM walk + manifest match) → `add-package` (per package) |
+| 4. Discover packages | (LLM walk + manifest match) → `add-package --manifest`; `detect-manifest-less` (read-only scan) → user confirms → `add-package --no-manifest`; user-declared dirs → `add-package --no-manifest` (per package) |
 | 5. Render summary | `summary` (helper renders, LLM relays verbatim) |
 | 6. Build index | `index_helper build-index` |
 
@@ -134,7 +135,7 @@ Submodule layout:
 | `_trace.py` | Per-invocation trace log at `.devforge/.generate-docs-trace.log`. Every subcmd appends one line: `<timestamp> subcommand=<name> exit=<code>`. |
 | `_circuit.py` | Helper-side circuit breaker. Reads trace log; refuses to proceed on doom-loop (3 consecutive identical exit-2s) or invocation-budget exceeded (default 500). Hooks into `_cli.main()` AFTER argparse, BEFORE handler dispatch. Reset boundary is the most-recent `subcommand=reset` entry. |
 | `_preflight.py` | F.0 — orchestration of vue-extract + CBM `index_repository` + per-concern source-stamp diff. Emits JSON the orchestrator gates Phase 2 on. Writes `.devforge/.preflight-stamp` (wall-time of last successful run). |
-| `_concern_input.py` | F.2 — concern-tier batch JSON. Walks `<pkg>/src/<concern>/` filesystem-direct (NOT via `index.json`, which caps at 500 files and may truncate large concerns). Emits ASCII tree + `comment_rich_span` per file. Switches to split-batch shape when concern crosses threshold AND has ≥2 immediate child dirs. |
+| `_concern_input.py` | F.2 — concern-tier batch JSON. Walks `<pkg>/src/<concern>/` filesystem-direct (NOT via `index.json`, which caps at 10000 files per package and may truncate large concerns). Emits ASCII tree + `comment_rich_span` per file. Switches to split-batch shape when concern crosses threshold AND has ≥2 immediate child dirs. |
 | `_package_input.py` | F.7 — package-tier batch JSON. Reads each rendered concern doc's frontmatter + Purpose paragraph; collects package-root files (README, CHANGELOG, package.json). Emits `concern_seeds[]` + `package_root_files[]` + `source_stamp`. |
 | `_project_input.py` | F.8 — project-tier batch JSON. Reads each rendered package overview's frontmatter + Purpose paragraph; collects project-root files. Adds Phase 1 mechanical fields (`tech_stack_candidates[]`, `key_commands[]`, `test_file_paths[]`, `cross_module_deps_tree`, `project_structure_tree`) and Phase 2 candidate fields (`entry_point_candidates[]`, `router_route_files[]`, `nav_guard_files[]`, `package_classification_hints`). Wrapper-mode aware. |
 | `_doc_setters.py` | F.4 — multi-tier skeleton-fill primitives. `init-doc` writes `*.md.skeleton` for the requested tier; per-section setters edit in-place; `render-doc` atomic-renames to `*.md`. The skeleton file IS the state. |
@@ -548,7 +549,7 @@ Live as-of 2026-05-10. Most are deferred bugs surfaced during empirical validati
 1. **Stamp gate anchor-schema drift.** When the helper's section anchor schema changes (e.g., adding a new project-overview section), prior rendered docs' frontmatter still says "stamp matches" but their on-disk shape no longer matches the new validator. The stamp gate skips dispatch, validate-doc passes (because old shape was valid for the old schema), and the doc never re-renders against the new shape. Workaround: force re-render via `init-doc` on the affected target. Fix pending.
 2. **CBM watcher async-miss.** `_preflight.py` invokes `index_repository` synchronously, but CBM's filesystem watcher runs async — large repos can return from `index_repository` before the watcher has absorbed every recent write, causing `search_graph` queries in Phase B (glossary) to miss nodes that were just rendered. Workaround: re-run Phase B. Fix pending.
 3. **Glossary classification name-normalization.** `_glossary.py` keys terms by exact-case match on the docs corpus → CBM lookup. Terms that vary in case (`useStore` in code vs. `UseStore` in prose) classify as prose-only despite a code anchor existing. Workaround: case-fold during classification. Fix pending.
-4. **`index_helper` 500-file cap.** Per-package file listings cap at 500; concerns past the cap fall into `files_truncated: true`. This is why `_concern_input.py` walks the filesystem directly rather than reading `index.json` for the file list — `index.json` is structurally complete (manifest, deps, scripts) but file-list-incomplete on large packages.
+4. **`index_helper` 10000-file cap.** Per-package file listings cap at 10000 (`_MAX_FILES_PER_PACKAGE`); concerns past the cap fall into `files_truncated: true`. This is why `_concern_input.py` walks the filesystem directly rather than reading `index.json` for the file list — `index.json` is structurally complete (manifest, deps, scripts) but file-list-incomplete on large packages.
 5. **Vue cite-back through-sourcemap not validated.** `_validate_doc.py` checks cite-path existence + line-range only. Vue components compile through a sourcemap; validating that a `<file>.vue:line` cite resolves to the right line in the original `.vue` (not the compiled output) is deferred. `_sourcemap.py` exists but is not yet wired into validation.
 6. **Per-concern dispatch cost.** ~$0.20 Haiku + ~10s wall-clock per concern. Spec surfaces the breakdown via the cost gate before Phase 2 starts; for runs over $5 / 5 min, recommend confirming with the user. Stamp-gate skips are free.
 

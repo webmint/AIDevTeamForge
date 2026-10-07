@@ -14,7 +14,7 @@ disable-model-invocation: true
 - `workspace_mode` — install layout: `standalone` or `wrapper`
 - `project_state` — codebase maturity: `empty` or `brownfield`
 - `default_branch` — git default branch name (e.g., `main`)
-- `packages_detected` — array of per-package records: `{ path, manifest }`; `path` is the package folder relative to project root (or `.` for projects without distinct packages); empty `[]` for projects without manifests
+- `packages_detected` — array of per-package records: `{ path, manifest }`; `path` is the package folder relative to project root (or `.` for projects without distinct packages); `manifest` is the package's manifest filename, or `null` for a manifest-less package registered at Step 4; empty `[]` when Step 4 registers no package
 - `.devforge/index.json` — machine-readable per-package structural index (file listings, manifest scripts, manifest deps); produced by Step 6's `build-index`
 - `docs/structure.md` — human-readable workspace map; produced by Step 6's `build-index`
 
@@ -106,11 +106,47 @@ If the user hands this choice back to you, take `main`, apply it exactly as abov
 
 ## Step 4: Discover packages
 
+Registers the packages under `project_root` in three passes: directories holding a recognized package manifest (§4.1), manifest-less candidates the helper detects (§4.2), and manifest-less directories the user declares (§4.3). §4.2 and §4.3 register with `add-package --no-manifest`, which records `manifest: null`. When an `add-package --no-manifest` call exits non-zero, surface its stderr to the user and move on — the helper leaves `init.yaml` unchanged for that path, and re-running `/devforge:init-forge` asks again. `packages_detected` stays `[]` only when no pass registers a package.
+
+### 4.1: Walk Package Manifests
+
 Walk the directory tree under `project_root` (depth limit 4 — covers typical monorepo nesting like `apps/<name>/` or `packages/<scope>/<sub>/`) for any standard package-manifest file (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pubspec.yaml`, `Gemfile`, `*.gemspec`, `composer.json`, `mix.exs`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `*.csproj` — use your knowledge of which ecosystem uses which). Skip dependency / build / hidden directories (e.g., `node_modules/`, `vendor/`, `target/`, `build/`, `dist/`, `.venv/`, `venv/`, `__pycache__/`, and any directory whose name starts with `.`).
 
 If you encounter a file whose ecosystem you cannot confidently identify as a recognized package manifest, skip it rather than calling `add-package` — a missing entry is recoverable by a re-run, but a misclassified entry corrupts the canonical package index that downstream commands consume.
 
-For each manifest, invoke `.devforge/lib/init_helper add-package --path <package-dir-relative-to-project-root> --manifest <filename>`. If no manifests are found (which includes the empty-project case per Step 2), `packages_detected` stays `[]`.
+For each manifest, invoke `.devforge/lib/init_helper add-package --path <package-dir-relative-to-project-root> --manifest <filename>`.
+
+If Step 2 classified the project as `empty`, Step 4 ends here — skip §4.2 and §4.3.
+
+### 4.2: Register Manifest-less Candidates
+
+Invoke `.devforge/lib/init_helper detect-manifest-less` to propose manifest-less package directories. It detects one kind — Terraform root modules, recognized by their `*.tf` files — and never proposes a registered package or a directory inside a registered package other than `.` (see `cmd_detect_manifest_less` in the helper for the authoritative rules). It writes no state and prints one candidate path per line, relative to `project_root`, sorted; exit 0 with no output means no candidate.
+
+**If the helper exits non-zero:** surface its stderr to the user verbatim and continue at §4.3 without a candidate question.
+
+**If it printed no candidate:** continue at §4.3.
+
+**If it printed one or more candidates:**
+Use AskUserQuestion (replace `<candidates>` with every path the helper printed, each in backticks, comma-separated — the list can run past four entries, so the candidates go in the question text and never become options): "I found directories holding Terraform `*.tf` files that are not registered as packages: <candidates>. Should I register them as packages with no manifest?"
+- `Register all` (Recommended)
+- `Let me choose which`
+- `Register none`
+
+If the user picks `Register all`, invoke `.devforge/lib/init_helper add-package --path <candidate> --no-manifest` for each candidate. If the user picks `Let me choose which`, follow up with a plain free-text prompt: "Which of the listed directories should I register?", then invoke `.devforge/lib/init_helper add-package --path <candidate> --no-manifest` for each named directory that is on the candidate list; skip any named directory that is not, and tell the user it was skipped. If the user picks `Register none`, register no candidate. If the user hands this choice back to you ("you decide", "up to you", or the same in any language — including one typed as free text instead of an option): take `Register all`, apply it exactly as above, and name it in Step 5's delegated-values lines.
+
+A reply to the free-text prompt "Which of the listed directories should I register?" that hands the answer back to you names no directory — never pass it to `add-package`. Ask the prompt once more, and if the second reply again hands it back, apply `Register all` exactly as above and name it in Step 5's delegated-values lines. Unlike Step 3's free-text prompt, which ends the turn on a second hand-back, this prompt has a value to apply on the user's behalf: the detected candidates.
+
+### 4.3: Declare Other Package Directories
+
+Some package kinds have no file that reliably marks them — SQL procedure trees and workflow-definition YAML among them (`*.yaml` files, for one, are common across a repo, so a YAML marker would propose far too many directories). The user declares such directories instead.
+
+Use AskUserQuestion: "Does the project have other package directories with no manifest file — for example a tree of SQL procedures or a folder of workflow-definition YAML?"
+- `No other directories` (Recommended)
+- `Yes — let me type the paths`
+
+If the user picks `No other directories`, register nothing. If the user picks `Yes — let me type the paths`, follow up with a plain free-text prompt: "Which directories should I register? Give each path relative to the project root.", then invoke `.devforge/lib/init_helper add-package --path <path> --no-manifest` for each path the reply names. If the user hands this choice back to you, take `No other directories`, apply it exactly as above, and name it in Step 5's delegated-values lines.
+
+A reply to the free-text prompt "Which directories should I register? Give each path relative to the project root." that hands the answer back to you names no directory — never pass it to `add-package`. Ask the prompt once more, and if the second reply again hands it back, register nothing from it and continue with Step 5 — do not end the turn.
 
 ## Step 5: Render Summary
 
@@ -118,7 +154,7 @@ Renders the persisted state from `.devforge/init.yaml` so the user can verify th
 
 Invoke `.devforge/lib/init_helper summary`. The helper reads `.devforge/init.yaml` and prints a deterministic, human-readable report to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 
-**Delegated-values lines.** Below the fenced block, name each value this run applied because the user handed its question back to you in Step 1 or Step 3, one line per field in the form `<field>: <value> — applied by default — you delegated`. When the user handed back no question, add no such line.
+**Delegated-values lines.** Below the fenced block, name each value this run applied because the user handed its question back to you in Step 1, Step 3 or Step 4, one line per field in the form `<field>: <value> — applied by default — you delegated`. Step 4's delegated values all belong to `packages_detected` and share its one line: the `<value>` lists the candidates registered on a §4.2 hand-back, and adds `No other directories` when the §4.3 question was handed back. When the user handed back no question, add no such line.
 
 ## Step 6: Build the structural index
 
@@ -131,7 +167,7 @@ After `init.yaml` is fully populated (all five fields set + `packages_detected[]
 Exit code 0 is required. The helper:
 
 - Reads `.devforge/init.yaml` to get the workspace package list
-- For each package, walks the source tree (capped at 500 files), reads the package manifest (`package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod` / `pom.xml` / `build.gradle` / `*.csproj` / `composer.json` / `Gemfile` / `requirements.txt`), extracts manifest scripts + manifest dependencies
+- For each package, walks the source tree (capped at 10000 files per package — `_MAX_FILES_PER_PACKAGE` in the helper), looks for a manifest file in the package directory by name (`package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod` / `pom.xml` / `build.gradle` / `build.gradle.kts` / `*.csproj` / `composer.json` / `Gemfile` / `requirements.txt`) whatever `manifest` value `init.yaml` records for the package — `null` included — and extracts manifest scripts + manifest dependencies when it finds one; where it finds none, the package's index record carries no manifest, scripts or dependencies
 - Writes `.devforge/index.json` (machine-readable per-package structural data) and `docs/structure.md` (human-readable workspace map)
 
 Both writes are atomic. Re-running `build-index` is idempotent: byte-identical output across re-runs on stable input (modulo the `generated_at` timestamp).
