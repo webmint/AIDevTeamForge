@@ -5409,5 +5409,121 @@ class ReadManifestsNoManifestChainTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertIsNone(rec["framework_hint"])
 
 
+class ReadManifestsLanguageHintChainTests(_EnvIsolationMixin, unittest.TestCase):
+    """language_hint via the real chain: init_helper -> index_helper
+    build-index -> configure_helper read-manifests."""
+
+    def _chain(self, pkgs):
+        """pkgs: list of (path, manifest_or_None, [file names]). Returns
+        {path: entry}."""
+        for path, manifest, files in pkgs:
+            (self.install_root / path).mkdir(parents=True, exist_ok=True)
+            for name in files:
+                f = self.install_root / path / name
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text("", encoding="utf-8")
+            if manifest:
+                (self.install_root / path / manifest).write_text(
+                    "{}", encoding="utf-8"
+                )
+        steps = [
+            ("reset",),
+            ("set-workspace-mode", "standalone"),
+            ("set-project-root", "."),
+            ("set-project-state", "brownfield"),
+            ("set-default-branch", "main"),
+        ]
+        for path, manifest, _files in pkgs:
+            if manifest:
+                steps.append(("add-package", "--path", path,
+                              "--manifest", manifest))
+            else:
+                steps.append(("add-package", "--path", path, "--no-manifest"))
+        for args in steps:
+            proc = _run_init(self.devforge_dir, *args)
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        env = os.environ.copy()
+        env["DEVFORGE_DIR"] = str(self.devforge_dir)
+        idx = subprocess.run(
+            [sys.executable, str(_LIB_DIR / "index_helper.py"), "build-index"],
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        self.assertEqual(idx.returncode, 0, idx.stderr.decode())
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        return {e["path"]: e for e in data["packages"]}
+
+    def _hint(self, files):
+        return self._chain([("infra", None, files)])["infra"]["language_hint"]
+
+    def test_tf(self):
+        self.assertEqual(self._hint(["a.tf", "b.tf"]), "HCL")
+
+    def test_sql(self):
+        self.assertEqual(self._hint(["a.sql"]), "SQL")
+
+    def test_yaml_and_yml(self):
+        self.assertEqual(self._hint(["a.yaml", "b.yml"]), "YAML")
+
+    def test_majority_tf(self):
+        self.assertEqual(
+            self._hint(["a.tf", "b.tf", "c.tf", "d.yaml"]), "HCL")
+
+    def test_majority_yml(self):
+        self.assertEqual(self._hint(["a.tf", "b.yml", "c.yml"]), "YAML")
+
+    def test_tie_tf_sql_is_hcl(self):
+        self.assertEqual(self._hint(["a.tf", "a.sql"]), "HCL")
+
+    def test_tie_sql_yaml_is_sql(self):
+        self.assertEqual(self._hint(["a.sql", "a.yaml"]), "SQL")
+
+    def test_no_mapped_extension_is_null(self):
+        self.assertIsNone(self._hint(["run.sh"]))
+
+    def test_manifest_bearing_package_is_null_and_key_on_every_entry(self):
+        out = self._chain([
+            ("app", "package.json", ["x.tf"]),
+            ("infra", None, ["main.tf"]),
+        ])
+        self.assertIn("language_hint", out["app"])
+        self.assertIsNone(out["app"]["language_hint"])
+        self.assertEqual(out["infra"]["language_hint"], "HCL")
+        for entry in out.values():
+            self.assertIn("language_hint", entry)
+
+
+class DeriveLanguageHintTests(unittest.TestCase):
+    def setUp(self):
+        from _configure._cmds_read import _derive_language_hint
+        self.fn = _derive_language_hint
+
+    def test_manifest_values(self):
+        self.assertEqual(self.fn(None, ["a.tf"]), "HCL")
+        self.assertEqual(self.fn("", ["a.tf"]), "HCL")
+        self.assertIsNone(self.fn("package.json", ["a.tf"]))
+
+    def test_empty_or_missing_files(self):
+        self.assertIsNone(self.fn(None, []))
+        self.assertIsNone(self.fn(None, None))
+        self.assertIsNone(self.fn(None, "a.tf"))
+
+    def test_non_string_entries_skipped(self):
+        self.assertEqual(self.fn(None, [1, None, {"a": 1}, "x.sql"]), "SQL")
+        self.assertIsNone(self.fn(None, [1, None]))
+
+    def test_nested_paths_use_basename(self):
+        self.assertEqual(self.fn(None, ["modules/vpc/main.tf"]), "HCL")
+        self.assertIsNone(self.fn(None, ["a.tf/readme"]))
+
+    def test_case_sensitive(self):
+        self.assertIsNone(self.fn(None, ["A.TF"]))
+
+    def test_ties_and_majority(self):
+        self.assertEqual(self.fn(None, ["a.sql", "b.yaml"]), "SQL")
+        self.assertEqual(self.fn(None, ["a.tf", "b.yml", "c.yaml"]), "YAML")
+
+
 if __name__ == "__main__":
     unittest.main()

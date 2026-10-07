@@ -14,6 +14,46 @@ from ._hints import _derive_build_tool_hint, _derive_framework_hint
 from ._md_parsers import _parse_architecture_md, _parse_overview_md
 
 
+# Closed extension -> language map; ORDER matters (ties go to the earlier
+# language). Do not expand at runtime; plan 118 (mechanical stack detection)
+# may later subsume it.
+_LANGUAGE_EXTENSIONS = (
+    (".tf", "HCL"),
+    (".sql", "SQL"),
+    (".yaml", "YAML"),
+    (".yml", "YAML"),
+)
+
+
+def _derive_language_hint(manifest, files) -> Optional[str]:
+    """Language hint for a manifest-less package, else None.
+
+    Only when `manifest` is null/empty. Counts `files` per language by the
+    case-sensitive suffix of each file's basename; the most frequent language
+    wins, ties broken by first appearance in _LANGUAGE_EXTENSIONS.
+    """
+    if manifest or not isinstance(files, list):
+        return None
+    languages = []
+    for _ext, lang in _LANGUAGE_EXTENSIONS:
+        if lang not in languages:
+            languages.append(lang)
+    counts = {lang: 0 for lang in languages}
+    for f in files:
+        if not isinstance(f, str):
+            continue
+        base = f.rsplit("/", 1)[-1]
+        for ext, lang in _LANGUAGE_EXTENSIONS:
+            if base.endswith(ext):
+                counts[lang] += 1
+                break
+    best = None
+    for lang in languages:
+        if counts[lang] and (best is None or counts[lang] > counts[best]):
+            best = lang
+    return best
+
+
 def cmd_read_init(args: argparse.Namespace) -> int:
     """Read .devforge/init.yaml and emit JSON to stdout.
 
@@ -107,6 +147,9 @@ def cmd_read_docs(args: argparse.Namespace) -> int:
 def cmd_read_manifests(args: argparse.Namespace) -> int:
     """Read .devforge/index.json and emit per-package script tables as JSON.
 
+    Each entry also carries `language_hint` (HCL / SQL / YAML from the
+    package's `files`, only for a package with no manifest; else null).
+
     Exits 1 if index.json is missing or unreadable.
     """
     index_path = Path(args.devforge_dir) / "index.json"
@@ -196,6 +239,7 @@ def cmd_read_manifests(args: argparse.Namespace) -> int:
             "dev_dependencies": dev_deps,
             "build_tool_hint": build_hint,
             "framework_hint": framework_hint,
+            "language_hint": _derive_language_hint(manifest, pkg.get("files")),
         })
 
     sys.stdout.write(json.dumps({"packages": packages_out}, indent=2))
