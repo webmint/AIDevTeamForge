@@ -25,14 +25,17 @@ _LANGUAGE_EXTENSIONS = (
 )
 
 
-def _derive_language_hint(manifest, files) -> Optional[str]:
-    """Language hint for a manifest-less package, else None.
+def _derive_language_hint(
+    registered_without_manifest, files
+) -> Optional[str]:
+    """Language hint for a package registered without a manifest, else None.
 
-    Only when `manifest` is null/empty. Counts `files` per language by the
+    Only when `registered_without_manifest` is true (the init.yaml record's
+    `manifest` is null, i.e. `add-package --no-manifest`). Counts `files` per language by the
     case-sensitive suffix of each file's basename; the most frequent language
     wins, ties broken by first appearance in _LANGUAGE_EXTENSIONS.
     """
-    if manifest or not isinstance(files, list):
+    if not registered_without_manifest or not isinstance(files, list):
         return None
     languages = []
     for _ext, lang in _LANGUAGE_EXTENSIONS:
@@ -148,7 +151,10 @@ def cmd_read_manifests(args: argparse.Namespace) -> int:
     """Read .devforge/index.json and emit per-package script tables as JSON.
 
     Each entry also carries `language_hint` (HCL / SQL / YAML from the
-    package's `files`, only for a package with no manifest; else null).
+    package's `files`, only for a package whose init.yaml record has
+    `manifest: null`, i.e. registered via `add-package --no-manifest`; else
+    null). If init.yaml is missing, unreadable or unparseable every
+    `language_hint` is null.
 
     Exits 1 if index.json is missing or unreadable.
     """
@@ -178,6 +184,21 @@ def cmd_read_manifests(args: argparse.Namespace) -> int:
             )
         )
         return 1
+
+    # Manifest-less signal: the init.yaml record's `manifest` is None.
+    manifestless_paths = set()
+    try:
+        init_text = (
+            Path(args.devforge_dir) / init_helper.OUTPUT_FILE_NAME
+        ).read_text(encoding="utf-8")
+        for rec in init_helper.parse_yaml(init_text).get("packages_detected", []):
+            if not isinstance(rec, dict) or rec.get("manifest") is not None:
+                continue
+            rec_path = rec.get("path")
+            if isinstance(rec_path, str):
+                manifestless_paths.add(init_helper._normalize_path(rec_path))
+    except (OSError, init_helper.YamlParseError):
+        manifestless_paths = set()
 
     packages_out = []
     raw_packages = index.get("packages", {})
@@ -239,7 +260,11 @@ def cmd_read_manifests(args: argparse.Namespace) -> int:
             "dev_dependencies": dev_deps,
             "build_tool_hint": build_hint,
             "framework_hint": framework_hint,
-            "language_hint": _derive_language_hint(manifest, pkg.get("files")),
+            "language_hint": _derive_language_hint(
+                isinstance(path, str)
+                and init_helper._normalize_path(path) in manifestless_paths,
+                pkg.get("files"),
+            ),
         })
 
     sys.stdout.write(json.dumps({"packages": packages_out}, indent=2))
