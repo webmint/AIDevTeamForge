@@ -1354,6 +1354,131 @@ def cmd_find_nested_git(args):
     return 0
 
 
+# Directory names `detect-manifest-less` never examines beyond the shared
+# NESTED_GIT_SKIP set. Mirrors /init-forge Step 4's skip list, which names
+# `vendor`; kept separate because NESTED_GIT_SKIP is shared with
+# find-nested-git, _scan_for_manifests and _detect_test_infra.
+_MANIFEST_LESS_EXTRA_SKIP = {"vendor"}
+
+# `*.tf` files are examined down to this depth, counted per FILE as
+# _scan_for_manifests counts it (file directly in project_root = depth 1).
+_MANIFEST_LESS_MAX_FILE_DEPTH = 4
+
+
+def _has_tf_file(directory):
+    """True if `directory` holds a regular file matching the glob `*.tf`.
+
+    Case-sensitive; a dot-prefixed basename (`.tf`, `.hidden.tf`) never
+    matches, as with shell/glob semantics.
+    """
+    try:
+        for entry in directory.iterdir():
+            name = entry.name
+            if (
+                name.endswith(".tf")
+                and not name.startswith(".")
+                and entry.is_file()
+            ):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def cmd_detect_manifest_less(args):
+    """Propose manifest-less package directories (Terraform root modules).
+
+    Read-only: reads init.yaml, writes nothing. A candidate is a directory
+    holding a regular `*.tf` file. Files are examined down to depth 4 (a
+    file directly in project_root is depth 1, so the deepest proposable
+    directory is 3 components below project_root). Only the shallowest
+    candidate on each branch is proposed; its subtree is not descended.
+    Skipped: dot-directories, NESTED_GIT_SKIP names, and `vendor`.
+    Registered non-`.` packages are never proposed or descended into; a
+    candidate that merely CONTAINS a registered package is still proposed.
+    If project_root itself holds a `*.tf` file and no `.` package is
+    registered, only `.` is printed. Output: project_root-relative POSIX
+    paths, one per line, sorted. Exit 1 if init.yaml is missing or
+    unreadable; exit 2 if project_root is unset or not a directory.
+    No state is written.
+    """
+    path = _output_file_path()
+    if not path.exists():
+        sys.stderr.write(
+            "init_helper detect-manifest-less: init.yaml not found at {0}\n".format(path)
+        )
+        return 1
+    try:
+        state = parse_yaml(path.read_text(encoding="utf-8"))
+    except OSError as err:
+        sys.stderr.write(
+            "init_helper detect-manifest-less: cannot read {0}: {1}\n".format(path, err)
+        )
+        return 1
+    except YamlParseError as err:
+        sys.stderr.write(
+            "init_helper detect-manifest-less: cannot parse {0}: {1}\n".format(path, err)
+        )
+        return 1
+    project_root_value = state.get("project_root")
+    if project_root_value is None or not str(project_root_value).strip():
+        return _die(
+            "detect-manifest-less: project_root is unset; "
+            "run set-project-root first",
+            code=2,
+        )
+    install_root = path.parent.parent
+    project_root = _resolve_project_root(project_root_value, install_root)
+    if not project_root.is_dir():
+        return _die(
+            "detect-manifest-less: project root {0} is not a directory".format(
+                project_root
+            ),
+            code=2,
+        )
+    registered = set(
+        _normalize_path(r.get("path", "")) for r in state["packages_detected"]
+    )
+    if _has_tf_file(project_root) and "." not in registered:
+        sys.stdout.write(".\n")
+        return 0
+    registered.discard(".")
+
+    found = []
+
+    def _walk(directory, rel_parts):
+        # Children of `directory` sit len(rel_parts) + 1 components below
+        # project_root, so their files have depth len(rel_parts) + 2.
+        if len(rel_parts) + 2 > _MANIFEST_LESS_MAX_FILE_DEPTH:
+            return
+        try:
+            children = sorted(directory.iterdir())
+        except OSError:
+            return
+        for entry in children:
+            name = entry.name
+            if (
+                name.startswith(".")
+                or name in NESTED_GIT_SKIP
+                or name in _MANIFEST_LESS_EXTRA_SKIP
+                or not entry.is_dir()
+            ):
+                continue
+            parts = rel_parts + [name]
+            rel = "/".join(parts)
+            if rel in registered:
+                continue
+            if _has_tf_file(entry):
+                found.append(rel)
+                continue
+            _walk(entry, parts)
+
+    _walk(project_root, [])
+    for rel in sorted(found):
+        sys.stdout.write("{0}\n".format(rel))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -1397,6 +1522,12 @@ def build_parser():
 
     sp = subparsers.add_parser("find-nested-git")
     sp.set_defaults(func=cmd_find_nested_git)
+
+    sp = subparsers.add_parser(
+        "detect-manifest-less",
+        help="Propose manifest-less package dirs (Terraform *.tf root modules); read-only.",
+    )
+    sp.set_defaults(func=cmd_detect_manifest_less)
 
     sp = subparsers.add_parser("summary", help="Render the init report to stdout.")
     sp.set_defaults(func=cmd_summary)

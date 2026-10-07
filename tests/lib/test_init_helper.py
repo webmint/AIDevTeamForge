@@ -1,6 +1,6 @@
 """Tests for src/devforge/lib/init_helper.py.
 
-Covers the closed-shape yaml emitter+parser, all 8 subcommands, set-time
+Covers the closed-shape yaml emitter+parser, all 12 subcommands, set-time
 validation, atomic writes, the find-nested-git read-only scan, the
 launcher script, and DEVFORGE_DIR env override.
 
@@ -2212,6 +2212,165 @@ class AddPackageNoManifestTests(unittest.TestCase):
         proc = _run_cli(self.devforge_dir, "verify")
         self.assertNotIn(b"packages_detected", proc.stderr)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+class DetectManifestLessTests(unittest.TestCase):
+    """detect-manifest-less: read-only proposal of `*.tf` directories.
+    init.yaml is built through the real CLI setters; install_root = tmp."""
+
+    def setUp(self):
+        self._saved_env = os.environ.pop("DEVFORGE_DIR", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._tmp.name)
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / init_helper.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        if self._saved_env is None:
+            os.environ.pop("DEVFORGE_DIR", None)
+        else:
+            os.environ["DEVFORGE_DIR"] = self._saved_env
+
+    def _populate(self, root="."):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "standalone")
+        if root is not None:
+            _run_cli(self.devforge_dir, "set-project-root", root)
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+
+    def _tf(self, rel):
+        p = self.install_root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# tf\n", encoding="utf-8")
+
+    def _add(self, *args):
+        proc = _run_cli(self.devforge_dir, "add-package", *args)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def _detect(self, expected):
+        proc = _run_cli(self.devforge_dir, "detect-manifest-less")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.decode("utf-8"), expected)
+
+    def test_flat_root_module(self):
+        self._populate()
+        self._tf("infra/main.tf")
+        self._detect("infra\n")
+
+    def test_multiple_sorted(self):
+        self._populate()
+        for r in ("envs/dev", "envs/prod", "modules/vpc", "modules/db"):
+            self._tf(r + "/main.tf")
+        self._detect("envs/dev\nenvs/prod\nmodules/db\nmodules/vpc\n")
+
+    def test_nested_modules_not_descended(self):
+        self._populate()
+        self._tf("infra/main.tf")
+        self._tf("infra/modules/vpc/main.tf")
+        self._detect("infra\n")
+
+    def test_skipped_dirs(self):
+        self._populate()
+        self._tf(".terraform/x/main.tf")
+        self._tf("node_modules/x/main.tf")
+        self._tf("vendor/x/main.tf")
+        self._detect("")
+
+    def test_inside_registered_package_excluded(self):
+        self._populate()
+        self._add("--path", "apps/web", "--manifest", "package.json")
+        self._tf("apps/web/infra/main.tf")
+        self._detect("")
+
+    def test_registered_package_itself_excluded(self):
+        self._populate()
+        self._tf("infra/main.tf")
+        self._add("--path", "infra", "--no-manifest")
+        self._detect("")
+
+    def test_candidate_containing_registered_package_proposed(self):
+        self._populate()
+        self._tf("infra/main.tf")
+        (self.install_root / "infra" / "app").mkdir()
+        self._add("--path", "infra/app", "--no-manifest")
+        self._detect("infra\n")
+
+    def test_depth_four_file_examined(self):
+        self._populate()
+        self._tf("a/b/c/main.tf")
+        self._detect("a/b/c\n")
+
+    def test_depth_five_file_not_examined(self):
+        self._populate()
+        self._tf("a/b/c/d/main.tf")
+        self._detect("")
+
+    def test_root_tf_without_dot_record_prints_dot_only(self):
+        self._populate()
+        self._tf("main.tf")
+        self._tf("infra/main.tf")
+        self._detect(".\n")
+
+    def test_root_tf_with_dot_record_walks_on(self):
+        self._populate()
+        self._add("--path", ".", "--manifest", "package.json")
+        self._tf("main.tf")
+        self._tf("infra/main.tf")
+        self._detect("infra\n")
+
+    def test_directory_named_tf_not_candidate(self):
+        self._populate()
+        (self.install_root / "x.tf").mkdir()
+        self._detect("")
+
+    def test_dotfile_tf_not_candidate(self):
+        self._populate()
+        self._tf("infra/.tf")
+        self._tf("infra/.hidden.tf")
+        self._detect("")
+
+    def test_registered_path_with_trailing_slash_excluded(self):
+        self._populate()
+        self._tf("infra/main.tf")
+        self._add("--path", "infra/", "--no-manifest")
+        self._detect("")
+
+    def test_deterministic_and_state_unchanged(self):
+        self._populate()
+        self._tf("envs/dev/main.tf")
+        self._tf("modules/vpc/main.tf")
+        before = self.output_file.read_bytes()
+        first = _run_cli(self.devforge_dir, "detect-manifest-less")
+        second = _run_cli(self.devforge_dir, "detect-manifest-less")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertEqual(self.output_file.read_bytes(), before)
+
+    def test_missing_init_yaml_exit_1(self):
+        proc = _run_cli(self.devforge_dir, "detect-manifest-less")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"not found", proc.stderr)
+
+    def test_unset_project_root_exit_2(self):
+        self._populate(root=None)
+        proc = _run_cli(self.devforge_dir, "detect-manifest-less")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"set-project-root", proc.stderr)
+
+    def test_project_root_not_a_directory_exit_2(self):
+        self._populate(root="gone")
+        proc = _run_cli(self.devforge_dir, "detect-manifest-less")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not a directory", proc.stderr)
+
+    def test_wrapper_mode_paths_relative_to_project_root(self):
+        self._populate(root="inner")
+        self._tf("inner/infra/main.tf")
+        self._tf("outer/main.tf")
+        self._detect("infra\n")
 
 
 if __name__ == "__main__":
