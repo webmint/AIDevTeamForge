@@ -12,7 +12,7 @@ This file is **orientation only** for the `/devforge:finalize` orchestrator. It 
 - `docs/<package>/architecture.md` — update the `## Patterns` section (with cite-back) when the feature changed an architecture pattern within a package.
 - `docs/architecture.md` — update the project-tier architecture doc when the feature changed cross-package architecture.
 
-NEVER point the agent at `docs/features/`, `docs/api/`, or `docs/guides/` — those tiers are dropped under Plan F (see `tech-writer.md`'s Plan-F notes). A new concern (a new `src/` subfolder), a new API surface, or a new domain term is NOT hand-authored here — those are left to `/devforge:generate-docs` on its next run, which is why PHASE 4 prints a soft `/devforge:generate-docs` reminder for structural doc drift this surgical pass does not cover.
+NEVER point the agent at `docs/features/`, `docs/api/`, or `docs/guides/` — those tiers are dropped under Plan F (see `tech-writer.md`'s Plan-F notes). A new concern (a new `src/` subfolder; a package with no `src/` directory, other than the project root, is one whole-package concern), a new API surface, or a new domain term is NOT hand-authored here — those are left to `/devforge:generate-docs` on its next run, which is why PHASE 4 prints a soft `/devforge:generate-docs` reminder for structural doc drift this surgical pass does not cover.
 
 ### Why both `/devforge:finalize` and `/devforge:generate-docs` touch `docs/`
 

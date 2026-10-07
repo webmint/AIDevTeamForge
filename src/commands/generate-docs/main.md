@@ -107,7 +107,7 @@ Then for each kept entry where `status` is `changed` or `new`, run Steps 2.1–2
 ```
 
 Capture full JSON output to a variable. Fields used downstream:
-- `tree_text` — mechanical ASCII tree from index.json, fed to `set-doc-structure`
+- `tree_text` — mechanical ASCII tree built from the helper's filesystem walk of the concern (not from index.json), passed verbatim to Step 2.2's `init-doc --tree`; `set-doc-structure` (Step 2.4) then annotates its leaves
 - `files[].path` — project-relative file paths
 - `files[].comment_rich_span` — top-of-file lines + TODO context windows; used by orchestrator to infer leaf annotations
 - `source_stamp` — frontmatter input
@@ -189,7 +189,7 @@ When the Step 2.1 JSON has `"split": true`, the concern was over the threshold +
 For each entry in `sub_concerns[]`, run the existing Steps 2.2–2.5 unchanged with these substitutions:
 - `--target` → `"$pkg/$concern/$sub_name"` (where `$sub_name` is `sub_concerns[i].concern`)
 - Frontmatter `concern` → `$sub_name`; `package` → `$pkg`; `parent_concern` → `$concern`; `source_stamp` → `sub_concerns[i].source_stamp`; `files` → `len(sub_concerns[i].files)` (Step 2.2 originally pulls `files_count` from the top-level `files` field, but that field is absent in split-batch — use the per-child entry instead)
-- `--tree` → `sub_concerns[i].tree_text` (rooted at `<pkg>/src/<concern>/<sub_name>/`)
+- `--tree` → `sub_concerns[i].tree_text` (rooted at `<pkg>/src/<concern>/<sub_name>/`, or at `<pkg>/<sub_name>/` when the package has no `src/` directory)
 - Annotations source → `sub_concerns[i].files[].comment_rich_span` (NOT the parent's full file list)
 
 Each child renders to `docs/<pkg>/<concern>/<sub_name>/index.md`. Validation rules are identical to single-batch concerns (Purpose + Structure required; cite-backs resolve).
@@ -285,7 +285,7 @@ Frontmatter:
 Compose orchestrator-direct (no subagent):
 - **Purpose** (1-3 sentences) — synthesize across `concern_seeds[*].purpose_text` + `package_root_files[*].comment_rich_span`. Cross-cuts named. Banned phrases absent.
 - **Concerns** (bullet list) — one entry per `concern_seeds[*]`: `{name: <concern>, role: <one-line role from concern_seeds[*].purpose_text>, cite: <docs/<P>/<concern>/>}`.
-- **Files** (bullet list) — one entry per `src_root_files[*]`: `{name: <basename>, role: <1-line description from comment_rich_span>}`. Loose files at `<P>/src/` root (e.g. `index.ts` barrel, `env.d.ts`, `apolloClient.ts`) are NOT inside any concern subfolder; this section surfaces them at package tier so they don't fall through unannotated.
+- **Files** (bullet list) — one entry per `src_root_files[*]`: `{name: <basename>, role: <1-line description from comment_rich_span>}`. Loose files at `<P>/src/` root (e.g. `index.ts` barrel, `env.d.ts`, `apolloClient.ts`) are NOT inside any concern subfolder; this section surfaces them at package tier so they don't fall through unannotated. A package with no `src/` directory has an empty `src_root_files`: its single concern is rooted at `<P>/`, so the concern walk already reaches the loose files there.
 
 ```
 ./.devforge/lib/generate_docs_helper set-doc-purpose --tier package-overview --target "$P" --text "..."

@@ -43,7 +43,7 @@ docs/
   <package>/                       # One subdir per package detected by /devforge:init-forge
     overview.md                    # Package role + concern enumeration
     architecture.md                # Package layers + patterns
-    <concern>/                     # One subdir per src/ subfolder concern
+    <concern>/                     # One subdir per concern: a src/ subfolder, or the whole package when it has no src/ and is not the project root
       index.md                     # Concern: Purpose + Structure (annotated tree) + Hazards
 ```
 
@@ -311,7 +311,7 @@ Docs/ are LLM context source first, dev-greppable second. Density and structure 
 
 ### File Naming
 - Tier files use fixed names: `overview.md`, `architecture.md`
-- Concern dirs use the source-subfolder name verbatim (e.g., `docs/<package>/order/index.md` for `<package>/src/order/`)
+- Concern dirs use the source-subfolder name verbatim (e.g., `docs/<package>/order/index.md` for `<package>/src/order/`); the single concern of a package with no `src/` directory (see Rules below) takes the package directory's basename (e.g., `docs/infra/tf/tf/index.md` for `infra/tf/`)
 - Package dirs mirror the package's index.json key (e.g., `docs/module/apps/app/`)
 
 ### When Docs Are Generated
@@ -363,7 +363,7 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 ### Rules
 - Every cite-back must resolve at validation time (file exists, line range valid)
 - Vue cite-backs (`<f>.vue:N`) are validated through the `.vue.ts.map` sourcemap chain
-- Concerns are derived from `src/` subfolders enumerated by /devforge:init-forge's index.json
+- Concerns are derived from the filesystem under the packages in /devforge:init-forge's index.json: a package's `src/` subfolders, or the whole package as one concern when it has no `src/` directory — except the project root package `.` (in standalone and wrapper installs alike), which needs `src/` (a monorepo's `.` is skipped)
 - `docs/api/`, `docs/features/`, `docs/guides/` are NOT generated under Plan F
 
 ## Bug Report Rules

@@ -289,7 +289,7 @@ docs/
   <package>/                   # One subdir per package (from .devforge/index.json)
     overview.md                # Package role + concerns list
     architecture.md            # Package layers + patterns
-    <concern>/                 # One subdir per src/ subfolder
+    <concern>/                 # One subdir per concern: a src/ subfolder, or the whole package when it has no src/ and is not the project root
       index.md                 # Concern: Purpose + Structure (annotated tree, fenced) — LLM-first density
 ```
 
