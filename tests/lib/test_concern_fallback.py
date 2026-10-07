@@ -367,6 +367,47 @@ class DotPackageTests(_Base):
                          [("infra/tf", "tf")])
 
 
+class WrapperRootNeverFallsBackTests(_Base):
+    """D5 (iii): the indexed project root (`.`) keeps the `src/` requirement."""
+
+    def _wrapper(self, packages):
+        self.project = self.root / "inner"
+        self.init(packages, mode="wrapper", project_root="inner")
+
+    def test_inner_root_without_src_yields_zero_concerns(self):
+        self.write("inner/main.tf", base=self.root)
+        self._wrapper([(".", None)])
+        self.assertEqual(_preflight._enumerate_concerns(self.devforge, self.root), [])
+        self.assertIsNone(_concern_root.fallback_concern(self.root, "inner"))
+        proc = _run("generate_docs_helper.py", self.root, "package-input",
+                    "--package", "inner", "--devforge-dir", str(self.devforge))
+        self.assertEqual(proc.returncode, 2, proc.stderr.decode())
+        self.assertIn("no `src/<concern>/` subdirs", proc.stderr.decode())
+
+    def test_inner_root_with_src_keeps_concern(self):
+        self.write("inner/src/ui/x.ts", base=self.root)
+        self.write("inner/package.json", "{}\n", base=self.root)
+        self._wrapper([(".", "package.json")])
+        self.assertEqual(_preflight._enumerate_concerns(self.devforge, self.root),
+                         [("inner/.", "ui")])
+
+    def test_non_root_package_still_falls_back(self):
+        self.write("inner/infra/tf/main.tf", base=self.root)
+        self._wrapper([("infra/tf", None)])
+        self.assertEqual(_preflight._enumerate_concerns(self.devforge, self.root),
+                         [("inner/infra/tf", "tf")])
+
+    def test_unit_index_root_and_no_index(self):
+        self.write("inner/main.tf", base=self.root)
+        self.write("other/main.tf", base=self.root)
+        # No index.json yet: only the literal "." check applies.
+        self.assertEqual(_concern_root.fallback_concern(self.root, "inner"), "inner")
+        self._wrapper([(".", None)])
+        self.assertIsNone(_concern_root.fallback_concern(self.root, "inner"))
+        self.assertIsNone(_concern_root.fallback_concern(self.root, "inner/."))
+        self.assertEqual(_concern_root.fallback_concern(self.root, "other"), "other")
+
+
 class NestedPackageExclusionTests(_Base):
     """OQ-5 -- a registered package nested below a fallback package."""
 

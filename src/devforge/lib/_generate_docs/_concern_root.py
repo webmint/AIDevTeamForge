@@ -10,8 +10,10 @@ Two layouts exist. A package with a `src/` directory has one concern per
 `<pkg>/src/<concern>/` subdirectory. A *fallback package* -- a non-`.`
 package whose directory exists but holds no `src/` directory -- has exactly
 ONE concern, named after the package directory's basename and rooted at
-`<pkg>/` itself (`fallback_concern`). `.` never falls back: a standalone root
-keeps forge artifacts (`specs/`, `docs/`) that must not become concerns.
+`<pkg>/` itself (`fallback_concern`). The project root (`.` in index.json)
+never falls back, in standalone and wrapper installs alike; in a standalone
+install it also holds forge artifacts (`specs/`, `docs/`) that must not
+become concerns.
 
 Every function takes the project root and the package path as the caller
 knows them. The layout decision is made here, from the filesystem, so call
@@ -42,17 +44,44 @@ def src_root_dir(project_root: Path, pkg: str) -> Path:
     return project_root / pkg / SRC_DIR_NAME
 
 
+def _is_indexed_project_root(project_root: Path, candidate: Path) -> bool:
+    """True when `candidate` is the directory `index.json` records as root.
+
+    The guard is only as good as `index.json`'s recorded `project_root`: a
+    stale or moved index falls back to the literal `"."` check alone, the
+    same exposure `_nested_packages.bridge_prefix` has.
+    """
+    from ._nested_packages import load_index  # deferred: it imports this module
+
+    index = load_index(project_root / ".devforge")
+    raw = index.get("project_root") if index else None
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        return candidate.resolve() == Path(raw).resolve()
+    except OSError:
+        return False
+
+
 def fallback_concern(project_root: Path, pkg: str) -> Optional[str]:
     """The single concern name of a fallback package, else None.
 
-    A fallback package is a non-`.` package whose directory exists and has no
+    A fallback package is a non-root package whose directory exists and has no
     `src/` directory. Its concern is the package directory's basename (`tf`
-    for `infra/tf`), rooted at the package directory.
+    for `infra/tf`), rooted at the package directory. The project root (`.`
+    in index.json) never falls back, in standalone and wrapper installs
+    alike: besides the literal `"."`, a package resolving to the indexed
+    `project_root` is excluded (a wrapper's inner root bridges to
+    `<inner>`, not `.`). Without a readable `index.json` only the `"."`
+    check applies; the guard is only as good as the index's recorded
+    `project_root` (a stale or moved index degrades to that same check).
     """
     posix = PurePosixPath(pkg)
     if posix == PurePosixPath("."):
         return None
     root = project_root / pkg
+    if _is_indexed_project_root(project_root, root):
+        return None
     if not root.is_dir() or (root / SRC_DIR_NAME).is_dir():
         return None
     return posix.name or None
