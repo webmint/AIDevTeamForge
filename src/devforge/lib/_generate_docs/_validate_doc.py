@@ -187,13 +187,15 @@ def _resolve_cite_path(
 
     Plan F allows three cite-path forms (in priority order):
 
-    1. Full project-relative path — `<pkg>/src/<concern>/.../<file>`.
+    1. Full project-relative path — `<pkg>/src/<concern>/.../<file>` (or
+       `<pkg>/.../<file>` for a fallback concern).
        Tried first; resolves verbatim under project_root.
     2. In-concern basename — when the cited file lives in the doc's own
        concern subfolder, the agent may write only the basename. Source
-       dir is `<pkg>/src/<concern>/` on disk; target convention is
-       `<pkg>/<concern>` (no `src/`). This branch splits target into pkg
-       + concern parts and probes `<project_root>/<pkg>/src/<concern>/<cite_path>`.
+       dir is `<pkg>/src/<concern>/` on disk (or `<pkg>/` for a fallback
+       concern); target convention is `<pkg>/<concern>` (no `src/`). This
+       branch splits target into pkg + concern parts and probes
+       `concern_dir(project_root, pkg, concern)/<cite_path>`.
     3. Verbatim target append — fallback `<project_root>/<target>/<cite_path>`
        for callers passing a target that already includes `src/`.
 

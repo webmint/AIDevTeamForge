@@ -38,6 +38,7 @@ from ._render import (
     render_concern_skeleton,
 )
 from ._concern_root import concern_pkg_prefix
+from ._nested_packages import fallback_excluded_rels, under_any
 from ._setters_concern import _load_index_files, _path_contains_trivial_dir
 from ._state import (
     StateLoadError,
@@ -138,7 +139,8 @@ def _check_file_docs_complete(
     """Gate: every expected per-source-file .md must exist and exceed
     FILE_DOC_MIN_SIZE_BYTES.
 
-    Expected set = index.json files filtered to src/<concern>/, trivial-leaf
+    Expected set = index.json files filtered to the concern (src/<concern>/, or the whole
+    package for a fallback concern), trivial-leaf
     excluded, empty-suffix excluded. Each maps to:
       project_root/docs/<package>/<concern>/<suffix>.md
 
@@ -161,9 +163,13 @@ def _check_file_docs_complete(
 
     subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, package_path, concern_name)
 
+    excluded = fallback_excluded_rels(devforge_dir, package_path, concern_name)
+
     expected_paths = []  # List of (expected_md_path, suffix) tuples
     for rel_path in files:
         if not rel_path.startswith(subfolder_prefix):
+            continue
+        if under_any(rel_path, excluded):
             continue
         if _path_contains_trivial_dir(rel_path):
             continue

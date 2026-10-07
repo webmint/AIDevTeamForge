@@ -62,7 +62,8 @@ from generate_docs_schema import (
     HAZARD_CATEGORIES,
 )
 
-from ._concern_root import SRC_DIR_NAME, concern_pkg_prefix
+from ._concern_root import concern_pkg_prefix
+from ._nested_packages import fallback_excluded_rels, under_any
 from ._state import (
     StateLoadError,
     _AbortTransaction,
@@ -217,8 +218,11 @@ def _check_tree_entry_coverage(
 ) -> Optional[str]:
     """Return an error message if tree coverage is below threshold, or None on pass.
 
-    Derives the expected subfolder as "src/<concern_name>" relative to the
-    package. Degrades gracefully (returns None with a warning to stderr) when:
+    Derives the expected subfolder from the concern-root owner: "src/<concern_name>"
+    relative to the package, or the whole package for a fallback concern (whose
+    files exclude any registered package nested below it).
+
+    Degrades gracefully (returns None with a warning to stderr) when:
       - index.json is missing
       - pkg_path not found in index.json
       - subfolder lookup yields zero files (path mismatch or unregistered)
@@ -234,8 +238,11 @@ def _check_tree_entry_coverage(
         )
         return None
 
-    # Convention: concern subfolder = src/<concern_name>/ relative to pkg.
+    # Concern subfolder prefix, relative to pkg: src/<concern_name>/ for a src/
+    # package, "" (the whole package) for a fallback concern.
     subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, pkg_path, concern_name)
+    excluded = fallback_excluded_rels(devforge_dir, pkg_path, concern_name)
+    files = [f for f in files if not under_any(f, excluded)]
     expected_count = _build_expected_entry_set(files, subfolder_prefix)
 
     if expected_count == 0:
@@ -261,7 +268,7 @@ def _check_tree_entry_coverage(
         return (
             "set-concern-tree: tree coverage {pct}% below threshold"
             " {threshold_pct}% — rendered {rendered} entries, expected"
-            " {expected} (concern={concern}, subfolder={src}/{concern})."
+            " {expected} (concern={concern}, subfolder={subfolder})."
             " The strict spec mandate \"EVERY entry at EVERY depth\" was not"
             " satisfied; recurse into subfolders or document missing"
             " entries.".format(
@@ -270,7 +277,7 @@ def _check_tree_entry_coverage(
                 rendered=rendered_count,
                 expected=expected_count,
                 concern=concern_name,
-                src=SRC_DIR_NAME,
+                subfolder=subfolder_prefix.rstrip("/") or "<package root>",
             )
         )
     return None

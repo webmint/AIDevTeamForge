@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._concern_input import _extract_comment_rich_span
-from ._concern_root import concerns_parent_dir, src_root_dir
+from ._concern_root import concerns_parent_dir, fallback_concern, src_root_dir
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 
 _PER_FILE_SPAN_CAP = 6 * 1024
@@ -69,7 +69,15 @@ _CONCERN_DOCS_RELATIVE = "docs"
 
 
 def _enumerate_concerns(project_root: Path, pkg: str) -> List[str]:
-    """List direct subdirs of `<project_root>/<pkg>/src/`. Sorted alphabetical."""
+    """List the concerns of `<pkg>`: direct subdirs of `<project_root>/<pkg>/src/`, sorted.
+
+    A fallback package (non-`.`, directory exists, no `src/`) has exactly one
+    concern, named after its directory; the skip predicate below filters
+    children of `src/` only and is never applied to that name.
+    """
+    fallback = fallback_concern(project_root, pkg)
+    if fallback is not None:
+        return [fallback]
     src_dir = concerns_parent_dir(project_root, pkg).resolve()
     if not src_dir.is_dir():
         return []
@@ -168,6 +176,10 @@ def _collect_src_root_files(
     project_root: Path, pkg: str
 ) -> Tuple[List[Dict[str, str]], List[Tuple[str, str]]]:
     """Walk `<project_root>/<pkg>/src/` for direct files (non-dir).
+
+    Yields nothing for a fallback package (no `src/`): its loose files belong
+    to the single fallback concern and reach the package stamp through that
+    concern's `source_stamp`.
 
     Returns (records, hash_pairs). Each record has `path` (project-relative),
     `basename`, and `comment_rich_span` extracted via F.2's helper.

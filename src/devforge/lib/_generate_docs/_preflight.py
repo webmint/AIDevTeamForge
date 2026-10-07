@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ._concern_input import (
     _DEFAULT_SPLIT_THRESHOLD_KB,
@@ -37,12 +37,22 @@ from ._concern_input import (
     _stamp_from_hashes,
     _walk_concern_subfolder,
 )
-from ._concern_root import concern_rel_prefix, concerns_parent_dir
+from ._concern_root import (
+    concern_rel_prefix,
+    concerns_parent_dir,
+    fallback_concern,
+    is_fallback_concern,
+    package_root,
+)
+from ._nested_packages import (
+    bridge_prefix,
+    fallback_excluded_rels,
+    load_index,
+)
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 from ._setters_concern import _path_contains_trivial_dir
 
 _PREFLIGHT_STAMP_FILE = ".preflight-stamp"
-_INDEX_FILE_NAME = "index.json"
 
 
 def _enumerate_concerns(
@@ -72,15 +82,13 @@ def _enumerate_concerns(
     need to support).
 
     For each resolved package path, walks `<project_root>/<full_pkg>/src/`
-    for direct subdirs; each non-trivial subdir is a concern. Packages
-    without a `src/` dir at the resolved location are skipped silently.
+    for direct subdirs; each non-trivial subdir is a concern. A non-`.`
+    package whose directory exists but holds no `src/` is a fallback package
+    (see `_concern_root.fallback_concern`) and yields ONE concern named after
+    its directory. Any other package without a `src/` dir is skipped silently.
     """
-    index_path = devforge_dir / _INDEX_FILE_NAME
-    if not index_path.exists():
-        return []
-    try:
-        index = json.loads(index_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    index = load_index(devforge_dir)
+    if index is None:
         return []
     packages = index.get("packages")
     if not isinstance(packages, dict):
@@ -88,16 +96,7 @@ def _enumerate_concerns(
 
     # Bridge index.json's package keys (relative to its project_root) to
     # paths relative to F.0's caller-supplied project_root.
-    prefix = ""
-    raw_index_root = index.get("project_root")
-    if isinstance(raw_index_root, str) and raw_index_root:
-        try:
-            index_root = Path(raw_index_root).resolve()
-            if index_root != project_root:
-                rel = index_root.relative_to(project_root)
-                prefix = str(rel) + "/"
-        except (ValueError, OSError):
-            prefix = ""
+    prefix = bridge_prefix(index, project_root)
 
     # When `.` is the sole package, it is a standalone single-root project
     # and must be enumerated. When other (non-`.`) packages exist, `.` is a
@@ -109,6 +108,12 @@ def _enumerate_concerns(
         if pkg == "." and has_non_dot:  # monorepo orchestration root → skip
             continue
         full_pkg = prefix + pkg
+        fallback = fallback_concern(project_root, full_pkg)
+        if fallback is not None:
+            # The fallback concern's name is never put through the skip
+            # predicate below, which filters children of `<pkg>/src/` only.
+            pairs.append((full_pkg, fallback))
+            continue
         src_dir = concerns_parent_dir(project_root, full_pkg)
         if not src_dir.is_dir():
             continue
@@ -162,6 +167,7 @@ def _diff_concern(
     project_root: Path,
     docs_root: Path,
     split_threshold_kb: int = _DEFAULT_SPLIT_THRESHOLD_KB,
+    exclude_rels: Sequence[str] = (),
 ) -> Dict[str, Any]:
     """Compute source_stamp for one concern + diff against existing doc.
 
@@ -171,9 +177,15 @@ def _diff_concern(
     + an aggregate parent stamp + parent status. Stamp aggregation matches
     concern-input's split-batch shape so the orchestrator's stamp-gate
     logic is symmetric across the two helpers.
+
+    ``exclude_rels`` are package-relative directories of registered packages
+    nested below a fallback package (`_nested_packages.fallback_excluded_rels`);
+    their files belong to no concern of ``pkg``.
     """
     project_root = project_root.resolve()
-    subfolder_abs, concern_files = _walk_concern_subfolder(project_root, pkg, concern)
+    subfolder_abs, concern_files = _walk_concern_subfolder(
+        project_root, pkg, concern, exclude_rels=exclude_rels
+    )
     if not concern_files:
         return {
             "package": pkg,
@@ -190,7 +202,13 @@ def _diff_concern(
         total_bytes = sum(
             len(r["comment_rich_span"].encode("utf-8")) for r in all_records
         )
-        immediate_dirs = _enumerate_immediate_dirs(subfolder_abs, project_root)
+        immediate_dirs = _enumerate_immediate_dirs(
+            subfolder_abs,
+            project_root,
+            package_root(project_root, pkg).resolve(),
+            skip_hidden=is_fallback_concern(project_root, pkg, concern),
+            exclude_rels=exclude_rels,
+        )
         should_split = (
             total_bytes > split_threshold_kb * 1024 and len(immediate_dirs) >= 2
         )
@@ -434,7 +452,10 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     pairs = _enumerate_concerns(devforge_dir, project_root)
     threshold_kb = getattr(args, "split_threshold_kb", _DEFAULT_SPLIT_THRESHOLD_KB)
     concerns = [
-        _diff_concern(pkg, c, project_root, docs_root, threshold_kb)
+        _diff_concern(
+            pkg, c, project_root, docs_root, threshold_kb,
+            fallback_excluded_rels(devforge_dir, pkg, c),
+        )
         for pkg, c in pairs
     ]
     output["concerns"] = concerns

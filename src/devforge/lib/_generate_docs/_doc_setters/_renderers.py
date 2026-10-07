@@ -45,7 +45,8 @@ def _render_files_bullets(entries: List[Dict[str, str]]) -> str:
 
     Same shape as concerns; cite is the project-relative file path
     (e.g. <pkg>/src/<basename>) and is optional — basenames alone are
-    self-locating since they live at the package's src/ root.
+    self-locating since they live at the package's src/ root (a package with
+    no src/ directory has no such root files).
     """
     return _render_concerns_bullets(entries)
 

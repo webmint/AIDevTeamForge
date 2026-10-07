@@ -1,5 +1,7 @@
 """Decomposition gate: verifies every substantive subfolder under
-`<package_path>/src/` is registered as a concern.
+`<package_path>/src/` is registered as a concern. A package with no `src/`
+directory (a fallback package: one concern, the whole package) has no
+subfolders to decompose and passes.
 
 Owns `_is_substantive_subfolder`, `_scan_substantive_subfolders`, and
 `_check_decomposition`. Imports shared helpers from `_validators_shared`.
@@ -118,7 +120,8 @@ def _check_decomposition(
     """Verify registered concerns cover every substantive subfolder.
 
     No-op when `<project_root>/<package_path>/src/` doesn't exist (some
-    ecosystems use a flat package layout). When `src/` exists, every
+    ecosystems use a flat package layout; such a package is a fallback
+    package with a single whole-package concern). When `src/` exists, every
     substantive top-level subfolder must be registered as a concern.
 
     The gate emits one error record per missing concern (no truncation —

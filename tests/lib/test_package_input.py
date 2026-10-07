@@ -77,8 +77,10 @@ class EnumerateConcernsTests(unittest.TestCase):
             (self.root / "pkg-a" / "src" / c).mkdir(parents=True)
         self.assertEqual(_enumerate_concerns(self.root, "pkg-a"), ["real"])
 
-    def test_missing_src(self):
-        (self.root / "pkg-a").mkdir()
+    def test_missing_package_dir(self):
+        # A package directory that does not exist has no concerns (a package
+        # directory that exists without `src/` is a fallback package; see
+        # test_concern_fallback.py).
         self.assertEqual(_enumerate_concerns(self.root, "pkg-a"), [])
 
 
@@ -263,7 +265,6 @@ class CmdPackageInputTests(unittest.TestCase):
         self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
 
     def test_no_concerns_returns_2(self):
-        (self.root / "pkg-a").mkdir()
         code, _, err = _run(cmd_package_input, _ns(self.devforge, package="pkg-a"))
         self.assertEqual(code, 2)
         self.assertIn("no `src/<concern>/`", err)

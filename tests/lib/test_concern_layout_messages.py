@@ -52,6 +52,22 @@ class LayoutMessageTests(unittest.TestCase):
             ),
         )
 
+    def test_concern_input_not_found_fallback_package(self):
+        (self.root / "infra" / "tf").mkdir(parents=True)
+        args = argparse.Namespace(
+            devforge_dir=str(self.devforge), package="infra/tf", concern="nope"
+        )
+        err = self._stderr_of(cmd_concern_input, args)
+        self.assertEqual(
+            err,
+            "concern subfolder not found: {0} "
+            "(expected <project_root>/infra/tf/src/nope/; package 'infra/tf' "
+            "has no src/ directory, so its only concern is 'tf' "
+            "(rooted at <project_root>/infra/tf/))\n".format(
+                self.root / "infra" / "tf" / "src" / "nope"
+            ),
+        )
+
     def test_package_input_no_concerns(self):
         args = argparse.Namespace(devforge_dir=str(self.devforge), package="pkg-a")
         err = self._stderr_of(cmd_package_input, args)

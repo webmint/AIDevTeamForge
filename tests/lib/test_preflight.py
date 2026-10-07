@@ -91,9 +91,11 @@ class EnumerateConcernsTests(unittest.TestCase):
             [("pkg-a", "auth"), ("pkg-a", "order"), ("pkg-b", "auth"), ("pkg-b", "order")],
         )
 
-    def test_package_without_src_skipped(self):
+    def test_package_missing_directory_skipped(self):
+        # A registered package whose directory is absent has no concerns (an
+        # existing directory without `src/` is a fallback package; see
+        # test_concern_fallback.py).
         (self.root / "pkg-with-src" / "src" / "ok").mkdir(parents=True)
-        (self.root / "pkg-no-src").mkdir(parents=True)
         _write_index_json(
             self.devforge, packages={"pkg-with-src": {}, "pkg-no-src": {}}
         )

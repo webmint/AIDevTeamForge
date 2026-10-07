@@ -19,6 +19,7 @@ from typing import List, Optional
 from generate_docs_schema import ANNOTATION_CONFIDENCE_VALUES
 
 from ._concern_root import concern_pkg_prefix
+from ._nested_packages import fallback_excluded_rels, under_any
 from ._md_frontmatter import render_frontmatter
 from ._render import _project_root
 from ._setters_concern import _load_index_files, _path_contains_trivial_dir
@@ -85,12 +86,16 @@ def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
 
     subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, args.package, args.concern)
 
+    excluded = fallback_excluded_rels(devforge_dir, args.package, args.concern)
+
     created = 0
     preexisting = 0
     any_matched = False
 
     for rel_path in files:
         if not rel_path.startswith(subfolder_prefix):
+            continue
+        if under_any(rel_path, excluded):
             continue
         if _path_contains_trivial_dir(rel_path):
             continue

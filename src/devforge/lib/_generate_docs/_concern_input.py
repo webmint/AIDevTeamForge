@@ -16,7 +16,7 @@ Output shape (single-batch, default for small concerns):
     {
       "concern": "<name>",
       "package": "<package-path>",
-      "subfolder": "<package>/src/<concern>/",
+      "subfolder": "<package>/src/<concern>/",  # fallback concern: "<package>/"
       "tree_text": "<ASCII tree, subfolder-relative>",
       "files": [{"path": "<project-rel>", "comment_rich_span": "<...>"}, ...],
       "source_stamp": "<sha256-prefix-16>",
@@ -28,7 +28,7 @@ immediate child dirs — Plan F 3a):
     {
       "concern": "<parent name>",
       "package": "<package-path>",
-      "subfolder": "<package>/src/<concern>/",
+      "subfolder": "<package>/src/<concern>/",  # fallback concern: "<package>/"
       "split": true,
       "parent_meta": {
         "tree_text": "<full ASCII tree of parent>",
@@ -40,7 +40,7 @@ immediate child dirs — Plan F 3a):
           "concern": "<child name>",
           "parent_concern": "<parent name>",
           "package": "<package-path>",
-          "subfolder": "<package>/src/<concern>/<child>/",
+          "subfolder": "<package>/src/<concern>/<child>/",  # fallback: "<package>/<child>/"
           "tree_text": "...",
           "files": [...],
           "source_stamp": "..."
@@ -70,9 +70,17 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from ._concern_root import SRC_DIR_NAME, concern_dir, concern_rel_prefix
+from ._concern_root import (
+    SRC_DIR_NAME,
+    concern_dir,
+    concern_rel_prefix,
+    fallback_concern,
+    is_fallback_concern,
+    package_root,
+)
+from ._nested_packages import fallback_excluded_rels, under_any
 from ._setters_concern import _path_contains_trivial_dir
 
 _PER_FILE_SPAN_CAP = 6 * 1024
@@ -88,7 +96,7 @@ _DEFAULT_SPLIT_THRESHOLD_KB = 50
 def _build_tree(concern_files: List[str], subfolder_prefix: str) -> str:
     """Build an ASCII tree from project-relative paths under subfolder_prefix.
 
-    The first line is the subfolder header (e.g., `src/order/`). Subsequent
+    The first line is the subfolder header (e.g., `src/order/`, or `<pkg>/` for a fallback concern). Subsequent
     lines use box-drawing connectors (├──/└──/│) with directories grouped
     above leaves at each level.
     """
@@ -250,11 +258,22 @@ def _apply_batch_cap_to_records(
     return out, truncated
 
 
-def _enumerate_immediate_dirs(subfolder_abs: Path, project_root: Path) -> List[str]:
+def _enumerate_immediate_dirs(
+    subfolder_abs: Path,
+    project_root: Path,
+    package_root_abs: Path,
+    skip_hidden: bool = False,
+    exclude_rels: Sequence[str] = (),
+) -> List[str]:
     """Return alphabetical names of immediate child DIRs under subfolder_abs.
 
     Trivial-leaf dirs (node_modules, dist, etc.) are excluded so the
-    split decision matches what the surviving file walk produces.
+    split decision matches what the surviving file walk produces. The
+    trivial-leaf test sees only the path components below
+    ``package_root_abs`` -- the package's own path components never count.
+    ``skip_hidden`` (set for a fallback concern) also drops dot-prefixed
+    dirs, and ``exclude_rels`` drops package-relative dirs of nested
+    registered packages, so both match the file walk.
     """
     if not subfolder_abs.is_dir():
         return []
@@ -263,11 +282,20 @@ def _enumerate_immediate_dirs(subfolder_abs: Path, project_root: Path) -> List[s
         if not entry.is_dir():
             continue
         try:
-            rel = entry.relative_to(project_root).as_posix()
+            entry.relative_to(project_root)
         except ValueError:
             continue
+        try:
+            below = entry.relative_to(package_root_abs).as_posix()
+        except ValueError:
+            # Concern dir symlinked outside the package: test the dir's name.
+            below = entry.name
+        if skip_hidden and entry.name.startswith("."):
+            continue
+        if under_any(below, list(exclude_rels)):
+            continue
         # Pass a path with a trailing component so the trivial check sees the dir name.
-        if _path_contains_trivial_dir(rel + "/x"):
+        if _path_contains_trivial_dir(below + "/x"):
             continue
         out.append(entry.name)
     return out
@@ -356,19 +384,38 @@ def _stamp_from_hashes(hashes: List[Tuple[str, str]]) -> str:
 
 
 def _walk_concern_subfolder(
-    project_root: Path, pkg: str, concern: str
+    project_root: Path,
+    pkg: str,
+    concern: str,
+    *,
+    exclude_rels: Sequence[str],
 ) -> Tuple[Path, List[str]]:
-    """Walk <project_root>/<pkg>/src/<concern>/ recursively.
+    """Walk one concern's directory recursively (see `_concern_root.concern_dir`).
 
-    Returns (subfolder_abs, project_relative_paths). Files whose path
-    contains a trivial-leaf directory (per `_path_contains_trivial_dir`)
-    are skipped. Hidden dotfile-prefixed dirs are NOT skipped (callers
-    supply --concern explicitly; not a wildcard scan).
+    Returns (subfolder_abs, project_relative_paths). Files whose path BELOW
+    the package root contains a trivial-leaf directory (per
+    `_path_contains_trivial_dir`) are skipped; the package's own path
+    components are never tested. For a `src/` concern hidden dotfile-prefixed
+    dirs and dotfiles are NOT skipped (callers supply --concern explicitly; not
+    a wildcard scan); for a fallback concern, rooted at the package directory,
+    any path component below the root starting with "." is skipped
+    (`.terraform/`, `.terraform.lock.hcl`), matching `index.json`'s file list.
+    ``exclude_rels`` are package-relative dirs of registered
+    packages nested below the package; their files are skipped.
     """
     subfolder_abs = concern_dir(project_root, pkg, concern).resolve()
     rels: List[str] = []
     if not subfolder_abs.is_dir():
         return subfolder_abs, rels
+    pkg_root_abs = package_root(project_root, pkg).resolve()
+    skip_hidden = is_fallback_concern(project_root, pkg, concern)
+    excluded = list(exclude_rels)
+    # A concern dir symlinked to outside the package resolves outside
+    # `pkg_root_abs`; its logical (unresolved) location below the package is
+    # then the trivial/exclude test's path.
+    logical_prefix = concern_dir(project_root, pkg, concern).relative_to(
+        project_root / pkg
+    )
     for path in sorted(subfolder_abs.rglob("*")):
         if not path.is_file():
             continue
@@ -376,7 +423,16 @@ def _walk_concern_subfolder(
             rel = path.relative_to(project_root).as_posix()
         except ValueError:
             continue
-        if _path_contains_trivial_dir(rel):
+        in_concern = path.relative_to(subfolder_abs)
+        try:
+            below = path.relative_to(pkg_root_abs).as_posix()
+        except ValueError:
+            below = (logical_prefix / in_concern).as_posix()
+        if skip_hidden and any(part.startswith(".") for part in in_concern.parts):
+            continue
+        if under_any(below, excluded):
+            continue
+        if _path_contains_trivial_dir(below):
             continue
         rels.append(rel)
     return subfolder_abs, rels
@@ -390,12 +446,22 @@ def cmd_concern_input(args: argparse.Namespace) -> int:
     threshold_kb: int = getattr(args, "split_threshold_kb", _DEFAULT_SPLIT_THRESHOLD_KB)
     project_root = devforge_dir.parent.resolve()
 
-    subfolder_abs, concern_files = _walk_concern_subfolder(project_root, pkg, concern)
+    exclude_rels = fallback_excluded_rels(devforge_dir, pkg, concern)
+    subfolder_abs, concern_files = _walk_concern_subfolder(
+        project_root, pkg, concern, exclude_rels=exclude_rels
+    )
     if not concern_files:
         if not subfolder_abs.is_dir():
+            only = fallback_concern(project_root, pkg)
+            hint = (
+                ""
+                if only is None
+                else f"; package {pkg!r} has no {SRC_DIR_NAME}/ directory, "
+                f"so its only concern is {only!r} (rooted at <project_root>/{pkg}/)"
+            )
             print(
                 f"concern subfolder not found: {subfolder_abs} "
-                f"(expected <project_root>/{pkg}/{SRC_DIR_NAME}/{concern}/)",
+                f"(expected <project_root>/{pkg}/{SRC_DIR_NAME}/{concern}/{hint})",
                 file=sys.stderr,
             )
         else:
@@ -423,7 +489,13 @@ def cmd_concern_input(args: argparse.Namespace) -> int:
             len(r["comment_rich_span"].encode("utf-8")) for r in all_records
         )
         threshold_bytes = threshold_kb * 1024
-        immediate_dirs = _enumerate_immediate_dirs(subfolder_abs, project_root)
+        immediate_dirs = _enumerate_immediate_dirs(
+            subfolder_abs,
+            project_root,
+            package_root(project_root, pkg).resolve(),
+            skip_hidden=is_fallback_concern(project_root, pkg, concern),
+            exclude_rels=exclude_rels,
+        )
         should_split = total_bytes > threshold_bytes and len(immediate_dirs) >= 2
 
     loose_files: List[str] = []

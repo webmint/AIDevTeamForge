@@ -84,14 +84,14 @@ class EnumerateImmediateDirsTests(unittest.TestCase):
         base = self.root / "concern"
         for name in ("zeta", "alpha", "mu"):
             (base / name).mkdir(parents=True)
-        names = _enumerate_immediate_dirs(base, self.root)
+        names = _enumerate_immediate_dirs(base, self.root, self.root)
         self.assertEqual(names, ["alpha", "mu", "zeta"])
 
     def test_immediate_dirs_excludes_trivial(self):
         base = self.root / "concern"
         for name in ("real", "node_modules", "dist"):
             (base / name).mkdir(parents=True)
-        names = _enumerate_immediate_dirs(base, self.root)
+        names = _enumerate_immediate_dirs(base, self.root, self.root)
         self.assertEqual(names, ["real"])
 
     def test_immediate_dirs_files_not_listed(self):
@@ -99,11 +99,11 @@ class EnumerateImmediateDirsTests(unittest.TestCase):
         base.mkdir()
         (base / "loose.ts").write_text("x\n", encoding="utf-8")
         (base / "child").mkdir()
-        names = _enumerate_immediate_dirs(base, self.root)
+        names = _enumerate_immediate_dirs(base, self.root, self.root)
         self.assertEqual(names, ["child"])
 
     def test_immediate_dirs_missing_subfolder(self):
-        names = _enumerate_immediate_dirs(self.root / "nope", self.root)
+        names = _enumerate_immediate_dirs(self.root / "nope", self.root, self.root)
         self.assertEqual(names, [])
 
 
