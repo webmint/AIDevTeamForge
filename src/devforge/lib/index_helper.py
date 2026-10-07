@@ -4,7 +4,7 @@ Reads `.devforge/init.yaml` (the bootstrap state file produced by
 /init-forge) and builds two artifacts:
 
 - `<DEVFORGE_DIR>/index.json` — machine-readable, per-package structural
-  data: file listings (capped at 500), manifest scripts + dependencies.
+  data: file listings (capped at 10000 per package), manifest scripts + dependencies.
 - `<install_root>/docs/structure.md` — human-readable workspace map.
   In wrapper mode, install_root != project_root; structure.md lives at
   install_root (alongside .devforge/) per the wrapper-mode artifact

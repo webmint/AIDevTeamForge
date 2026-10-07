@@ -5372,5 +5372,42 @@ class TestCommandsSummaryTests(unittest.TestCase):
         self.assertIn("(empty)", lines[0])
 
 
+class ReadManifestsNoManifestChainTests(_EnvIsolationMixin, unittest.TestCase):
+    """Real chain: init_helper add-package --no-manifest -> index_helper
+    build-index -> configure_helper read-manifests."""
+
+    def test_no_manifest_package_emits_nulls(self):
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        (self.install_root / "infra" / "tf" / "main.tf").write_text(
+            "", encoding="utf-8"
+        )
+        for args in (
+            ("reset",),
+            ("set-workspace-mode", "standalone"),
+            ("set-project-root", "."),
+            ("set-project-state", "brownfield"),
+            ("set-default-branch", "main"),
+            ("add-package", "--path", "infra/tf", "--no-manifest"),
+        ):
+            proc = _run_init(self.devforge_dir, *args)
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        env = os.environ.copy()
+        env["DEVFORGE_DIR"] = str(self.devforge_dir)
+        idx = subprocess.run(
+            [sys.executable, str(_LIB_DIR / "index_helper.py"), "build-index"],
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        self.assertEqual(idx.returncode, 0, idx.stderr.decode())
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(len(data["packages"]), 1)
+        rec = data["packages"][0]
+        self.assertEqual(rec["path"], "infra/tf")
+        self.assertIsNone(rec["manifest"])
+        self.assertIsNone(rec["build_tool_hint"])
+        self.assertIsNone(rec["framework_hint"])
+
+
 if __name__ == "__main__":
     unittest.main()

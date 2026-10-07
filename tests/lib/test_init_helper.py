@@ -2030,5 +2030,189 @@ class TestDetectTestInfraCLI(_EnvIsolationMixin, unittest.TestCase):
         self.assertIn(b"does not exist", proc.stderr)
 
 
+class AddPackageNoManifestTests(unittest.TestCase):
+    """add-package --no-manifest. VerifyTests layout: install_root = tmp,
+    devforge_dir = install_root/.devforge, so project_root resolves to tmp."""
+
+    def setUp(self):
+        self._saved_env = os.environ.pop("DEVFORGE_DIR", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._tmp.name)
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / init_helper.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        if self._saved_env is None:
+            os.environ.pop("DEVFORGE_DIR", None)
+        else:
+            os.environ["DEVFORGE_DIR"] = self._saved_env
+
+    def _populate(self, set_root=True):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "standalone")
+        if set_root:
+            _run_cli(self.devforge_dir, "set-project-root", ".")
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+
+    def _add_nm(self, path="infra/tf"):
+        return _run_cli(
+            self.devforge_dir, "add-package", "--path", path, "--no-manifest"
+        )
+
+    def test_no_manifest_writes_null_and_parses_to_none(self):
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        proc = self._add_nm()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = self.output_file.read_text(encoding="utf-8")
+        self.assertIn("\n    manifest: null\n", text)
+        state = init_helper.parse_yaml(text)
+        self.assertEqual(
+            state["packages_detected"], [{"path": "infra/tf", "manifest": None}]
+        )
+        self.assertIsNone(state["packages_detected"][0]["manifest"])
+
+    def test_neither_flag_exits_2(self):
+        self._populate()
+        proc = _run_cli(self.devforge_dir, "add-package", "--path", "x")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_both_flags_exit_2(self):
+        self._populate()
+        proc = _run_cli(
+            self.devforge_dir, "add-package", "--path", "x",
+            "--manifest", "package.json", "--no-manifest",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_nonexistent_dir_exits_2_and_state_unchanged(self):
+        self._populate()
+        before = self.output_file.read_bytes()
+        proc = self._add_nm("infra/missing")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"infra/missing", proc.stderr)
+        self.assertEqual(self.output_file.read_bytes(), before)
+
+    def test_project_root_unset_exits_2_and_state_unchanged(self):
+        self._populate(set_root=False)
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        before = self.output_file.read_bytes()
+        proc = self._add_nm()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"set-project-root", proc.stderr)
+        self.assertEqual(self.output_file.read_bytes(), before)
+
+    def test_file_not_directory_exits_2(self):
+        self._populate()
+        (self.install_root / "afile").write_text("x", encoding="utf-8")
+        self.assertEqual(self._add_nm("afile").returncode, 2)
+
+    def test_manifest_form_still_skips_existence_check(self):
+        self._populate()
+        proc = _run_cli(
+            self.devforge_dir, "add-package", "--path", "nowhere/at/all",
+            "--manifest", "package.json",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_duplicate_path_exits_2(self):
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        self.assertEqual(self._add_nm().returncode, 0)
+        self.assertEqual(self._add_nm().returncode, 2)
+
+    def test_trailing_slash_path_stores_normalized(self):
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        proc = self._add_nm("infra/tf/")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = self.output_file.read_text(encoding="utf-8")
+        state = init_helper.parse_yaml(text)
+        self.assertEqual(
+            state["packages_detected"], [{"path": "infra/tf", "manifest": None}]
+        )
+
+    def _populate_wrapper(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "wrapper")
+        _run_cli(self.devforge_dir, "set-project-root", "inner")
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+
+    def test_wrapper_relative_project_root_resolves_under_inner(self):
+        self._populate_wrapper()
+        (self.install_root / "inner" / "infra" / "tf").mkdir(parents=True)
+        proc = self._add_nm()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_wrapper_dir_outside_project_root_exits_2(self):
+        self._populate_wrapper()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        before = self.output_file.read_bytes()
+        proc = self._add_nm()
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(self.output_file.read_bytes(), before)
+
+    def test_absolute_project_root_is_rejected_by_setter(self):
+        # set-project-root forbids absolute paths, so the absolute-root
+        # branch of the existence check is unreachable via the CLI.
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir, "set-project-root", str(self.install_root)
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_summary_null_and_string_manifest_columns(self):
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        _run_cli(
+            self.devforge_dir, "add-package", "--path", ".",
+            "--manifest", "package.json",
+        )
+        self._add_nm()
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        lines = proc.stdout.decode().splitlines()
+        # col_width = len("infra/tf") + 2 = 10
+        self.assertIn("- .         package.json", lines)
+        self.assertIn("- infra/tf  null", lines)
+
+    def test_render_summary_string_manifest_unchanged(self):
+        out = init_helper._render_summary(
+            {"packages_detected": [{"path": ".", "manifest": "package.json"}]}
+        )
+        self.assertIn("- .  package.json\n", out)
+
+    def test_packages_detected_path_re_extracts_no_manifest_path(self):
+        from _generate_docs._validators_package import _PACKAGES_DETECTED_PATH_RE
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        self._add_nm()
+        text = self.output_file.read_text(encoding="utf-8")
+        found = [m.group(1) for m in _PACKAGES_DETECTED_PATH_RE.finditer(text)]
+        self.assertEqual(found, ["infra/tf"])
+
+    def test_verify_no_packages_detected_violation(self):
+        self._populate()
+        (self.install_root / "infra" / "tf").mkdir(parents=True)
+        (self.install_root / "infra" / "tf" / "main.tf").write_text(
+            "", encoding="utf-8"
+        )
+        self._add_nm()
+        env = os.environ.copy()
+        env["DEVFORGE_DIR"] = str(self.devforge_dir)
+        idx = subprocess.run(
+            [sys.executable, str(_LIB_DIR / "index_helper.py"), "build-index"],
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        self.assertEqual(idx.returncode, 0, idx.stderr)
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertNotIn(b"packages_detected", proc.stderr)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

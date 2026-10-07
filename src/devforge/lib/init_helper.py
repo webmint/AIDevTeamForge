@@ -50,7 +50,7 @@ OUTPUT_FILE_NAME = "init.yaml"
 #
 # Field kinds:
 #   "scalar"               — string-or-None value
-#   "package_record_array" — list of {"path": str, "manifest": str} records
+#   "package_record_array" — list of {"path": str, "manifest": str-or-None} records
 #   "test_infra_record"    — dict with keys frontend/backend/e2e/status
 FIELD_SCHEMA = (
     ("workspace_mode", "scalar"),
@@ -626,10 +626,21 @@ def cmd_set_default_branch(args):
 
 
 def cmd_add_package(args):
-    """Append a {path, manifest} record. Errors on duplicate path."""
+    """Append a {path, manifest} record. Errors on duplicate path.
+
+    Two forms:
+      --manifest <name>  record the manifest filename (no existence check).
+      --no-manifest      record `manifest: null` for a package dir with no
+                         manifest file (e.g. a Terraform root module). The
+                         directory must exist under the resolved project
+                         root (set-project-root first); otherwise exit 2
+                         and init.yaml is left unchanged.
+    """
+    no_manifest = bool(getattr(args, "no_manifest", False))
     try:
         _validate_path(args.path, "packages_detected.path")
-        _validate_string(args.manifest, "packages_detected.manifest")
+        if not no_manifest:
+            _validate_string(args.manifest, "packages_detected.manifest")
     except ValueError as err:
         return _die(str(err), code=2)
     path = _normalize_path(args.path)
@@ -645,7 +656,26 @@ def cmd_add_package(args):
                 ),
                 code=2,
             )
-    state["packages_detected"].append({"path": path, "manifest": args.manifest})
+    if no_manifest:
+        project_root_value = state.get("project_root")
+        if project_root_value is None or not str(project_root_value).strip():
+            return _die(
+                "add-package --no-manifest: project_root is unset; "
+                "run set-project-root first",
+                code=2,
+            )
+        install_root = _output_file_path().parent.parent
+        project_root_path = _resolve_project_root(project_root_value, install_root)
+        if not (project_root_path / path).is_dir():
+            return _die(
+                "add-package --no-manifest: {0!r} is not a directory under "
+                "project root {1}".format(path, project_root_path),
+                code=2,
+            )
+        manifest = None
+    else:
+        manifest = args.manifest
+    state["packages_detected"].append({"path": path, "manifest": manifest})
     try:
         _write_state(state)
     except OSError as err:
@@ -696,7 +726,7 @@ def _render_summary(state):
         col_width = max_path + 2
         for record in packages:
             path = record.get("path", "")
-            manifest = record.get("manifest", "")
+            manifest = _render_scalar_for_summary(record.get("manifest", ""))
             padding = " " * (col_width - len(path))
             lines.append("- {0}{1}{2}".format(path, padding, manifest))
 
@@ -1357,7 +1387,12 @@ def build_parser():
 
     sp = subparsers.add_parser("add-package")
     sp.add_argument("--path", required=True)
-    sp.add_argument("--manifest", required=True)
+    # Deliberate departure (only subparser with a group): omitting both flags
+    # must still error, and required=True on --manifest alone would reject
+    # --no-manifest by itself.
+    g = sp.add_mutually_exclusive_group(required=True)
+    g.add_argument("--manifest")
+    g.add_argument("--no-manifest", action="store_true")
     sp.set_defaults(func=cmd_add_package)
 
     sp = subparsers.add_parser("find-nested-git")

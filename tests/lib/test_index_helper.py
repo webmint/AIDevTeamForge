@@ -125,10 +125,14 @@ class _EnvIsolationMixin:
         )
         assert proc.returncode == 0, proc.stderr
         for pkg in packages:
+            if pkg["manifest"] is None:
+                manifest_args = ["--no-manifest"]
+            else:
+                manifest_args = ["--manifest", pkg["manifest"]]
             proc = _run_init(
                 self.devforge_dir, "add-package",
                 "--path", pkg["path"],
-                "--manifest", pkg["manifest"],
+                *manifest_args
             )
             assert proc.returncode == 0, proc.stderr
 
@@ -539,10 +543,12 @@ class BuildIndexEndToEndTests(_EnvIsolationMixin, unittest.TestCase):
         pkg = self.project_root / "lib"
         pkg.mkdir()
         (pkg / "main.txt").write_text("x", encoding="utf-8")
-        # NB: init.yaml requires a `manifest` for each package, so we
-        # simulate "no manifest" by referencing a manifest filename that
-        # doesn't exist on disk. The init record stores its manifest tag
-        # but `_detect_manifest` finds nothing.
+        # NB: this covers an init.yaml manifest tag that names a file absent
+        # on disk: the init record stores the tag, but index_helper
+        # re-detects the manifest itself (`_detect_manifest`), finds
+        # nothing, and ignores the tag. (A genuinely manifest-less package
+        # is registered with `add-package --no-manifest`; see
+        # test_no_manifest_package_chain.)
         self._seed_init_yaml([
             {"path": "lib", "manifest": "package.json"},
         ])
@@ -554,6 +560,23 @@ class BuildIndexEndToEndTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(rec["scripts"], {})
         self.assertEqual(rec["manifest_deps"], [])
         self.assertFalse(rec["manifest_parse_skipped"])
+
+    def test_no_manifest_package_chain(self):
+        # Real chain: init_helper ... add-package --no-manifest -> build-index.
+        tf = self.project_root / "infra" / "tf"
+        (tf / ".terraform" / "providers").mkdir(parents=True)
+        (tf / "main.tf").write_text("", encoding="utf-8")
+        (tf / "variables.tf").write_text("", encoding="utf-8")
+        (tf / ".terraform" / "providers" / "x.tf").write_text(
+            "", encoding="utf-8"
+        )
+        self._seed_init_yaml([{"path": "infra/tf", "manifest": None}])
+        proc = _run_index(self.devforge_dir, "build-index")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        index = json.loads(self.index_path.read_text(encoding="utf-8"))
+        rec = index["packages"]["infra/tf"]
+        self.assertIsNone(rec["manifest_file"])
+        self.assertEqual(sorted(rec["files"]), ["main.tf", "variables.tf"])
 
     def test_unsupported_manifest_emits_skipped_flag(self):
         # Malformed JSON in package.json -> parse_ok=False in parser ->

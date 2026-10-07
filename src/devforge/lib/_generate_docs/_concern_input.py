@@ -3,10 +3,12 @@
 Walks the concern's source subfolder on disk, emits batch JSON consumed
 by the /generate-docs orchestrator's concern-tier compose step.
 
-Why filesystem and not index.json: /init-forge's index.json caps file lists
-at 500 entries per package (`files_truncated: true` flag). On real
-monorepos (testForge20 app hits the cap), the helpers/ subfolder falls
-past the cap and would be invisible to a fully indexed.json-driven helper.
+Why filesystem and not index.json: /init-forge's index.json caps each
+package's file list at `index_helper._MAX_FILES_PER_PACKAGE` (10000; it was
+500 until 2026-05-07), setting `files_truncated: true` when the cap is hit.
+A large package can still exceed that cap, and a subfolder past the cut would
+be invisible to an index.json-driven helper, so this helper walks the
+filesystem instead.
 The trivial-leaf skip rule (`_path_contains_trivial_dir`) is applied during
 the walk so node_modules/dist/etc. stay excluded.
 
