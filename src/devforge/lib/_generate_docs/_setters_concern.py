@@ -62,6 +62,7 @@ from generate_docs_schema import (
     HAZARD_CATEGORIES,
 )
 
+from ._concern_root import SRC_DIR_NAME, concern_pkg_prefix
 from ._state import (
     StateLoadError,
     _AbortTransaction,
@@ -234,7 +235,7 @@ def _check_tree_entry_coverage(
         return None
 
     # Convention: concern subfolder = src/<concern_name>/ relative to pkg.
-    subfolder_prefix = "src/{0}/".format(concern_name)
+    subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, pkg_path, concern_name)
     expected_count = _build_expected_entry_set(files, subfolder_prefix)
 
     if expected_count == 0:
@@ -260,7 +261,7 @@ def _check_tree_entry_coverage(
         return (
             "set-concern-tree: tree coverage {pct}% below threshold"
             " {threshold_pct}% — rendered {rendered} entries, expected"
-            " {expected} (concern={concern}, subfolder=src/{concern})."
+            " {expected} (concern={concern}, subfolder={src}/{concern})."
             " The strict spec mandate \"EVERY entry at EVERY depth\" was not"
             " satisfied; recurse into subfolders or document missing"
             " entries.".format(
@@ -269,6 +270,7 @@ def _check_tree_entry_coverage(
                 rendered=rendered_count,
                 expected=expected_count,
                 concern=concern_name,
+                src=SRC_DIR_NAME,
             )
         )
     return None

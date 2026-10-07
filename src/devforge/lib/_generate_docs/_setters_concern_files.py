@@ -18,6 +18,7 @@ from typing import List, Optional
 
 from generate_docs_schema import ANNOTATION_CONFIDENCE_VALUES
 
+from ._concern_root import concern_pkg_prefix
 from ._md_frontmatter import render_frontmatter
 from ._render import _project_root
 from ._setters_concern import _load_index_files, _path_contains_trivial_dir
@@ -82,7 +83,7 @@ def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
             code=2,
         )
 
-    subfolder_prefix = "src/{0}/".format(args.concern)
+    subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, args.package, args.concern)
 
     created = 0
     preexisting = 0

@@ -37,6 +37,7 @@ from ._render import (
     _project_root,
     render_concern_skeleton,
 )
+from ._concern_root import concern_pkg_prefix
 from ._setters_concern import _load_index_files, _path_contains_trivial_dir
 from ._state import (
     StateLoadError,
@@ -158,7 +159,7 @@ def _check_file_docs_complete(
         )
         return []
 
-    subfolder_prefix = "src/{0}/".format(concern_name)
+    subfolder_prefix = concern_pkg_prefix(devforge_dir.parent, package_path, concern_name)
 
     expected_paths = []  # List of (expected_md_path, suffix) tuples
     for rel_path in files:

@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from ._concern_root import concern_dir
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 
 _CONCERN_REQUIRED_KEYS = ("concern", "package", "files", "source_stamp", "last_indexed")
@@ -208,7 +209,7 @@ def _resolve_cite_path(
     if len(target_parts) >= 2:
         pkg_part = "/".join(target_parts[:-1])
         concern_part = target_parts[-1]
-        basename_attempt = project_root / pkg_part / "src" / concern_part / cite_path
+        basename_attempt = concern_dir(project_root, pkg_part, concern_part) / cite_path
         if basename_attempt.is_file():
             return basename_attempt, "basename"
 

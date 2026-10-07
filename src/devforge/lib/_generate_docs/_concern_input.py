@@ -69,9 +69,10 @@ import argparse
 import hashlib
 import json
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ._concern_root import SRC_DIR_NAME, concern_dir, concern_rel_prefix
 from ._setters_concern import _path_contains_trivial_dir
 
 _PER_FILE_SPAN_CAP = 6 * 1024
@@ -364,7 +365,7 @@ def _walk_concern_subfolder(
     are skipped. Hidden dotfile-prefixed dirs are NOT skipped (callers
     supply --concern explicitly; not a wildcard scan).
     """
-    subfolder_abs = (project_root / pkg / "src" / concern).resolve()
+    subfolder_abs = concern_dir(project_root, pkg, concern).resolve()
     rels: List[str] = []
     if not subfolder_abs.is_dir():
         return subfolder_abs, rels
@@ -394,7 +395,7 @@ def cmd_concern_input(args: argparse.Namespace) -> int:
         if not subfolder_abs.is_dir():
             print(
                 f"concern subfolder not found: {subfolder_abs} "
-                f"(expected <project_root>/{pkg}/src/{concern}/)",
+                f"(expected <project_root>/{pkg}/{SRC_DIR_NAME}/{concern}/)",
                 file=sys.stderr,
             )
         else:
@@ -405,7 +406,7 @@ def cmd_concern_input(args: argparse.Namespace) -> int:
             )
         return 2
 
-    subfolder_prefix = str(PurePosixPath(pkg) / "src" / concern) + "/"
+    subfolder_prefix = concern_rel_prefix(project_root, pkg, concern)
 
     # Split-aware path: build all spans uncapped first so we can measure
     # true total size + regroup by child dir if we decide to split.

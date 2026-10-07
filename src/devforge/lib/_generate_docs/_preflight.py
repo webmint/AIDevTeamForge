@@ -25,7 +25,7 @@ import shutil
 import subprocess
 import sys
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._concern_input import (
@@ -37,6 +37,7 @@ from ._concern_input import (
     _stamp_from_hashes,
     _walk_concern_subfolder,
 )
+from ._concern_root import concern_rel_prefix, concerns_parent_dir
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 from ._setters_concern import _path_contains_trivial_dir
 
@@ -108,7 +109,7 @@ def _enumerate_concerns(
         if pkg == "." and has_non_dot:  # monorepo orchestration root → skip
             continue
         full_pkg = prefix + pkg
-        src_dir = project_root / full_pkg / "src"
+        src_dir = concerns_parent_dir(project_root, full_pkg)
         if not src_dir.is_dir():
             continue
         try:
@@ -199,7 +200,7 @@ def _diff_concern(
         should_split = False
 
     if should_split:
-        subfolder_prefix = str(PurePosixPath(pkg) / "src" / concern) + "/"
+        subfolder_prefix = concern_rel_prefix(project_root, pkg, concern)
         subdir_groups, loose_files = _partition_files_by_immediate_dir(
             concern_files, subfolder_prefix, immediate_dirs
         )

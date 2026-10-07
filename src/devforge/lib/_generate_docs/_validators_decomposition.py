@@ -10,6 +10,7 @@ Stdlib only. Targets Python 3.8+.
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from ._concern_root import SRC_DIR_NAME, concerns_parent_dir
 from ._validators_shared import _err
 
 
@@ -123,7 +124,7 @@ def _check_decomposition(
     The gate emits one error record per missing concern (no truncation —
     LLMs need the full list to fix in one pass).
     """
-    src_dir = project_root / package_path / "src"
+    src_dir = concerns_parent_dir(project_root, package_path)
     substantive = _scan_substantive_subfolders(src_dir)
     if not substantive:
         return []
@@ -140,8 +141,8 @@ def _check_decomposition(
         errors.append(_err(
             "decomposition", "concerns",
             "missing concern for substantive subfolder {0!r} under "
-            "{1}/src/; run add-concern --package {1} --concern "
-            "{0}".format(subfolder, package_path),
+            "{1}/{2}/; run add-concern --package {1} --concern "
+            "{0}".format(subfolder, package_path, SRC_DIR_NAME),
             subfolder=subfolder,
         ))
     return errors

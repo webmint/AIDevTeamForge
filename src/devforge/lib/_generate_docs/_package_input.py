@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._concern_input import _extract_comment_rich_span
+from ._concern_root import concerns_parent_dir, src_root_dir
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 
 _PER_FILE_SPAN_CAP = 6 * 1024
@@ -69,7 +70,7 @@ _CONCERN_DOCS_RELATIVE = "docs"
 
 def _enumerate_concerns(project_root: Path, pkg: str) -> List[str]:
     """List direct subdirs of `<project_root>/<pkg>/src/`. Sorted alphabetical."""
-    src_dir = (project_root / pkg / "src").resolve()
+    src_dir = concerns_parent_dir(project_root, pkg).resolve()
     if not src_dir.is_dir():
         return []
     out: List[str] = []
@@ -172,7 +173,7 @@ def _collect_src_root_files(
     `basename`, and `comment_rich_span` extracted via F.2's helper.
     """
     project_root = project_root.resolve()
-    src_dir = (project_root / pkg / "src").resolve()
+    src_dir = src_root_dir(project_root, pkg).resolve()
     records: List[Dict[str, str]] = []
     hash_pairs: List[Tuple[str, str]] = []
     if not src_dir.is_dir():
@@ -244,7 +245,7 @@ def cmd_package_input(args: argparse.Namespace) -> int:
     if not concern_names:
         print(
             f"package {pkg!r} has no `src/<concern>/` subdirs at "
-            f"{project_root / pkg / 'src'} — verify the package path",
+            f"{concerns_parent_dir(project_root, pkg)} — verify the package path",
             file=sys.stderr,
         )
         return 2
