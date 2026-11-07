@@ -37,6 +37,14 @@ Check if `specs/[feature]/review.md` exists.
 
 ## PHASE 3: Acceptance Criteria Check
 
+### Structural specs (spec **Type** `structural`)
+
+A structural spec has no new behaviour, so its ACs are invariants proven by commands, not by the running app:
+- **One definition**: run the search the AC names over the search scopes (`python3 scripts/forge/quality_profile.py scopes`: `searchScopes` minus `generatedDirs` in `.claude/quality-profile.json`; the source directories when unset) and record the hits; any derivation outside the single definition fails the AC.
+- **Ratchet**: run `scripts/forge/gate.sh ratchet -- python3 scripts/forge/ratchet.py check` (or the AC's counting command when `ratchets` is unset) and record each count against the AC's bound; a count that dropped is lowered in the baseline by the spec (`/finalize`), never left for later.
+- **Regression**: the full test suites pass unchanged; a test changed by the spec is reviewed for weakened assertions.
+- Browser or API verification of ACs (3.0–3.3) is skipped unless an AC names a runtime check; record the skip in the report.
+
 ### 3.0: Determine Verification Mode
 
 Read `AC_VERIFICATION` from `.claude/project-config.json`.

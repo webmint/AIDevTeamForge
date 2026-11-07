@@ -74,6 +74,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Spec criteria**: AC-[numbers]
 **Review checkpoint**: Yes/No
 **Context docs**: [doc file paths] or None
+**Reuse**: [plan Reuse Map rows: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; `fixes #n in <paths>`] or none (no new symbol)
 
 ## Files
 

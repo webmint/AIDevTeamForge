@@ -140,6 +140,9 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 - **Pre-flight check**: Constitution and memory review before each task
 - **Post-execution**: type check + lint + build on all changed files after each task
 
+### Structural Checks
+- The project binding `.claude/quality-profile.json` (search scopes, ratchets, hubs, audit gate; empty keys run in their manual form) feeds `/review`'s Structural Check: a grown ratchet or a third copy the plan did not decide is Critical.
+
 ## Key Rules
 
 ### Always
@@ -159,6 +162,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>`. It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
 16. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
+17. **Reading budget** — a survey of more than ~5 files or ~30k tokens goes to Explore subagents, in parallel, each with a precise question and a `file:line` answer format. Read directly only what you quote or what a contract relies on. A generated directory is never read as the definition of what it generates.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason

@@ -76,6 +76,33 @@ The agent assesses: test coverage gaps for changed code, untested AC items, miss
 
 If the agent doesn't exist, skip this phase silently.
 
+## PHASE 4.5: Adoption Check
+
+A shared source helps only when it is consumed. This phase reads the project binding `.claude/quality-profile.json`: the canonical sources registry (`canonicalSources`), the search scopes (`searchScopes` minus `generatedDirs`, printed by `python3 scripts/forge/quality_profile.py scopes`; the source directories when unset) and the export patterns (`newExports`). When the registry is unset, skip the registry part (items 1 and 3 below) and say so in the report.
+
+`<base>` is the branch's merge base with the binding's `integrationRef` (else `origin/[DEFAULT_BRANCH]`, from `.claude/project-config.json`): `git merge-base HEAD <ref>`.
+
+Launch the **code-reviewer** agent (or, when it does not exist, do it yourself) with:
+1. The registry rows this spec added or changed (diff of the registry document against `<base>`) and the plan's Reuse Map, when it has one.
+2. The spec's new exports: `python3 scripts/forge/new-exports.py --base <base>`.
+3. Instruction: "For every registry row the spec added or changed, search the scopes by name, signature and meaning for other derivations of the same concept, outside its single definition. For every `reuse` or `extend` row of the Reuse Map, confirm the code consumes the named source. Where the per-task code reviews already searched a new export (their new-exports check), reuse that result; search the rest. Report each hit with file:line and whether the hit is in this spec's changed files or in older code."
+
+Findings:
+- A bypass in this spec's code (a derivation outside the single definition, a Reuse Map `reuse` row the code does not follow, a new export that duplicates an older source): **Critical**, fixed before `/verify`.
+- A bypass in older code: one follow-up per concept (seam first, for a later spec), never one per site.
+- Record the counts in the report: rows checked, bypasses in this spec, bypasses in older code.
+
+## PHASE 4.6: Structural Check
+
+The gates above measure correctness, and a copied block looks clean in a per-task diff. This phase reads the same ratchets as `/audit`, so the spec cannot add what the next audit would flag. It is mechanical: run it yourself (no agent) while the agents run, with the same `<base>` as PHASE 4.5. It reads the project binding: `ratchets` (counts and the clone ratchets' `groupsCommand`) and `hubFiles`.
+
+1. **Ratchets**: `scripts/forge/gate.sh ratchet -- python3 scripts/forge/ratchet.py check`. A `GREW` line is **Critical** (the spec added duplication, a suppression or a layer breach). A `LOWER` line is recorded for `/finalize`'s baseline update.
+2. **Third copies**: `python3 scripts/forge/ratchet.py copies --files <changed files> --min-copies 3 --added-since <base>`. Each listed group is a block of logic with three or more copies to which this spec added or changed lines. It is **Critical** unless the plan's "Copies and Hubs" decided it (`not a copy: <reason>` that the code bears out); a seam task that landed leaves no such group. This also covers logic that is not a new export (a copied body inside an existing function).
+3. **Hubs**: `python3 scripts/forge/hub-files.py check --base <base>`. Each `hub` or `new-hub` file the spec edited is checked against the plan's "Copies and Hubs" decision: an edit the plan did not decide is a **Warning**; a `new-hub` that no decision covers is a seam-first follow-up.
+4. **Placement and layers**: the layer and file-placement checks of the lint (the binding's `layers`) ran in the task gates; a suppression they added shows in step 1.
+
+When a key is unset, run the step by hand (the clone detector on the changed files, `git log` on the hub candidates) and say so. Record the counts in the report: ratchets grown, third copies, hub edits decided / undecided.
+
 ## PHASE 5: Write Review Report
 
 Save the structured review report to `specs/[feature]/review.md`:
@@ -117,6 +144,25 @@ _Skipped — no qa-engineer agent configured._
 
 [For each gap:]
 - [AC-N]: [description of missing coverage]
+
+## Adoption Check
+
+- Registry rows checked: [N] | Reuse Map rows confirmed: [N of M] | New exports: [N]
+- Bypasses in this spec: [N] (Critical) | in older code: [N] (follow-ups)
+
+[For each bypass:]
+- **[Critical / follow-up]** — [file:line]: [concept] derived outside `[single definition]`
+
+## Structural Check
+
+- Ratchets grown: [N] (Critical) | lowered: [names] | Third copies added: [N] (Critical unless decided) | Hub edits: [N decided / M undecided]
+
+[For each finding:]
+- **[Critical / Warning / follow-up]** — [ratchet name, copy group regions, or hub path]: [what grew or was copied] — plan decision: [row or "none"]
+
+## Follow-ups
+
+[Seam-first items for a later spec: bypasses in older code (one per concept) and undecided `new-hub` files. "None" when empty.]
 ```
 
 Commit the review report:
@@ -134,6 +180,8 @@ Display a concise summary of findings:
 **Security**: [N] Critical, [N] High, [N] Medium, [N] Info
 **Performance**: [summary or "skipped"]
 **Test Coverage**: [verdict or "skipped"]
+**Adoption**: [bypasses in this spec / in older code, or "skipped (no registry)"]
+**Structure**: [ratchets grown / third copies added / hub edits undecided]
 
 Full report: specs/[feature]/review.md
 
@@ -145,5 +193,5 @@ Next: Run `/verify` to validate acceptance criteria and render verdict.
 1. **Review does not render a verdict** — it produces findings with severity levels. The verdict is `/verify`'s job, which incorporates these findings
 2. **Review does not fix code** — it identifies issues, not patches
 3. **Idempotent** — running `/review` again overwrites `review.md` with fresh findings
-4. **All agents run in parallel when possible** — launch security, performance, and test assessment agents concurrently to minimize execution time
+4. **All agents run in parallel when possible** — launch security, performance, test assessment and the adoption check concurrently to minimize execution time; run the structural check yourself meanwhile
 5. **Constitution violations are always Critical** — never downgrade a constitution-related security finding

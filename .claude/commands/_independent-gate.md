@@ -6,6 +6,7 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 
 - The gate runs when `.claude/checklists/<gate>.md` exists and its `**Gate**:` line does not say `off`.
 - Otherwise skip it and write `Gate <gate>: off` in the HARD GATE summary. The checklists are project-owned: a project switches a gate off on that line (deleting the file does not work: `update.sh` restores missing checklists).
+- A structural spec (`**Type**: structural` in its header; see `/specify` → "Spec type") runs the spec-gate as usual, the plan-gate with the architect lens only (plus the security lens when it touches access control, privileged code, permissions or authentication), and no breakdown-gate: write `Gate breakdown-gate: skipped (structural spec)` in the HARD GATE summary.
 
 ## Reviewers
 

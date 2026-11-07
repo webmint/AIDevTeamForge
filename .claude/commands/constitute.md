@@ -400,7 +400,15 @@ After approval:
 1. Update `.claude/memory/MEMORY.md` with a link to the constitution and key rules summary
 2. Verify that `CLAUDE.md` references the constitution
 3. Confirm that all agents can access the constitution path
-4. **For existing projects**: Inform the user that the next step is to run `/onboard` to generate comprehensive codebase documentation that will serve as the knowledge base for all agents
+4. **Fill the project binding** `.claude/quality-profile.json` (written by `/setup-wizard`; when missing, create it with `python3 scripts/forge/quality_profile.py init`). Fill only what the constitution and the codebase answer; leave the rest unset (an empty value) and name the unset keys in the summary:
+   - `searchScopes`: the source, test, script and docs directories agents may search (each ending in `/`).
+   - `generatedDirs`: optional; generated directories strictly inside a `searchScopes` entry that searches skip (each existing and ending in `/`).
+   - `layers`: from "Layer Boundaries": `scope` (the module glob), each layer's `name`, `dirs` and `mayImport`, and `sharedDirs`. Only when the module-boundary lint can enforce them.
+   - `planningSources`: the documents that declare future variations (roadmap, brief, open questions).
+   - `enforcementMap`: add an "Enforcement Map" appendix to the constitution, one row per rule with its tags (`lint:<rule id>`, `test:<path>`, `gate:<item>`, `ratchet:<name>` or `review-only`), and point the key at it (`doc`, `heading`, `rulePattern`, `lintConfigs`, `gateFiles`). When the map outgrows the constitution, move it to a document of its own and set `rulesDoc` to the constitution, which still declares the rule ids.
+
+   Then run `python3 scripts/forge/quality_profile.py validate` and fix every problem it prints.
+5. **For existing projects**: Inform the user that the next step is to run `/onboard` to generate comprehensive codebase documentation that will serve as the knowledge base for all agents
 
 ## IMPORTANT RULES
 

@@ -85,6 +85,13 @@ Records where each defect of this feature came from and which gate should have s
    git add specs/[NNN-feature]/escapes.md .claude/checklists/ && git commit -m "[WIP] Escape analysis: [feature-name]"
    ```
 
+## PHASE 1.6: Structural Hand-off
+
+Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[NNN-feature]/review.md` has no "Structural Check" section.
+
+1. **Baselines**: when the binding sets `ratchets`, run `python3 scripts/forge/ratchet.py check`; for each ratchet it reports `LOWER`, run `python3 scripts/forge/ratchet.py update <name>`. When any baseline changed, commit the baseline file (the binding's `baselineFile`) by path: `git add [baselineFile] && git commit -m "[WIP] Ratchet baselines: [feature-name]"`.
+2. **Follow-ups**: from `review.md` → "Structural Check" and "Follow-ups", list the undecided hub edits and third copies as seam-first follow-ups for a later spec, in the Phase 4 output.
+
 ## PHASE 2: Feature Documentation
 
 Launch the **tech-writer** agent to generate or update feature-level documentation in `docs/`.
@@ -140,7 +147,7 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 4. If commits are local only — safe to squash:
    ```
    git reset --soft [squash-base]
-   git commit -m "feat([feature-name]): [spec title — 1-2 sentences from spec overview]"
+   git commit -q -m "feat([feature-name]): [spec title — 1-2 sentences from spec overview]"
    ```
    Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 5. If commits were already pushed — skip squash, warn user:
@@ -162,6 +169,8 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 **Summary**: [included in squash / not found]
 **Quality**: [the `quality:` line from escapes.md, or "escape analysis skipped — no checklists"]
 **Checklists**: [items added / origins added per checklist, or "no escapes"]
+**Ratchets lowered**: [names, or "none"]
+**Structural follow-ups**: [undecided hub edits and third copies from review.md, seam first, or "none"]
 
 Feature is ready for PR.
 ```

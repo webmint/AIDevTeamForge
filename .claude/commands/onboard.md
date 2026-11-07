@@ -132,6 +132,15 @@ If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.claude/memory/M
 
 Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget).
 
+### 3.3: Fill the Project Binding
+
+Update `.claude/quality-profile.json` (written by `/setup-wizard`, extended by `/constitute`; create it with `python3 scripts/forge/quality_profile.py init` when missing):
+- `canonicalSources`: add a "Canonical sources" section to `docs/architecture.md` with an empty registry table (columns: concept, kind, owner, single definition, how to consume, actor / axis of change, contract, consumers and copies, status, introduced by) and point the key at it (`doc`, `heading`). Rows are added later on evidence only: a plan that introduces a shared source, a second implementation, a ratchet or audit hit.
+- `searchScopes`: when unset, fill it from the module map (the directories agents may search, each ending in `/`).
+- `generatedDirs`: optional; list generated directories inside a search scope (such as generated copies of source) that searches should skip.
+
+Then run `python3 scripts/forge/quality_profile.py validate` and fix every problem it prints.
+
 ## PHASE 4: Summary
 
 Present to the user:
