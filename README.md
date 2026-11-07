@@ -57,11 +57,18 @@ When the template is improved, you can push updates to projects that already use
 
 | Category | What happens | Examples |
 |----------|-------------|----------|
-| **Template-owned** | Overwritten with latest version | Commands (`.claude/commands/`), manifest, scripts |
+| **Template-owned** | Overwritten with latest version; a locally edited file is backed up first | Commands (`.claude/commands/`), `.claude/storage-rules.md`, manifest, `scripts/forge/`, `.claude/hooks/forge/` |
 | **Three-way merge** | Template diff applied, all project customizations preserved | `CLAUDE.md`, Agents (`.claude/agents/`) — uses `git merge-file` with baselines to apply only what changed in the template |
 | **Project-owned** | Never touched | `constitution.md`, `.claude/project-config.json`, memory, specs, docs |
 | **Merge files** | Smart-merged (union of keys/lines) | `.mcp.json` (new servers added), `.gitignore` (new entries added) |
-| **Copy if missing** | Copied only if absent | New files added to the template that projects don't have yet |
+| **Copy if missing** | Copied only if absent | New files added to the template that projects don't have yet; `.claude/checklists/` |
+| **Forge hooks** | Forge entries in `.claude/settings.json` replaced, project entries untouched | Hook entries pointing into `.claude/hooks/forge/` |
+
+Everything else under `scripts/` and `.claude/hooks/` belongs to the project and is never touched.
+
+### Local edits and backups
+
+The template ships `.claude/template-checksums` (sha256 of every template-owned file). On update, a file that no longer matches the checksum recorded by the installed version is a local edit: the dry run marks it `OVERWRITE (local edit → backup)`, and the update copies it to `.claude/.update-backup/<from>-to-<to>-<timestamp>/` before overwriting. Projects installed before 1.29.0 have no checksum record, so every template-owned file that differs is backed up on the first update. `project-config.json` migrations are written only after you confirm.
 
 ### Project config
 
@@ -102,7 +109,8 @@ Run these once when you first install the template:
 - **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. **Requires approval.**
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
-  - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task all` — all pending
+  - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task W2` — a wave from `tasks/README.md` | `/execute-task all` — all pending
+  - In a batch, each task keeps type check, lint and affected tests; the full build and the full test suite run once per wave (batch gate)
 - **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-engineer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
 - **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
 - **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
@@ -177,6 +185,10 @@ bugs/
 - **PostToolUse hooks**: Type checking runs after every file edit
 - **Build verification**: Runs the project's Type Check Command, Lint Command, and Build Command after each task to catch type errors, style violations, and bundler-specific failures
 - **Self-repair loop**: When verification catches errors (tsc, lint, or build), a repair agent automatically fixes them (up to 3 attempts) before escalating
+- **Check output out of context**: checks run through `scripts/forge/gate.sh`, which keeps the full output in `.claude/.gate-logs/` and prints only the result and the first errors; heavy runs share machine-wide slots across worktrees
+- **Context guard**: a PostToolUse hook warns at 75 % and asks for a stop at 85 % of the context window, so batches pause at a safe point instead of being compacted mid-task
+- **Review effort follows severity**: Critical findings are re-reviewed after the fix; Warning-only fixes are confirmed by the checks; repair agents run one effort level higher
+- **Reuse check**: implementing agents search for existing code before every new export and report the result; the code reviewer treats a semantic duplicate as Critical
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible
@@ -186,7 +198,7 @@ bugs/
 - **Review checkpoint gates**: Auto-placed at dependency convergence points and layer boundaries. User reviews preceding work before continuing in batch mode
 - **Commit convention**: All commits follow Conventional Commits format. AI co-author attribution is off by default — no `Co-Authored-By` trailers, no AI mentions in commit messages. Opt-in during `/setup-wizard`. All workflow commits use scoped `git add` (specific files only, never `git add -A`)
 - **Pre-squash safety check**: Before squashing WIP commits, workflows verify no commits were pushed to the remote — skips squash if history was already shared
-- **Auto-compact**: In batch execution, pauses and prompts user-initiated compaction at heavy context load to prevent degradation
+- **Auto-compact**: In batch execution, pauses and prompts user-initiated compaction when the context guard asks for it (task count as the fallback without the hook)
 
 ## Pre-Populated Universal Rules
 

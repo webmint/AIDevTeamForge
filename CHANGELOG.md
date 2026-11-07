@@ -5,6 +5,41 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-11-07
+
+### Added
+- **Template checksums and local-edit backups** — `.claude/template-checksums` records the sha256 of every template-owned file. `update.sh` now classifies each file as ADD / UPDATE / UNCHANGED / LOCAL / UNKNOWN; a locally edited file (and, on the first update of a pre-1.29 install, any file that differs) is copied to `.claude/.update-backup/<from>-to-<to>-<timestamp>/` before it is overwritten. Regenerate with `./update.sh --write-checksums` (last step of `/release`)
+- **Forge-owned namespaces** — Forge ships scripts only under `scripts/forge/` and hooks only under `.claude/hooks/forge/`. The rest of `scripts/` and `.claude/hooks/` belongs to the project and is never overwritten (previously the manifest claimed all of `scripts/**`)
+- **Forge hook fragment** — `.claude/hooks/forge/settings-hooks.json` holds Forge's hook entries; `update.sh` replaces only the entries that point into `.claude/hooks/forge/` in the project's `settings.json` (project hooks, including prompt/agent/http hooks in a shared matcher group, stay), `/setup-wizard` does the first merge
+- **`scripts/forge/gate.sh`** — runs a check with the full output in `.claude/.gate-logs/<name>.log` and prints only `<name>=<exit>` plus a few summary or error lines; heavy runs (builds, test suites) share machine-wide slots across worktrees and run at lower CPU priority. `/execute-task`, `/fix`, `/refactor`, `/verify` and the batch gate use it
+- **Context guard hook** — `.claude/hooks/forge/context-guard.py` (PostToolUse) asks to wind down at 75 % and to stop at a safe point at 85 % of the context window. `/setup-wizard` asks for the window (200k / 1M) and writes `FORGE_CONTEXT_WINDOW`
+- **Task waves** — `/breakdown` groups tasks into waves of 2–4 (new wave at a fan-in, after a large task, after 4 tasks, before a review checkpoint) and lists them in `tasks/README.md`; `/execute-task W2` runs one
+- **Batch gate** — in a batch (range, wave, list, `all`) each task keeps type check, lint and affected tests; the full build and full test suite run once at every wave boundary, with the 3-attempt self-repair. A final failure puts the covered tasks back to In Progress; a context-guard stop defers the gate (`Batch gate pending:` in session-state)
+- **AC-titled tests, tests first** — tests that prove an AC start their title with the AC id and spec tag (`AC-3 [spec-007]: …`); `ac-verifier` runs those tests first and drives the browser or API only for what they do not cover
+- **Memory Entry Rules** (`storage-rules.md`) — dated entries, tool versions on tool-bound entries, rewrite in place instead of "Correction:" entries, no standing rules in memory, 25 KB budget reported by the appending command
+- **Pre-scaffolding token** — greenfield: one token marks every text that describes something not yet scaffolded (commands, planned paths, structure); `/finalize` Phase 2.5 replaces what the feature created
+- **Agent `effort:` frontmatter** — `high` for the Think tier, `medium` for the others
+- **Installer tests** — `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py` (template repo only)
+
+### Changed
+- **Review effort follows severity** (`/execute-task`, `/fix`, `/refactor`) — Critical findings are re-reviewed once after the fix; a Warning-only fix is confirmed by the checks; Suggestions are recorded; repair agents run one effort level higher; findings that would reword `CLAUDE.md`, agents or `project-config.json` go to the user
+- **Consolidation exception to the minimal-change rules** (CLAUDE.md Always 3/11, Never 5; `/execute-task`, `/fix`, backend agent) — a copy of the logic a change touches is reused or extracted, never extended
+- **Reuse rules in agent templates** — "Reuse check" with a one-line report per new export (architect, frontend, mobile, backend, db, api-designer); "reuse, never copy logic" wording for devops and qa; code-reviewer treats a semantic duplicate as Critical; qa-engineer test-strength rule
+- **Resume agents before restarting them** (CLAUDE.md Always 16) — an agent that died on an API error is resumed with `SendMessage` first
+- **Build caches bypassed** in gate runs after changes to shared code (`--force`, `--skip-nx-cache`, `--rerun-tasks`)
+- **Bug numbers across worktrees** (`/report-bug`, `/verify`) — the next number is taken from every `git worktree list` tree, so parallel worktrees no longer collide on merge
+- **Arguments** — `/breakdown` accepts the feature directory, `spec.md` or `plan.md`; `/verify`, `/review`, `/summarize`, `/finalize` accept the feature directory
+- **Agent assignment** — tests go with the agent and task of the code under test; projects can add isolated-directory rows
+- **Commit attribution opt-out** also writes `"attribution": {"commit": "", "pr": "", "sessionUrl": false}` to `settings.json`, so Claude Code's own trailers no longer contradict the CLAUDE.md rule
+- `devops-engineer` uses `{{DEFAULT_BRANCH}}`; `update.sh` adds the key to older project configs
+- `storage-rules.md` moved from `.claude/templates/` to `.claude/storage-rules.md` and is template-owned (it was read at runtime but never refreshed by updates, and `/setup-wizard` offers to delete `templates/`)
+- Template version: 1.28.0 → 1.29.0
+
+### Fixed
+- `/execute-task`, `/fix`, `/refactor` staged the gitignored `.claude/wip.md` in their WIP commits (an agent once force-added it); the crash-safety rules now forbid staging or force-adding it
+- `/fix` and `/refactor` no longer let a self-review replace the code-reviewer or qa-engineer step
+- `update.sh` wrote `project-config.json` migrations before the confirmation prompt, and the CLAUDE.md extraction even on `--dry-run`; migrations now go to a working copy written only on apply. `--dry-run` no longer prompts when the versions are equal
+
 ## [1.28.0] - 2026-04-10
 
 ### Added
