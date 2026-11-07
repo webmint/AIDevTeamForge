@@ -120,7 +120,7 @@ Flag any inconsistencies as Critical issues.
 
 ### 4.2: Automated Checks
 
-Run these on ALL changed files across all tasks:
+Run these on ALL changed files across all tasks. Run each command check through `scripts/forge/gate.sh verify-<check> -- <command>` and bypass build caches (see `/execute-task` 3.2 "Build caches"):
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured

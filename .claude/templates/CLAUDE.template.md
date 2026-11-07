@@ -151,7 +151,8 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
-15. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
+15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>`. It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
+16. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
@@ -226,6 +227,10 @@ This file is:
 - **Updated automatically** by `/execute-task` (Phase 7)
 
 If you run `/clear` or context is compacted, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
+
+### Context Guard
+
+The `.claude/hooks/forge/context-guard.py` hook (PostToolUse) measures the main-session context. At 75 % of the window it asks you to wind down (finish the current task, start nothing new); at 85 % it asks you to stop at the nearest safe point and have the user run `/compact`. The window defaults to 200k tokens; set `FORGE_CONTEXT_WINDOW` (or absolute `FORGE_CONTEXT_WARN` / `FORGE_CONTEXT_STOP`) in the `env` block of `.claude/settings.json` to change it. `python3 .claude/hooks/forge/context-guard.py --report` prints the current size. Subagents ignore its messages.
 
 ### Crash Recovery
 

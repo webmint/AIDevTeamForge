@@ -254,7 +254,7 @@ Update `.claude/wip.md` — change Phase to `3.2 (Verification)`.
 
 ### 3.2: Post-Agent Verification (with Self-Repair)
 
-After the agent completes, run verification:
+After the agent completes, run verification. Run each command check (type check, lint, build, tests) through `scripts/forge/gate.sh <task>-<check> -- <command>`, so only its result and first error lines enter the context:
 
 1. **Files changed match task scope**: Check `git diff --name-only` (or `git status` for new files) against the task's file list. If extra files were changed, investigate why.
 2. **Type checker passes**: Run the Type Check Command from CLAUDE.md (e.g. `tsc --noEmit` for TypeScript, `mypy` for Python, `go vet` for Go). The PostToolUse hook should catch this, but verify explicitly.

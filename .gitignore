@@ -3,3 +3,5 @@
 .claude/session-state.md
 .claude/wip.md
 .claude/.update-backup/
+.claude/.gate-logs/
+__pycache__/

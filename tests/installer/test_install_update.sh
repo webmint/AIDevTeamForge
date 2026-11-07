@@ -35,6 +35,8 @@ P2="$WORK/fresh"; mkdir -p "$P2"
 check "storage-rules at .claude/storage-rules.md" '[ -f "$P2/.claude/storage-rules.md" ]'
 check "template-checksums installed" 'cmp -s "$TPL/.claude/template-checksums" "$P2/.claude/template-checksums"'
 check "forge hook fragment installed" '[ -f "$P2/.claude/hooks/forge/settings-hooks.json" ]'
+check "gate.sh installed executable" '[ -x "$P2/scripts/forge/gate.sh" ]'
+check "context guard installed" '[ -f "$P2/.claude/hooks/forge/context-guard.py" ]'
 check "tests/ not installed" '[ ! -d "$P2/tests" ]'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
 

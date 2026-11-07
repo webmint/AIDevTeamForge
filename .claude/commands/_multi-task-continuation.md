@@ -29,8 +29,8 @@ After Phase 5.2 completes for the current task:
       - **Continue**: proceed to step b.
       - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.
       - **Pause**: clean up WIP state (delete `.claude/wip.md`), stop execution. Report completed tasks so far.
-   b. **Context health**: Read the "Tasks completed this session" count from session-state.md.
-      - If heavy (6+ tasks): **pause execution** and present the compaction command:
+   b. **Context health**: The context guard hook (`.claude/hooks/forge/context-guard.py`) adds a `CONTEXT GUARD` message to a tool result when the main-session context passes its thresholds (default 75 % / 85 % of the window).
+      - If a `CONTEXT GUARD` message (wind down or stop) appeared since the current task started, **or** — when the guard is not installed — 6+ tasks were completed this session (the "Tasks completed this session" count in session-state.md): run the **Batch Gate** over the tasks completed so far, then **pause execution** and present the compaction command:
         ```
         🔴 CONTEXT HEALTH PAUSE — [N] tasks completed this session (heavy context load).
         Strongly recommended: Run /compact before continuing.
@@ -40,15 +40,15 @@ After Phase 5.2 completes for the current task:
         Then resume with: /execute-task [remaining-task-ids]
         ```
         Stop execution here. Do NOT continue to the next task without user-initiated compaction.
-      - If light/moderate: continue without compaction.
+      - Otherwise: continue without compaction.
    c. **Loop back** to Phase 1 for the next task in the queue. The task queue carries over — do not re-parse `$ARGUMENTS`.
 
 ## Batch Gate
 
 Runs once, after the last task of the queue (and also when execution stops early, over the tasks that completed):
 
-1. Run the Build Command from CLAUDE.md (skip if none is configured), with the cache-bypass flag when a build cache is in use (see `/execute-task` 3.2 "Build caches").
-2. Run the project's full test suite (the Test Command from CLAUDE.md, or the test script detected from package.json / the build file). Skip if the project has no test runner.
+1. Run the Build Command from CLAUDE.md through `scripts/forge/gate.sh batch-build -- <command>` (skip if none is configured), with the cache-bypass flag when a build cache is in use (see `/execute-task` 3.2 "Build caches").
+2. Run the project's full test suite through `scripts/forge/gate.sh batch-test -- <command>` (the Test Command from CLAUDE.md, or the test script detected from package.json / the build file). Skip if the project has no test runner.
 3. If either fails, enter the same self-repair loop as `/execute-task` 3.2 (max 3 attempts; WIP commit after each repair: `[WIP] Batch gate: repair attempt [M]/3`). Give the repair agent the failing output and the files changed by the batch's tasks.
 4. If it still fails after 3 attempts, STOP and report the failure in the Final Report; do not mark the batch as passed.
 

@@ -279,7 +279,7 @@ Update `.claude/wip.md` — change Phase to `5 (Verify)`.
 
 ## PHASE 5: Verify (with Self-Repair)
 
-Run verification on all changed files:
+Run verification on all changed files. Run each command check through `scripts/forge/gate.sh fix-<check> -- <command>`, so only its result and first error lines enter the context:
 
 1. **Type checker passes**: Run the Type Check Command from CLAUDE.md (e.g. `tsc --noEmit` for TypeScript, `mypy` for Python, `go vet` for Go)
 2. **Linter passes**: Run the Lint Command from CLAUDE.md on all changed files
