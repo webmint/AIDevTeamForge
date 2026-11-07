@@ -58,9 +58,11 @@ Wait for user choice and execute accordingly.
 
 ### 0.4: Audit Gate
 
-When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge/audit-gate.py start-line` (a structural spec that remediates audit themes runs `start-line --remediation "#n,#m"`, naming the blocking issues it fixes):
+When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge/audit-gate.py start-line`. When the request remediates audit themes, the spec is structural (see "Spec type" in Phase 4; ask the user when unsure) and runs `start-line --remediation "#n,#m"` instead, naming the blocking issues it fixes (without an issue tracker, the theme ids: `--remediation T1,T3`):
 - **Exit 0**: keep the printed `Audit gate: …` line; Phase 4 writes it verbatim into the spec header.
 - **Exit 1**: show the printed reason and ask the user: run `/audit` first (stop here), or start anyway. On "start anyway", the header records `Audit gate: started while blocked — <user's reason>`.
+
+- **Exit 2**: show the error line (for example an `integrationRef` that does not resolve yet), note it in the HARD GATE summary and continue.
 
 When `auditGate` is unset, or the script reports the state as unknown, note it in the HARD GATE summary and continue.
 

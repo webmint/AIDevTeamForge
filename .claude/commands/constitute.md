@@ -407,7 +407,7 @@ After approval:
    - `planningSources`: the documents that declare future variations (roadmap, brief, open questions).
    - `enforcementMap`: add an "Enforcement Map" appendix to the constitution, one row per rule with its tags (`lint:<rule id>`, `test:<path>`, `gate:<item>`, `ratchet:<name>` or `review-only`), and point the key at it (`doc`, `heading`, `rulePattern`, `lintConfigs`, `gateFiles`). When the map outgrows the constitution, move it to a document of its own and set `rulesDoc` to the constitution, which still declares the rule ids.
 
-   Then run `python3 scripts/forge/quality_profile.py validate` and fix every problem it prints.
+   Then run `python3 scripts/forge/quality_profile.py validate` (and, when `enforcementMap` is set, `python3 scripts/forge/check-enforcement-map.py`) and fix every problem they print.
 5. **For existing projects**: Inform the user that the next step is to run `/onboard` to generate comprehensive codebase documentation that will serve as the knowledge base for all agents
 
 ## IMPORTANT RULES

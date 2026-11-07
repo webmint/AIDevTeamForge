@@ -30,6 +30,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 2. Read the feature's `plan.md` (architecture context for tech-writer)
 3. Read all task files in `specs/NNN-feature/tasks/` — extract Completion Notes (files changed) to build the changed files list for tech-writer
    - **Task cross-check**: Verify all task files (excluding README.md) have `Status: Complete`. If any task is not Complete, stop: "⛔ Not all tasks are complete. Task [N] is [status]. Run `/execute-task` to complete it first."
+   - **Evidence check**: when `.claude/quality-profile.json` sets `integrationRef`, run `python3 scripts/forge/check-task-evidence.py`: a Complete task without filled Completion Notes or a task commit stops finalize with the script's lines. When the binding sets `decisionRecords` (the project keeps one decision file per unit of work), also run `python3 scripts/forge/check-decision-records.py` and stop on its problems.
 4. Read `.claude/project-config.json` for `DEFAULT_BRANCH` and `SOURCE_ROOT`. If `DEFAULT_BRANCH` is missing, fall back to `main`.
 
 **Source Root**: If `SOURCE_ROOT` from project-config.json is not `.`, this is a wrapper project — run squash-related commands inside that directory.
@@ -50,6 +51,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
    ⚠️ No summary.md found. Run `/summarize` first for a complete feature record.
    Proceeding without summary.
    ```
+   **Exception**: when `.claude/quality-profile.json` sets `auditGate`, stop instead: "⛔ No summary.md found. The audit gate counts finished features by their `summary.md` (`auditGate.mergedSpecMarker`). Run `/summarize` first."
 
 ## PHASE 1.5: Escape Analysis
 
@@ -89,7 +91,7 @@ Records where each defect of this feature came from and which gate should have s
 
 Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[NNN-feature]/review.md` has no "Structural Check" section.
 
-1. **Baselines**: when the binding sets `ratchets`, run `python3 scripts/forge/ratchet.py check`; for each ratchet it reports `LOWER`, run `python3 scripts/forge/ratchet.py update <name>`. When any baseline changed, commit the baseline file (the binding's `baselineFile`) by path: `git add [baselineFile] && git commit -m "[WIP] Ratchet baselines: [feature-name]"`.
+1. **Baselines** (a catch-up: a structural spec lowers its baselines in its last task; any feature may lower one by accident): when the binding sets `ratchets`, run `python3 scripts/forge/ratchet.py check`; for each ratchet it reports `LOWER`, run `python3 scripts/forge/ratchet.py update <name>`. When any baseline changed, commit the baseline file (the binding's `baselineFile`) by path: `git add [baselineFile] && git commit -m "[WIP] Ratchet baselines: [feature-name]"`.
 2. **Follow-ups**: from `review.md` → "Structural Check" and "Follow-ups", list the undecided hub edits and third copies as seam-first follow-ups for a later spec, in the Phase 4 output.
 
 ## PHASE 2: Feature Documentation

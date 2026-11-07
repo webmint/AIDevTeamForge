@@ -186,13 +186,13 @@ Every plan, feature or structural, has a Reuse Map: no later gate asks "does thi
 
 ### 1.6: Open Themes Touched (touch rule)
 
-Audit themes are fixed by the next spec that touches their code. List the open theme issues: the rows of the last audit's theme triage (`.claude/quality-profile.json` → `auditGate`: the newest report matching `auditReports`, its `triageHeading` table; read only that section, e.g. `sed -n '/^<triageHeading>/,/^## /p' <report>`, never the whole report) whose issue is still open, and the registry rows whose status names an open issue. When `auditGate` is unset, use the open theme issues the last `/audit` report lists, if any. For each theme whose files intersect this plan's File Impact:
-- **fix in place**: add the theme's fix for the touched files to File Impact (the breakdown gives it a task, and the pull request says `Fixes #n` when the theme is then fully fixed, `Refs #n` otherwise); or
+Audit themes are fixed by the next spec that touches their code. List the open theme issues: the rows of the last audit's theme triage (`.claude/quality-profile.json` → `auditGate`: the newest report matching `auditReports`, its `triageHeading` table; read only that section, e.g. `sed -n '/^<triageHeading>/,/^## /p' <report>`, never the whole report) whose issue is still open (without an issue tracker: the rows with Blocks `yes` or disposition `touch-rule` that no later change has fixed), and the registry rows whose status names an open issue. When `auditGate` is unset, use the open theme issues the last `/audit` report lists, if any. For each theme whose files intersect this plan's File Impact:
+- **fix in place**: add the theme's fix for the touched files to File Impact (the breakdown gives it a task, and the pull request says `Fixes #n` when the theme is then fully fixed, `Refs #n` otherwise; without an issue tracker, name the triage theme id, e.g. `Fixes T1`); or
 - **defer**: when the fix exceeds about a quarter of this spec's tasks or needs a decision this spec cannot take, record the deferral with the issue number and the reason; the theme then gets its own chore.
 
 A plan that touches a theme's files and records neither is incomplete. A copy group of 1.5 step 5 is an open theme too.
 
-**A deferral holds once**: a theme or copy group that an earlier spec already deferred is fixed in place by the next spec that touches its files, whatever its size. When that is impossible, the plan says so and you tell the user, who decides: raise the theme's issue to blocking (the audit gate then holds new feature specs until the seam lands), or defer again with the reason recorded in "Open Themes Touched".
+**A deferral holds once**: a theme or copy group that an earlier spec already deferred is fixed in place by the next spec that touches its files, whatever its size. When that is impossible, the plan says so and you tell the user, who decides: raise the theme to blocking (its issue gets the blocking labels, or, without a tracker, its triage row says Blocks `yes`; the audit gate then holds new feature specs until the seam lands), or defer again with the reason recorded in "Open Themes Touched".
 
 ## PHASE 2: Write the Plan
 

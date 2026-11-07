@@ -12,9 +12,9 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 
 | Gate | Reviewer | Inputs (pass the paths; the reviewer reads them) |
 |------|----------|--------------------------------------------------|
-| spec-gate | `general-purpose` | `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any |
-| plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present |
-| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` if present; `spec.md`; `.claude/commands/_agent-assignment.md` |
+| spec-gate | `general-purpose` | `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; the source files the spec's Affected Areas name |
+| plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names |
+| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `.claude/commands/_agent-assignment.md` |
 
 - **Model**: run `general-purpose` reviewers on a different model from this session where possible (the Agent tool's `model`: `sonnet` when this session runs Opus, `opus` when it runs Sonnet). The diversity is the point. Specialist agents keep the model of their own definition.
 - **Missing agent**: a plan-gate lens whose agent is not in `.claude/agents/` runs as `general-purpose` with the same lens.
@@ -42,7 +42,7 @@ Write the full report to specs/<NNN-*>/gates/<gate>[-<lens>].md. Return only one
 
 Add this line to the summary presented to the user:
 
-`**Gate**: <gate> — C<n> W<n> S<n> I<n>; fixed <n>; open Critical: <ids, or none>; report: specs/<NNN-*>/gates/<gate>.md`
+`**Gate**: <gate> — C<n> W<n> S<n> I<n>; fixed <n>; open Critical: <ids, or none>; report: specs/<NNN-*>/gates/<gate>[-<lens>].md` (plan-gate: one line per lens)
 
 - An open Critical is the user's decision: fix it now, accept it (record `accepted by user — <reason>` in the report's Dispositions), or stop.
 - When the user's change requests at the HARD GATE change the artifact's substance (a new or changed AC, design decision, contract or task), run the gate again on the changed parts before asking for approval again.

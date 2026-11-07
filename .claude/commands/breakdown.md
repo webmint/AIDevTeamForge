@@ -137,7 +137,7 @@ For each task, generate:
 **Depends on**: [task numbers this task requires to be done first, or "None"]
 **Blocks**: [task numbers that can't start until this is done]
 **Context docs**: [specific doc file paths the agent should read, or "None"]
-**Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the touched theme it fixes (`fixes #n in <paths>`); or "none (no new symbol)"]
+**Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the touched theme it fixes (`fixes #n in <paths>`, or the triage theme id `fixes T1 in <paths>` without an issue tracker); or "none (no new symbol)"]
 
 **Description**:
 [Detailed description of what to change and why]

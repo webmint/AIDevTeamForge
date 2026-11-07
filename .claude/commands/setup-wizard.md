@@ -526,7 +526,7 @@ Use the exact same values you substituted into the templates. For multi-line val
 
 ### 3.9: Create the Project Binding
 
-Create `.claude/quality-profile.json`, the per-project binding of the generic quality mechanisms: `python3 scripts/forge/quality_profile.py init --integration-ref origin/<DEFAULT_BRANCH>` writes every key present and unset (an empty value; the mechanism then runs in its manual form), except `integrationRef` and `auditGate`. The audit gate is on by default, active from the first feature spec (an audit after every 3 merged feature specs), so a project is audited while its patterns are still cheap to fix. Then run `python3 scripts/forge/quality_profile.py validate`. Fill nothing else here: `/constitute` and `/onboard` fill the keys from the constitution and the codebase. When `scripts/forge/` is not installed, write the same file by hand: a JSON object with every key of the validator set to `[]`, `{}` or `""`.
+Create `.claude/quality-profile.json`, the per-project binding of the generic quality mechanisms: `python3 scripts/forge/quality_profile.py init --integration-ref origin/<DEFAULT_BRANCH>` writes every key present and unset (an empty value; the mechanism then runs in its manual form), except `integrationRef` and `auditGate`. The audit gate is on by default, active from the first feature spec (an audit after every 3 merged feature specs), so a project is audited while its patterns are still cheap to fix. Then run `python3 scripts/forge/quality_profile.py validate`. Fill nothing else here: `/constitute` and `/onboard` fill most keys from the constitution and the codebase; `ratchets`, `baselineFile` and `semanticClones` are filled by hand when the project adopts a clone detector or a counted rule. When `scripts/forge/` is not installed, write the same file by hand: a JSON object with every key of the validator set to `[]`, `{}` or `""`.
 
 ## STEP 4: Cleanup & Summary
 
@@ -543,7 +543,7 @@ Create `.claude/quality-profile.json`, the per-project binding of the generic qu
 - .claude/agents/[list agents].md — Specialized agents
 - .claude/memory/MEMORY.md — Persistent memory (pre-seeded)
 - constitution.md — Constitution stub (run /constitute to populate)
-- .claude/quality-profile.json — Project binding, audit gate on, other keys unset (/constitute and /onboard fill them)
+- .claude/quality-profile.json — Project binding, audit gate on, other keys unset (/constitute and /onboard fill most; ratchets by hand)
 - specs/ — Feature specifications directory
 - docs/ — Project documentation directory
 

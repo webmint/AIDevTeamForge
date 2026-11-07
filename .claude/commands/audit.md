@@ -52,7 +52,7 @@ Standalone, on-demand whole-codebase audit for periodic "second opinion" quality
 
 5a. **Project binding** (`.claude/quality-profile.json`, when present; an unset key falls back as noted):
    - `searchScopes` and `generatedDirs`: every glob, grep and file count of this audit, and of every agent it launches, stays inside the search scopes and skips the generated directories (`python3 scripts/forge/quality_profile.py scopes` prints the resolved scopes). Unset: the Source Root, nothing skipped.
-   - `enforcementMap`: read the enforcement map (the table under that heading). A rule tagged `review-only` with a violation in this audit and in the previous audit gets a proposed machine check (lint rule, catalog test or ratchet) in the report's Summary. Unset: skip.
+   - `enforcementMap`: run `python3 scripts/forge/check-enforcement-map.py` (each problem it prints is a finding of the structural lens), then read the enforcement map (the table under that heading). A rule tagged `review-only` with a violation in this audit and in the previous audit gets a proposed machine check (lint rule, catalog test or ratchet) in the report's Summary. Unset: skip.
    - `ratchets` and `baselineFile`: the measurements of the structural lens (Phase 3.5, S1): each ratchet's count, its baseline and the locations behind it (`locationsCommand`). Unset: S1 records "no ratchets bound" and the lens relies on its own searches.
    - `semanticClones`: the optional semantic-clone step of the structural lens (S1a). Unset or `enabled` false: the step is skipped.
    - `canonicalSources`: the canonical sources registry (the table under that heading): the concepts with a single definition, checked by the structural lens (S2, S3). Unset or an empty table: the lens builds its concept list from its other sources (S2) and proposes the first rows.
@@ -215,7 +215,7 @@ For 200+ file codebases using module subagents, run **one module** through Batch
 
 The mislogic hunt reads file by file; it does not see that one rule is written in five places, that a shared helper is bypassed, or that a closed set is spread as literals. This lens measures that. It produces the report's `## Structure` section, which feeds the theme status and triage (Phase 4.7) and the learning step (Phase 5).
 
-**Who runs it**: one dedicated pass by the `architect` agent (its file content, the Adversarial Preamble, then the **Structural Lens** block below instead of the Mislogic Hunt Checklist, then the Output Contract with `Lens: structural`, then the closing reminder). Without an installed `architect`, skip the lens and note it in the report. On a large scope it may split the steps across at most three nested agents (for example S1–S3, S4, S5), each over the whole search scope; it never splits by module. It writes `audits/.tmp-structural.md` and appends the S1 measurements and the S2 concept table after the findings under a `## Measurements` and a `## Concepts` heading (Phase 4 copies them into the report).
+**Who runs it**: one dedicated pass by the `architect` agent (its file content, the Adversarial Preamble, then the **Structural Lens** block below instead of the Mislogic Hunt Checklist, then the Output Contract with `Lens: structural`, then the closing reminder). Without an installed `architect`, skip the lens and note it in the report. On a large scope the parent `/audit` may launch the lens as up to three `architect` passes (for example S1–S3, S4, S5), each over the whole search scope and each with the steps it runs; it never splits by module (a subagent cannot launch subagents of its own). It writes `audits/.tmp-structural.md` and appends the S1 measurements and the S2 concept table after the findings under a `## Measurements` and a `## Concepts` heading (Phase 4 copies them into the report).
 
 **Structural Lens block** (verbatim, appended to the agent prompt; the parent fills `<…>` from Phase 1):
 
@@ -434,7 +434,7 @@ A triage view over the validated findings; it never merges findings or changes t
    - with the next free id and the origin `audit YYYY-MM-DD/<theme>` (the report date);
    - deduplicated: when an existing item covers it, add the origin to that item instead.
    List the items in the report.
-6. **Do NOT commit. Do NOT stage.** Let the user decide whether to keep the audit and its checklist items in git history.
+6. **Do NOT commit. Do NOT stage.** Let the user decide whether to keep the audit and its checklist items in git history (with `auditGate` set, the report must be committed after triage: see "Audit Gate").
 
 ### Report format
 
@@ -528,7 +528,7 @@ Layer-direction, cohesion, coupling, information-expert and indirection findings
 (Keep this heading exactly: `python3 scripts/forge/audit-gate.py triage-check` looks for it. Drafted by `/audit`; the user triages it, see "Audit Gate" below. Every column is mandatory: the check fails a row without a machine check and a blocking row that names no open blocking issue.)
 | Theme | Findings | Disposition | Blocks | Escalated | Machine check | Issue |
 |---|---|---|---|---|---|---|
-| T1 <name> | F-n, … | fix / touch-rule / class-guard / seam-before:<item> | yes / no | yes / no | <lint rule / ratchet / catalog test that fails on a new copy; non-blocking only: none: <reason>> | (to file) |
+| T1 <name> | F-n, … | fix / touch-rule / class-guard / seam-before:<item> | yes / no | yes / no | <lint rule / ratchet / catalog test that fails on a new copy; non-blocking only: none: <reason>> | blocking rows: (to file); other rows: - |
 
 ## Not Audited
 - Runtime behavior (no dynamic analysis)
@@ -585,7 +585,7 @@ Print to console:
 
 Full report: audits/YYYY-MM-DD-audit.md
 
-Not committed — review, then commit if you want audit history in git, or delete.
+Not committed — review, then commit if you want audit history in git, or delete. With `auditGate` set: triage, then commit and merge the report, or the gate stays due.
 Next (broad mode): triage the `## Theme triage` table (see "Audit Gate").
 
 NOTE: /audit is adversarial. It biases toward false positives over false
@@ -599,6 +599,8 @@ A broad-mode audit ends with a drafted `## Theme triage` table; the user triages
 - Confirm or change each row's disposition, `Blocks` and machine check.
 - When the project uses an issue tracker, file one issue per blocking theme with the labels the binding's `auditGate.blockingIssues` command filters on, and replace the row's `(to file)` with its number (`#n`). The fixing change closes the issue.
 - Without an issue tracker, set `auditGate.blockingIssues.command` to `""`: the cadence and the triage check still run, and the triage table itself is the record: write `-` in the Issue column.
+- Without an issue tracker, a remediation spec names the themes instead of issues (`audit-gate.py start-line --remediation T1,T3`), and plans and tasks refer to a theme by its triage id (`fixes T1`).
+- **Commit the report** when `auditGate` is set: the gate counts an audit only when a commit on the integration ref adds the report, so commit it with its triage (and the learning step's checklist items) and merge it there. Until then, `/specify` keeps reporting the audit as due.
 - Validate with `python3 scripts/forge/audit-gate.py triage-check --report audits/YYYY-MM-DD-audit.md` (exit 1 names each problem; with `auditGate` unset it prints one line and exits 0). `python3 scripts/forge/audit-gate.py status` shows whether the gate is open.
 
 ## IMPORTANT RULES
