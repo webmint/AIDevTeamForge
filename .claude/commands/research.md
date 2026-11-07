@@ -45,6 +45,8 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `existing-spec`): return `blocked (existing spec specs/NNN-*)`; the conductor resumes that spec instead.
+
 ## PHASE 2: Codebase Investigation
 
 ### Step 1: Keyword Extraction

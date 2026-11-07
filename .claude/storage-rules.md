@@ -16,7 +16,6 @@ audits/
   .gitignore                           # Auto-created on first /audit run (excludes .tmp-* files)
 
 specs/
-  delivery-status.md               # Autonomous delivery ledger (/conduct only): current spec, parked, completed
   NNN-feature-name/                # One numbered directory per feature
     spec.md                        # Feature specification (/specify)
     plan.md                        # Technical implementation plan (/plan)
@@ -136,7 +135,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
-/conduct      → autonomous mode only: runs the commands above as subagents; writes specs/delivery-status.md; each runner writes specs/NNN-name/runs/<phase>.md
+/conduct      → autonomous mode only: runs the commands above as subagents; keeps the local ledger .claude/delivery-status.md (never committed); each runner writes specs/NNN-name/runs/<phase>.md
 ```
 
 ## Status Tracking

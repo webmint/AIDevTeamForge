@@ -34,6 +34,8 @@ Determine the repository's default branch using these methods in order:
 3. If that fails, check if `master` exists: `git show-ref --verify --quiet refs/heads/master`
 4. If none found, ask the user what their default branch is
 
+**Autonomous mode** (`_autonomous-mode.md`, point `default-branch`): use `DEFAULT_BRANCH` from `.claude/project-config.json`; never ask.
+
 ### 0.3: Branch Decision
 
 **If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
@@ -68,6 +70,8 @@ When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge
 - **Exit 2**: show the error line (for example an `integrationRef` that does not resolve yet), note it in the HARD GATE summary and continue. A remediation request needs its printed line (without it `check-pr` rejects the spec while the gate is blocked): fix the cause (for example `git fetch` the integration ref) and run it again; when it still exits 2, ask the user how to proceed.
 
 When `auditGate` is unset, or the script reports the state as unknown, note it in the HARD GATE summary and continue.
+
+**Autonomous mode** (`_autonomous-mode.md`, point `audit-gate`): exit 1, and exit 2 on a remediation request after the retry, are STOP 8. Spec type when unsure: `structural` only when the request remediates audit themes or names no behaviour change; record the choice under Decisions.
 
 ## Pre-Step: Reset Session State
 

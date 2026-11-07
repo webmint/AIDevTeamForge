@@ -31,6 +31,7 @@ After Phase 5.2 completes for the current task:
       - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.
       - **Pause**: clean up WIP state (delete `.claude/wip.md`), stop execution. Report completed tasks so far.
    a3. **Wave boundary**: if the task just completed is the last task of its wave and more tasks remain in the queue, run the **Batch Gate** now (before the next wave starts).
+   **Autonomous mode** (`_autonomous-mode.md`, point `context`): a runner ignores the task count; on a guard message it finishes the current task, runs the Batch Gate over the completed tasks (unless the stop message forbids it), and returns `status: paused (context)` with `next` naming the remaining tasks — never the compaction prompt.
    b. **Context health**: The context guard hook (`.claude/hooks/forge/context-guard.py`) adds a `CONTEXT GUARD` message to a tool result when the main-session context passes its thresholds (default 75 % / 85 % of the window).
       - If a `CONTEXT GUARD` **stop** message appeared since the current task started: do not run the Batch Gate; record `Batch gate pending:` as described there, then **pause execution** and present the compaction command below.
       - If a `CONTEXT GUARD` **wind-down** message appeared, **or** — when the guard is not installed — 6+ tasks were completed this session (the "Tasks completed this session" count in session-state.md): run the **Batch Gate** over the tasks completed so far, then **pause execution** and present the compaction command:
