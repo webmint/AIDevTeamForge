@@ -130,6 +130,8 @@ If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.claude/memory/M
 - Areas of complexity → under "Known Pitfalls"
 - Inconsistencies → under "Known Pitfalls"
 
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget).
+
 ## PHASE 4: Summary
 
 Present to the user:

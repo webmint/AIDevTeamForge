@@ -52,7 +52,7 @@ Creates a structured specification with acceptance criteria. Asks clarifying que
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
 
 ### `/breakdown [spec-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
+Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments and waves (2–4 consecutive tasks run together). Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
 
 ### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
@@ -61,7 +61,7 @@ Executes a single task from the breakdown using the assigned specialized agent. 
 3. Post-execution verification (tsc, lint, build, done conditions, self-repair)
 4. Code review (code-reviewer agent — findings reported to user, critical issues block)
 5. Memory update
-WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
+Also takes a range (`1-3`), a wave (`W2`) or `all`. In a batch, the full build and the full test suite run once after the last task (batch gate). WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
 
 ### `/review [spec-file]`
 Launches specialist review agents (security, performance, test assessment) on completed feature code. Produces a structured review report saved to `specs/[feature]/review.md` for `/verify` to incorporate into its verdict. Does not render a verdict — findings only.
@@ -139,7 +139,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 ### Always
 1. **Read before write** — always read files before modifying them
 2. **Constitution is law** — `constitution.md` rules override everything except user instructions
-3. **Minimal changes** — every change should impact as little code as possible
+3. **Minimal changes, except consolidation** — every change should impact as little code as possible, and a copy is never the minimal change. When a task touches or adds a copy of logic that already exists elsewhere, it reuses or extracts the shared definition when that stays within the task's files and their direct consumers; otherwise it reports the copy so the plan gets a consolidation task
 4. **Memory is persistent** — check `.claude/memory/MEMORY.md` for lessons from past sessions
 5. **Specs are contracts** — once approved, implementation must satisfy every acceptance criterion
 6. **One task at a time** — execute tasks sequentially following the dependency graph
@@ -147,17 +147,19 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 8. **Lint everything** — linting must pass on all changed files before task completion
 9. **Handle both paths** — every fallible operation must handle success AND error cases
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
-11. **SOLID, DRY, KISS** — single responsibility, don't repeat logic 3+ times, keep it simple
+11. **SOLID, DRY, KISS** — single responsibility, no copied logic (a second copy is extracted, see Always 3), keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
+15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>`. It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
+16. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
 2. **Never commit secrets** — no API keys, tokens, or credentials in code
 3. **Never commit debug artifacts** — no console.log, debugger, print() left behind
 4. **Never leave bare TODOs** — every TODO must have context and a reference
-5. **Never modify outside scope** — do not "fix" unrelated code you happen to see
+5. **Never modify outside scope** — do not "fix" unrelated code you happen to see. A copy of the logic your task touches is not unrelated: it falls under the consolidation exception (Always 3)
 6. **Never guess** — if unsure how code works, read it; if unsure what user wants, ask
 
 ## Commit Convention
@@ -211,7 +213,7 @@ docs/
 - Task files: `NNN-short-title.md`, sequential within feature
 - Everything for a feature lives in one directory
 - Docs are organized by topic (not by task/date) in `docs/`
-- See `.claude/templates/storage-rules.md` for full conventions
+- See `.claude/storage-rules.md` for full conventions
 - **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
 
 ## Session Continuity
@@ -225,6 +227,10 @@ This file is:
 - **Updated automatically** by `/execute-task` (Phase 7)
 
 If you run `/clear` or context is compacted, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
+
+### Context Guard
+
+The `.claude/hooks/forge/context-guard.py` hook (PostToolUse) measures the main-session context. At 75 % of the window it asks you to wind down (finish the current task, start nothing new); at 85 % it asks you to stop at the nearest safe point and have the user run `/compact`. The window defaults to 200k tokens; set `FORGE_CONTEXT_WINDOW` (or absolute `FORGE_CONTEXT_WARN` / `FORGE_CONTEXT_STOP`) in the `env` block of `.claude/settings.json` to change it. `python3 .claude/hooks/forge/context-guard.py --report` prints the current size. Subagents ignore its messages.
 
 ### Crash Recovery
 

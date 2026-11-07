@@ -5,6 +5,7 @@
 #   ./update.sh /path/to/target-project
 #   ./update.sh --dry-run /path/to/target-project
 #   ./update.sh --force /path/to/target-project
+#   ./update.sh --write-checksums            (template repo only: regenerate .claude/template-checksums)
 
 set -euo pipefail
 
@@ -30,18 +31,82 @@ header()  { printf "\n${BOLD}%b${NC}\n" "$*"; }
 # ── Parse arguments ─────────────────────────────────────────────────────────
 DRY_RUN=false
 FORCE=false
+WRITE_CHECKSUMS=false
 TARGET_DIR=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --force)   FORCE=true; shift ;;
+    --write-checksums) WRITE_CHECKSUMS=true; shift ;;
     -*)        err "Unknown flag: $1"; exit 1 ;;
     *)         TARGET_DIR="$1"; shift ;;
   esac
 done
 
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Expand glob patterns to file lists ─────────────────────────────────────
+# Given a base dir and a newline-separated list of glob patterns on stdin,
+# print matching files (one per line). Uses find for ** patterns, direct
+# listing otherwise. Compatible with bash 3.x / macOS.
+expand_patterns() {
+  local base_dir="$1"
+  while IFS= read -r pattern; do
+    [ -z "$pattern" ] && continue
+    case "$pattern" in
+      *"**"*)
+        # Convert glob ** pattern to find arguments
+        # e.g. ".claude/templates/**" → find .claude/templates -type f
+        local dir_part="${pattern%%/\*\*}"
+        if [ -d "$base_dir/$dir_part" ]; then
+          find "$base_dir/$dir_part" -type f -not -name '.DS_Store' -not -name '*.pyc' -not -path '*/__pycache__/*' -not -path '*/.pytest_cache/*' 2>/dev/null | while IFS= read -r fp; do
+            # Strip base_dir prefix to get relative path
+            echo "${fp#$base_dir/}"
+          done
+        fi
+        ;;
+      *)
+        # Direct file path (no wildcards)
+        if [ -f "$base_dir/$pattern" ]; then
+          echo "$pattern"
+        fi
+        ;;
+    esac
+  done | sort -u
+}
+
+# sha256 of a file (macOS shasum or GNU sha256sum)
+sha256_of() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    sha256sum "$1" | cut -d' ' -f1
+  fi
+}
+
+# Checksums file shipped with the template: one "<sha256>  <path>" line per
+# template-owned file. update.sh compares a target's file with the checksum
+# recorded by the version the target was installed/updated from, to tell a
+# local edit from an older template version.
+CHECKSUMS_REL=".claude/template-checksums"
+
+write_checksums() {
+  local base="$1" manifest="$2" out="$3"
+  jq -r '.templateOwned.patterns[]' "$manifest" | expand_patterns "$base" \
+    | grep -vxF "$CHECKSUMS_REL" | while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        printf "%s  %s\n" "$(sha256_of "$base/$f")" "$f"
+      done > "$out"
+}
+
+if [ "$WRITE_CHECKSUMS" = true ]; then
+  command -v jq >/dev/null 2>&1 || { err "jq is required"; exit 1; }
+  write_checksums "$TEMPLATE_DIR" "$TEMPLATE_DIR/.claude/template-manifest.json" "$TEMPLATE_DIR/$CHECKSUMS_REL"
+  info "Wrote $CHECKSUMS_REL ($(grep -c . "$TEMPLATE_DIR/$CHECKSUMS_REL") files)"
+  exit 0
+fi
+
 
 if [ -z "$TARGET_DIR" ]; then
   echo "Usage: update.sh [--dry-run] [--force] <target-project-directory>"
@@ -102,7 +167,7 @@ info "Target path:      $TARGET_DIR"
 
 if [ "$TEMPLATE_VERSION" = "$TARGET_VERSION" ]; then
   warn "Target is already on version $TEMPLATE_VERSION."
-  if [ "$FORCE" != true ]; then
+  if [ "$FORCE" != true ] && [ "$DRY_RUN" != true ]; then
     echo ""
     printf "Continue anyway? [y/N] "
     read -r confirm
@@ -128,6 +193,11 @@ fi
 # ── Project config ────────────────────────────────────────────────────────
 PROJECT_CONFIG="$TARGET_DIR/.claude/project-config.json"
 HAS_CONFIG=false
+# Migrations edit a working copy; it replaces project-config.json only after the
+# user confirms (never on --dry-run or "N").
+WORK_CONFIG="$(mktemp)"
+CONFIG_CHANGED=false
+trap 'rm -f "$WORK_CONFIG"' EXIT
 
 # Substitute {{PLACEHOLDER}} variables in a file using project config.
 # Uses perl for safe multi-line replacement via environment variables.
@@ -151,7 +221,7 @@ substitute_placeholders() {
 # Called when project-config.json doesn't exist yet.
 migrate_project_config() {
   local claude_md="$TARGET_DIR/CLAUDE.md"
-  local config_out="$TARGET_DIR/.claude/project-config.json"
+  local config_out="$WORK_CONFIG"
 
   if [ ! -f "$claude_md" ]; then
     warn "No CLAUDE.md found — cannot extract project config."
@@ -329,13 +399,15 @@ migrate_project_config() {
       MODEL_VERIFY: $MODEL_VERIFY
     }' > "$config_out"
 
-  info "Wrote .claude/project-config.json — please review extracted values."
+  CONFIG_CHANGED=true
+  info "Extracted project config from CLAUDE.md — written to .claude/project-config.json on apply; review the values."
   return 0
 }
 
 # Check for project config — migrate if missing
 if [ -f "$PROJECT_CONFIG" ]; then
   HAS_CONFIG=true
+  cp "$PROJECT_CONFIG" "$WORK_CONFIG"
 else
   warn "No .claude/project-config.json found in target project."
   if migrate_project_config; then
@@ -348,55 +420,43 @@ fi
 
 # Migrate old AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY
 if [ "$HAS_CONFIG" = true ]; then
-  old_model="$(jq -r '.AGENT_MODEL // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
-  has_new_keys="$(jq -r '.MODEL_THINK // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  old_model="$(jq -r '.AGENT_MODEL // empty' "$WORK_CONFIG" 2>/dev/null || true)"
+  has_new_keys="$(jq -r '.MODEL_THINK // empty' "$WORK_CONFIG" 2>/dev/null || true)"
   if [ -n "$old_model" ] && [ -z "$has_new_keys" ]; then
     info "Migrating AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY (Think=$old_model, Do=sonnet, Verify=sonnet)"
     jq --arg model "$old_model" '
       . + {MODEL_THINK: $model, MODEL_DO: "sonnet", MODEL_VERIFY: "sonnet"}
       | del(.AGENT_MODEL)
-    ' "$PROJECT_CONFIG" > "${PROJECT_CONFIG}.tmp" && mv "${PROJECT_CONFIG}.tmp" "$PROJECT_CONFIG"
+    ' "$WORK_CONFIG" > "${WORK_CONFIG}.tmp" && mv "${WORK_CONFIG}.tmp" "$WORK_CONFIG"
+    CONFIG_CHANGED=true
+  fi
+fi
+
+# Add DEFAULT_BRANCH when missing (used by agent templates since 1.29.0)
+if [ "$HAS_CONFIG" = true ]; then
+  has_branch="$(jq -r '.DEFAULT_BRANCH // empty' "$WORK_CONFIG" 2>/dev/null || true)"
+  if [ -z "$has_branch" ]; then
+    branch="$(git -C "$TARGET_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
+    if [ -z "$branch" ]; then
+      for b in main master develop; do
+        if git -C "$TARGET_DIR" show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then branch="$b"; break; fi
+      done
+    fi
+    : "${branch:=main}"
+    info "Adding DEFAULT_BRANCH=$branch to project-config.json on apply (detected; edit it if wrong)"
+    jq --arg b "$branch" '. + {DEFAULT_BRANCH: $b}' "$WORK_CONFIG" > "${WORK_CONFIG}.tmp" && mv "${WORK_CONFIG}.tmp" "$WORK_CONFIG"
+    CONFIG_CHANGED=true
   fi
 fi
 
 # Validate config values — warn about placeholder-in-placeholder
 if [ "$HAS_CONFIG" = true ]; then
-  bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$WORK_CONFIG" 2>/dev/null || true)"
   if [ -n "$bad_keys" ]; then
     warn "project-config.json has unresolved placeholders in: $bad_keys"
     warn "These values will not substitute correctly. Fix them or re-run /setup-wizard"
   fi
 fi
-
-# ── Expand glob patterns to file lists ─────────────────────────────────────
-# Given a base dir and a newline-separated list of glob patterns on stdin,
-# print matching files (one per line). Uses find for ** patterns, direct
-# listing otherwise. Compatible with bash 3.x / macOS.
-expand_patterns() {
-  local base_dir="$1"
-  while IFS= read -r pattern; do
-    [ -z "$pattern" ] && continue
-    case "$pattern" in
-      *"**"*)
-        # Convert glob ** pattern to find arguments
-        # e.g. ".claude/templates/**" → find .claude/templates -type f
-        local dir_part="${pattern%%/\*\*}"
-        if [ -d "$base_dir/$dir_part" ]; then
-          find "$base_dir/$dir_part" -type f 2>/dev/null | while IFS= read -r fp; do
-            # Strip base_dir prefix to get relative path
-            echo "${fp#$base_dir/}"
-          done
-        fi
-        ;;
-      *)
-        # Direct file path (no wildcards)
-        if [ -f "$base_dir/$pattern" ]; then
-          echo "$pattern"
-        fi
-        ;;
-    esac
-  done | sort -u
-}
 
 # ── Read pattern lists from manifest ───────────────────────────────────────
 TEMPLATE_OWNED_PATTERNS="$(jq -r '.templateOwned.patterns[]' "$MANIFEST")"
@@ -407,6 +467,44 @@ DERIVED_COUNT="$(jq -r '.templateDerived.mappings | length' "$MANIFEST")"
 
 # ── Build file lists ───────────────────────────────────────────────────────
 TEMPLATE_OWNED_FILES="$(echo "$TEMPLATE_OWNED_PATTERNS" | expand_patterns "$TEMPLATE_DIR")"
+
+# Classify each template-owned file (tab-separated "<status>\t<path>"):
+#   ADD        — missing in target
+#   UNCHANGED  — target already identical to the template
+#   UPDATE     — target matches the checksum its installed version recorded (no local edit)
+#   LOCAL      — target differs from its recorded checksum (local edit) → backup, then overwrite
+#   UNKNOWN    — no checksum recorded (installed before 1.29.0) and target differs → backup, then overwrite
+OLD_CHECKSUMS="$TARGET_DIR/$CHECKSUMS_REL"
+recorded_sum() {
+  [ -f "$OLD_CHECKSUMS" ] || return 0
+  awk -v f="$1" '$2 == f { print $1; exit }' "$OLD_CHECKSUMS"
+}
+OWNED_STATUS="$(echo "$TEMPLATE_OWNED_FILES" | while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [ ! -f "$TARGET_DIR/$f" ]; then
+    printf "ADD\t%s\n" "$f"; continue
+  fi
+  cur="$(sha256_of "$TARGET_DIR/$f")"
+  if [ "$cur" = "$(sha256_of "$TEMPLATE_DIR/$f")" ]; then
+    printf "UNCHANGED\t%s\n" "$f"; continue
+  fi
+  rec="$(recorded_sum "$f")"
+  if [ "$f" = "$CHECKSUMS_REL" ] || [ "$f" = ".claude/template-manifest.json" ]; then
+    printf "UPDATE\t%s\n" "$f"
+  elif [ -z "$rec" ]; then
+    printf "UNKNOWN\t%s\n" "$f"
+  elif [ "$rec" = "$cur" ]; then
+    printf "UPDATE\t%s\n" "$f"
+  else
+    printf "LOCAL\t%s\n" "$f"
+  fi
+done)"
+BACKUP_DIR="$TARGET_DIR/.claude/.update-backup/${TARGET_VERSION}-to-${TEMPLATE_VERSION}-$(date +%Y%m%d-%H%M%S)"
+
+# Forge hook fragment → project settings.json
+HOOK_SRC="$(jq -r '.hookFragments.source // empty' "$MANIFEST")"
+HOOK_TGT="$(jq -r '.hookFragments.target // empty' "$MANIFEST")"
+HOOK_PREFIX="$(jq -r '.hookFragments.ownedPrefix // empty' "$MANIFEST")"
 COPY_IF_MISSING_FILES="$(echo "$COPY_IF_MISSING_PATTERNS" | expand_patterns "$TEMPLATE_DIR")"
 
 # Build templateDerived file list: source → target pairs (tab-separated)
@@ -480,13 +578,31 @@ done)"
 # ── Dry-run report ─────────────────────────────────────────────────────────
 header "Plan"
 
-# Overwrite (templateOwned)
-OVERWRITE_COUNT=0
-echo "$TEMPLATE_OWNED_FILES" | while IFS= read -r f; do
+# templateOwned
+echo "$OWNED_STATUS" | while IFS="$(printf '\t')" read -r st f; do
   [ -z "$f" ] && continue
-  overwrt "OVERWRITE  $f"
+  case "$st" in
+    ADD)       added   "ADD (template)  $f" ;;
+    UPDATE)    overwrt "OVERWRITE  $f" ;;
+    LOCAL)     warn    "OVERWRITE (local edit → backup)  $f" ;;
+    UNKNOWN)   warn    "OVERWRITE (no checksum record, differs → backup)  $f" ;;
+  esac
 done
-OVERWRITE_COUNT="$(echo "$TEMPLATE_OWNED_FILES" | grep -c . || true)"
+UNCHANGED_COUNT="$(echo "$OWNED_STATUS" | grep -c '^UNCHANGED' || true)"
+[ "$UNCHANGED_COUNT" -gt 0 ] && skipped "UNCHANGED  $UNCHANGED_COUNT template-owned file(s)"
+BACKUP_COUNT="$(echo "$OWNED_STATUS" | grep -cE '^(LOCAL|UNKNOWN)' || true)"
+if [ "$BACKUP_COUNT" -gt 0 ]; then
+  warn "$BACKUP_COUNT file(s) will be backed up to ${BACKUP_DIR#$TARGET_DIR/}/ before overwrite"
+fi
+
+# Forge hooks
+if [ -n "$HOOK_SRC" ] && [ -f "$TEMPLATE_DIR/$HOOK_SRC" ]; then
+  if [ -f "$TARGET_DIR/$HOOK_TGT" ]; then
+    merged "MERGE (forge hooks)  $HOOK_TGT"
+  else
+    skipped "SKIP (forge hooks)  $HOOK_TGT does not exist yet — /setup-wizard merges them"
+  fi
+fi
 
 # Merge
 echo "$MERGE_ACTUAL" | while IFS= read -r f; do
@@ -532,6 +648,9 @@ skipped "SKIP  $SKIP_COUNT project-owned file(s)"
 
 # Meta files
 added "WRITE  .claude/template-version → $TEMPLATE_VERSION"
+if [ "$CONFIG_CHANGED" = true ]; then
+  merged "WRITE  .claude/project-config.json (migrated keys, see above)"
+fi
 
 echo ""
 
@@ -550,12 +669,54 @@ fi
 # ── Execute: templateOwned (overwrite) ─────────────────────────────────────
 header "Applying updates..."
 
-echo "$TEMPLATE_OWNED_FILES" | while IFS= read -r f; do
+if [ "$CONFIG_CHANGED" = true ]; then
+  cp "$WORK_CONFIG" "$PROJECT_CONFIG"
+  merged "Written: .claude/project-config.json (migrated keys)"
+fi
+
+echo "$OWNED_STATUS" | while IFS="$(printf '\t')" read -r st f; do
   [ -z "$f" ] && continue
+  case "$st" in
+    UNCHANGED) continue ;;
+    LOCAL|UNKNOWN)
+      mkdir -p "$BACKUP_DIR/$(dirname "$f")"
+      cp "$TARGET_DIR/$f" "$BACKUP_DIR/$f"
+      warn "Backed up: $f → ${BACKUP_DIR#$TARGET_DIR/}/$f"
+      ;;
+  esac
   mkdir -p "$TARGET_DIR/$(dirname "$f")"
   cp "$TEMPLATE_DIR/$f" "$TARGET_DIR/$f"
-  overwrt "Overwritten: $f"
+  if [ "$st" = "ADD" ]; then added "Added: $f"; else overwrt "Overwritten: $f"; fi
 done
+
+# ── Execute: Forge hook fragment → settings.json ───────────────────────────
+# Remove every hook entry whose command contains the Forge prefix (a matcher
+# group left empty goes too), then append the fragment's groups. Project
+# entries, including non-command hooks in a shared group, are never touched.
+merge_forge_hooks() {
+  local frag="$1" settings="$2" prefix="$3" result
+  result="$(jq -s --arg p "$prefix" '
+    .[0] as $frag | .[1] as $set |
+    def forge_hook: ((.command? // "") | type == "string" and contains($p));
+    (($set.hooks // {})
+      | with_entries(.value |= (map(.hooks |= map(select(forge_hook | not)))
+                                | map(select((.hooks | length) > 0))))
+      | with_entries(select(.value | length > 0))) as $clean |
+    (reduce (($frag.hooks // {}) | to_entries[]) as $e ($clean;
+      .[$e.key] = ((.[$e.key] // []) + $e.value))) as $merged |
+    if ($merged | length) > 0 then $set | .hooks = $merged
+    else $set | del(.hooks) end
+  ' "$frag" "$settings")" || return 1
+  echo "$result" > "$settings"
+}
+
+if [ -n "$HOOK_SRC" ] && [ -f "$TEMPLATE_DIR/$HOOK_SRC" ] && [ -f "$TARGET_DIR/$HOOK_TGT" ]; then
+  if merge_forge_hooks "$TEMPLATE_DIR/$HOOK_SRC" "$TARGET_DIR/$HOOK_TGT" "$HOOK_PREFIX"; then
+    merged "Merged Forge hooks into: $HOOK_TGT"
+  else
+    warn "Could not merge Forge hooks into $HOOK_TGT (invalid JSON?) — file unchanged"
+  fi
+fi
 
 # ── Execute: templateDerived (update generated files from templates) ───────
 # Three-way merge for template-derived files:
@@ -574,7 +735,7 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   new_agent="$(mktemp)"
   cp "$TEMPLATE_DIR/$src" "$new_agent"
   if [ "$HAS_CONFIG" = true ]; then
-    substitute_placeholders "$new_agent" "$PROJECT_CONFIG"
+    substitute_placeholders "$new_agent" "$WORK_CONFIG"
   fi
 
   # Validate substitution succeeded

@@ -24,3 +24,7 @@ Each command reads this table and selects the agent whose row best matches the f
 | Accessibility, design system compliance, UI audit | design-auditor |
 | Shared utilities, type definitions, cross-cutting concerns | architect |
 | Unclear or mixed | architect (safe default) |
+
+**Tests follow the code under test**: tests for a change are written by the agent and in the task that changes that code; a dedicated end-to-end test task is the exception and goes to `qa-engineer`.
+
+**Isolated directories**: a project may name directories that only one agent or phase may touch (generated code, fixtures owned by one task, a held-out test set). Add them as rows `| <dir> (isolated) | <agent> only |`; every other agent treats them as read-only.

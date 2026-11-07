@@ -8,7 +8,7 @@ Generates feature documentation and squashes all WIP commits into a single clean
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file. If empty, use the most recently modified spec in `specs/` with status "Complete".
+- `$ARGUMENTS` — Optional path to a spec file or its feature directory in `specs/`. If empty, use the most recently modified spec in `specs/` with status "Complete".
 
 ## Source Repo Auto-Commit (Wrapper Mode)
 
@@ -76,6 +76,20 @@ If documentation was created or updated, commit:
 ```
 git add docs/ && git commit -m "[WIP] Feature docs: [feature-name]"
 ```
+
+## PHASE 2.5: Pre-Scaffolding Notes
+
+Greenfield projects only. Search for the token `<!-- default, update after scaffolding -->` in `CLAUDE.md`, `.claude/project-config.json` and `.claude/agents/*.md`. If there are no hits, skip this phase.
+
+For each hit, check whether this feature created what the text describes (the command now exists, the planned path now exists):
+- **Created**: replace the default text with the real value (the real command from `package.json` or the build file, the real path) and remove the token. Update `project-config.json` with the same value, so the next `update.sh` substitutes it into the agents and `CLAUDE.md` too.
+- **Not created yet**: leave the text and the token.
+
+If anything was replaced, commit the edited files by path:
+```
+git add CLAUDE.md .claude/project-config.json [edited agent files] && git commit -m "[WIP] Pre-scaffolding notes: [feature-name]"
+```
+List the remaining hits in the Phase 4 summary under "Pre-scaffolding notes left".
 
 ## PHASE 3: Feature Squash
 

@@ -273,6 +273,18 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - `/fix bugs/NNN-xxx.md` — reads the bug file, fixes the issue, updates status to Fixed
 - Manual: user can edit the status directly if fixing outside the workflow
 
+## Memory Entry Rules
+
+`.claude/memory/MEMORY.md` is read by most commands and many agents, so every byte in it is paid on every read. Commands that append to it follow these rules.
+
+- **Format**: `- **[AREA]**: [observation] _(Feature NNN / Task N, YYYY-MM-DD)_`. Use `Bug NNN` or `Refactor` in place of `Feature NNN / Task N` when there is no feature.
+- **Tool-bound entries** start with the tool and the version they were observed on, e.g. `- **Forms**: Vue 3.5.13: ...`. After an upgrade, the version shows the entry may be stale.
+- **Search before appending**: look for an entry on the same area and subject.
+  - If the new observation corrects or supersedes it, rewrite that entry in place, with a new date. Never append a separate "Correction:" entry next to the old one.
+  - If it repeats it, do not add it.
+- **No standing rules**: a rule that every run must follow belongs in `CLAUDE.md` or `constitution.md`, not in memory. Memory holds lessons, pitfalls and quirks.
+- **Size budget**: 25 KB. If the file is over budget after the append, say so in the command's final report: `MEMORY.md is N KB (budget 25 KB) — consolidate: merge duplicates, fold corrections, move standing rules out`. Do not consolidate it unasked.
+
 ## Cleanup Rules
 
 - Do NOT delete feature directories after completion — they serve as documentation

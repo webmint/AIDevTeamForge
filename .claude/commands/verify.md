@@ -8,7 +8,7 @@ Verifies completed tasks against the original specification's acceptance criteri
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file. If empty, use the most recently modified spec in `specs/`.
+- `$ARGUMENTS` — Optional path to a spec file or its feature directory in `specs/`. If empty, use the most recently modified spec in `specs/`.
 
 ## PHASE 1: Load Context
 
@@ -120,7 +120,7 @@ Flag any inconsistencies as Critical issues.
 
 ### 4.2: Automated Checks
 
-Run these on ALL changed files across all tasks:
+Run these on ALL changed files across all tasks. Run each command check through `scripts/forge/gate.sh verify-<check> -- <command>` and bypass build caches (see `/execute-task` 3.2 "Build caches"):
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
@@ -204,7 +204,7 @@ Update `.claude/memory/MEMORY.md` with lessons learned from this feature:
 - **New patterns**: Any new code patterns introduced that should be followed in future work
 - **Pitfalls**: Gotchas discovered that should be avoided in similar work
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 Keep memory entries concise (1-2 lines each). Link to specific files if relevant.
 
@@ -278,9 +278,9 @@ Wait for user response.
 
 ### 9.4: Create Bug Files (if requested)
 
-**Determine next bug number**: Scan `bugs/` for existing `.md` files, find the highest NNN prefix, and assign numbers sequentially from there. Do this ONCE before creating any files.
+**Determine next bug number**: Scan `bugs/` for existing `.md` files in this tree and in every other worktree (`git worktree list`), find the highest NNN prefix across all of them, and assign numbers sequentially from there. Do this ONCE before creating any files.
 
-For each issue being filed, create a bug file in `bugs/` following the format in `.claude/templates/storage-rules.md`:
+For each issue being filed, create a bug file in `bugs/` following the format in `.claude/storage-rules.md`:
 1. Write `bugs/NNN-short-description.md`
 2. Populate all fields:
    - **Status**: Open

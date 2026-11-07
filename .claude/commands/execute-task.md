@@ -9,6 +9,7 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
 /execute-task 001/3                   # explicit feature/task (e.g. 001/3 or user-auth/3)
 /execute-task 1,3,5                   # specific tasks, executed sequentially
 /execute-task 1-5                     # range of tasks, executed sequentially
+/execute-task W2                      # a wave from tasks/README.md "Waves"
 /execute-task all                     # all pending tasks in active feature
 ```
 
@@ -19,6 +20,7 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
   - **Feature/task** (e.g. `001/3` or `user-auth/3`): Execute a specific task in a specific feature.
   - **Comma-separated** (e.g. `1,3,5`): Execute these specific tasks sequentially in the active feature. Each task gets the full Phase 0–7 treatment.
   - **Range** (e.g. `1-5`): Execute tasks 1 through 5 sequentially. Equivalent to `1,2,3,4,5`.
+  - **Wave** (e.g. `W2`): Execute the tasks of that wave, as listed in the feature's `tasks/README.md` "Waves" table.
   - **`all`**: Execute all pending tasks in the active feature, in dependency order.
 
 ## Prerequisites
@@ -77,6 +79,11 @@ Then, build the **task queue** based on `$ARGUMENTS`:
 - Task queue = expanded range in order
 - Skip any tasks in the range that are already Complete
 
+**If `$ARGUMENTS` matches `W<number>`** (e.g. `W2`):
+- Read the "Waves" table in the active feature's `tasks/README.md` and take that wave's task range
+- Task queue = that range in order, skipping tasks already Complete
+- If the README has no "Waves" table or no such wave, STOP with: "No wave `W[n]` in tasks/README.md. Use a range instead (e.g. `1-3`)."
+
 **If `$ARGUMENTS` is a single number** (e.g. `3`):
 - Task queue = `[that number]` (single task)
 
@@ -84,7 +91,7 @@ Then, build the **task queue** based on `$ARGUMENTS`:
 - Task queue = `[next pending task]` (lowest number with all dependencies satisfied)
 
 **If `$ARGUMENTS` matches none of the above patterns**:
-- STOP with: "Unrecognized argument format: `[input]`. Expected: a task number (e.g. `3`), range (`1-5`), comma list (`1,3,5`), `all`, or feature/task (`001/3`)."
+- STOP with: "Unrecognized argument format: `[input]`. Expected: a task number (e.g. `3`), range (`1-5`), wave (`W2`), comma list (`1,3,5`), `all`, or feature/task (`001/3`)."
 
 ### 1.1.1: Validate Task Queue
 
@@ -214,7 +221,7 @@ You are executing Task [N] from an approved task breakdown.
 [Specific changes from breakdown]
 
 ## Rules
-1. Make ONLY the changes described above — nothing more
+1. Make ONLY the changes described above — nothing more, except consolidation: when your change would add or extend a copy of logic that exists elsewhere, reuse or extract the shared definition when the extraction stays within this task's files and their direct consumers; otherwise stop and report the copy
 2. Follow the project's constitution (key rules: [relevant rules])
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
@@ -232,7 +239,7 @@ These postconditions will be independently verified after you complete.
 [Done conditions from breakdown]
 
 ## Do NOT
-- Refactor surrounding code
+- Refactor surrounding code (consolidating a copy your change touches is not refactoring; see rule 1)
 - Add features not in the task
 - Change files not listed above (unless absolutely necessary for compilation)
 - Skip the project's type checker or linter
@@ -240,22 +247,24 @@ These postconditions will be independently verified after you complete.
 
 After the agent completes, immediately create a WIP git commit to preserve the work:
 ```
-git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
+git add [files you modified] && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
 Update `.claude/wip.md` — change Phase to `3.2 (Verification)`.
 
 ### 3.2: Post-Agent Verification (with Self-Repair)
 
-After the agent completes, run verification:
+After the agent completes, run verification. Run each command check (type check, lint, build, tests) through `scripts/forge/gate.sh <task>-<check> -- <command>`, so only its result and first error lines enter the context:
 
 1. **Files changed match task scope**: Check `git diff --name-only` (or `git status` for new files) against the task's file list. If extra files were changed, investigate why.
 2. **Type checker passes**: Run the Type Check Command from CLAUDE.md (e.g. `tsc --noEmit` for TypeScript, `mypy` for Python, `go vet` for Go). The PostToolUse hook should catch this, but verify explicitly.
 3. **Linter passes**: Run the Lint Command from CLAUDE.md on all changed files
-4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
+4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured. **Batch mode**: when the task queue holds more than one task, skip the build here; it runs in the batch gate at the end of each wave (`_multi-task-continuation.md` → "Batch Gate"). **Single-task mode**: if `.claude/session-state.md` has a `Batch gate pending:` line, this build and the full test suite cover those tasks too; remove the line when both pass.
 5. **Done conditions met**: Check each "Done when" item from the task
 6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, verify it holds in the codebase. For simple existence checks (export exists, function exists), Grep is sufficient. For structural checks (interface has specific fields, function has specific signature), Read the file and verify the full structure. Track pass/fail for each postcondition.
-7. **Run affected tests**: Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
+7. **Run affected tests** (also in batch mode; the full suite runs in the batch gate): Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
+**Build caches**: if the build or type-check tool caches results (Turborepo, Nx, Gradle, Bazel and similar), run these checks with its cache-bypass flag (e.g. `--force`, `--skip-nx-cache`, `--rerun-tasks`) whenever the task changed code that other packages import. A cache hit can report green without re-checking the code that changed.
+
 8. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`, `bugs/`, `research/`, `.mcp.json`. If any are found, flag as a verification failure.
 
 **Source repo WIP** (wrapper mode only): After all checks pass, run the **WIP commit** from the Source Repo Auto-Commit section above.
@@ -274,7 +283,7 @@ For each repair attempt:
    - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
 3. After the repair agent completes, commit:
    ```
-   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
+   git add [files you modified] && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks above
 
@@ -320,7 +329,12 @@ Options:
 ```
 
 Wait for user response:
-- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/execute-task [N]`."
+- **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
+  - **Critical**: after the fix, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/execute-task [N]`."
+  - **Warning** (no Critical left): the fix is confirmed by re-running the Phase 3.2 checks (type check, lint, tests), without another review.
+  - **Suggestion / Info**: record in the report; do not fix.
+  - **Repair effort**: launch the repair agent with the Agent tool's `effort` one level above the agent's own (`medium` → `high` → `xhigh`; never `max`).
+  - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md` or `.claude/project-config.json` is reported to the user, not fixed.
 - **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 4 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report completed state for manual handling.
 
@@ -389,7 +403,7 @@ If this was the last pending task (all other tasks in the feature are Complete),
 
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 ### 5.2: Context Maintenance
 
@@ -410,6 +424,6 @@ Context: the remaining task queue, the current feature directory.
 3. **Self-repair before escalation** — when automated verification fails (type checker, linter, build), attempt automatic repair (up to 3 times) before stopping. Code review findings are reported to the user, not auto-repaired.
 4. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
 5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/finalize` time.
-6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow.
+6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow. `.claude/wip.md` is gitignored: never stage it and never force-add it (`git add -f`); it stays a local file.
 7. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.
 8. **No per-task squash** — WIP commits accumulate and are squashed by `/finalize`. Do not run `git reset --soft` during execute-task.

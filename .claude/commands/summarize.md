@@ -8,7 +8,7 @@ Generates a concise, PR-ready summary of a completed feature. Reads spec, plan, 
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file. If empty, use the most recently modified spec in `specs/` with status "Complete".
+- `$ARGUMENTS` — Optional path to a spec file or its feature directory in `specs/`. If empty, use the most recently modified spec in `specs/` with status "Complete".
 
 ## PHASE 1: Load Context
 

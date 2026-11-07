@@ -249,7 +249,7 @@ If anything noteworthy was discovered during the refresh, update `.claude/memory
 - **Stale areas**: If docs were severely out of date for specific areas, note why (e.g., "cart module had 5 undocumented public APIs — Phase 5 was skipped during execute-task all")
 - **New patterns**: If the tech-writer introduced documentation for a pattern not previously documented
 
-Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work.
+Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work. Follow the **Memory Entry Rules** in `.claude/storage-rules.md`.
 
 ## IMPORTANT RULES
 

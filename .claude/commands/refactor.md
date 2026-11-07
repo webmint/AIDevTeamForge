@@ -288,14 +288,14 @@ You are executing an approved refactoring plan.
 
 After the agent completes, commit:
 ```
-git add [files you modified] .claude/wip.md && git commit -m "[WIP] Refactor: [short description] — refactoring applied"
+git add [files you modified] && git commit -m "[WIP] Refactor: [short description] — refactoring applied"
 ```
 
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
 
 ## PHASE 5: Verify (with Self-Repair)
 
-Run verification on all changed files:
+Run verification on all changed files. Run each command check through `scripts/forge/gate.sh refactor-<check> -- <command>`, so only its result and first error lines enter the context:
 
 1. **Type checker passes**: Run the Type Check Command from CLAUDE.md (e.g. `tsc --noEmit` for TypeScript, `mypy` for Python, `go vet` for Go)
 2. **Linter passes**: Run the Lint Command from CLAUDE.md on all changed files
@@ -315,7 +315,7 @@ For each repair attempt:
 2. Apply a targeted fix for ONLY those errors
 3. Commit:
    ```
-   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Refactor: [short description] — repair attempt [M]/3"
+   git add [files you modified] && git commit -m "[WIP] Refactor: [short description] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks
 
@@ -362,7 +362,12 @@ Options:
 ```
 
 Wait for user response:
-- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/refactor`."
+- **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
+  - **Critical**: after the fix, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/refactor`."
+  - **Warning** (no Critical left): the fix is confirmed by re-running the Phase 5 checks (type check, lint, tests), without another review.
+  - **Suggestion / Info**: record in the report; do not fix.
+  - **Repair effort**: launch the repair agent with the Agent tool's `effort` one level above the agent's own (`medium` → `high` → `xhigh`; never `max`).
+  - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md` or `.claude/project-config.json` is reported to the user, not fixed.
 - **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 7 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report state for manual handling.
 
@@ -511,7 +516,7 @@ If anything noteworthy happened during the refactoring, update `.claude/memory/M
 - **Complex area**: If the code was especially tangled or hard to restructure safely, note it as a caution for future work
 - **Gotcha discovered**: If the refactoring revealed a hidden coupling or unexpected dependency, record it
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work — not every refactoring needs a memory entry.
 
@@ -539,7 +544,8 @@ After writing, verify the file is under 40 lines. If over, trim oldest entries f
 6. **Partial approval is supported** — the user can approve specific refactoring actions and reject others
 7. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping
 8. **Scope discipline** — if the refactoring grows beyond 5 files, stop and recommend `/specify`
-9. **Crash safety** — always write `wip.md` before making changes and delete it only after the final commit
+9. **Crash safety** — always write `wip.md` before making changes and delete it only after the final commit. `.claude/wip.md` is gitignored: never stage it and never force-add it (`git add -f`); it stays a local file.
 10. **Verify everything** — even if hooks ran, run explicit verification after the refactoring
 11. **Tests should not break** — if tests fail after a pure refactoring, the refactoring introduced a behavior change. Fix or rollback
 12. **Memory is selective** — only record genuinely useful patterns and gotchas, not routine refactors
+13. **Review agents are not optional** — Phase 6 (code-reviewer) and Phase 7 (qa-engineer) run as separate agents every time. Never replace either with a self-review, even when the change looks trivial. The Phase 8 report states both verdicts.
