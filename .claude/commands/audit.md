@@ -52,7 +52,7 @@ Standalone, on-demand whole-codebase audit for periodic "second opinion" quality
 
 5a. **Project binding** (`.claude/quality-profile.json`, when present; an unset key falls back as noted):
    - `searchScopes` and `generatedDirs`: every glob, grep and file count of this audit, and of every agent it launches, stays inside the search scopes and skips the generated directories (`python3 scripts/forge/quality_profile.py scopes` prints the resolved scopes). Unset: the Source Root, nothing skipped.
-   - `enforcementMap`: run `python3 scripts/forge/check-enforcement-map.py` (each problem it prints is a finding of the structural lens), then read the enforcement map (the table under that heading). A rule tagged `review-only` with a violation in this audit and in the previous audit gets a proposed machine check (lint rule, catalog test or ratchet) in the report's Summary. Unset: skip.
+   - `enforcementMap`: run `python3 scripts/forge/check-enforcement-map.py` (each problem it prints is a finding of the structural lens; in narrow mode, or when the lens is skipped, list the problems in the report's Summary instead), then read the enforcement map (the table under that heading). A rule tagged `review-only` with a violation in this audit and in the previous audit gets a proposed machine check (lint rule, catalog test or ratchet) in the report's Summary. Unset: skip.
    - `ratchets` and `baselineFile`: the measurements of the structural lens (Phase 3.5, S1): each ratchet's count, its baseline and the locations behind it (`locationsCommand`). Unset: S1 records "no ratchets bound" and the lens relies on its own searches.
    - `semanticClones`: the optional semantic-clone step of the structural lens (S1a). Unset or `enabled` false: the step is skipped.
    - `canonicalSources`: the canonical sources registry (the table under that heading): the concepts with a single definition, checked by the structural lens (S2, S3). Unset or an empty table: the lens builds its concept list from its other sources (S2) and proposes the first rows.
@@ -207,7 +207,7 @@ To avoid the context exhaustion failure mode documented in CHANGELOG 1.27.0 for 
 
 - **Batch A (parallel)**: code-reviewer + architect → wait → both write to `audits/.tmp-*.md`.
 - **Batch B (parallel)**: qa-engineer + security-reviewer → wait → both write to `audits/.tmp-*.md`.
-- **Batch C (broad mode only)**: the structural lens (3.5) → writes `audits/.tmp-structural.md`.
+- **Batch C (broad mode only)**: the structural lens (3.5), one pass or up to three in parallel → writes `audits/.tmp-structural.md` (split: `audits/.tmp-structural-<n>.md`).
 
 For 200+ file codebases using module subagents, run **one module** through Batch A → Batch B before moving to the next module. Do **not** fan out every module in parallel. Batch C runs once, over the whole search scope, never per module.
 
@@ -215,7 +215,7 @@ For 200+ file codebases using module subagents, run **one module** through Batch
 
 The mislogic hunt reads file by file; it does not see that one rule is written in five places, that a shared helper is bypassed, or that a closed set is spread as literals. This lens measures that. It produces the report's `## Structure` section, which feeds the theme status and triage (Phase 4.7) and the learning step (Phase 5).
 
-**Who runs it**: one dedicated pass by the `architect` agent (its file content, the Adversarial Preamble, then the **Structural Lens** block below instead of the Mislogic Hunt Checklist, then the Output Contract with `Lens: structural`, then the closing reminder). Without an installed `architect`, skip the lens and note it in the report. On a large scope the parent `/audit` may launch the lens as up to three `architect` passes (for example S1–S3, S4, S5), each over the whole search scope and each with the steps it runs; it never splits by module (a subagent cannot launch subagents of its own). It writes `audits/.tmp-structural.md` and appends the S1 measurements and the S2 concept table after the findings under a `## Measurements` and a `## Concepts` heading (Phase 4 copies them into the report).
+**Who runs it**: one dedicated pass by the `architect` agent (its file content, the Adversarial Preamble, then the **Structural Lens** block below instead of the Mislogic Hunt Checklist, then the Output Contract with `Lens: structural`, then the closing reminder). Without an installed `architect`, skip the lens and note it in the report. On a large scope the parent `/audit` may launch the lens as up to three `architect` passes in parallel (for example S1–S3, S4, S5), each over the whole search scope and each with the steps it runs; it never splits by module (a subagent cannot launch subagents of its own). A single pass writes `audits/.tmp-structural.md`; split passes write `audits/.tmp-structural-1.md`, `-2.md`, `-3.md`, one each, and Phase 4.1 reads each as its own agent. The pass that runs S1 appends the S1 measurements after its findings under a `## Measurements` heading, and the pass that runs S2 appends the S2 concept table under a `## Concepts` heading (Phase 4 copies both into the report).
 
 **Structural Lens block** (verbatim, appended to the agent prompt; the parent fills `<…>` from Phase 1):
 
@@ -339,7 +339,7 @@ or layering rule) is Critical and tagged [CONSTITUTION-VIOLATION]. Never report 
 
 ### 4.1 — Stream agent outputs
 
-For each agent in `[code-reviewer, architect, qa-engineer, security-reviewer, structural]` (`structural` is the Phase 3.5 pass; its `## Measurements` and `## Concepts` sections are kept aside for the report before the findings are parsed):
+For each agent in `[code-reviewer, architect, qa-engineer, security-reviewer, structural]` (`structural` is the Phase 3.5 pass, or `structural-1` … `structural-3` when it was split; its `## Measurements` and `## Concepts` sections are kept aside for the report before the findings are parsed):
 
 1. Check if `audits/.tmp-{agent}.md` exists.
    - **Missing**: log `"Agent failed: {agent} (no output)"` to a `failed_agents` list. Skip and continue.
@@ -605,14 +605,14 @@ A broad-mode audit ends with a drafted `## Theme triage` table; the user triages
 
 ## IMPORTANT RULES
 
-1. **Read-only** — no source modifications, no fixes, no auto-commit of the audit report. The only writes are the report and the learning step's checklist items (Phase 5 step 5), both left uncommitted.
+1. **Read-only** — no source modifications, no fixes, no auto-commit of the audit report. The only writes are the report and the learning step's checklist items (Phase 5 step 5), both left uncommitted by `/audit` (with `auditGate` set, the user commits them after triage: see "Audit Gate").
 2. **Standalone** — `/audit` is NEVER invoked by another command, never part of any workflow chain, never auto-triggered.
 3. **Grounded adversarial bias** — false positives are acceptable ONLY when grounded in verbatim quotes from real code. Fabrications are forbidden. Phase 4 validation discards ungrounded findings.
 4. **Constitution violations always Critical** — never downgraded, regardless of confidence.
 5. **Critique code, not people** — findings describe what is wrong with the code, never who is wrong. No hostile language in committed output.
 6. **Algorithmic merging only** — cross-agent consensus and recurring-issue tags are computed by exact-match hash keys, never by LLM "is this similar" judgment. No semantic dedupe.
 7. **Dated reports, not overwritten** — re-runs on the same day append `-2`, `-3` suffix. The user keeps history across audits.
-8. **Not committed** — the user decides whether to keep audit history in git. Temp files (`audits/.tmp-*`) are gitignored on first run.
+8. **Not committed by `/audit`** — the user decides whether to keep audit history in git; with `auditGate` set, the triaged report must be committed and merged, or the gate stays due. Temp files (`audits/.tmp-*`) are gitignored on first run.
 9. **Context-aware batching** — large codebases use the two-batch + module-subagent strategy AND stream-consolidation. Do NOT fan out all agents on all files at once, do NOT load all findings into context at once (CHANGELOG 1.27.0 documents the failure mode).
 10. **Skip missing agents gracefully** — note them in the report; only fail if all four are missing. Failed agents (ran but errored) are tracked separately from missing agents.
 11. **Wrapper-mode aware** — pass Source Root to every agent for source files; `audits/` always lives at workspace root, never under Source Root.

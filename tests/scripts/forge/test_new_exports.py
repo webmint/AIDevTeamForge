@@ -113,6 +113,18 @@ class NewExportsCase(unittest.TestCase):
                                  ("src/my mod.ts", 2, "SPACE_ADDED"), ("src/new file.ts", 1, "UNTRACKED"),
                                  ('src/say"hi".ts', 1, "QUOTED")])
 
+    def test_an_added_line_starting_with_plus_plus_is_content_not_a_file_header(self) -> None:
+        self.write("src/billing/total.ts", "export function invoiceTotal() {}\nexport const RATE = 1;\n"
+                   "++ b/zz\nexport const HIDDEN = 2;\n")
+        found = new_exports.new_exports(self.repo, self.base, PATTERNS)
+        self.assertEqual(found, [("src/billing/total.ts", 4, "HIDDEN")])
+
+    def test_an_untracked_broken_link_or_directory_link_is_skipped(self) -> None:
+        os.symlink("/nonexistent-target", os.path.join(self.repo, "src", "billing", "broken.ts"))
+        os.symlink("billing", os.path.join(self.repo, "src", "dirlink.ts"))
+        self.write("src/billing/loose.ts", "export const LOOSE = 1;\n")
+        self.assertEqual(self.names(), ["LOOSE"])
+
     def test_unquote_reads_git_c_style_quoting(self) -> None:
         self.assertEqual(new_exports.unquote('"b/src/caf\\303\\251.ts"'), "b/src/caf\u00e9.ts")
         self.assertEqual(new_exports.unquote('"b/a\\"q\\"\\tz"'), 'b/a"q"\tz')

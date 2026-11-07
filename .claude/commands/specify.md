@@ -62,7 +62,7 @@ When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge
 - **Exit 0**: keep the printed `Audit gate: …` line; Phase 4 writes it verbatim into the spec header.
 - **Exit 1**: show the printed reason and ask the user: run `/audit` first (stop here), or start anyway. On "start anyway", the header records `Audit gate: started while blocked — <user's reason>`.
 
-- **Exit 2**: show the error line (for example an `integrationRef` that does not resolve yet), note it in the HARD GATE summary and continue.
+- **Exit 2**: show the error line (for example an `integrationRef` that does not resolve yet), note it in the HARD GATE summary and continue. A remediation request needs its printed line (without it `check-pr` rejects the spec while the gate is blocked): fix the cause (for example `git fetch` the integration ref) and run it again; when it still exits 2, ask the user how to proceed.
 
 When `auditGate` is unset, or the script reports the state as unknown, note it in the HARD GATE summary and continue.
 

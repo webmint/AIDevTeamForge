@@ -84,6 +84,22 @@ class CountToolsTests(unittest.TestCase):
         finally:
             os.chdir(previous)
 
+    def test_matches_takes_a_glob_pathspec_and_still_rejects_a_missing_literal_path(self) -> None:
+        repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, repo)
+        for rel, text in {"in/a.txt": "TODO\nTODO\n", "in/b.md": "TODO\n"}.items():
+            write(repo, rel, text)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        previous = os.getcwd()
+        os.chdir(repo)
+        try:
+            self.assertEqual(count_tools.count_matches("TODO", ["in/*.txt"]), 2)
+            with self.assertRaises(ValueError):
+                count_tools.count_matches("TODO", ["no-such-dir"])
+        finally:
+            os.chdir(previous)
+
     def test_matches_skips_links_and_submodules_and_reads_a_non_utf8_file(self) -> None:
         repo = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, repo)

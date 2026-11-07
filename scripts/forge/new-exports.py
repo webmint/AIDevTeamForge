@@ -37,6 +37,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 
@@ -145,27 +146,37 @@ def added_lines(repo: str, base: str, pathspecs: list[str]) -> tuple[list[tuple[
     path = None
     number = 0
     was_new = False
+    in_header = False  # between `diff --git` and the first hunk: only there is `+++ ` a file header
     for raw in diff.splitlines():
         if raw.startswith("diff --git "):
-            path, was_new = None, False
-        elif raw.startswith("new file mode"):
+            path, was_new, in_header = None, False, True
+        elif in_header and raw.startswith("new file mode"):
             was_new = True
-        elif raw.startswith("+++ "):
+        elif in_header and raw.startswith("+++ "):
             target = unquote(raw[4:])
             path = target[2:] if target.startswith("b/") else None
             if path and was_new:
                 added.add(path)
         elif raw.startswith("@@"):
+            in_header = False
             found = HUNK.match(raw)
             number = int(found.group(1)) if found else 0
-        elif raw.startswith("+") and path:
+        elif not in_header and raw.startswith("+") and path:
             lines.append((path, number, raw[1:]))
             number += 1
     untracked = names_z(git(repo, "ls-files", "-z", "--others", "--exclude-standard", "--", *pathspecs))
     for rel in untracked:
+        full = os.path.join(repo, rel)
+        # Only regular files carry lines: an untracked symlink (broken or not) or an unreadable file is skipped.
+        try:
+            if not stat.S_ISREG(os.lstat(full).st_mode):
+                continue
+            with open(full, encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            continue
         added.add(rel)
-        with open(os.path.join(repo, rel), encoding="utf-8", errors="replace") as handle:
-            lines.extend((rel, i, text) for i, text in enumerate(handle.read().splitlines(), start=1))
+        lines.extend((rel, i, line) for i, line in enumerate(text.splitlines(), start=1))
     return lines, added
 
 

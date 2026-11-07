@@ -174,13 +174,15 @@ def json_leaves(data: Any, prefix: tuple[str, ...] = ()) -> list[tuple[int, str]
 def count_matches(pattern: str, paths: list[str], repo: str | None = None) -> int:
     """Count lines matching `pattern` in the git-tracked files under `paths`, read with git in the source root of the
     project at `repo` (default: the working directory, where `ratchet.py` runs its commands). The paths are relative
-    to the source root (a `<SOURCE_ROOT>/` prefix is accepted); a path that does not exist there raises ValueError, so
-    a misplaced path never counts as 0."""
+    to the source root (a `<SOURCE_ROOT>/` prefix is accepted); a literal path that does not exist there raises ValueError,
+    so a misplaced path never counts as 0 (a glob pathspec is passed to git as it is)."""
     regex = re.compile(pattern)
     repo = os.getcwd() if repo is None else repo
     source = quality_profile.source_root(repo)
     specs = [quality_profile.source_path(p, repo) for p in paths]
-    missing = [p for p, spec in zip(paths, specs) if not os.path.exists(os.path.join(source, spec))]
+    # A glob pathspec (`src/*.py`) is git's to expand; only a literal path is checked for existence.
+    missing = [p for p, spec in zip(paths, specs)
+               if not re.search(r"[*?\[]", spec) and not os.path.exists(os.path.join(source, spec))]
     if missing:
         raise ValueError(f"not under the source root {source}: {', '.join(missing)}")
     listing = subprocess.run(["git", "-C", source, "ls-files", "-z", "--", *specs], capture_output=True)
