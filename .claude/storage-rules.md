@@ -26,6 +26,8 @@ specs/
       001-short-task-title.md      # Individual task files
       002-short-task-title.md
       003-short-task-title.md
+    gates/                         # Independent gate reports: spec-gate.md, plan-gate-<lens>.md, breakdown-gate.md
+    escapes.md                     # Escape analysis (/finalize): every defect, the gate that should have caught it
 
 docs/
   overview.md                      # Project overview and getting started
@@ -120,14 +122,14 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 ```
 /research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
-/specify      → creates specs/NNN-name/spec.md
-/plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
-/breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
+/specify      → creates specs/NNN-name/spec.md (+ gates/spec-gate.md)
+/plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed; gates/plan-gate-<lens>.md)
+/breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... (+ gates/breakdown-gate.md)
 /execute-task → updates individual task file status + completion notes
 /review       → creates specs/NNN-name/review.md (security, performance, test findings)
 /verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
 /summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
-/finalize     → squashes WIP commits, generates feature docs in docs/
+/finalize     → writes specs/NNN-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
@@ -284,6 +286,13 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
   - If it repeats it, do not add it.
 - **No standing rules**: a rule that every run must follow belongs in `CLAUDE.md` or `constitution.md`, not in memory. Memory holds lessons, pitfalls and quirks.
 - **Size budget**: 25 KB. If the file is over budget after the append, say so in the command's final report: `MEMORY.md is N KB (budget 25 KB) — consolidate: merge duplicates, fold corrections, move standing rules out`. Do not consolidate it unasked.
+
+## Checklist Rules
+
+- **Location**: `.claude/checklists/{spec-gate,plan-gate,breakdown-gate,task-review,test-lens}.md`. Installed once, then project-owned: `update.sh` never overwrites them, and restores a missing one.
+- **Switch**: the header line `**Gate**: on | off`. `off` skips that gate (`.claude/commands/_independent-gate.md`) or that review input.
+- **Item format**: `- **<ID>** <check, worded as a check> — <origin>[; <origin>…]`. Ids are never reused.
+- **Origins**: `seed` / `field` (shipped with Forge), `escape NNN/E<n>` (`/finalize` learning step), `audit YYYY-MM-DD/<theme>` (`/audit`). A new escape that an existing item covers adds its origin to that item.
 
 ## Cleanup Rules
 

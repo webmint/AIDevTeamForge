@@ -51,6 +51,40 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
    Proceeding without summary.
    ```
 
+## PHASE 1.5: Escape Analysis
+
+Records where each defect of this feature came from and which gate should have stopped it, and teaches that gate's checklist. Skip this phase when `.claude/checklists/` does not exist.
+
+1. **Collect** every defect found during this feature:
+   - gate findings that required a fix (`specs/NNN-*/gates/*.md`, Dispositions `fixed`);
+   - code-review Critical findings in the task Completion Notes;
+   - `review.md` findings that required a fix;
+   - bug files in `bugs/` whose `**Feature**:` points at this spec (the `/verify` triage);
+   - any defect the user reported in this session.
+2. **Record** each one in `specs/NNN-*/escapes.md`:
+
+   ```markdown
+   # Escapes: [feature-name]
+
+   | Id | Introduced | Detected | Should have been caught by | Escaped | Description |
+   |----|------------|----------|----------------------------|---------|-------------|
+   | E1 | spec / plan / breakdown / code / test / config | [gate or phase that found it: spec-gate, plan-gate, breakdown-gate, task-review, review, verify, user] | [earliest gate whose lens covers it] | yes / no | [one line: the wrong behaviour, not the code] |
+
+   quality: caught: spec-gate n / plan-gate n / breakdown-gate n / task-review n / review n / verify n / user n; escaped past gate: n
+   ```
+
+   - The earliest gate: a spec gap → spec-gate; a design gap → plan-gate (name the lens); a coverage, order or contract gap in the tasks → breakdown-gate; a wrong implementation of a correct plan → task-review; a missing or weak test → test-lens.
+   - Escaped: `yes` when the defect was detected after that gate.
+   - The `quality:` line counts each record once, at the gate or phase that detected it. With no defects, write the table header, `No defects recorded.` and the line with zeros.
+3. **Learning step**: for every record with Escaped `yes`, append ONE generic, reusable check to that gate's checklist (`.claude/checklists/<gate>.md`; the test-lens record goes to `test-lens.md`):
+   - worded as a check, not as the specific bug;
+   - with the next free id and the origin `escape NNN/E<n>`;
+   - deduplicated: when an existing item already covers the failure mode, add the origin to that item instead.
+4. Commit by path:
+   ```
+   git add specs/[NNN-feature]/escapes.md .claude/checklists/ && git commit -m "[WIP] Escape analysis: [feature-name]"
+   ```
+
 ## PHASE 2: Feature Documentation
 
 Launch the **tech-writer** agent to generate or update feature-level documentation in `docs/`.
@@ -126,6 +160,8 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 **Files**: [N] files changed, [insertions] insertions, [deletions] deletions
 **Docs**: [updated / skipped — reason]
 **Summary**: [included in squash / not found]
+**Quality**: [the `quality:` line from escapes.md, or "escape analysis skipped — no checklists"]
+**Checklists**: [items added / origins added per checklist, or "no escapes"]
 
 Feature is ready for PR.
 ```

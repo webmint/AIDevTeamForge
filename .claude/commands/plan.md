@@ -242,6 +242,10 @@ Before presenting the plan to the user, verify completeness:
    - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown"
 4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
 
+## PHASE 2.6: Independent Gate (plan-gate)
+
+Read `.claude/commands/_independent-gate.md` and run the **plan-gate** (architect, security and qa lenses in parallel) on the plan and its supporting documents. Apply its loop before presenting the plan.
+
 ## PHASE 3: User Approval
 
 **HARD GATE**: The plan MUST be approved before `/breakdown` can generate tasks.
@@ -255,6 +259,7 @@ Present a summary:
 **Key decisions**: [list the most important ones]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]
+[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and approve. Once approved, run `/breakdown` to generate tasks."
 

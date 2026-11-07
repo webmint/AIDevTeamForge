@@ -70,8 +70,9 @@ Provide the agent with:
 1. The list of all changed files (from all task completion notes)
 2. The spec's acceptance criteria (for AC-to-test traceability)
 3. The feature's test files (if any were created or modified across tasks)
+4. The checklist `.claude/checklists/test-lens.md`, when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id
 
-The agent assesses: test coverage gaps for changed code, untested AC items, missing edge case tests. It does NOT write tests — report only.
+The agent assesses: test coverage gaps for changed code, untested AC items, missing edge case tests, and test strength (would each test fail if the feature were broken; scoped, exact assertions). It does NOT write tests — report only.
 
 If the agent doesn't exist, skip this phase silently.
 

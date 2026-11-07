@@ -284,6 +284,10 @@ Run a wave with `/execute-task W1`. The batch gate (full build + full test suite
 | [NNN] | [convergence / layer crossing / high risk] | [what to verify before proceeding] |
 ```
 
+## PHASE 4.5: Independent Gate (breakdown-gate)
+
+Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `specs/[NNN-feature]/tasks/`. Apply its loop before presenting the breakdown.
+
 ## PHASE 5: User Approval
 
 **HARD GATE**: The task breakdown MUST be approved before execution begins.
@@ -300,6 +304,8 @@ Riskiest tasks: [list high-risk tasks and why]
 
 Review checkpoints: [count] (before tasks [list])
 Contract orphans: [any Produces items not consumed by downstream Expects, or 'none']
+
+[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review the task files. You can:
 1. Approve as-is → run `/execute-task 001` to start

@@ -129,6 +129,12 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 - Task breakdown approval → before `/execute-task` can start
 - Acceptance criteria → verified in `/verify`
 
+### Independent Gates (run before each HARD GATE)
+- An artifact the next command consumes is reviewed by someone other than its author: a fresh agent, on a different model where possible, works adversarially to `.claude/checklists/<gate>.md` (`.claude/commands/_independent-gate.md`). spec-gate runs in `/specify`, plan-gate (architect, security and qa lenses) in `/plan`, breakdown-gate in `/breakdown`; the findings are shown at the HARD GATE.
+- **Test lens**: the per-task code review gets `task-review.md` and `test-lens.md`, the `/review` qa assessment `test-lens.md`: would each new or changed test fail if the feature were broken?
+- **Learning**: `/finalize` records every defect of the feature in `escapes.md`, with the gate that should have caught it, and adds one generic check per escaped defect to that gate's checklist.
+- **Usefulness**: a gate that catches nothing for 3 consecutive features may be lightened (fewer items, a cheaper model) or switched off on its checklist's `**Gate**:` line; a gate whose escapes keep recurring is strengthened. The `quality:` lines in `escapes.md` are the evidence.
+
 ### Automated Guards (run automatically)
 - **PostToolUse hook**: Type Check Command runs automatically after every file Edit/Write (Lint Command runs during explicit verification phases, not per-edit — this is intentional to avoid noise)
 - **Pre-flight check**: Constitution and memory review before each task
@@ -200,6 +206,8 @@ specs/
       001-define-types.md      # Individual task files
       002-create-repo.md
       003-build-component.md
+    gates/                     # Independent gate reports (/specify, /plan, /breakdown)
+    escapes.md                 # Escape analysis (/finalize)
 
 docs/
   overview.md                  # Project overview

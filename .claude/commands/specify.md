@@ -215,6 +215,10 @@ Each criterion must be testable and unambiguous:
 | [risk] | Low/Med/High | Low/Med/High | [how to handle] |
 ```
 
+## PHASE 4.5: Independent Gate (spec-gate)
+
+Read `.claude/commands/_independent-gate.md` and run the **spec-gate** on `specs/NNN-[feature-name]/spec.md`. Apply its loop before presenting the spec.
+
 ## PHASE 5: User Approval
 
 **HARD GATE**: The spec MUST be approved before proceeding to `/breakdown`.
@@ -226,6 +230,7 @@ Present the spec summary to the user:
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria
 - **Out of scope**: [key exclusions]
+- [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
 

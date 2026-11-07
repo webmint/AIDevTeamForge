@@ -306,8 +306,9 @@ Provide the agent with:
 2. The task description and scope constraints
 3. The constitution's relevant rules
 4. Relevant entries from `.claude/memory/MEMORY.md`
+5. The checklists `.claude/checklists/task-review.md` and `.claude/checklists/test-lens.md`, each when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id. The test lens asks of every new or changed test: would it fail if the feature were broken? Assertions are scoped (to the element or row, not page-wide) and exact (values, not mere presence).
 
-The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), and memory pitfalls.
+The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), memory pitfalls, and the checklist items.
 
 **If verdict is APPROVE or warnings only** → proceed to Phase 4. Include warnings in the task report.
 

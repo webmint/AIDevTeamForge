@@ -27,6 +27,7 @@
       ".claude/commands/_context-maintenance.md",
       ".claude/commands/_multi-task-continuation.md",
       ".claude/commands/_tech-writer-onboarding.md",
+      ".claude/commands/_independent-gate.md",
       ".claude/template-manifest.json",
       ".claude/storage-rules.md",
       ".claude/template-checksums",
