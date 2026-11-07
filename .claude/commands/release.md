@@ -31,6 +31,7 @@ Suggest the appropriate level based on the changes detected in Phase 1. Default 
 Update the version string in:
 1. `.claude/template-version`
 2. `.claude/template-manifest.json` (`"version"` field)
+3. Regenerate `.claude/template-checksums`: run `./update.sh --write-checksums` **after every other edit of this release** (version bump included). `update.sh` uses it to tell a project's local edits from older template versions; a stale file makes it back up or overwrite the wrong files.
 
 ## PHASE 4: Update CHANGELOG.md
 
@@ -131,3 +132,4 @@ Present what was done:
 5. **Today's date** — use the current date for the changelog entry
 6. **Be concise** — changelog entries should be scannable, not essays
 7. **Skip unchanged docs** — don't update README/DEVELOPMENT-STATUS if changes don't affect them
+8. **Checksums last** — if any template-owned file changes after Phase 3, run `./update.sh --write-checksums` again; `tests/installer/test_install_update.sh` fails on a stale checksums file

@@ -211,7 +211,7 @@ docs/
 - Task files: `NNN-short-title.md`, sequential within feature
 - Everything for a feature lives in one directory
 - Docs are organized by topic (not by task/date) in `docs/`
-- See `.claude/templates/storage-rules.md` for full conventions
+- See `.claude/storage-rules.md` for full conventions
 - **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
 
 ## Session Continuity

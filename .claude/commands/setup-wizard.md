@@ -412,6 +412,8 @@ Adjust the `cd` path in the hook to the actual project directory where the type 
 
 **Wrapper mode**: Prefix the type-check command with `cd SOURCE_ROOT &&` so the type checker runs in the correct directory. For example: `cd client-project && tsc --noEmit --pretty 2>&1 | head -20`.
 
+**Forge hooks**: Read `.claude/hooks/forge/settings-hooks.json`. For each event key under its `hooks` object (e.g. `PreToolUse`), append that event's matcher groups to the same event in the generated `settings.json` (create the event array if missing). Copy the groups verbatim. Their commands point into `.claude/hooks/forge/`, and `update.sh` later replaces exactly those groups on update. If the fragment's `hooks` object is empty, skip this step. Never put project hooks under `.claude/hooks/forge/`: that directory is template-owned and is overwritten on update.
+
 ### 3.4: Generate Memory
 
 Read `.claude/templates/memory.template.md` and generate `.claude/memory/MEMORY.md`.

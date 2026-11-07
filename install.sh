@@ -64,11 +64,13 @@ cp -r "$TEMPLATE_DIR/.claude" "$TARGET_DIR/"
 rm -f "$TARGET_DIR/.claude/settings.local.json"   # project-owned; not part of template install
 rm -f "$TARGET_DIR/.claude/commands/release.md"    # template-repo-only command; not for target projects
 rm -rf "$TARGET_DIR/.claude/memory/"               # template repo's own memory; setup-wizard recreates from template
+find "$TARGET_DIR/.claude" -depth \( -name __pycache__ -o -name .pytest_cache \) -type d -exec rm -rf {} + 2>/dev/null   # interpreter caches are not template files
 mkdir -p "$TARGET_DIR/.claude/memory/"
 cp -r "$TEMPLATE_DIR/specs" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/bugs" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/research" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/scripts" "$TARGET_DIR/"
+find "$TARGET_DIR/scripts/forge" -depth \( -name __pycache__ -o -name .pytest_cache \) -type d -exec rm -rf {} + 2>/dev/null
 cp "$TEMPLATE_DIR/.mcp.json" "$TARGET_DIR/"
 
 # Write template version for future updates

@@ -157,7 +157,7 @@ bugs/
 - Task files: `NNN-short-title.md` — sequential within feature
 - Bug files: `NNN-short-description.md` — sequential, standalone
 - Everything for a feature lives in one directory
-- Full storage rules in `.claude/templates/storage-rules.md`
+- Full storage rules in `.claude/storage-rules.md`
 
 ## Hard Gates
 

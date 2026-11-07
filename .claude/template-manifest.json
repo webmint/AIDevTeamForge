@@ -1,9 +1,8 @@
 {
   "version": "1.28.0",
   "description": "Manifest for AIDevTeamForge update system",
-
   "templateOwned": {
-    "description": "Files 100% owned by the template — safe to overwrite on update",
+    "description": "Files 100% owned by the template — overwritten on update. A file whose content differs from the checksum recorded at install/update time (.claude/template-checksums) is a local edit: update.sh backs it up to .claude/.update-backup/<from>-to-<to>-<timestamp>/ before overwriting. Forge ships its own scripts and hooks only under scripts/forge/ and .claude/hooks/forge/; everything else under scripts/ and .claude/hooks/ belongs to the project.",
     "patterns": [
       ".claude/commands/breakdown.md",
       ".claude/commands/constitute.md",
@@ -29,10 +28,13 @@
       ".claude/commands/_multi-task-continuation.md",
       ".claude/commands/_tech-writer-onboarding.md",
       ".claude/template-manifest.json",
-      "scripts/**"
+      ".claude/storage-rules.md",
+      ".claude/template-checksums",
+      ".claude/hooks/forge/**",
+      "scripts/chrome-devtools-mcp.sh",
+      "scripts/forge/**"
     ]
   },
-
   "templateDerived": {
     "description": "Template files whose changes should propagate to generated files in target projects. Only updates files that already exist in the target (i.e., agents the project chose to install). Placeholder variables are substituted using .claude/project-config.json.",
     "mappings": [
@@ -49,7 +51,6 @@
       }
     ]
   },
-
   "projectOwned": {
     "description": "Files generated/customized per-project — NEVER overwrite",
     "patterns": [
@@ -65,10 +66,10 @@
       "docs/**",
       ".claude/agents/.baseline/**",
       ".claude/.baseline/**",
-      "DEVELOPMENT-STATUS.md"
+      "DEVELOPMENT-STATUS.md",
+      ".claude/.update-backup/**"
     ]
   },
-
   "mergeFiles": {
     "description": "Files with both template and project content — smart merge required",
     "files": {
@@ -83,7 +84,12 @@
       }
     }
   },
-
+  "hookFragments": {
+    "description": "Forge hook entries merged into the project's .claude/settings.json. On every update, matcher groups whose every hook command contains ownedPrefix are removed and the fragment's groups are appended; all other entries stay untouched. Skipped when settings.json does not exist yet (/setup-wizard does the first merge).",
+    "source": ".claude/hooks/forge/settings-hooks.json",
+    "target": ".claude/settings.json",
+    "ownedPrefix": ".claude/hooks/forge/"
+  },
   "templateRepoOnly": {
     "description": "Files that exist only in the template repo — NOT copied to target projects during install or update",
     "patterns": [
@@ -92,16 +98,17 @@
       "update.sh",
       "AI-ISSUES-AUDIT.md",
       "COMPETITIVE-ANALYSIS.md",
-      "QUALITY-AUDIT.md"
+      "QUALITY-AUDIT.md",
+      "tests/**"
     ]
   },
-
   "copyIfMissing": {
-    "description": "Files to copy only if they don't exist in the target project",
+    "description": "Files copied only if they don't exist in the target project; once copied they belong to the project",
     "patterns": [
       "specs/.gitkeep",
       "bugs/.gitkeep",
-      "research/.gitkeep"
+      "research/.gitkeep",
+      ".claude/checklists/**"
     ]
   }
 }

@@ -214,7 +214,7 @@ specs/NNN-feature/tasks/
   003-short-title.md
 ```
 
-Each task file follows the format defined in `.claude/templates/storage-rules.md`.
+Each task file follows the format defined in `.claude/storage-rules.md`.
 
 Also create a `specs/NNN-feature/tasks/README.md` index file:
 

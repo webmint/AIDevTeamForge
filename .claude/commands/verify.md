@@ -280,7 +280,7 @@ Wait for user response.
 
 **Determine next bug number**: Scan `bugs/` for existing `.md` files, find the highest NNN prefix, and assign numbers sequentially from there. Do this ONCE before creating any files.
 
-For each issue being filed, create a bug file in `bugs/` following the format in `.claude/templates/storage-rules.md`:
+For each issue being filed, create a bug file in `bugs/` following the format in `.claude/storage-rules.md`:
 1. Write `bugs/NNN-short-description.md`
 2. Populate all fields:
    - **Status**: Open
