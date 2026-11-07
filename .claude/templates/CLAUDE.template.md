@@ -129,10 +129,19 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 - Task breakdown approval → before `/execute-task` can start
 - Acceptance criteria → verified in `/verify`
 
+### Independent Gates (run before each HARD GATE)
+- An artifact the next command consumes is reviewed by someone other than its author: a fresh agent, on a different model where possible, works adversarially to `.claude/checklists/<gate>.md` (`.claude/commands/_independent-gate.md`). spec-gate runs in `/specify`, plan-gate (architect, security and qa lenses) in `/plan`, breakdown-gate in `/breakdown`; the findings are shown at the HARD GATE.
+- **Test lens**: the per-task code review gets `task-review.md` and `test-lens.md`, the `/review` qa assessment `test-lens.md`: would each new or changed test fail if the feature were broken?
+- **Learning**: `/finalize` records every defect of the feature in `escapes.md`, with the gate that should have caught it, and adds one generic check per escaped defect to that gate's checklist.
+- **Usefulness**: a gate that catches nothing for 3 consecutive features may be lightened (fewer items, a cheaper model) or switched off on its checklist's `**Gate**:` line; a gate whose escapes keep recurring is strengthened. The `quality:` lines in `escapes.md` are the evidence.
+
 ### Automated Guards (run automatically)
 - **PostToolUse hook**: Type Check Command runs automatically after every file Edit/Write (Lint Command runs during explicit verification phases, not per-edit — this is intentional to avoid noise)
 - **Pre-flight check**: Constitution and memory review before each task
 - **Post-execution**: type check + lint + build on all changed files after each task
+
+### Structural Checks
+- The project binding `.claude/quality-profile.json` (search scopes, ratchets, hubs, audit gate; empty keys run in their manual form) feeds `/review`'s Structural Check: a grown ratchet or a third copy the plan did not decide is Critical.
 
 ## Key Rules
 
@@ -153,6 +162,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>`. It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
 16. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
+17. **Reading budget** — a survey of more than ~5 files or ~30k tokens goes to Explore subagents, in parallel, each with a precise question and a `file:line` answer format. Read directly only what you quote or what a contract relies on. A generated directory is never read as the definition of what it generates.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
@@ -200,6 +210,8 @@ specs/
       001-define-types.md      # Individual task files
       002-create-repo.md
       003-build-component.md
+    gates/                     # Independent gate reports (/specify, /plan, /breakdown)
+    escapes.md                 # Escape analysis (/finalize)
 
 docs/
   overview.md                  # Project overview

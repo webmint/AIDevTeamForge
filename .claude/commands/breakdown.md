@@ -50,7 +50,7 @@ If you discover files that should have been in the spec but weren't, note them a
 For every file listed in the spec's "Affected Areas" section:
 1. **Check if the file exists** — if not, this is a "create" task
 2. **Read the constitution's scaffolding guide** — verify the file will be in the correct directory per the architecture rules
-3. **Identify the pattern reference** — find the closest pattern example from the constitution's Section 7.2
+3. **Identify the pattern reference** — find the closest pattern example from the constitution's Section 7.2 (or the document Section 7 points to)
 4. **Map required dependencies** — what types, interfaces, or modules must be created first?
 5. **Check for infrastructure needs** — does this feature need new directories, config changes, or package installations?
 6. **Identify verifiable semantics** — what exports, interfaces, or functions must exist after each creation step? These become cross-task contracts.
@@ -79,6 +79,7 @@ Create atomic tasks following these rules:
 - **Data layer before domain** — repositories before use cases
 - **Independent tasks before dependent ones**
 - **Riskiest changes first** — catch problems early
+- **Structural specs** (spec **Type** `structural`): follow the plan's "Migration" order — the machine check is the first task, the single definition next, then the consumer migrations (a few per task), and lowering the baselines is the last task. Every task's done conditions include "existing tests pass unchanged". No new end-to-end tests, unless the plan names a gap in the existing ones that the migration needs pinned first.
 - **AC-titled tests** — every AC with observable behaviour is covered by at least one test whose title starts with its AC id and carries the spec tag, e.g. `AC-3 [spec-007]: shows the total after a discount`. AC numbers repeat across specs, so the tag keeps a grep unique. A feature with UI gets a dedicated end-to-end test task (agent: `qa-engineer`) unless the project has no end-to-end runner
 - **Tests go with the code under test** — a test task or test file belongs to the agent and the task that changes the code it tests, not to the agent that owns the test directory
 
@@ -91,7 +92,7 @@ Agent assignment is a two-step decision: first determine the task's **nature** (
 For each task, determine whether it is **design-decision** or **mechanical**:
 
 - **Design-decision**: The task requires choosing interfaces, data shapes, algorithms, orchestration logic, or contracts that downstream tasks depend on. There is no existing pattern in the codebase to copy — the implementer must make judgment calls.
-- **Mechanical**: The task follows an established pattern already present in the codebase (e.g., wrapping a data source with try/catch error mapping, registering dependencies in a DI container, adding a route entry). The implementer copies an existing example and substitutes names — zero design decisions.
+- **Mechanical**: The task follows an established pattern already present in the codebase (e.g., wrapping a data source with try/catch error mapping, registering dependencies in a DI container, adding a route entry). The implementer follows an existing example's structure and reuses its shared parts — zero design decisions; logic that the example holds is consumed, never copied.
 
 **Signals a task is mechanical**:
 - The codebase already has 1+ examples of the exact same pattern for other features
@@ -136,6 +137,7 @@ For each task, generate:
 **Depends on**: [task numbers this task requires to be done first, or "None"]
 **Blocks**: [task numbers that can't start until this is done]
 **Context docs**: [specific doc file paths the agent should read, or "None"]
+**Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the touched theme it fixes (`fixes #n in <paths>`, or the triage theme id `fixes T1 in <paths>` without an issue tracker); or "none (no new symbol)"]
 
 **Description**:
 [Detailed description of what to change and why]
@@ -155,6 +157,12 @@ For each task, generate:
 
 **Spec criteria addressed**: AC-[numbers]
 ```
+
+### Reuse Rules
+
+- Every row of the plan's Reuse Map lands in the `Reuse` field of at least one task: a `reuse` or `extend` row in every task that writes a consumer of it, a `new` row in the task that creates the shared source (that task also adds the registry row the plan wrote). A seam task from the plan's "Copies and Hubs" is ordered before the task that would add the copy.
+- Every theme the plan's "Open Themes Touched" fixes in place gets a task (or a part of the task that touches its files) whose `Reuse` field says `fixes #n in <paths>` and whose Done When proves the fix.
+- A task that creates a new exported symbol the Reuse Map does not list is a breakdown gap: add the row to the plan (with its search) or drop the symbol.
 
 ### Contract Generation Rules
 
@@ -284,6 +292,10 @@ Run a wave with `/execute-task W1`. The batch gate (full build + full test suite
 | [NNN] | [convergence / layer crossing / high risk] | [what to verify before proceeding] |
 ```
 
+## PHASE 4.5: Independent Gate (breakdown-gate)
+
+Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `specs/[NNN-feature]/tasks/`. Apply its loop before presenting the breakdown.
+
 ## PHASE 5: User Approval
 
 **HARD GATE**: The task breakdown MUST be approved before execution begins.
@@ -300,6 +312,8 @@ Riskiest tasks: [list high-risk tasks and why]
 
 Review checkpoints: [count] (before tasks [list])
 Contract orphans: [any Produces items not consumed by downstream Expects, or 'none']
+
+[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review the task files. You can:
 1. Approve as-is → run `/execute-task 001` to start
@@ -319,3 +333,4 @@ Tasks should be executed in order (dependencies are marked)."
 7. **Don't over-split** — a simple find-and-replace across 5 files is ONE task, not five tasks
 8. **Contract chain integrity** — every task's "Produces" must be consumed by a downstream "Expects" or map to a spec AC. Every "Expects" must trace to an upstream "Produces" or existing codebase state. Broken chains indicate missing tasks or wrong dependencies
 9. **Contracts use semantic identifiers** — reference function names, export names, interface names, field names. Never line numbers (they shift as earlier tasks modify files)
+10. **Reuse field in every task** — it carries the plan's Reuse Map rows and touched themes into the task, so the implementer's Reuse check starts from them

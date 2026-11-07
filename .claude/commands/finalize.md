@@ -30,6 +30,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 2. Read the feature's `plan.md` (architecture context for tech-writer)
 3. Read all task files in `specs/NNN-feature/tasks/` — extract Completion Notes (files changed) to build the changed files list for tech-writer
    - **Task cross-check**: Verify all task files (excluding README.md) have `Status: Complete`. If any task is not Complete, stop: "⛔ Not all tasks are complete. Task [N] is [status]. Run `/execute-task` to complete it first."
+   - **Evidence check**: when `.claude/quality-profile.json` sets `integrationRef`, run `python3 scripts/forge/check-task-evidence.py`: a Complete task without filled Completion Notes or a task commit stops finalize with the script's lines. When the binding sets `decisionRecords` (the project keeps one decision file per unit of work), also run `python3 scripts/forge/check-decision-records.py` and stop on its problems.
 4. Read `.claude/project-config.json` for `DEFAULT_BRANCH` and `SOURCE_ROOT`. If `DEFAULT_BRANCH` is missing, fall back to `main`.
 
 **Source Root**: If `SOURCE_ROOT` from project-config.json is not `.`, this is a wrapper project — run squash-related commands inside that directory.
@@ -50,6 +51,48 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
    ⚠️ No summary.md found. Run `/summarize` first for a complete feature record.
    Proceeding without summary.
    ```
+   **Exception**: when `.claude/quality-profile.json` sets `auditGate`, stop instead: "⛔ No summary.md found. The audit gate counts finished features by their `summary.md` (`auditGate.mergedSpecMarker`). Run `/summarize` first."
+
+## PHASE 1.5: Escape Analysis
+
+Records where each defect of this feature came from and which gate should have stopped it, and teaches that gate's checklist. Skip this phase when `.claude/checklists/` does not exist.
+
+1. **Collect** every defect found during this feature:
+   - gate findings that required a fix (`specs/NNN-*/gates/*.md`, Dispositions `fixed`);
+   - code-review Critical findings in the task Completion Notes;
+   - `review.md` findings that required a fix;
+   - bug files in `bugs/` whose `**Feature**:` points at this spec (the `/verify` triage);
+   - any defect the user reported in this session.
+2. **Record** each one in `specs/NNN-*/escapes.md`:
+
+   ```markdown
+   # Escapes: [feature-name]
+
+   | Id | Introduced | Detected | Should have been caught by | Escaped | Description |
+   |----|------------|----------|----------------------------|---------|-------------|
+   | E1 | spec / plan / breakdown / code / test / config | [gate or phase that found it: spec-gate, plan-gate, breakdown-gate, task-review, review, verify, user] | [earliest gate whose lens covers it] | yes / no | [one line: the wrong behaviour, not the code] |
+
+   quality: caught: spec-gate n / plan-gate n / breakdown-gate n / task-review n / review n / verify n / user n; escaped past gate: n
+   ```
+
+   - The earliest gate: a spec gap → spec-gate; a design gap → plan-gate (name the lens); a coverage, order or contract gap in the tasks → breakdown-gate; a wrong implementation of a correct plan → task-review; a missing or weak test → test-lens.
+   - Escaped: `yes` when the defect was detected after that gate.
+   - The `quality:` line counts each record once, at the gate or phase that detected it. With no defects, write the table header, `No defects recorded.` and the line with zeros.
+3. **Learning step**: for every record with Escaped `yes`, append ONE generic, reusable check to that gate's checklist (`.claude/checklists/<gate>.md`; the test-lens record goes to `test-lens.md`):
+   - worded as a check, not as the specific bug;
+   - with the next free id and the origin `escape NNN/E<n>`;
+   - deduplicated: when an existing item already covers the failure mode, add the origin to that item instead.
+4. Commit by path:
+   ```
+   git add specs/[NNN-feature]/escapes.md .claude/checklists/ && git commit -m "[WIP] Escape analysis: [feature-name]"
+   ```
+
+## PHASE 1.6: Structural Hand-off
+
+Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[NNN-feature]/review.md` has no "Structural Check" section.
+
+1. **Baselines** (a catch-up: a structural spec lowers its baselines in its last task; any feature may lower one by accident): when the binding sets `ratchets`, run `python3 scripts/forge/ratchet.py check`; for each ratchet it reports `LOWER`, run `python3 scripts/forge/ratchet.py update <name>`. When any baseline changed, commit the baseline file (the binding's `baselineFile`) by path: `git add [baselineFile] && git commit -m "[WIP] Ratchet baselines: [feature-name]"`.
+2. **Follow-ups**: from `review.md` → "Structural Check" and "Follow-ups", list the undecided hub edits and third copies as seam-first follow-ups for a later spec, in the Phase 4 output.
 
 ## PHASE 2: Feature Documentation
 
@@ -106,7 +149,7 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 4. If commits are local only — safe to squash:
    ```
    git reset --soft [squash-base]
-   git commit -m "feat([feature-name]): [spec title — 1-2 sentences from spec overview]"
+   git commit -q -m "feat([feature-name]): [spec title — 1-2 sentences from spec overview]"
    ```
    Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 5. If commits were already pushed — skip squash, warn user:
@@ -126,6 +169,10 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 **Files**: [N] files changed, [insertions] insertions, [deletions] deletions
 **Docs**: [updated / skipped — reason]
 **Summary**: [included in squash / not found]
+**Quality**: [the `quality:` line from escapes.md, or "escape analysis skipped — no checklists"]
+**Checklists**: [items added / origins added per checklist, or "no escapes"]
+**Ratchets lowered**: [names, or "none"]
+**Structural follow-ups**: [undecided hub edits and third copies from review.md, seam first, or "none"]
 
 Feature is ready for PR.
 ```

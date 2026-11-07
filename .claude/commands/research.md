@@ -19,7 +19,7 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 /research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
 ```
 
-`/research` is NOT mandatory. Skip it when you already know what you want to build. Use it when:
+`/research` is optional by default: skip it when you already know what you want to build. A project may make it mandatory before every `/specify` (its `CLAUDE.md` says so); then it runs even for a well-understood request, because its codebase investigation is what finds the code a new spec would otherwise duplicate. Use it when:
 - You have a half-formed idea and want a quick feasibility check
 - You're unsure whether something already exists in the codebase
 - You want to compare approaches before writing a spec
@@ -57,6 +57,8 @@ From the user's description, extract 3-7 search terms:
 
 ### Step 2: Codebase Search
 
+When `.claude/quality-profile.json` sets `searchScopes`, search only inside them, never the repository root (`python3 scripts/forge/quality_profile.py scopes` prints them minus `generatedDirs`).
+
 For each keyword:
 - Use Grep to find occurrences in source files and documentation (`docs/`) — docs may already describe existing functionality related to the topic
 - Use Glob to find files with related names (in both source and docs)
@@ -67,6 +69,7 @@ Map what you find:
 - **Patterns in use**: How does the codebase handle similar concerns?
 - **Reusable abstractions**: Are there utilities, base classes, or patterns that could be extended?
 - **Related dependencies**: What packages/services are already in use that relate?
+- **Near duplicates**: code that already implements the same rule, calculation, check or query under another name or in another layer. Name each one: a new spec that re-implements it is the defect this phase exists to prevent.
 
 ### Step 3: Constitution Check
 
@@ -121,6 +124,8 @@ Generate the full report and **render it directly in the console** so the user c
 # Research: [Topic Name]
 
 **Date**: [YYYY-MM-DD]
+**Investigated at**: [`git rev-parse <ref>` at investigation time, `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`; the report is valid only for the code at this commit]
+**Scoped paths**: [the paths Phase 2 searched, so staleness can be checked against them]
 **Topic**: [user's original description]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
 
@@ -137,6 +142,13 @@ Generate the full report and **render it directly in the console** so the user c
 
 ### Patterns Available
 - [Pattern]: [how it could be leveraged]
+
+### Reuse or Extend
+| Existing code (symbol, path) | What it already does | Reuse / extend / replace |
+|------------------------------|----------------------|--------------------------|
+| [symbol] | [behaviour] | [the spec should call it, widen it, or replace it and why] |
+
+"None found" is valid only with the searches that found nothing (scopes and terms).
 
 ### Gaps
 - [What infrastructure or patterns are missing]

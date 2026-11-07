@@ -221,12 +221,16 @@ You are executing Task [N] from an approved task breakdown.
 [Specific changes from breakdown]
 
 ## Rules
-1. Make ONLY the changes described above — nothing more, except consolidation: when your change would add or extend a copy of logic that exists elsewhere, reuse or extract the shared definition when the extraction stays within this task's files and their direct consumers; otherwise stop and report the copy
+1. Make ONLY the changes described above — nothing more, except consolidation: when your change would add or extend a copy of logic that exists elsewhere, reuse or extract the shared definition (the seam task the plan's "Copies and Hubs" names, or, for a copy the plan missed, the extraction inside this task when it stays within this task's files and their direct consumers); otherwise stop and report the copy
 2. Follow the project's constitution (key rules: [relevant rules])
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
 6. Add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface you create. This is part of writing the code, not a separate step
+7. Reuse check before every new exported symbol: search the scopes under `## Reuse` by name, signature and meaning; consult the registry by concept, never whole; a symbol the `Reuse` field decides keeps that decision. Report one line per new exported symbol: `Reuse check: <symbol> — searched <query / scope>, found <X | nothing> → reused X | extended X | new because <reason>`. Before you copy a neighbour's pattern (a function, a block, a test setup), ask whether it is already the second copy: `python3 scripts/forge/ratchet.py copies --files <the neighbour file> --min-copies 2` lists the groups it belongs to; when your code would be the third copy, use or create the seam instead (rule 1)
+
+## Reuse
+[The task's `Reuse` field: the plan's Reuse Map rows to use and the themes to fix. The search scopes: resolve `.claude/quality-profile.json` → `searchScopes` minus `generatedDirs` (`python3 scripts/forge/quality_profile.py scopes`) and write the list here (when unset: the source directories), so the agent does not read the binding. The registry: when `canonicalSources` is set, write "registry lookup: `python3 scripts/forge/check-canonical-sources.py --concepts`, then `--rows '<regex>'`"; when unset, "no registry".]
 
 ## Documentation Context
 [Content from the doc files listed in the task's Context docs field, if any. Omit this section if Context docs is "None".]
@@ -306,8 +310,11 @@ Provide the agent with:
 2. The task description and scope constraints
 3. The constitution's relevant rules
 4. Relevant entries from `.claude/memory/MEMORY.md`
+5. The checklists `.claude/checklists/task-review.md` and `.claude/checklists/test-lens.md`, each when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id. The test lens asks of every new or changed test: would it fail if the feature were broken? Assertions are scoped (to the element or row, not page-wide) and exact (values, not mere presence).
+6. **New exports** (the reviewer's independent reuse check): the output of `python3 scripts/forge/new-exports.py --base <checkpoint commit>`, which reads `.claude/quality-profile.json` → `newExports` (when unset, list the new exported symbols of the diff by hand), together with the implementer's `Reuse check:` lines and the `## Reuse` section of the implementer's prompt (search scopes, registry lookup). Instruction: "Do not trust the Reuse check lines. For each new export, search the scopes yourself by name, signature and meaning. A semantic duplicate of existing code, or another derivation of a registered concept, is Critical. A new shared export without a registry row, or without a Reuse check line saying why it is new, is a Warning. Report the count of new exports and of duplicates found."
+7. **Copies** (the third-copy trigger): the output of `python3 scripts/forge/ratchet.py copies --files <changed files> --min-copies 3 --added-since <checkpoint commit>` (the clone ratchets' `groupsCommand` in `.claude/quality-profile.json` → `ratchets`; when unset, skip this item and rely on the search of item 6). Instruction: "Each listed group is logic with three or more copies that this task added to or changed. It is Critical unless the task file or the plan's 'Copies and Hubs' decides it (a seam task, or `not a copy: <reason>` that the code bears out)."
 
-The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), and memory pitfalls.
+The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), reuse of existing code (the new exports and copies), memory pitfalls, and the checklist items.
 
 **If verdict is APPROVE or warnings only** → proceed to Phase 4. Include warnings in the task report.
 
@@ -352,6 +359,7 @@ Update `.claude/wip.md` — change Phase to `4 (Complete)`.
      **Completed**: [date/time]
      **Files changed**: [actual files that changed]
      **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
+     **Reuse checks**: [the agent's `Reuse check:` lines, one per new exported symbol, or "none"]
      **Notes**: [any deviations from plan or things to watch]
      ```
 2. Update the task index (`specs/NNN-feature/tasks/README.md`) — mark this task's status as Complete

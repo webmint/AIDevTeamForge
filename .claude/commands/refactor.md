@@ -268,6 +268,9 @@ You are executing an approved refactoring plan.
 ## Context Files
 [List of related files the agent should read for context]
 
+## Reuse
+[The search scopes: resolve `.claude/quality-profile.json` → `searchScopes` minus `generatedDirs` (`python3 scripts/forge/quality_profile.py scopes`) and write the list here (when unset: the source directories). A new exported symbol gets a Reuse check (search the scopes by name, signature and meaning before adding it); when `canonicalSources` is set, the registry is consulted by concept (`python3 scripts/forge/check-canonical-sources.py --concepts`, then `--rows '<regex>'`), never read whole.]
+
 ## Rules
 1. Make ONLY the approved refactoring changes — nothing more
 2. This is a BEHAVIOR-PRESERVING refactoring — no functional changes
@@ -463,7 +466,7 @@ git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 - If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
   ```
   git reset --soft [checkpoint-commit-hash]
-  git commit -m "refactor([area]): [concise description of what was restructured]"
+  git commit -q -m "refactor([area]): [concise description of what was restructured]"
   ```
 - If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
 

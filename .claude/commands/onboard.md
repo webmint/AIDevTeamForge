@@ -132,6 +132,18 @@ If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.claude/memory/M
 
 Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget).
 
+### 3.3: Fill the Project Binding
+
+Update `.claude/quality-profile.json` (written by `/setup-wizard`, extended by `/constitute`; create it with `python3 scripts/forge/quality_profile.py init` when missing):
+- `canonicalSources`: add a "Canonical sources" section to `docs/architecture.md` with an empty registry table (columns: concept, kind, owner, single definition, how to consume, actor / axis of change, contract, consumers and copies, status, introduced by) and point the key at it (`doc`, `heading`). Rows are added later on evidence only: a plan that introduces a shared source, a second implementation, a ratchet or audit hit.
+- `searchScopes`: when unset, fill it from the module map (the directories agents may search, each ending in `/`).
+- `generatedDirs`: optional; list generated directories inside a search scope (such as generated copies of source) that searches should skip.
+- `newExports`: one `patterns` entry per language of the codebase: `files` and `exclude` globs plus a `regex` whose one capture group is the exported name (or `"kind": "file"` where every added file is one export, e.g. component files). Examples are in the docstring of `scripts/forge/new-exports.py`. In wrapper mode the globs are relative to the Source Root (`src/**/*.ts`, not `<SOURCE_ROOT>/src/**/*.ts`).
+- `hubFiles`: `commitPattern` = a regex matching the subjects of the squashed feature commits (`/finalize` writes `feat(<feature>): …`, so `^feat(\(|:)`), `window` = how many of the newest such commits to read (e.g. 20), `threshold` = how many of them must edit a file for it to be a hub (e.g. 5). In wrapper mode `paths` are relative to the Source Root and the history read is the source repository's, whose squashed commits use the ticket format (`^\[[A-Z]{2,}-[0-9]+\] - `).
+- Left for the project to fill by hand when it adopts a clone detector or a counted rule (each documented in `scripts/forge/ratchet.py`): `ratchets`, `baselineFile`, `semanticClones`. Name them in the summary as unset; until then `/review`'s Structural Check and the third-copy trigger run in their manual form.
+
+Then run `python3 scripts/forge/quality_profile.py validate` and fix every problem it prints.
+
 ## PHASE 4: Summary
 
 Present to the user:

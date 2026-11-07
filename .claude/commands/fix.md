@@ -152,6 +152,10 @@ Identify the root cause BEFORE writing any code.
 
 Before proceeding, clearly state:
 
+### 2.2a: Class Sweep
+
+Name the class of the defect (the kind of mistake, not this instance) and search the scopes (`.claude/quality-profile.json` → `searchScopes`, via `python3 scripts/forge/quality_profile.py scopes`; the source directories when unset) for siblings of the same class; prefer a class-level guard (a constraint, a shared validator, a catalog test) over a call-site patch. State it in the report as `Class: <class> — siblings found n, fixed n`, plus the issue number when the unfixed siblings are filed.
+
 ### 2.3: Select Fix Agent
 
 Read `.claude/commands/_agent-assignment.md` and select the agent based on the affected file's layer. If the selected agent doesn't exist in `.claude/agents/`, fall back to `architect`.
@@ -248,6 +252,9 @@ You are fixing a diagnosed bug.
 
 ## Documentation Context
 [Content from related docs/ files found in Phase 1.2 step 6, if any. Describes intended behavior for this area. Omit if no docs were found.]
+
+## Reuse
+[The search scopes: resolve `.claude/quality-profile.json` → `searchScopes` minus `generatedDirs` (`python3 scripts/forge/quality_profile.py scopes`) and write the list here (when unset: the source directories). A new exported symbol gets a Reuse check (search the scopes by name, signature and meaning before adding it); when `canonicalSources` is set, the registry is consulted by concept (`python3 scripts/forge/check-canonical-sources.py --concepts`, then `--rows '<regex>'`), never read whole.]
 
 ## Rules
 1. Make the smallest possible change that fixes the bug — nothing more
@@ -444,7 +451,7 @@ git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 - If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
   ```
   git reset --soft [checkpoint-commit-hash]
-  git commit -m "fix([area]): [concise description of what was fixed]"
+  git commit -q -m "fix([area]): [concise description of what was fixed]"
   ```
 - If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
 
@@ -478,6 +485,7 @@ Delete `.claude/wip.md`.
 **Bug**: [user's description]
 **Root cause**: [what was wrong]
 **Fix**: [what was changed, 1-2 sentences]
+**Class**: [class — siblings found n, fixed n; issue #n for the rest, if filed]
 
 **Changes**:
 - [file]: [what changed, 1 line]
@@ -525,7 +533,7 @@ After writing, verify the file is under 40 lines. If over, trim oldest entries f
 ## IMPORTANT RULES
 
 1. **Diagnose before fixing** — never apply a fix without understanding the root cause. Guessing wastes time and can introduce new bugs
-2. **Minimal changes only** — fix the bug, nothing else. No refactoring, no improvements, no "while I'm here" changes. Consolidation exception: when the defect sits in logic that is copied elsewhere (search the codebase for the copies), the fix either extracts the shared definition and fixes it once (within the 5-file limit of rule 6) or fixes every copy and lists the copies in the report; a fix in one copy only leaves the defect in the others
+2. **Minimal changes only** — fix the bug, nothing else. No refactoring, no improvements, no "while I'm here" changes. Consolidation exception: when the defect sits in logic that is copied elsewhere (`python3 scripts/forge/ratchet.py copies --files <the file> --min-copies 2`; search the codebase for the copies when `ratchets` has no `groupsCommand`), the fix either extracts the shared definition and fixes it once (within the 5-file limit of rule 6) or fixes every copy and lists the copies in the report; a fix in one copy only leaves the defect in the others
 3. **Constitution is law** — all fixes must comply with constitution rules. Constitution violations are always critical
 4. **Hard gate on diagnosis** — the user must confirm the diagnosis before any code is changed
 5. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping

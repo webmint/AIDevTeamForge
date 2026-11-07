@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (20 commands + 5 shared partials in `.claude/commands/`)
+### Commands (20 commands + 6 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -33,6 +33,9 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands):
 - `_multi-task-continuation.md` — Phase 5.3 batch queue management (execute-task multi-task mode)
 - `_tech-writer-onboarding.md` — Full onboarding scan instructions Section A (onboard)
 - `_agent-assignment.md` — Shared file-layer→agent mapping table, referenced by breakdown, fix, and refactor
+- `_independent-gate.md` (1.30.0) — fresh-context gate reviewer before the HARD GATE of specify (spec-gate), plan (plan-gate, three lenses) and breakdown (breakdown-gate); one fix loop on Criticals, open ones shown at the gate
+
+Structural-quality layer (1.30.0): `/research` Reuse or Extend; `/specify` audit gate start line, Prior Art, spec type `feature | structural`; `/plan` 1.4–1.6 (Migration, Reuse Map, seams, Copies and Hubs, open themes); `/breakdown` `**Reuse**:` field; `/execute-task` Reuse check, New exports and Copies review inputs; `/fix` Class Sweep; `/review` 4.5 Adoption Check and 4.6 Structural Check; `/finalize` 1.5 escape analysis and 1.6 structural hand-off; `/audit` `--since-last`, structural lens, themes, triage and learning step
 
 ### Agent Templates (16 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`, `security-reviewer`
@@ -59,11 +62,13 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - One-time migration: extracts config from existing `CLAUDE.md` and agent files when `project-config.json` is missing. Config migrations (extraction, `AGENT_MODEL`, `DEFAULT_BRANCH`) edit a working copy written only after confirmation
 - **Template checksums** (1.29.0): `.claude/template-checksums` records the sha256 of every template-owned file (`./update.sh --write-checksums`, last step of `/release`). Each file gets a status (ADD / UPDATE / UNCHANGED / LOCAL / UNKNOWN); LOCAL and UNKNOWN files are backed up to `.claude/.update-backup/<from>-to-<to>-<timestamp>/` before overwrite
 - **Forge-owned namespaces** (1.29.0): Forge ships scripts only under `scripts/forge/` and hooks only under `.claude/hooks/forge/`; the rest of `scripts/` and `.claude/hooks/` is project-owned. Hook entries ship as `.claude/hooks/forge/settings-hooks.json` and are merged into `settings.json` per entry (`hookFragments` in the manifest)
-- **Installer tests**: `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py` (repo-only)
+- **Installer tests**: `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py`, `tests/scripts/forge/` (repo-only)
 
-### Forge Scripts and Hooks (1.29.0)
+### Forge Scripts and Hooks (1.29.0, 1.30.0)
 - `scripts/forge/gate.sh` — runs a check with its output in `.claude/.gate-logs/`, prints only the result and first errors; machine-wide slots for heavy runs
 - `.claude/hooks/forge/context-guard.py` — PostToolUse hook; wind-down at 75 %, stop at 85 % of `FORGE_CONTEXT_WINDOW`
+- Quality scripts (1.30.0, Python 3.9+, stdlib): `quality_profile.py` (loader/validator of `.claude/quality-profile.json`; `init`, `validate`, `consumers`, `scopes`), `ratchet.py`, `count-tools.py`, `audit-gate.py`, `hub-files.py`, `new-exports.py`, `check-canonical-sources.py`, `check-enforcement-map.py`, `check-task-evidence.py`, `check-decision-records.py`. Unset or missing binding = the command's manual form (one line, exit 0); wrapper mode inspects the Source Root repository. Tests in `tests/scripts/forge/`
+- `.claude/checklists/` (1.30.0, copy-if-missing, project-owned) — spec-gate, plan-gate, breakdown-gate, task-review, test-lens; `**Gate**: on | off`; grown by `/finalize` and `/audit` learning steps
 
 ### Other
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
@@ -105,6 +110,9 @@ Setup wizard decides which agents to generate based on detected stack and user p
 20. **Waves and a batch gate instead of a full build per task** (1.29.0) — `/breakdown` groups tasks into waves of 2–4; in a batch each task keeps type check, lint and affected tests, and the full build plus the full test suite run once per wave. A failed batch gate puts the covered tasks back to In Progress
 21. **Consolidation over minimal change** (1.29.0) — a copy is never the minimal change: a change that touches copied logic reuses or extracts the shared definition; agents record a Reuse check per new export and the code reviewer treats semantic duplicates as Critical
 22. **Field changes from a testbed project** (1.29.0) — 1.29.0 is the first of three releases (1.29 foundation and fixes, 1.30 independent gates and structural quality, 1.31 opt-in autonomous delivery) that upstream generic harness changes proven in a real project; project-specific parts stay out
+23. **Independent gates before user approval** (1.30.0) — the author never reviews its own artifact: a fresh agent on a different model where possible works to a project-owned checklist before each HARD GATE; the user still approves. Checklists learn from escapes (`/finalize`) and audit root causes (`/audit`)
+24. **One project binding, manual form when unset** (1.30.0) — every project-specific value of the structural mechanisms lives in `.claude/quality-profile.json`; commands and scripts name concepts only, and an empty key runs the same step by hand, so the mechanisms install on any stack and grow with the project
+25. **Audit gate on by default** (1.30.0) — an audit is due after every 3 finished features, while patterns are still cheap to fix; the user may start a spec anyway with a recorded reason. The issue tracker is optional
 
 ### Onboarding System (`/onboard`)
 - Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input
