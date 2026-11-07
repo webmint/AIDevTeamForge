@@ -193,6 +193,11 @@ fi
 # ── Project config ────────────────────────────────────────────────────────
 PROJECT_CONFIG="$TARGET_DIR/.claude/project-config.json"
 HAS_CONFIG=false
+# Migrations edit a working copy; it replaces project-config.json only after the
+# user confirms (never on --dry-run or "N").
+WORK_CONFIG="$(mktemp)"
+CONFIG_CHANGED=false
+trap 'rm -f "$WORK_CONFIG"' EXIT
 
 # Substitute {{PLACEHOLDER}} variables in a file using project config.
 # Uses perl for safe multi-line replacement via environment variables.
@@ -216,7 +221,7 @@ substitute_placeholders() {
 # Called when project-config.json doesn't exist yet.
 migrate_project_config() {
   local claude_md="$TARGET_DIR/CLAUDE.md"
-  local config_out="$TARGET_DIR/.claude/project-config.json"
+  local config_out="$WORK_CONFIG"
 
   if [ ! -f "$claude_md" ]; then
     warn "No CLAUDE.md found — cannot extract project config."
@@ -394,13 +399,15 @@ migrate_project_config() {
       MODEL_VERIFY: $MODEL_VERIFY
     }' > "$config_out"
 
-  info "Wrote .claude/project-config.json — please review extracted values."
+  CONFIG_CHANGED=true
+  info "Extracted project config from CLAUDE.md — written to .claude/project-config.json on apply; review the values."
   return 0
 }
 
 # Check for project config — migrate if missing
 if [ -f "$PROJECT_CONFIG" ]; then
   HAS_CONFIG=true
+  cp "$PROJECT_CONFIG" "$WORK_CONFIG"
 else
   warn "No .claude/project-config.json found in target project."
   if migrate_project_config; then
@@ -413,20 +420,21 @@ fi
 
 # Migrate old AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY
 if [ "$HAS_CONFIG" = true ]; then
-  old_model="$(jq -r '.AGENT_MODEL // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
-  has_new_keys="$(jq -r '.MODEL_THINK // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  old_model="$(jq -r '.AGENT_MODEL // empty' "$WORK_CONFIG" 2>/dev/null || true)"
+  has_new_keys="$(jq -r '.MODEL_THINK // empty' "$WORK_CONFIG" 2>/dev/null || true)"
   if [ -n "$old_model" ] && [ -z "$has_new_keys" ]; then
     info "Migrating AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY (Think=$old_model, Do=sonnet, Verify=sonnet)"
     jq --arg model "$old_model" '
       . + {MODEL_THINK: $model, MODEL_DO: "sonnet", MODEL_VERIFY: "sonnet"}
       | del(.AGENT_MODEL)
-    ' "$PROJECT_CONFIG" > "${PROJECT_CONFIG}.tmp" && mv "${PROJECT_CONFIG}.tmp" "$PROJECT_CONFIG"
+    ' "$WORK_CONFIG" > "${WORK_CONFIG}.tmp" && mv "${WORK_CONFIG}.tmp" "$WORK_CONFIG"
+    CONFIG_CHANGED=true
   fi
 fi
 
 # Add DEFAULT_BRANCH when missing (used by agent templates since 1.29.0)
 if [ "$HAS_CONFIG" = true ]; then
-  has_branch="$(jq -r '.DEFAULT_BRANCH // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  has_branch="$(jq -r '.DEFAULT_BRANCH // empty' "$WORK_CONFIG" 2>/dev/null || true)"
   if [ -z "$has_branch" ]; then
     branch="$(git -C "$TARGET_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
     if [ -z "$branch" ]; then
@@ -435,16 +443,15 @@ if [ "$HAS_CONFIG" = true ]; then
       done
     fi
     : "${branch:=main}"
-    info "Adding DEFAULT_BRANCH=$branch to project-config.json (detected; edit it if wrong)"
-    if [ "$DRY_RUN" != true ]; then
-      jq --arg b "$branch" '. + {DEFAULT_BRANCH: $b}' "$PROJECT_CONFIG" > "${PROJECT_CONFIG}.tmp" && mv "${PROJECT_CONFIG}.tmp" "$PROJECT_CONFIG"
-    fi
+    info "Adding DEFAULT_BRANCH=$branch to project-config.json on apply (detected; edit it if wrong)"
+    jq --arg b "$branch" '. + {DEFAULT_BRANCH: $b}' "$WORK_CONFIG" > "${WORK_CONFIG}.tmp" && mv "${WORK_CONFIG}.tmp" "$WORK_CONFIG"
+    CONFIG_CHANGED=true
   fi
 fi
 
 # Validate config values — warn about placeholder-in-placeholder
 if [ "$HAS_CONFIG" = true ]; then
-  bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$WORK_CONFIG" 2>/dev/null || true)"
   if [ -n "$bad_keys" ]; then
     warn "project-config.json has unresolved placeholders in: $bad_keys"
     warn "These values will not substitute correctly. Fix them or re-run /setup-wizard"
@@ -641,6 +648,9 @@ skipped "SKIP  $SKIP_COUNT project-owned file(s)"
 
 # Meta files
 added "WRITE  .claude/template-version → $TEMPLATE_VERSION"
+if [ "$CONFIG_CHANGED" = true ]; then
+  merged "WRITE  .claude/project-config.json (migrated keys, see above)"
+fi
 
 echo ""
 
@@ -659,6 +669,11 @@ fi
 # ── Execute: templateOwned (overwrite) ─────────────────────────────────────
 header "Applying updates..."
 
+if [ "$CONFIG_CHANGED" = true ]; then
+  cp "$WORK_CONFIG" "$PROJECT_CONFIG"
+  merged "Written: .claude/project-config.json (migrated keys)"
+fi
+
 echo "$OWNED_STATUS" | while IFS="$(printf '\t')" read -r st f; do
   [ -z "$f" ] && continue
   case "$st" in
@@ -675,15 +690,17 @@ echo "$OWNED_STATUS" | while IFS="$(printf '\t')" read -r st f; do
 done
 
 # ── Execute: Forge hook fragment → settings.json ───────────────────────────
-# Remove matcher groups whose every hook command contains the Forge prefix,
-# then append the fragment's groups. Project entries are never touched.
+# Remove every hook entry whose command contains the Forge prefix (a matcher
+# group left empty goes too), then append the fragment's groups. Project
+# entries, including non-command hooks in a shared group, are never touched.
 merge_forge_hooks() {
   local frag="$1" settings="$2" prefix="$3" result
   result="$(jq -s --arg p "$prefix" '
     .[0] as $frag | .[1] as $set |
-    def forge_group: ([.hooks[]?.command // ""] | (length > 0) and all(contains($p)));
+    def forge_hook: ((.command? // "") | type == "string" and contains($p));
     (($set.hooks // {})
-      | with_entries(.value |= map(select(forge_group | not)))
+      | with_entries(.value |= (map(.hooks |= map(select(forge_hook | not)))
+                                | map(select((.hooks | length) > 0))))
       | with_entries(select(.value | length > 0))) as $clean |
     (reduce (($frag.hooks // {}) | to_entries[]) as $e ($clean;
       .[$e.key] = ((.[$e.key] // []) + $e.value))) as $merged |
@@ -718,7 +735,7 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   new_agent="$(mktemp)"
   cp "$TEMPLATE_DIR/$src" "$new_agent"
   if [ "$HAS_CONFIG" = true ]; then
-    substitute_placeholders "$new_agent" "$PROJECT_CONFIG"
+    substitute_placeholders "$new_agent" "$WORK_CONFIG"
   fi
 
   # Validate substitution succeeded

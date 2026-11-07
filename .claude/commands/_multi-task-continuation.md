@@ -29,8 +29,10 @@ After Phase 5.2 completes for the current task:
       - **Continue**: proceed to step b.
       - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.
       - **Pause**: clean up WIP state (delete `.claude/wip.md`), stop execution. Report completed tasks so far.
+   a3. **Wave boundary**: if the task just completed is the last task of its wave and more tasks remain in the queue, run the **Batch Gate** now (before the next wave starts).
    b. **Context health**: The context guard hook (`.claude/hooks/forge/context-guard.py`) adds a `CONTEXT GUARD` message to a tool result when the main-session context passes its thresholds (default 75 % / 85 % of the window).
-      - If a `CONTEXT GUARD` message (wind down or stop) appeared since the current task started, **or** — when the guard is not installed — 6+ tasks were completed this session (the "Tasks completed this session" count in session-state.md): run the **Batch Gate** over the tasks completed so far, then **pause execution** and present the compaction command:
+      - If a `CONTEXT GUARD` **stop** message appeared since the current task started: do not run the Batch Gate; record `Batch gate pending:` as described there, then **pause execution** and present the compaction command below.
+      - If a `CONTEXT GUARD` **wind-down** message appeared, **or** — when the guard is not installed — 6+ tasks were completed this session (the "Tasks completed this session" count in session-state.md): run the **Batch Gate** over the tasks completed so far, then **pause execution** and present the compaction command:
         ```
         🔴 CONTEXT HEALTH PAUSE — [N] tasks completed this session (heavy context load).
         Strongly recommended: Run /compact before continuing.
@@ -45,12 +47,19 @@ After Phase 5.2 completes for the current task:
 
 ## Batch Gate
 
-Runs once, after the last task of the queue (and also when execution stops early, over the tasks that completed):
+**When it runs**:
+- after the last task of each wave in the queue (the "Waves" table in `tasks/README.md`), so a queue that spans several waves (`all`, a long range) is still checked at every wave boundary; without a Waves table, after the last task of the queue;
+- when execution stops early (blocked dependency, Critical, wind-down), over the tasks completed so far;
+- **not** on a context-guard STOP: then finish the current task, write `Batch gate pending: [task numbers]` into `.claude/session-state.md`, and stop. The next batch gate (or the build of the next single-task run) covers those tasks too; remove the line once a gate has passed.
+
+**Covers**: every task completed since the last passing batch gate, including tasks listed in a `Batch gate pending:` line of session-state.md.
+
+**Steps**:
 
 1. Run the Build Command from CLAUDE.md through `scripts/forge/gate.sh batch-build -- <command>` (skip if none is configured), with the cache-bypass flag when a build cache is in use (see `/execute-task` 3.2 "Build caches").
-2. Run the project's full test suite through `scripts/forge/gate.sh batch-test -- <command>` (the Test Command from CLAUDE.md, or the test script detected from package.json / the build file). Skip if the project has no test runner.
+2. Run the project's full test suite through `scripts/forge/gate.sh batch-test -- <command>` (the test command from CLAUDE.md's Development Commands, or the test script detected from package.json / the build file). Skip if the project has no test runner.
 3. If either fails, enter the same self-repair loop as `/execute-task` 3.2 (max 3 attempts; WIP commit after each repair: `[WIP] Batch gate: repair attempt [M]/3`). Give the repair agent the failing output and the files changed by the batch's tasks.
-4. If it still fails after 3 attempts, STOP and report the failure in the Final Report; do not mark the batch as passed.
+4. If it still fails after 3 attempts, STOP. Set **Status** back to `In Progress` in the task files of the tasks this gate covers (and in `tasks/README.md`), add `Batch gate failed: [summary]` to their Completion Notes, and report the failure in the Final Report. Tasks must not stay `Complete` on code that does not build or pass its tests.
 
 ## Multi-Task Final Report
 

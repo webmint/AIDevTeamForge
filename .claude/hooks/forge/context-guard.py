@@ -111,18 +111,21 @@ def message_for(tokens: int) -> Optional[dict]:
     if tokens < warn:
         return None
     k = round(tokens / 1000)
+    assumed = "" if _env_int("FORGE_CONTEXT_WINDOW") or _env_int("FORGE_CONTEXT_STOP") else (
+        " (Window assumed 200k. If this session's window is larger, this threshold is too low: tell the user"
+        " to set FORGE_CONTEXT_WINDOW in the env block of .claude/settings.json and ask whether to continue.)")
     if tokens >= stop:
         text = ("CONTEXT GUARD: main-session context ~%dk tokens (stop at %dk). "
                 "STOP at the nearest safe point: finish only the current atomic step, leave the tree "
                 "consistent (WIP commit or checkpoint), update .claude/session-state.md, then stop and "
                 "tell the user to run /compact (or /clear) and resume. Do not start a new task or command. "
-                "(Subagents: ignore this and finish your task.)" % (k, stop // 1000))
+                "(Subagents: ignore this and finish your task.)" % (k, stop // 1000) + assumed)
         return {"systemMessage": "Context ~%dk tokens - stop requested (limit %dk)." % (k, stop // 1000),
                 "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
     text = ("CONTEXT GUARD: main-session context ~%dk tokens (stop at %dk). "
             "Wind down: finish the current task or command, do not start a new one, then follow "
             "\"Context Health\" in .claude/commands/_multi-task-continuation.md. (Subagents: ignore this.)"
-            % (k, stop // 1000))
+            % (k, stop // 1000) + assumed)
     return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
 
 

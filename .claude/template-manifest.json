@@ -85,7 +85,7 @@
     }
   },
   "hookFragments": {
-    "description": "Forge hook entries merged into the project's .claude/settings.json. On every update, matcher groups whose every hook command contains ownedPrefix are removed and the fragment's groups are appended; all other entries stay untouched. Skipped when settings.json does not exist yet (/setup-wizard does the first merge).",
+    "description": "Forge hook entries merged into the project's .claude/settings.json. On every update, every hook entry whose command contains ownedPrefix is removed (a matcher group left empty is removed too) and the fragment's groups are appended; all other entries, including non-command hooks that share a group with a Forge hook, stay untouched. Skipped when settings.json does not exist yet (/setup-wizard does the first merge).",
     "source": ".claude/hooks/forge/settings-hooks.json",
     "target": ".claude/settings.json",
     "ownedPrefix": ".claude/hooks/forge/"

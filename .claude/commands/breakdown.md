@@ -204,7 +204,7 @@ After generating all tasks, verify contract chain integrity:
 
 ### Wave Rules
 
-Group the tasks into **waves**: runs of 2–4 consecutive tasks in dependency order, executed together with `/execute-task W<n>`. Each task keeps its own verification, code review, WIP commits and completion notes; only the full build and the full test suite move to the end of the wave.
+Group the tasks into **waves**: runs of 2–4 consecutive tasks in dependency order, executed together with `/execute-task W<n>`. Each task keeps its own verification, code review, WIP commits and completion notes; only the full build and the full test suite move to the end of the wave (they also run at every wave boundary when one `/execute-task` call spans several waves).
 
 - A wave contains only tasks whose dependencies are completed by earlier waves or by earlier tasks of the same wave.
 - Start a new wave:

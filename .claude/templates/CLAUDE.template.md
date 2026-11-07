@@ -147,7 +147,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 8. **Lint everything** — linting must pass on all changed files before task completion
 9. **Handle both paths** — every fallible operation must handle success AND error cases
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
-11. **SOLID, DRY, KISS** — single responsibility, don't repeat logic 3+ times, keep it simple
+11. **SOLID, DRY, KISS** — single responsibility, no copied logic (a second copy is extracted, see Always 3), keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.

@@ -52,7 +52,9 @@ cat > "$P1/.claude/settings.json" <<'JSON'
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/project-guard.py" } ] },
-      { "matcher": "Read", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/forge/retired.py" } ] }
+      { "matcher": "Read", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/forge/retired.py" } ] },
+      { "matcher": "Edit", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/forge/fake-guard.py" },
+                                      { "type": "prompt", "prompt": "project prompt hook" } ] }
     ]
   },
   "permissions": { "allow": ["Read"] }
@@ -75,6 +77,9 @@ JSON
 echo "print('forge')" > "$TPL/.claude/hooks/forge/fake-guard.py"
 (cd "$TPL" && ./update.sh --write-checksums >/dev/null)
 
+cfg_before="$(sha "$P1/.claude/project-config.json")"
+echo n | "$TPL/update.sh" "$P1" > "$WORK/abort.txt" 2>&1
+check "answering N leaves project-config unchanged" '[ "$cfg_before" = "$(sha "$P1/.claude/project-config.json")" ]'
 before="$(tree_sum "$P1")"
 "$TPL/update.sh" --dry-run "$P1" < /dev/null > "$WORK/dry.txt" 2>&1
 check "dry run changes nothing" '[ "$before" = "$(tree_sum "$P1")" ]'
@@ -89,9 +94,10 @@ B1="$(ls -d "$P1"/.claude/.update-backup/*/ 2>/dev/null | head -1)"
 check "edited fix.md backed up with the edit" '[ -n "$B1" ] && grep -q "local edit" "$B1/.claude/commands/fix.md"'
 check "storage-rules added" '[ -f "$P1/.claude/storage-rules.md" ]'
 check "checksums written" 'cmp -s "$TPL/.claude/template-checksums" "$P1/.claude/template-checksums"'
-check "project hook group kept" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
-check "retired forge hook group removed" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"retired.py\"))] | length" "$P1/.claude/settings.json")" = 0 ]'
-check "forge hook group added once" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "project hook group kept" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "retired forge hook group removed" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"retired.py\"))] | length" "$P1/.claude/settings.json")" = 0 ]'
+check "forge hook entry present exactly once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "project prompt hook in a shared group kept" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select(.type == \"prompt\")] | length" "$P1/.claude/settings.json")" = 1 ]'
 check "DEFAULT_BRANCH added to project-config" '[ "$(jq -r .DEFAULT_BRANCH "$P1/.claude/project-config.json")" = main ]'
 check "other settings keys kept" '[ "$(jq -c .permissions.allow "$P1/.claude/settings.json")" = "[\"Read\"]" ]'
 
@@ -108,8 +114,8 @@ check "locally edited verify.md backed up" 'grep -q "second local edit" "$B2/.cl
 check "template-changed breakdown.md not backed up" '[ ! -f "$B2/.claude/commands/breakdown.md" ]'
 check "breakdown.md updated" 'grep -q "template change" "$P1/.claude/commands/breakdown.md"'
 check "unchanged fix.md not backed up again" '[ ! -f "$B2/.claude/commands/fix.md" ]'
-check "forge hook group still once" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
-check "project hook group still once" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "forge hook entry still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "project hook group still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
 
 echo ""
 echo "passed: $PASS  failed: $FAIL"

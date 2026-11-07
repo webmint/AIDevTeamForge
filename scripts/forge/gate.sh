@@ -4,7 +4,8 @@
 # Usage: scripts/forge/gate.sh <name> -- <command> [args...]
 #   e.g. scripts/forge/gate.sh 003-typecheck -- npx tsc --noEmit
 #
-# Full output goes to $FORGE_LOG_DIR/<name>.log (default .claude/.gate-logs, gitignored).
+# Full output goes to $FORGE_LOG_DIR/<name>.log (default <project>/.claude/.gate-logs, gitignored;
+# <project> is the directory that holds scripts/forge/, so logs stay out of a wrapped source repo).
 # Printed: "<name>=<exit> (waited Ns, ran Ns)  (log: <path>)"; on success up to 3 summary lines,
 # on failure the first <= 20 error lines (or the last 20 lines when none match).
 # Exits with the command's exit code. Read the log further only with a targeted grep.
@@ -15,6 +16,7 @@
 #   FORGE_GATE_HEAVY=0|1             override the heavy classification
 #   FORGE_GATE_HEAVY_RE=<regex>      override the heavy-command pattern (extended regex)
 #   FORGE_HEAVY_SLOTS=<n>            slot count (default 2)
+#   FORGE_GATE_MAX_WAIT=<s>          give up waiting for a slot after s seconds and run anyway (default 1800)
 #   FORGE_GATE_QOS=utility|background|none   macOS taskpolicy clamp (default utility; nice -n 10 elsewhere)
 # One TSV line per gate is appended to $FORGE_LOG_DIR/gate-timing.tsv:
 #   ISO time, tree path, gate name, heavy 0/1, waited s, ran s, exit code.
@@ -27,13 +29,14 @@ fi
 
 name="$1"
 shift 2
-log_dir="${FORGE_LOG_DIR:-.claude/.gate-logs}"
+project_root="$(cd "$(dirname "$0")/../.." && pwd)"
+log_dir="${FORGE_LOG_DIR:-$project_root/.claude/.gate-logs}"
 log="$log_dir/$name.log"
 mkdir -p "$log_dir"
 
 # --- heavy classification ---------------------------------------------------------------------
 cmd_text="$*"
-default_heavy_re='(^|[[:space:]:/])(build|test|tests|e2e|test:e2e|playwright|vitest|jest|pytest|tox|nox|bench)([[:space:]]|$)|cargo (build|test)|go (build|test)|gradlew?[[:space:]]|mvn[[:space:]]|xcodebuild|flutter (build|test)|docker (build|compose)'
+default_heavy_re='(^|[[:space:]:/])(build|test|tests|e2e|playwright|vitest|jest|pytest|tox|nox|bench)(:[^[:space:]]+)?([[:space:]]|$)|cargo (build|test)|go (build|test)|gradlew?[[:space:]]|mvnw?[[:space:]]|xcodebuild|flutter (build|test)|docker (build|compose)'
 heavy_re="${FORGE_GATE_HEAVY_RE:-$default_heavy_re}"
 if [[ -n "${FORGE_GATE_HEAVY:-}" ]]; then
   heavy="$FORGE_GATE_HEAVY"
@@ -93,12 +96,22 @@ acquire_slot() {
 }
 
 if [[ "$heavy" == "1" ]]; then
-  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
-  if [[ -n "$common" ]]; then
+  # Plain --git-common-dir works on every git version; make it absolute ourselves.
+  common=$(cd "$project_root" && git rev-parse --git-common-dir 2>/dev/null || true)
+  if [[ -n "$common" && "$common" != /* ]]; then
+    common="$project_root/$common"
+  fi
+  if [[ -n "$common" && -d "$common" ]]; then
     slots="${FORGE_HEAVY_SLOTS:-2}"
     [[ "$slots" =~ ^[1-9][0-9]*$ ]] || slots=2
+    max_wait="${FORGE_GATE_MAX_WAIT:-1800}"
+    [[ "$max_wait" =~ ^[0-9]+$ ]] || max_wait=1800
     wait_start=$(date +%s)
     until acquire_slot "$common/forge-gate-slots" "$slots"; do
+      if (( $(date +%s) - wait_start >= max_wait )); then
+        echo "gate.sh: no free slot after ${max_wait}s; running without one" >&2
+        break
+      fi
       sleep 3
     done
     waited=$(( $(date +%s) - wait_start ))

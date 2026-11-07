@@ -222,6 +222,8 @@ The `tech-writer` agent is hardcoded to `sonnet` regardless of tier choices — 
 
 (Default to opus/sonnet/sonnet if the user skips or doesn't have a preference.)
 
+Then ask: "Which context window does your main session use?" — **200k** (default) or **1M**. The context guard hook (`.claude/hooks/forge/context-guard.py`) warns at 75 % and asks for a stop at 85 % of it; with a wrong value it stops a 1M session far too early, or warns a 200k session too late. Recorded in `settings.json` (step 3.3).
+
 ### Question 9: Acceptance Criteria Verification
 "How should acceptance criteria be verified during `/verify`?"
 - **Auto** (recommended for frontend/fullstack) — Verify AC against the running app when Chrome DevTools MCP is available; fall back to code reading when not. Backend AC items verified via API calls when possible.
@@ -414,6 +416,8 @@ Configure PostToolUse hooks based on detected tooling:
 Adjust the `cd` path in the hook to the actual project directory where the type checker should run. For monorepos, point to the root or the appropriate package.
 
 **Wrapper mode**: Prefix the type-check command with `cd SOURCE_ROOT &&` so the type checker runs in the correct directory. For example: `cd client-project && tsc --noEmit --pretty 2>&1 | head -20`.
+
+**Context window** (Question 8): if the answer is **1M**, add `"env": { "FORGE_CONTEXT_WINDOW": "1000000" }` to `settings.json` (merge into an existing `env` object). For 200k, add nothing.
 
 **Commit attribution** (Question 7): if the answer is **No**, also add this key to `settings.json`, so Claude Code itself stops adding attribution and no longer contradicts the CLAUDE.md rule:
 ```json

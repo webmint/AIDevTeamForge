@@ -3,10 +3,11 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-GATE="$REPO/scripts/forge/gate.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK" && git init -q .
+mkdir -p scripts/forge && cp "$REPO/scripts/forge/gate.sh" scripts/forge/
+GATE="$WORK/scripts/forge/gate.sh"
 
 PASS=0; FAIL=0
 check() { if eval "$2"; then PASS=$((PASS + 1)); echo "  ok    $1"; else FAIL=$((FAIL + 1)); echo "  FAIL  $1"; fi; }
@@ -43,6 +44,19 @@ sleep 0.5
 FORGE_HEAVY_SLOTS=1 FORGE_GATE_QOS=none "$GATE" s2 -- bash -c 'sleep 2 # build' >/dev/null
 wait
 check "one slot serializes heavy runs" '[ $(( $(date +%s) - start )) -ge 4 ]'
+
+# default log dir is anchored at the project root, not the current directory
+mkdir -p sub && (cd sub && unset FORGE_LOG_DIR && "$GATE" sublog -- true >/dev/null)
+check "default logs under <project>/.claude/.gate-logs" '[ -f "$WORK/.claude/.gate-logs/sublog.log" ] && [ ! -d "$WORK/sub/.claude" ]'
+
+check "npm run build:prod is heavy" 'FORGE_GATE_QOS=none "$GATE" bp -- bash -c "true # npm run build:prod" >/dev/null; [ "$(awk -F"\t" "\$3==\"bp\"{print \$4}" "$FORGE_LOG_DIR/gate-timing.tsv")" = 1 ]'
+
+# a held slot does not block forever
+slots="$(git rev-parse --git-common-dir)/forge-gate-slots"; mkdir -p "$slots/slot.1"; echo $$ > "$slots/slot.1/pid"
+start=$(date +%s)
+out="$(FORGE_HEAVY_SLOTS=1 FORGE_GATE_MAX_WAIT=1 FORGE_GATE_QOS=none "$GATE" mw -- bash -c 'true # build' 2>&1)"; rc=$?
+check "max wait gives up and runs" '[ $rc -eq 0 ] && echo "$out" | grep -q "no free slot" && [ $(( $(date +%s) - start )) -lt 10 ]'
+rm -rf "$slots/slot.1"
 
 "$GATE" 2>/dev/null; rc=$?
 check "usage error exits 2" '[ $rc -eq 2 ]'
