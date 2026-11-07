@@ -12,6 +12,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -165,7 +166,7 @@ class HubFilesTests(RepoCase):
         bad = dict(self.good, commitPattern="(", threshold=11, paths=["nowhere/"], extra=1, ignore=[""])
         found = quality_profile.validate({"hubFiles": bad}, repo=self.repo)
         for message in ("hubFiles: unknown key: extra", "hubFiles.threshold: must be at least 1 and at most window",
-                        "hubFiles.paths: nowhere/ does not exist", "hubFiles.ignore: must be a list of strings"):
+                        "hubFiles.paths: nowhere/ does not exist under the source root", "hubFiles.ignore: must be a list of strings"):
             self.assertIn(message, found)
         self.assertTrue(any(m.startswith("hubFiles.commitPattern:") for m in found))
         self.assertIn("hubFiles.window: expected int",
@@ -288,6 +289,67 @@ class ConsumerTests(RepoCase):
         listed = {f for files in quality_profile.CONSUMERS.values() for f in files if f.startswith(".claude/")}
         self.assertTrue(listed)
         self.assertEqual(sorted(f for f in listed if not os.path.isfile(os.path.join(REPO, f))), [])
+
+
+class MissingBindingTests(unittest.TestCase):
+    """A project updated from an older Forge has no binding file: every script a command calls treats that as every
+    key unset (one line, exit 0); an existing but invalid file still exits 2, and `validate` exits 2 on a missing one."""
+
+    CALLS = (
+        ("quality_profile.py", "scopes"), ("ratchet.py", "check"), ("ratchet.py", "report"),
+        ("ratchet.py", "copies", "--files", "src/a.ts"), ("new-exports.py",), ("hub-files.py", "list"),
+        ("audit-gate.py", "start-line"), ("check-canonical-sources.py",), ("check-enforcement-map.py",),
+        ("check-task-evidence.py",), ("check-decision-records.py",),
+    )
+
+    def setUp(self) -> None:
+        self.repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.repo)
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        self.profile = os.path.join(self.repo, ".claude", "quality-profile.json")
+
+    def run_script(self, script: str, *args: str) -> subprocess.CompletedProcess:
+        # quality_profile.py takes --profile after the subcommand; the other scripts before it (or have none).
+        if script == "quality_profile.py":
+            argv = [args[0], "--profile", self.profile, *args[1:]]
+        else:
+            argv = ["--profile", self.profile, *args]
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS, script), *argv], capture_output=True, text=True,
+                              cwd=self.repo)
+
+    def test_a_missing_binding_prints_one_line_and_exits_0(self) -> None:
+        for call in self.CALLS:
+            with self.subTest(call=call):
+                done = self.run_script(*call)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                text = (done.stdout + done.stderr).splitlines()
+                self.assertEqual(len(text), 1, text)
+                self.assertTrue(text[0].endswith(quality_profile.MISSING), text)
+        self.assertEqual(self.run_script("quality_profile.py", "scopes").stdout, "")
+        self.assertEqual(self.run_script("quality_profile.py", "validate").returncode, 2)
+
+    def test_an_invalid_binding_still_exits_2(self) -> None:
+        os.makedirs(os.path.dirname(self.profile))
+        with open(self.profile, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        for call in self.CALLS:
+            with self.subTest(call=call):
+                self.assertEqual(self.run_script(*call).returncode, 2)
+
+
+
+class WorkflowWordingTests(unittest.TestCase):
+    """The harness scripts describe the interactive workflow (the user in the `/audit` triage, `/review`'s Structural
+    Check before `/finalize`), not an orchestrator or a steward that the workflow does not have."""
+
+    def test_no_script_names_an_orchestrator_or_a_steward(self) -> None:
+        for name in sorted(os.listdir(SCRIPTS)):
+            if name.endswith(".py"):
+                with open(os.path.join(SCRIPTS, name), encoding="utf-8") as handle:
+                    text = handle.read().lower()
+                with self.subTest(script=name):
+                    self.assertNotIn("orchestrator", text)
+                    self.assertNotIn("steward", text)
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ Redefinitions: in files where a later definition of an object supersedes an earl
 usual case: a later migration repeats the body of an object it replaces), a clone detector reports the old and the new
 body as a duplicate, and every fix of an existing object would grow the ratchet. The clone commands read the named
 ratchet's `redefinitions` entry of the binding (`ratchets` in `.claude/quality-profile.json`): `files` (globs,
-relative to the project root) and `definition` (a regex whose one group is the defined object's name). A clone pair is
+relative to the source root) and `definition` (a regex whose one group is the defined object's name). A clone pair is
 a redefinition when both sides lie in such files and the set of objects whose definitions overlap the cloned lines is
 the same, non-empty set on both sides, with no cloned line before the file's first definition. Duplication between
 different objects still counts. Without a `redefinitions` entry every clone pair counts.
@@ -76,16 +76,20 @@ are skipped as in `clone-lines`. A ratchet's `groupsCommand` prints these lines,
 to the files a plan or a diff touches.
 
 `matches` reads only git-tracked files (`git ls-files`) under the paths it is given, so it never reaches directories the
-caller did not name. Counters exit 0 with one integer on stdout, listers exit 0 with one line per location; both exit 2
+caller did not name. Product code is read in the source root (`SOURCE_ROOT` of `.claude/project-config.json`, see
+quality_profile.py): `matches` runs git there and its paths, like the `redefinitions` globs, are relative to it (a
+`<SOURCE_ROOT>/` prefix is accepted); a path that does not exist there exits 2. Counters exit 0 with one integer on stdout, listers exit 0 with one line per location; both exit 2
 with a message on stderr when the input is unusable (a clone command also when the binding is missing or does not name
 the ratchet: it runs from a ratchet's command, so the ratchet is configured).
 """
 from __future__ import annotations
 
 import glob
+import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from typing import Any
@@ -167,23 +171,45 @@ def json_leaves(data: Any, prefix: tuple[str, ...] = ()) -> list[tuple[int, str]
     return found
 
 
-def count_matches(pattern: str, paths: list[str]) -> int:
-    """Count lines matching `pattern` in the git-tracked files under `paths`."""
+def count_matches(pattern: str, paths: list[str], repo: str | None = None) -> int:
+    """Count lines matching `pattern` in the git-tracked files under `paths`, read with git in the source root of the
+    project at `repo` (default: the working directory, where `ratchet.py` runs its commands). The paths are relative
+    to the source root (a `<SOURCE_ROOT>/` prefix is accepted); a path that does not exist there raises ValueError, so
+    a misplaced path never counts as 0."""
     regex = re.compile(pattern)
-    listing = subprocess.run(["git", "ls-files", "-z", "--", *paths], capture_output=True, check=True)
+    repo = os.getcwd() if repo is None else repo
+    source = quality_profile.source_root(repo)
+    specs = [quality_profile.source_path(p, repo) for p in paths]
+    missing = [p for p, spec in zip(paths, specs) if not os.path.exists(os.path.join(source, spec))]
+    if missing:
+        raise ValueError(f"not under the source root {source}: {', '.join(missing)}")
+    listing = subprocess.run(["git", "-C", source, "ls-files", "-z", "--", *specs], capture_output=True)
+    if listing.returncode != 0:
+        reason = listing.stderr.decode("utf-8", "replace").strip()
+        raise ValueError(f"git ls-files failed in {source}: {reason}")
     total = 0
     for raw in filter(None, listing.stdout.split(b"\0")):
+        path = os.path.join(source, os.fsdecode(raw))
+        # Only regular files carry lines: a tracked symlink (to a directory, or a second name of a counted file), a
+        # submodule and a file deleted from the working tree are skipped.
         try:
-            with open(raw.decode(), encoding="utf-8") as handle:
-                total += sum(1 for line in handle if regex.search(line))
-        except (UnicodeDecodeError, FileNotFoundError):
-            continue  # binary or deleted-in-worktree files carry no countable lines
+            if not stat.S_ISREG(os.lstat(path).st_mode):
+                continue
+            with open(path, "rb") as handle:
+                data = handle.read()
+        except FileNotFoundError:
+            continue
+        if b"\0" in data[:8000]:
+            continue  # a binary file (git's own test: a NUL byte near the start)
+        # One undecodable byte must not drop the file's other lines from the count.
+        lines = io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace")  # the same lines as open()
+        total += sum(1 for line in lines if regex.search(line))
     return total
 
 
 def redefinition_config(ratchet: str, profile_path: str = quality_profile.DEFAULT_PROFILE) -> dict | None:
     """Return the `redefinitions` entry of the named ratchet (binding key `ratchets`), or None when it has none."""
-    profile = quality_profile.load(profile_path)
+    profile = quality_profile.load_valid(profile_path)
     for entry in profile.get("ratchets") or []:
         if isinstance(entry, dict) and entry.get("name") == ratchet:
             section = entry.get("redefinitions")
@@ -194,12 +220,15 @@ def redefinition_config(ratchet: str, profile_path: str = quality_profile.DEFAUL
 class Redefinitions:
     """Decides whether a clone pair of a jscpd report is the redefinition of one object (see the module docstring)."""
 
-    def __init__(self, config: dict | None, root: str, superseded: bool = False) -> None:
+    def __init__(self, config: dict | None, root: str, superseded: bool = False, repo: str | None = None) -> None:
+        """`root` is the directory the `files` globs are relative to: the source root. With `repo` (the project root),
+        a glob that starts with `<SOURCE_ROOT>/` is read without that prefix."""
         self.superseded = superseded
         self.pattern = re.compile(config["definition"]) if config else None
         self.files: list[str] = []
         if config:
             for spec in config["files"]:
+                spec = quality_profile.source_path(spec, repo) if repo else spec
                 self.files.extend(os.path.relpath(p, root) for p in glob.glob(os.path.join(root, spec), recursive=True))
         self.root = root
         self._defs: dict[str, list[tuple[int, str]]] = {}
@@ -526,7 +555,7 @@ def main(argv: list[str]) -> int:
         elif command in ("clone-lines", "clone-rows") and len(rest) == 2:
             with open(rest[0], encoding="utf-8") as handle:
                 report = json.load(handle)
-            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.REPO, superseded)
+            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.source_root(), superseded, quality_profile.REPO)
             if command == "clone-lines":
                 print(clone_lines(report, redefinitions))
             else:
@@ -534,7 +563,7 @@ def main(argv: list[str]) -> int:
         elif command in ("renamed-lines", "renamed-rows") and len(rest) == 3:
             with open(rest[0], encoding="utf-8") as handle:
                 report = json.load(handle)
-            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.REPO, superseded)
+            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.source_root(), superseded, quality_profile.REPO)
             if command == "renamed-lines":
                 print(renamed_lines(report, redefinitions, _formats(rest[2])))
             else:
@@ -550,7 +579,7 @@ def main(argv: list[str]) -> int:
         elif command == "clone-groups" and len(rest) in (2, 3, 4):
             with open(rest[0], encoding="utf-8") as handle:
                 report = json.load(handle)
-            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.REPO, superseded)
+            redefinitions = Redefinitions(redefinition_config(rest[1]), quality_profile.source_root(), superseded, quality_profile.REPO)
             kinds = _formats(rest[2] if len(rest) > 2 else None)
             print("\n".join(clone_groups(report, redefinitions, kinds, _formats(rest[3] if len(rest) > 3 else None))))
         elif command == "json-leaves" and len(rest) in (1, 2):

@@ -18,11 +18,16 @@ Usage:
       # third-copy trigger: the copy groups (`groupsCommand` of the clone ratchets) with at least <n> copies
       # (default 2) that have a copy in one of the given files. --added-since keeps only the groups whose copy in a
       # given file overlaps lines added since <rev> (the diff, untracked files whole). --fail exits 1 when any group
-      # is listed. A plan runs it on its File Impact files; `/review` and task reviews run it on the diff
+      # is listed. A plan runs it on its File Impact files; `/review` and task reviews run it on the diff. The files
+      # are relative to the source root (`SOURCE_ROOT`; a `<SOURCE_ROOT>/` prefix is accepted) and the added lines are
+      # read with git there; a file in neither the source repository nor its working tree exits 2
 
 Output, one line per ratchet: `<name>=<count> (baseline <n>, delta <d>)` plus `ok`, `LOWER` (commit the new baseline with
 `update`) or `GREW`. Raising a baseline is a reviewed edit of the baseline file, never an `update`.
-Exit codes: 0 all ratchets hold; 1 a ratchet failed; 2 the profile or the baseline file is unusable.
+When `ratchets` is unset (`[]` or absent), every mode prints one line saying so and exits 0 (the manual form).
+Exit codes: 0 all ratchets hold, or `ratchets` unset; 1 a ratchet failed; 2 the profile (invalid) or the
+baseline file is unusable. A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -60,6 +65,22 @@ def load_ratchets(profile: dict) -> tuple[list[dict], str]:
     if not isinstance(baseline_file, str):
         raise RatchetError("profile has no baselineFile")
     return ratchets, baseline_file
+
+
+# The one line every mode prints when `ratchets` is unset: no ratchet runs, and the measurements are made by hand.
+UNSET = "ratchet: ratchets is unset in the quality profile; no ratchet runs (the manual form: measure by hand)"
+
+
+def configured_ratchets(profile_path: str) -> tuple[list[dict], str] | None:
+    """Load and validate the binding; return the ratchets and the baseline file, or None when `ratchets` is unset.
+    Raise RatchetError when the binding is invalid."""
+    profile = quality_profile.load(profile_path)
+    problems = quality_profile.validate(profile, repo=repo_of(profile_path))
+    if problems:
+        raise RatchetError("quality profile: " + "; ".join(problems))
+    if quality_profile.is_unset("ratchets", profile.get("ratchets", [])):
+        return None
+    return load_ratchets(profile)
 
 
 def read_baselines(path: str) -> dict[str, int]:
@@ -148,14 +169,20 @@ def trend(count: int, previous: int | None) -> str:
 def report(names: list[str], profile_path: str, previous_path: str | None, top: int) -> int:
     """Print the Structure measurements of an audit; return the process exit code."""
     try:
-        profile = quality_profile.load(profile_path)
-        ratchets, baseline_file = load_ratchets(profile)
+        loaded = configured_ratchets(profile_path)
+        if loaded is None:
+            print(UNSET)
+            return 0
+        ratchets, baseline_file = loaded
         repo = repo_of(profile_path)
         baselines = read_baselines(os.path.join(repo, baseline_file))
         previous: dict[str, int] = {}
         if previous_path:
             with open(previous_path, encoding="utf-8") as handle:
                 previous = previous_counts(handle.read())
+    except quality_profile.MissingProfile:
+        print(f"ratchet: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, RatchetError, OSError) as exc:
         print(f"ratchet: {exc}", file=sys.stderr)
         return 2
@@ -201,11 +228,17 @@ def report(names: list[str], profile_path: str, previous_path: str | None, top: 
 def run(mode: str, names: list[str], profile_path: str) -> int:
     """Check or update the selected ratchets (all when `names` is empty); return the process exit code."""
     try:
-        profile = quality_profile.load(profile_path)
-        ratchets, baseline_file = load_ratchets(profile)
+        loaded = configured_ratchets(profile_path)
+        if loaded is None:
+            print(UNSET)
+            return 0
+        ratchets, baseline_file = loaded
         repo = repo_of(profile_path)
         baseline_path = os.path.join(repo, baseline_file)
         baselines = read_baselines(baseline_path)
+    except quality_profile.MissingProfile:
+        print(f"ratchet: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, RatchetError) as exc:
         print(f"ratchet: {exc}", file=sys.stderr)
         return 2
@@ -252,26 +285,33 @@ def run(mode: str, names: list[str], profile_path: str) -> int:
         else:
             print(f"{name}={count} (baseline {baseline}, delta 0) ok")
 
-    if mode == "update" and changed and not failed:
+    # The file records exactly what was printed: every LOWERED and `baseline set` entry is written even when another
+    # ratchet grew or failed (that one keeps its baseline, so nothing is ever raised).
+    if mode == "update" and changed:
         write_baselines(baseline_path, baselines)
     return 1 if failed else 0
 
 
-def added_lines(repo: str, rev: str, path: str) -> set[int] | None:
-    """Line numbers of `path` added since `rev` (an untracked file: every line); None when git cannot tell."""
-    full = os.path.join(repo, path)
-    tracked = subprocess.run(["git", "-C", repo, "ls-files", "--error-unmatch", "--", path],
-                             capture_output=True, text=True, check=False).returncode == 0
+def added_lines(source: str, rev: str, path: str) -> set[int]:
+    """Line numbers of `path` (relative to the source root `source`) added since `rev`, read with git in the source
+    root: an untracked file has every line added, a file deleted since `rev` none. Raise RatchetError when the diff
+    fails or the path is neither in the source repository nor in its working tree."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", source, "-c", "core.quotepath=off", *args],
+                              capture_output=True, text=True, check=False)
+
+    full = os.path.join(source, path)
+    tracked = git("ls-files", "--error-unmatch", "--", path).returncode == 0
     if not tracked:
-        try:
+        if os.path.isfile(full):
             with open(full, encoding="utf-8", errors="replace") as handle:
                 return set(range(1, sum(1 for _ in handle) + 1))
-        except OSError:
+        if git("cat-file", "-e", f"{rev}:{path}").returncode == 0:
             return set()
-    diff = subprocess.run(["git", "-C", repo, "diff", "-U0", "--no-color", "--no-ext-diff", rev, "--", path],
-                          capture_output=True, text=True, check=False)
+        raise RatchetError(f"{path}: not in the source repository {source} at {rev} nor in its working tree")
+    diff = git("diff", "-U0", "--no-color", "--no-ext-diff", rev, "--", path)
     if diff.returncode != 0:
-        return None
+        raise RatchetError(f"git diff {rev} -- {path} failed in {source}: {diff.stderr.strip()}")
     added: set[int] = set()
     for line in diff.stdout.splitlines():
         if line.startswith("@@"):
@@ -300,18 +340,30 @@ def copies(names: list[str], profile_path: str, files: list[str], minimum: int, 
            fail: bool) -> int:
     """List the copy groups with at least `minimum` copies that have a copy in one of `files` (see the usage)."""
     try:
-        profile = quality_profile.load(profile_path)
-        ratchets, _ = load_ratchets(profile)
+        loaded = configured_ratchets(profile_path)
+        if loaded is None:
+            print(UNSET)
+            return 0
+        ratchets, _ = loaded
+    except quality_profile.MissingProfile:
+        print(f"ratchet: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, RatchetError) as exc:
         print(f"ratchet: {exc}", file=sys.stderr)
         return 2
     repo = repo_of(profile_path)
-    wanted = [os.path.normpath(f).replace(os.sep, "/") for f in files]
+    try:
+        source = quality_profile.source_root(repo)
+        # The given files are relative to the source root (a `<SOURCE_ROOT>/` prefix is accepted).
+        wanted = [quality_profile.source_path(os.path.normpath(f), repo) for f in files]
+    except quality_profile.ProfileError as exc:
+        print(f"ratchet: {exc}", file=sys.stderr)
+        return 2
     selected = [e for e in ratchets if e.get("groupsCommand") and (not names or e["name"] in names)]
     if not selected:
         print("ratchet: no ratchet with a groupsCommand selected", file=sys.stderr)
         return 2
-    added_cache: dict[str, set[int] | None] = {}
+    added_cache: dict[str, set[int]] = {}
     listed = 0
     for entry in selected:
         try:
@@ -324,7 +376,7 @@ def copies(names: list[str], profile_path: str, files: list[str], minimum: int, 
             if group is None or group[0] < minimum:
                 continue
             hits = [(path, first, last) for name, first, last in group[2]
-                    for path in wanted if path == name or path.endswith("/" + name)]
+                    for path in wanted if path == name or path.endswith("/" + name) or name.endswith("/" + path)]
             if not hits:
                 continue
             marker = ""
@@ -332,9 +384,13 @@ def copies(names: list[str], profile_path: str, files: list[str], minimum: int, 
                 fresh = False
                 for path, first, last in hits:
                     if path not in added_cache:
-                        added_cache[path] = added_lines(repo, since, path)
+                        try:
+                            added_cache[path] = added_lines(source, since, path)
+                        except RatchetError as exc:
+                            print(f"ratchet: {exc}", file=sys.stderr)
+                            return 2
                     known = added_cache[path]
-                    fresh = fresh or known is None or any(first <= n <= last for n in known)
+                    fresh = fresh or any(first <= n <= last for n in known)
                 if not fresh:
                     continue
                 marker = " added"

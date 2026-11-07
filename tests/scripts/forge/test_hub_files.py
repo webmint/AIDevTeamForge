@@ -95,6 +95,22 @@ class HubFilesTest(unittest.TestCase):
         self.assertEqual(self.run_hubs("check").returncode, 2)
         self.assertEqual(self.run_hubs("check", "--files", "src/a/a.ts", "--base", "main").returncode, 2)
 
+    def test_merge_commits_count_their_change_against_the_first_parent(self) -> None:
+        # A merge workflow: each feature is a branch merged with --no-ff, so `git show` alone lists no files.
+        self.write(".claude/quality-profile.json", json.dumps(
+            {"integrationRef": "main", "hubFiles": dict(HUBS, commitPattern="^Merge feature", window=3)}))
+        self.commit("chore: merge workflow")
+        for n in range(3):
+            self.git("checkout", "-q", "-b", f"f{n}")
+            self.write("src/app/hub.ts", f"{n}\n")
+            self.write(f"src/m{n}/m.ts", "x\n")
+            self.commit(f"work {n}")
+            self.git("checkout", "-q", "main")
+            self.git("-c", "commit.gpgsign=false", "merge", "-q", "--no-ff", "-m", f"Merge feature {n}", f"f{n}")
+        done = self.run_hubs("list")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.splitlines(), ["hub 3/3 src/app/hub.ts", "hub-files: 1 hub(s) (3 feature commit(s) on main, threshold 3)"])
+
     def test_an_unset_integration_ref_reads_head(self) -> None:
         self.write(".claude/quality-profile.json", json.dumps({"integrationRef": "", "hubFiles": HUBS}))
         result = self.run_hubs("list")
@@ -112,9 +128,10 @@ class HubFilesTest(unittest.TestCase):
                     self.assertEqual(result.stdout.splitlines(),
                                      ["hub-files: hubFiles is unset in the quality profile; list the hubs by hand"])
 
-    def test_a_missing_or_broken_binding_file_exits_2(self) -> None:
+    def test_a_missing_binding_is_unset_and_a_broken_one_exits_2(self) -> None:
         os.remove(os.path.join(self.repo, ".claude", "quality-profile.json"))
-        self.assertEqual(self.run_hubs("list").returncode, 2)
+        done = self.run_hubs("list")
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "hub-files: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init\n", ""))
         self.write(".claude/quality-profile.json", "{not json")
         self.assertEqual(self.run_hubs("list").returncode, 2)
 

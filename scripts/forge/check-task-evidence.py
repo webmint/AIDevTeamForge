@@ -21,6 +21,8 @@ so and exits 0.
 Usage: python3 scripts/forge/check-task-evidence.py [--base <ref>] [--profile <path>]
 Exit codes: 0 ok, or no base ref configured; 1 a Complete task lacks evidence (one line each); 2 the base ref or the
 profile is unusable.
+A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -90,6 +92,9 @@ def names_task(subject: str, number: str) -> bool:
 
 def check(repo: str, base: str) -> tuple[list[str], int]:
     """Return (problems, number of newly Complete tasks examined)."""
+    if not git(repo, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", check=False).strip():
+        raise ValueError(f"integrationRef {base} does not resolve (no remote or no commits yet); "
+                         "fetch it or set integrationRef")
     merge_base = git(repo, "merge-base", base, "HEAD").strip()
     changed = git(repo, "diff", "--name-only", "--no-renames", merge_base, "--", "specs").split()
     subjects = git(repo, "log", "--no-merges", "--format=%s", f"{merge_base}..HEAD").splitlines()
@@ -123,7 +128,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--base", help="the ref to diff against (default: the profile's integrationRef)")
     args = parser.parse_args(argv)
     try:
-        profile = quality_profile.load(args.profile)
+        profile = quality_profile.load_valid(args.profile)
         repo = os.path.dirname(os.path.dirname(os.path.abspath(args.profile)))
         base = args.base or profile.get("integrationRef")
         if not base:
@@ -132,6 +137,9 @@ def main(argv: list[str]) -> int:
         if not isinstance(base, str):
             raise ValueError("integrationRef: expected a string")
         problems, examined = check(repo, base)
+    except quality_profile.MissingProfile:
+        print(f"{PREFIX}: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, OSError, ValueError) as exc:
         print(f"{PREFIX}: {exc}", file=sys.stderr)
         return 2

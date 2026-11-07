@@ -20,8 +20,9 @@ Example binding (the values are the project's own):
 When `enforcementMap` is unset (absent or `{}`) there is no map: the check prints one line saying so and exits 0.
 
 Usage: python3 scripts/forge/check-enforcement-map.py [--profile <path>]
-Exit codes: 0 the map holds, or `enforcementMap` is unset; 1 problems (one line each); 2 the profile or the
-document is unusable.
+Exit codes: 0 the map holds, or `enforcementMap` is unset; 1 problems (one line each); 2 the profile (invalid by
+`quality_profile.validate`) or the document is unusable. A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -118,13 +119,14 @@ def run(profile_path: str) -> int:
     """Check the map named by the profile; return the process exit code."""
     try:
         profile = quality_profile.load(profile_path)
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(profile_path)))
+        problems = quality_profile.validate(profile, repo=repo)
+        if problems:
+            raise quality_profile.ProfileError("quality profile: " + "; ".join(problems))
         section = profile.get("enforcementMap")
         if section is None or quality_profile.is_unset("enforcementMap", section):
             print("enforcement-map: enforcementMap is unset in the binding; no map to check")
             return 0
-        if not isinstance(section, dict):
-            raise quality_profile.ProfileError("enforcementMap: expected an object")
-        repo = os.path.dirname(os.path.dirname(os.path.abspath(profile_path)))
         with open(os.path.join(repo, section["doc"]), encoding="utf-8") as handle:
             lines = handle.read().splitlines()
         rows = parse_map(lines, section["heading"])
@@ -132,6 +134,9 @@ def run(profile_path: str) -> int:
         if section.get("rulesDoc"):
             with open(os.path.join(repo, section["rulesDoc"]), encoding="utf-8") as handle:
                 lines = handle.read().splitlines()
+    except quality_profile.MissingProfile:
+        print(f"enforcement-map: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, OSError, ValueError, KeyError, re.error) as exc:
         print(f"enforcement-map: {exc}", file=sys.stderr)
         return 2

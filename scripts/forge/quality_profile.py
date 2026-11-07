@@ -11,6 +11,28 @@ says so. `/setup-wizard` writes every key empty (`init`); `/constitute` and `/on
 Binding consumers: `CONSUMERS` lists, per key, the harness files that read it. Each consumer names the binding file
 and the key at the step where it reads them, and scripts load the binding only through this module.
 
+Source root (wrapper projects): `.claude/project-config.json` → `SOURCE_ROOT` names the directory, inside the project,
+that holds the product code; `.` (the default, also when the file or the key is absent) is a standalone project. In
+wrapper mode it is a git repository of its own, nested in the wrapper repository that holds `.claude/`, specs, docs
+and audits. `source_root()` resolves it, and every script follows one contract:
+  - Scripts that inspect product code run their git commands in the source root: `new-exports.py`, `ratchet.py copies`
+    (the added lines), `count-tools.py matches`, `hub-files.py`. `integrationRef` and any `--base`/`--ref` revision are
+    resolved there, so in wrapper mode the ref must exist in the source repository.
+  - Product paths those scripts read from the binding are relative to the source root: `newExports.patterns` globs,
+    `hubFiles.paths` and `ignore`, `ratchets[].redefinitions.files`, and the paths given to `count-tools.py matches`.
+    Paths given on a command line (`--files`) are relative to the source root too.
+    A path that starts with `<SOURCE_ROOT>/` (the workspace-relative form specs and tasks use) is accepted and
+    read without that prefix (`source_path()`).
+  - Scripts about wrapper artifacts stay in the wrapper root: `audit-gate.py` (specs, audits),
+    `check-task-evidence.py`, `check-decision-records.py`, `check-canonical-sources.py`, `check-enforcement-map.py`.
+    Ratchet commands (`countCommand`, `locationsCommand`, `groupsCommand`) run in the wrapper root, so
+    `scripts/forge/...` resolves; a command that runs a product tool changes into the source root itself
+    (`cd <SOURCE_ROOT> && ...`).
+  - `searchScopes` and `generatedDirs` are paths that agents search from the workspace root, and they may name
+    wrapper directories such as `docs/`. They stay workspace-relative (`app/src/`), and no script hands them to git.
+A git call that fails, for example because a revision or a path is in neither repository, exits 2 with git's reason;
+the script never prints a count of 0 in that case.
+
 Usage:
   python3 scripts/forge/quality_profile.py validate [--profile <path>]
   python3 scripts/forge/quality_profile.py consumers [--profile <path>]
@@ -20,8 +42,14 @@ Usage:
 `consumers` checks the harness files, not the values: a missing binding counts as every key unset (the template
 repository itself has none).
 
-Exit codes: 0 valid / consumers hold / skeleton written; 1 invalid, a consumer problem (one line each) or the file
-exists already (init); 2 the file is missing (validate, scopes) or is not JSON.
+Exit codes: 0 valid / consumers hold / skeleton written / scopes printed (none, with a note on stderr, when the file
+is missing); 1 invalid, a consumer problem (one line each) or the file exists already (init); 2 the file is missing
+(validate) or is not JSON.
+
+A missing binding file (a project updated from a Forge release without one) counts as every key unset: every harness
+script that loads it prints one line, `<prefix>: no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`, and exits 0 (`MISSING`); an existing but invalid file still exits 2. Only
+`validate` exits 2 on a missing file.
 """
 from __future__ import annotations
 
@@ -37,6 +65,8 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BINDING_NAME = "quality-profile.json"
 DEFAULT_PROFILE = os.path.join(REPO, ".claude", BINDING_NAME)
+# The project configuration next to the binding; its `SOURCE_ROOT` names the source root (see `source_root`).
+PROJECT_CONFIG_NAME = "project-config.json"
 # The harness scripts directory (relative to the repository root): scripts there load the binding through this module.
 HARNESS_SCRIPTS = os.path.relpath(os.path.dirname(os.path.abspath(__file__)), REPO).replace(os.sep, "/")
 
@@ -315,18 +345,82 @@ class ProfileError(Exception):
     """The profile file is missing or is not valid JSON."""
 
 
+class MissingProfile(ProfileError):
+    """The profile file does not exist (a project updated from a Forge release that had no binding)."""
+
+
+# What a script prints, on one line with its prefix, when the binding file is missing: every key counts as unset, and
+# the script exits 0 (its manual form). `validate` alone still exits 2.
+MISSING = f"no .claude/{BINDING_NAME}; run python3 scripts/forge/quality_profile.py init"
+
+
 def load(path: str = DEFAULT_PROFILE) -> dict:
     """Read the profile; raise ProfileError when it is missing or not a JSON object."""
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except FileNotFoundError as exc:
-        raise ProfileError(f"quality profile not found: {path}") from exc
+        raise MissingProfile(f"quality profile not found: {path}") from exc
     except json.JSONDecodeError as exc:
         raise ProfileError(f"quality profile is not valid JSON: {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ProfileError(f"quality profile must be a JSON object: {path}")
     return data
+
+
+def load_valid(path: str = DEFAULT_PROFILE) -> dict:
+    """Read and validate the profile of the project that holds it (`<project>/.claude/`); raise ProfileError when it
+    is missing, not JSON, or invalid (the problems joined on one line). Every script loads the binding this way, so
+    an invalid binding exits 2 with the reason instead of a traceback."""
+    profile = load(path)
+    problems = validate(profile, repo=os.path.dirname(os.path.dirname(os.path.abspath(path))))
+    if problems:
+        raise ProfileError("quality profile: " + "; ".join(problems))
+    return profile
+
+
+def source_root(repo: str | None = None) -> str:
+    """The absolute source root of the project at `repo` (see the module docstring): `<repo>/.claude/
+    project-config.json` → `SOURCE_ROOT`, `.` when the file or the key is absent; `repo` defaults to `REPO`. Raise
+    ProfileError when the file is not JSON or the value is not an existing directory inside the project."""
+    repo = os.path.abspath(REPO if repo is None else repo)
+    path = os.path.join(repo, ".claude", PROJECT_CONFIG_NAME)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return repo
+    except ValueError as exc:
+        raise ProfileError(f"project config is not valid JSON: {path}: {exc}") from exc
+    value = data.get("SOURCE_ROOT", ".") if isinstance(data, dict) else None
+    if value == "":
+        value = "."
+    if not isinstance(value, str) or os.path.isabs(value) or os.path.normpath(value).split(os.sep)[0] == "..":
+        raise ProfileError(f"{path}: SOURCE_ROOT must be a directory inside the project, got {value!r}")
+    root = os.path.normpath(os.path.join(repo, value))
+    if not os.path.isdir(root):
+        raise ProfileError(f"{path}: SOURCE_ROOT {value} does not exist")
+    return root
+
+
+def source_path(path: str, repo: str | None = None) -> str:
+    """A product path (or glob) relative to the source root. A path that starts with `<SOURCE_ROOT>/` (the
+    workspace-relative form) loses that prefix, and an absolute path is made relative to the source root. In a
+    standalone project the path is returned unchanged, without a leading `./`."""
+    repo = REPO if repo is None else repo
+    root = source_root(repo)
+    if os.path.isabs(path):
+        return os.path.relpath(path, root).replace(os.sep, "/")
+    prefix = os.path.relpath(root, os.path.abspath(repo)).replace(os.sep, "/")
+    text = path.replace(os.sep, "/")
+    while text.startswith("./"):
+        text = text[2:]
+    if prefix != ".":
+        if text.rstrip("/") == prefix:
+            return "."
+        if text.startswith(prefix + "/"):
+            return text[len(prefix) + 1:]
+    return text
 
 
 def is_unset(key: str, value: object) -> bool:
@@ -350,6 +444,11 @@ def validate(profile: dict, repo: str = REPO) -> list[str]:
         elif not isinstance(value, expected):
             problems.append(f"{key}: expected {expected.__name__}")
     profile = {k: v for k, v in profile.items() if not is_unset(k, v)}
+    try:
+        source = source_root(repo)
+    except ProfileError as exc:
+        problems.append(str(exc))
+        source = repo
 
     scopes = profile.get("searchScopes")
     if isinstance(scopes, list):
@@ -403,7 +502,7 @@ def validate(profile: dict, repo: str = REPO) -> list[str]:
     problems.extend(_validate_new_exports(profile))
     problems.extend(_validate_decision_records(profile, repo))
     problems.extend(_validate_semantic_clones(profile, repo))
-    problems.extend(_validate_hub_files(profile, repo))
+    problems.extend(_validate_hub_files(profile, repo, source))
     return problems
 
 
@@ -507,6 +606,13 @@ def _validate_enforcement_map(profile: dict, repo: str) -> list[str]:
         doc = section.get(key)
         if isinstance(doc, str) and not os.path.isfile(os.path.join(repo, doc)):
             problems.append(f"enforcementMap.{key}: {doc} does not exist")
+    pattern = section.get("rulePattern")
+    if isinstance(pattern, str):
+        try:
+            if re.compile(pattern).groups < 1:
+                problems.append("enforcementMap.rulePattern: needs a capture group (the rule id)")
+        except re.error as exc:
+            problems.append(f"enforcementMap.rulePattern: invalid regex: {exc}")
     for key in ("lintConfigs", "gateFiles"):
         patterns = section.get(key)
         if isinstance(patterns, list):
@@ -704,9 +810,9 @@ def _validate_decision_records(profile: dict, repo: str) -> list[str]:
     return problems
 
 
-def _validate_hub_files(profile: dict, repo: str) -> list[str]:
+def _validate_hub_files(profile: dict, repo: str, source: str) -> list[str]:
     """hubFiles: the required keys have their types, `commitPattern` compiles, `1 <= threshold <= window`, `paths`
-    exist, `ignore` is a list of strings."""
+    exist under the source root `source`, `ignore` is a list of strings."""
     problems: list[str] = []
     section = profile.get("hubFiles")
     if not isinstance(section, dict):
@@ -735,8 +841,9 @@ def _validate_hub_files(profile: dict, repo: str) -> list[str]:
     paths = section.get("paths")
     if isinstance(paths, list):
         for path in paths:
-            if isinstance(path, str) and path and not os.path.exists(os.path.join(repo, path)):
-                problems.append(f"hubFiles.paths: {path} does not exist")
+            if isinstance(path, str) and path and not os.path.exists(
+                    os.path.join(source, source_path(path, repo) if source != os.path.abspath(repo) else path)):
+                problems.append(f"hubFiles.paths: {path} does not exist under the source root")
     return problems
 
 
@@ -926,14 +1033,22 @@ def main(argv: list[str]) -> int:
         return 0
     try:
         profile = load(args.profile)
-    except ProfileError as exc:
-        # `consumers` checks harness files, not values: without a binding every key is unset.
-        if args.command != "consumers" or os.path.exists(args.profile):
+    except MissingProfile as exc:
+        # `consumers` checks harness files, not values, and `scopes` prints the scopes: without a binding every key
+        # is unset (`scopes` prints none, and says why on stderr so stdout stays a scope list). `validate` fails.
+        if args.command == "validate":
             print(exc, file=sys.stderr)
             return 2
+        if args.command == "scopes":
+            print(f"quality-profile: {MISSING}", file=sys.stderr)
         profile = {}
+    except ProfileError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     if args.command == "scopes":
-        print("\n".join(search_pathspecs(profile)))
+        scopes = search_pathspecs(profile)
+        if scopes:
+            print("\n".join(scopes))
         return 0
     if args.command == "consumers":
         problems = check_consumers(profile, repo=repo)

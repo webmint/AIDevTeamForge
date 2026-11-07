@@ -91,6 +91,21 @@ class CheckTests(RatchetCase):
         self.assertEqual(code, 1)
         self.assertEqual(self.baselines(), {"alpha": 7})
 
+    def test_update_writes_what_it_prints_when_another_ratchet_grew(self) -> None:
+        self.set_profile([
+            {"name": "alpha", "countCommand": "cat alpha.count"},
+            {"name": "beta", "countCommand": "cat beta.count"},
+        ])
+        self.counter("beta", 5)
+        self.run_ratchet("update")
+        self.counter("alpha", 7)
+        self.counter("beta", 6)
+        code, out, _ = self.run_ratchet("update")
+        self.assertEqual(code, 1)
+        self.assertIn("alpha=7 (baseline 10 -> 7) LOWERED", out)
+        self.assertIn("beta=6 (baseline 5, delta +1) GREW", out)
+        self.assertEqual(self.baselines(), {"alpha": 7, "beta": 5})
+
     def test_a_failing_command_fails_the_check(self) -> None:
         self.set_profile([{"name": "alpha", "countCommand": "exit 3"}])
         code, out, _ = self.run_ratchet("check")
@@ -112,11 +127,37 @@ class CheckTests(RatchetCase):
         self.assertEqual(self.run_ratchet("check", "alpha")[0], 0)
         self.assertEqual(self.run_ratchet("check", "beta")[0], 1)
 
-    def test_unknown_name_and_missing_ratchets_are_unusable(self) -> None:
+    def test_an_unknown_name_is_unusable(self) -> None:
         self.assertEqual(self.run_ratchet("check", "nope")[0], 2)
-        with open(self.profile, "w", encoding="utf-8") as handle:
-            json.dump({}, handle)
-        self.assertEqual(self.run_ratchet("check")[0], 2)
+
+    def test_unset_ratchets_print_one_line_and_exit_0_in_every_mode(self) -> None:
+        # The init-only binding (`ratchets` and `baselineFile` empty) and a binding without the key are the manual form.
+        for binding in ({"baselineFile": "", "ratchets": []}, {}):
+            with open(self.profile, "w", encoding="utf-8") as handle:
+                json.dump(binding, handle)
+            for mode in ("check", "update", "report", "copies"):
+                with self.subTest(binding=binding, mode=mode):
+                    out, err = io.StringIO(), io.StringIO()
+                    with redirect_stdout(out), redirect_stderr(err):
+                        if mode == "report":
+                            code = ratchet.report([], self.profile, None, 5)
+                        elif mode == "copies":
+                            code = ratchet.copies([], self.profile, ["src/a.ts"], 2, None, False)
+                        else:
+                            code = ratchet.run(mode, [], self.profile)
+                    self.assertEqual((code, out.getvalue().splitlines(), err.getvalue()), (0, [ratchet.UNSET], ""))
+            self.assertFalse(os.path.exists(os.path.join(self.repo, ".quality")))
+
+    def test_an_invalid_binding_exits_2_without_a_traceback(self) -> None:
+        # A ratchet entry without `name` used to raise KeyError; the binding is validated first.
+        self.set_profile([{"countCommand": "cat alpha.count"}])
+        for mode in ("check", "update"):
+            code, _, err = self.run_ratchet(mode)
+            self.assertEqual(code, 2)
+            self.assertIn("ratchets[0].name", err)
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(ratchet.report([], self.profile, None, 5), 2)
+            self.assertEqual(ratchet.copies([], self.profile, ["a"], 2, None, False), 2)
 
     def test_a_corrupt_baseline_file_is_unusable(self) -> None:
         os.makedirs(os.path.join(self.repo, ".quality"))

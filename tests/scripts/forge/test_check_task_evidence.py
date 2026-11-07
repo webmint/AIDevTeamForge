@@ -65,6 +65,12 @@ class EvidenceCase(unittest.TestCase):
     def run_check(self):
         return checker.check(self.repo, "base")
 
+    def test_an_unresolvable_integration_ref_names_the_fix(self):
+        with self.assertRaises(ValueError) as caught:
+            checker.check(self.repo, "origin/main")
+        self.assertEqual(str(caught.exception), "integrationRef origin/main does not resolve (no remote or no commits "
+                                                "yet); fetch it or set integrationRef")
+
     def test_untouched_readme_is_not_read(self):
         self.write("docs/a.md", "x")
         self.commit("docs")
@@ -172,7 +178,7 @@ class EvidenceCase(unittest.TestCase):
         self.assertEqual(self.run_main("--base", "HEAD", profile={"integrationRef": ""})[0], 0)
         self.assertEqual(self.run_main("--base", "no-such-ref")[0], 2)
         os.remove(os.path.join(self.repo, ".claude", "quality-profile.json"))
-        self.assertEqual(self.run_main("--base", "base")[0], 2)
+        self.assertEqual(self.run_main("--base", "base"), (0, "task-evidence: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init\n"))
 
     def test_names_task_matches_number_not_prefix(self):
         self.assertTrue(checker.names_task("[WIP] Task 3: x", "003"))

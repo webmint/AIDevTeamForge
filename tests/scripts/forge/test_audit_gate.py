@@ -167,6 +167,17 @@ class CounterTest(unittest.TestCase):
         state = self.repo.state()
         self.assertEqual((state["triage"], state["triagePending"], state["blocked"]), (True, 0, False))
 
+    def test_the_audit_date_is_the_short_committer_date_without_percent_cs(self) -> None:
+        # `%cs` needs git 2.25 or later; `%cd` with `--date=short` prints the same on older git.
+        with open(GATE, encoding="utf-8") as handle:
+            self.assertNotIn("%cs", handle.read())
+        self.repo.write("audits/2026-01-10-audit.md", f"# Audit\n\n{TRIAGE}\n\n- theme\n")
+        self.repo.git("add", "-A")
+        subprocess.run(["git", "-C", self.repo.path, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "audit"],
+                       check=True, capture_output=True,
+                       env={**os.environ, "GIT_COMMITTER_DATE": "2026-01-15T23:30:00+0000", "TZ": "UTC"})
+        self.assertEqual(self.repo.state()["lastAudit"]["date"], "2026-01-15")
+
     def test_newest_audit_wins_and_all_are_counted(self) -> None:
         self.repo.audit("2026-01-10")
         self.repo.merge_spec("001-a")
@@ -174,6 +185,46 @@ class CounterTest(unittest.TestCase):
         state = self.repo.state()
         self.assertEqual((state["auditsOnRef"], state["specsSinceAudit"]), (2, 0))
         self.assertEqual(state["lastAudit"]["report"], "audits/2026-01-20-audit.md")
+
+    def test_spec_directories_with_non_ascii_names_and_spaces_are_counted(self) -> None:
+        # git quotes a non-ASCII path in `log --name-only` unless core.quotepath is off.
+        for name in ("001-caf\u00e9", "002-with space"):
+            self.repo.merge_spec(name)
+        self.assertEqual(self.repo.state()["specs"], ["specs/001-caf\u00e9", "specs/002-with space"])
+
+    def test_a_shallow_clone_is_an_error_not_a_miscount(self) -> None:
+        self.repo.audit("2026-01-10")
+        self.repo.merge_spec("001-a")
+        clone = tempfile.mkdtemp(prefix="audit-gate-shallow-")
+        self.addCleanup(shutil.rmtree, clone, True)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", "main", f"file://{self.repo.path}", clone],
+                       check=True, capture_output=True)
+        for args in (("status",), ("start-line",)):
+            done = subprocess.run([sys.executable, GATE, "--profile", os.path.join(clone, ".claude", "quality-profile.json"),
+                                   *args, "--ref", "HEAD"], cwd=clone, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 2, done.stdout)
+            self.assertIn("shallow clone: fetch full history (e.g. fetch-depth: 0)", done.stderr)
+
+    def test_an_unresolvable_ref_is_an_error_except_in_a_fresh_project(self) -> None:
+        data = json.loads(json.dumps(PROFILE))
+        data["integrationRef"] = "origin/main"
+        self.repo.write(".claude/quality-profile.json", json.dumps(data))
+        # No remote, no audit, no merged spec: nothing to count, the first spec may start.
+        status = self.repo.run("status")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("open — specs since last audit 0/3 (no history yet:", status.stdout)
+        start = self.repo.run("start-line")
+        self.assertEqual((start.returncode, start.stdout.strip()), (0, "Audit gate: started at 0/3 after none"))
+        message = ("audit-gate: error: integrationRef origin/main does not resolve (no remote or no commits yet); "
+                   "fetch it or set integrationRef")
+        # A remote, or a merged spec on the branch, means the missing ref could hide a due audit.
+        self.repo.git("remote", "add", "origin", "https://example.invalid/none.git")
+        done = self.repo.run("status")
+        self.assertEqual((done.returncode, done.stderr.strip()), (2, message))
+        self.repo.git("remote", "remove", "origin")
+        self.repo.merge_spec("001-a")
+        done = self.repo.run("start-line")
+        self.assertEqual((done.returncode, done.stderr.strip()), (2, message))
 
     def test_a_nested_or_misnamed_file_is_not_an_audit_or_a_spec(self) -> None:
         self.repo.write("audits/old/2026-01-10-audit.md", f"{TRIAGE}\n")
@@ -431,6 +482,19 @@ class TriageCheckTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("passed (0 problem(s))", result.stdout)
 
+    def test_an_unfiled_non_blocking_row_neither_fails_the_check_nor_blocks_the_gate(self) -> None:
+        report = triage_report("| T1 copies | F-1 | class-guard | yes | no | ratchet duplicates | #7 |",
+                               "| T2 naming | F-2 | touch-rule | no | no | none: one-off wording | (to file) |")
+        self.assertEqual(self.check(report).returncode, 0)
+        self.repo.commit("audit")
+        self.repo.issues([])
+        state = self.repo.state()
+        self.assertEqual((state["triage"], state["triagePending"], state["blocked"]), (True, 0, False), state)
+        self.repo.write("audits/2026-02-01-audit.md", report.replace("| #7 |", "| (to file) |"))
+        self.repo.commit("audit unfiled")
+        state = self.repo.state()
+        self.assertEqual((state["triage"], state["triagePending"], state["blocked"]), (False, 1, True))
+
     def test_a_blocking_row_that_continues_a_warning_issue_fails(self) -> None:
         result = self.check(triage_report("| T1 copies | F-1 | fix | yes | no | lint no-copy | #8 |"))
         self.assertEqual(result.returncode, 1)
@@ -565,6 +629,27 @@ class NoTrackerTest(unittest.TestCase):
                         result = self.triage(issue)
                         self.assertEqual(result.returncode, 1, result.stdout)
                         self.assertIn("T1 copies: blocks but its Issue cell is", result.stdout)
+
+    def test_a_remediation_names_blocking_themes_of_the_triage_table(self) -> None:
+        self.repo.write("audits/2026-01-10-audit.md", triage_report(
+            "| T1 copies | F-1 | fix | yes | no | lint no-copy | - |",
+            "| T2: naming | F-2 | touch-rule | no | no | none: wording | - |",
+            "| T3 drift | F-3 | fix | YES | no | ratchet drift | - |"))
+        self.repo.commit("audit")
+        for name in ("001-a", "002-b", "003-c"):
+            self.repo.merge_spec(name)
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.use(form)
+                ok = self.repo.run("start-line", "--remediation", "T1,t3")
+                self.assertEqual(ok.returncode, 0, ok.stdout)
+                self.assertEqual(ok.stdout.strip(), "Audit gate: remediation of audits/2026-01-10-audit.md (T1, t3)")
+                for wrong, why in (("T2", "T2 is not a blocking theme (Blocks = yes)"),
+                                   ("T11", "T11 is not a blocking theme"),
+                                   ("#7", "there is no issue tracker: name the blocking themes")):
+                    refused = self.repo.run("start-line", "--remediation", wrong)
+                    self.assertEqual(refused.returncode, 1, refused.stdout)
+                    self.assertIn(f"refused: {why}", refused.stdout)
 
     def test_a_machine_check_is_still_required(self) -> None:
         self.use("empty")

@@ -28,6 +28,8 @@ saying so and exit 0.
 Usage: python3 scripts/forge/check-canonical-sources.py [--profile <path>] [--concepts | --rows <regex>]
 Exit codes: 0 the registry holds, or `canonicalSources` is unset (lookup: printed, possibly nothing); 1 problems (one
 line each); 2 the profile or the document is unusable, or the regex is invalid.
+A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -170,16 +172,17 @@ def lookup(header: list[str], rows: list[list[str]], pattern: str | None) -> lis
 def run(profile_path: str, concepts: bool = False, pattern: str | None = None) -> int:
     """Check the registry named by the profile, or print a lookup (`concepts`, `pattern`); return the exit code."""
     try:
-        profile = quality_profile.load(profile_path)
+        profile = quality_profile.load_valid(profile_path)
         section = profile.get("canonicalSources")
         if section is None or quality_profile.is_unset("canonicalSources", section):
             print("canonical-sources: canonicalSources is unset in the binding; no registry to check or look up")
             return 0
-        if not isinstance(section, dict):
-            raise quality_profile.ProfileError("canonicalSources: expected an object")
         repo = os.path.dirname(os.path.dirname(os.path.abspath(profile_path)))
         with open(os.path.join(repo, section["doc"]), encoding="utf-8") as handle:
             header, rows = parse_table(handle.read().splitlines(), section["heading"])
+    except quality_profile.MissingProfile:
+        print(f"canonical-sources: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, OSError, ValueError, KeyError) as exc:
         print(f"canonical-sources: {exc}", file=sys.stderr)
         return 2

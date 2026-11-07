@@ -95,6 +95,29 @@ class NewExportsCase(unittest.TestCase):
         found = new_exports.new_exports(self.repo, self.base, PATTERNS)
         self.assertEqual(sorted(found), [("src/billing/committed.ts", 2, "Line"), ("src/billing/loose.ts", 1, "LOOSE")])
 
+    def test_paths_with_spaces_quotes_and_non_ascii_are_read(self) -> None:
+        # git ends a `+++` path holding a space with a tab, and quotes a path holding `"` (or, without
+        # core.quotepath=off, a non-ASCII byte); ls-files and ls-tree print such names quoted unless -z is given.
+        self.write("src/old name.ts", "export const KNOWN = 1;\n")
+        self.write("src/my mod.ts", "export const SPACED = 1;\n")
+        self.commit("names")
+        self.base = self.git("rev-parse", "HEAD").strip()
+        self.write("src/my mod.ts", "export const SPACED = 1;\nexport const SPACE_ADDED = 2;\n")
+        self.write("src/caf\u00e9.ts", "export const CAFE = 1;\n")
+        self.write('src/say"hi".ts', "export const QUOTED = 1;\n")
+        self.git("add", "-A")
+        self.write("src/new file.ts", "export const UNTRACKED = 1;\nexport const KNOWN = 1;\n")
+        self.write("src/caf\u00e9 \u00fcber.ts", "export const LOOSE_UNICODE = 1;\n")
+        found = sorted(new_exports.new_exports(self.repo, self.base, PATTERNS))
+        self.assertEqual(found, [("src/caf\u00e9 \u00fcber.ts", 1, "LOOSE_UNICODE"), ("src/caf\u00e9.ts", 1, "CAFE"),
+                                 ("src/my mod.ts", 2, "SPACE_ADDED"), ("src/new file.ts", 1, "UNTRACKED"),
+                                 ('src/say"hi".ts', 1, "QUOTED")])
+
+    def test_unquote_reads_git_c_style_quoting(self) -> None:
+        self.assertEqual(new_exports.unquote('"b/src/caf\\303\\251.ts"'), "b/src/caf\u00e9.ts")
+        self.assertEqual(new_exports.unquote('"b/a\\"q\\"\\tz"'), 'b/a"q"\tz')
+        self.assertEqual(new_exports.unquote("b/plain name.ts\t"), "b/plain name.ts")
+
     def moved_profile(self) -> str:
         """Commit a base profile whose SQL pattern covers db/, then bind the working tree to schemas/ (same regex)."""
         profile = os.path.join(self.repo, ".claude", "quality-profile.json")
@@ -157,12 +180,14 @@ class NewExportsCase(unittest.TestCase):
                 self.assertEqual(out.getvalue().splitlines(), [
                     "new-exports: newExports.patterns is unset; list the new exports from the diff by hand"])
 
-    def test_a_missing_binding_or_a_bad_base_exits_2(self) -> None:
-        with redirect_stderr(io.StringIO()):
+    def test_a_missing_binding_is_unset_and_a_bad_base_exits_2(self) -> None:
+        out = io.StringIO()
+        with redirect_stderr(io.StringIO()), redirect_stdout(out):
             missing = new_exports.main(["--profile", os.path.join(self.repo, ".claude", "absent.json")])
             bad_base = new_exports.main(["--base", "no-such-rev", "--profile",
                                          os.path.join(self.repo, ".claude", "quality-profile.json")])
-        self.assertEqual((missing, bad_base), (2, 2))
+        self.assertEqual((missing, bad_base), (0, 2))
+        self.assertEqual(out.getvalue(), "new-exports: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init\n")
 
     def test_glob_reads_like_a_git_pathspec(self) -> None:
         self.assertTrue(new_exports.glob_regex("src/**/*.ts").match("src/a.ts"))

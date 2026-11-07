@@ -2,15 +2,18 @@
 """Hub files: the files that most feature changes edit, the Open/Closed smell of a growing composition root.
 
 A file that every new feature must edit (a route list, a composition root, a navigation table, a shared seed) makes
-each feature change a hub edit, and the hub grows by hand. The per-spec structural check (`/plan` and its plan-gate,
-`/review`) and the steward check after a merge read this list, so a spec that adds another hub edit carries a
-registration seam (a self-registering manifest, a compile-time link) or a recorded reason.
+each feature change a hub edit, and the hub grows by hand. The per-spec structural check reads this list: `/plan`
+(and its plan-gate) decides each hub edit, and `/review`'s Structural Check, run before `/finalize`, checks the
+spec's edits against that decision. So a spec that adds another hub edit carries a registration seam (a
+self-registering manifest, a compile-time link) or a recorded reason.
 
 Binding: `.claude/quality-profile.json` → `hubFiles` (`commitPattern`, `window`, `threshold`, `paths`, optional
 `ignore`) and `integrationRef` (the ref whose history is read; `HEAD` when unset), loaded through
 scripts/forge/quality_profile.py. A hub is a file under `paths`, not matching `ignore`, that at least `threshold` of
-the newest `window` commits on the ref whose subject matches `commitPattern` (the squashed feature commits,
-first-parent history) edited.
+the newest `window` commits on the ref whose subject matches `commitPattern` (the squashed feature commits, or the
+merge commits of a merge workflow, read against their first parent; first-parent history) edited. Git runs in the source root (`SOURCE_ROOT`, see quality_profile.py): in a wrapper
+project the ref is a ref of the nested source repository, and `paths`, `ignore` and `--files` are relative to it (a
+`<SOURCE_ROOT>/` prefix is accepted).
 
 Usage:
   python3 scripts/forge/hub-files.py list [--ref <ref>]
@@ -21,7 +24,8 @@ Usage:
 Each command ends with the summary line `hub-files: ...`. When `hubFiles` is unset (`{}` or absent), the command
 prints one line saying so and exits 0 (the manual form: the hub list is made by hand from the integration ref's
 history). Exit codes: 0 done, nothing listed with --fail, or `hubFiles` unset; 1 something listed with --fail;
-2 the binding file is missing or invalid, or git fails.
+2 the binding file is invalid, or git fails. A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 
 Standard library only. Tests: `tests/scripts/forge/test_hub_files.py`.
 """
@@ -68,7 +72,8 @@ def edit_counts(repo: str, section: dict, ref: str) -> tuple[dict[str, int], int
                 break
     counts: dict[str, int] = {}
     if commits:
-        out = git(repo, "show", "--no-renames", "--name-only", "--format=@%H", *commits)
+        # A merge commit (a merge-commit workflow) lists its change against the first parent, as a squash would.
+        out = git(repo, "show", "--no-renames", "--name-only", "-m", "--first-parent", "--format=@%H", *commits)
         for name in {(sha, path) for sha, path in _pairs(out)}:
             if in_scope(name[1], section):
                 counts[name[1]] = counts.get(name[1], 0) + 1
@@ -120,6 +125,11 @@ def main(argv: list[str]) -> int:
         if not section:
             print("hub-files: hubFiles is unset in the quality profile; list the hubs by hand")
             return 0
+        # Product code lives in the source root (wrapper mode: a nested repository); `paths`, `ignore` and the given
+        # files are relative to it, and the ref is resolved there.
+        workspace, repo = repo, quality_profile.source_root(repo)
+        section = dict(section, **{k: [quality_profile.source_path(p, workspace) for p in section[k]]
+                                   for k in ("paths", "ignore") if k in section})
         ref = args.ref or profile.get("integrationRef") or "HEAD"
         counts, read = edit_counts(repo, section, ref)
         window, threshold = section["window"], section["threshold"]
@@ -133,7 +143,7 @@ def main(argv: list[str]) -> int:
         if bool(args.files) == bool(args.base):
             parser.error("check needs exactly one of --files and --base")
         if args.files:
-            paths = [os.path.normpath(f).replace(os.sep, "/") for f in args.files]
+            paths = [quality_profile.source_path(os.path.normpath(f), workspace) for f in args.files]
         else:
             changed = git(repo, "diff", "--name-only", "--no-renames", f"{args.base}...{args.head}", "--",
                           *section["paths"])
@@ -144,6 +154,9 @@ def main(argv: list[str]) -> int:
         hubs = sum(1 for kind, _, _ in rows if kind == "hub")
         print(f"hub-files: {hubs} hub(s), {len(rows) - hubs} new hub(s) among {len(paths)} file(s) ({scope})")
         return 1 if args.fail and rows else 0
+    except quality_profile.MissingProfile:
+        print(f"hub-files: {quality_profile.MISSING}")
+        return 0
     except (HubError, quality_profile.ProfileError) as exc:
         print(f"hub-files: error: {exc}", file=sys.stderr)
         return 2

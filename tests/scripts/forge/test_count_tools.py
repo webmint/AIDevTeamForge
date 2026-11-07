@@ -84,6 +84,35 @@ class CountToolsTests(unittest.TestCase):
         finally:
             os.chdir(previous)
 
+    def test_matches_skips_links_and_submodules_and_reads_a_non_utf8_file(self) -> None:
+        repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, repo)
+        sub = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, sub)
+        write(repo, "in/real/a.txt", "TODO\n")
+        with open(os.path.join(repo, "in", "latin.txt"), "wb") as handle:
+            handle.write(b"caf\xe9 TODO\nTODO\n")
+        with open(os.path.join(repo, "in", "blob.bin"), "wb") as handle:
+            handle.write(b"\x00TODO\n")
+        os.symlink("real", os.path.join(repo, "in", "link"))
+        os.symlink("real/a.txt", os.path.join(repo, "in", "alias.txt"))
+        git = ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+               "-c", "protocol.file.allow=always"]
+        subprocess.run(["git", "init", "-q"], cwd=sub, check=True)
+        write(sub, "s.txt", "TODO\n")
+        subprocess.run([*git, "add", "-A"], cwd=sub, check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "s"], cwd=sub, check=True)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run([*git, "submodule", "add", "-q", sub, "in/sub"], cwd=repo, check=True, capture_output=True)
+        subprocess.run([*git, "add", "-A"], cwd=repo, check=True)
+        previous = os.getcwd()
+        os.chdir(repo)
+        try:
+            # a.txt once, latin.txt twice; the links, the submodule and the binary file carry no countable lines.
+            self.assertEqual(count_tools.count_matches("TODO", ["in"]), 3)
+        finally:
+            os.chdir(previous)
+
     def test_the_json_commands_print_one_integer_and_bad_input_exits_2(self) -> None:
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root)
@@ -156,7 +185,7 @@ class CloneRedefinitionTests(unittest.TestCase):
         profile = os.path.join(self.repo, "profile.json")
         entry = {"files": ["db/*.sql"], "definition": self.DEFINITION}
         with open(profile, "w", encoding="utf-8") as handle:
-            json.dump({"ratchets": [{"name": "dup", "countCommand": "x", "redefinitions": entry},
+            json.dump({"baselineFile": "b.json", "ratchets": [{"name": "dup", "countCommand": "x", "redefinitions": entry},
                                     {"name": "other", "countCommand": "y"}]}, handle)
         self.assertEqual(count_tools.redefinition_config("dup", profile), entry)
         self.assertIsNone(count_tools.redefinition_config("other", profile))

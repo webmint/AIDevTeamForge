@@ -138,11 +138,12 @@ class RegistryCase(unittest.TestCase):
                 self.assertEqual(out.splitlines(), ["canonical-sources: canonicalSources is unset in the binding; "
                                                     "no registry to check or look up"])
 
-    def test_a_missing_profile_or_a_wrong_type_is_unusable(self) -> None:
+    def test_a_wrong_type_is_unusable_and_a_missing_profile_is_unset(self) -> None:
         self.set_profile({"canonicalSources": ["docs/arch.md"]})
         self.assertEqual(self.run_check()[0], 2)
         os.remove(self.profile)
-        self.assertEqual(self.run_check()[0], 2)
+        code, out = self.run_check()
+        self.assertEqual((code, out.strip()), (0, "canonical-sources: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init"))
 
     def run_lookup(self, **kwargs) -> tuple[int, str]:
         out, err = io.StringIO(), io.StringIO()

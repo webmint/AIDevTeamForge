@@ -120,6 +120,18 @@ class FragmentTest(RecordsCase):
         self.assertEqual(code, 0, out)
         self.assertIn("1 fragment", out)
 
+    def test_dotfiles_readme_and_other_files_are_not_fragments(self) -> None:
+        self.write("docs/decisions/002-b.md", "# Decisions: 002-b\n\n" + HEADER + "| 2026-02-01 | 002-b | D-1 | x | y |\n")
+        self.write("docs/decisions/README.md", "# Fragments\n\nOne file per unit.\n")
+        self.write("docs/decisions/.gitkeep", "")
+        with open(os.path.join(self.repo, "docs/decisions/.DS_Store"), "wb") as handle:
+            handle.write(b"\x00\x00\x00\x01Bud1\xff\xfe")
+        code, out = self.run_check()
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 fragment(s)", out)
+        code, out = self.run_check("--list")
+        self.assertEqual(code, 0, out)
+
     def test_bad_name_fails(self) -> None:
         self.write("docs/decisions/Notes.md", HEADER + "| 2026-02-01 | a | b | c | d |\n")
         code, out = self.run_check()
@@ -179,11 +191,11 @@ class UnsetKeyTest(RecordsCase):
         self.assertEqual(code, 1)
         self.assertIn("name does not match", out)
 
-    def test_a_missing_profile_or_a_wrong_type_is_unusable(self) -> None:
+    def test_a_wrong_type_is_unusable_and_a_missing_profile_is_unset(self) -> None:
         self.set_profile({"decisionRecords": ["docs/log.md"]})
         self.assertEqual(self.run_check()[0], 2)
         os.remove(self.profile)
-        self.assertEqual(self.run_check()[0], 2)
+        self.assertEqual(self.run_check(), (0, "decision-records: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init\n"))
 
 
 class ProfileTest(unittest.TestCase):

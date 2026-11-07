@@ -96,6 +96,17 @@ class MapCase(unittest.TestCase):
 
 
 class EnforcementMapTests(MapCase):
+    def test_an_invalid_section_exits_2_without_a_traceback(self) -> None:
+        # rulePattern without a capture group used to raise IndexError, a missing lintConfigs KeyError.
+        section = {"doc": "rules.md", "heading": HEADING, "rulePattern": r"^\*\*R-\d+"}
+        self.write_profile(enforcementMap=section)
+        code, out = self.run_check()
+        self.assertEqual(code, 2)
+        for problem in ("enforcementMap.lintConfigs: missing", "enforcementMap.gateFiles: missing",
+                        "enforcementMap.rulePattern: needs a capture group (the rule id)"):
+            self.assertIn(problem, out)
+        self.assertNotIn("Traceback", out)
+
     def test_a_resolving_map_passes(self) -> None:
         code, out = self.run_check()
         self.assertEqual(code, 0, out)
@@ -178,11 +189,11 @@ class EnforcementMapTests(MapCase):
         self.assertEqual(code, 1)
         self.assertIn("ratchet `dup` is not defined in the profile", out)
 
-    def test_a_missing_profile_or_a_wrong_type_is_unusable(self) -> None:
+    def test_a_wrong_type_is_unusable_and_a_missing_profile_is_unset(self) -> None:
         self.write_raw_profile({"enforcementMap": "rules.md"})
         self.assertEqual(self.run_check()[0], 2)
         os.remove(self.profile)
-        self.assertEqual(self.run_check()[0], 2)
+        self.assertEqual(self.run_check(), (0, "enforcement-map: no .claude/quality-profile.json; run python3 scripts/forge/quality_profile.py init\n"))
 
 
 class ProfileSectionTests(unittest.TestCase):

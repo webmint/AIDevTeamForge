@@ -33,6 +33,8 @@ skipped (the summary line says so); the fragments are still checked.
 Usage: python3 scripts/forge/check-decision-records.py [--profile <path>] [--base <ref>] [--list [--grep <regex>]]
 Exit codes: 0 the records hold, or `decisionRecords` is unset (lookup: printed, possibly nothing); 1 problems (one line
 each); 2 the profile, the log or the base ref is unusable, or the regex is invalid.
+A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -147,15 +149,19 @@ def check_log_rows(rows: list[str], header: list[str], frozen_on: str) -> list[s
 
 
 def fragment_files(repo: str, directory: str) -> list[str]:
-    """Return the file names in the fragments directory, sorted (none when the directory does not exist)."""
+    """Return the fragment file names in the fragments directory, sorted (none when the directory does not exist):
+    the `*.md` files, without dotfiles (`.DS_Store`, `.gitkeep`) and without a `README.md` that explains the
+    directory."""
     path = os.path.join(repo, directory)
     if not os.path.isdir(path):
         return []
-    return sorted(name for name in os.listdir(path) if os.path.isfile(os.path.join(path, name)))
+    return sorted(name for name in os.listdir(path)
+                  if name.endswith(".md") and not name.startswith(".") and name.lower() != "readme.md"
+                  and os.path.isfile(os.path.join(path, name)))
 
 
 def read(path: str) -> str:
-    with open(path, encoding="utf-8") as handle:
+    with open(path, encoding="utf-8", errors="replace") as handle:
         return handle.read()
 
 
@@ -184,13 +190,11 @@ def lookup(repo: str, section: dict, header: list[str], log_text: str, grep: str
 def run(profile_path: str, base: str | None, list_rows: bool, grep: str | None) -> int:
     """Check the decision records named by the profile, or print them; return the process exit code."""
     try:
-        profile = quality_profile.load(profile_path)
+        profile = quality_profile.load_valid(profile_path)
         section = profile.get("decisionRecords")
         if section is None or quality_profile.is_unset("decisionRecords", section):
             print(f"{PREFIX}: decisionRecords is unset in the binding; no decision records to check or list")
             return 0
-        if not isinstance(section, dict):
-            raise quality_profile.ProfileError("decisionRecords: expected an object")
         repo = os.path.dirname(os.path.dirname(os.path.abspath(profile_path)))
         log_text = read(os.path.join(repo, section["log"]))
         header = header_of(log_text)
@@ -200,6 +204,9 @@ def run(profile_path: str, base: str | None, list_rows: bool, grep: str | None) 
         frozen_on = section["frozenOn"]
         if not is_date(frozen_on):
             raise ValueError(f"frozenOn: not a date: {frozen_on}")
+    except quality_profile.MissingProfile:
+        print(f"{PREFIX}: {quality_profile.MISSING}")
+        return 0
     except (quality_profile.ProfileError, OSError, ValueError, KeyError, re.error) as exc:
         print(f"{PREFIX}: {exc}", file=sys.stderr)
         return 2

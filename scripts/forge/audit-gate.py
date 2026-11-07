@@ -12,9 +12,10 @@ The state is derived, never stored, so every developer and CI see the same thing
   an issue tracker there are none (see below).
 The gate is blocked when any of these holds:
   1. `auditGate.every` specs merged since the last audit (an audit is due);
-  2. the last audit report has no `auditGate.triageHeading` line, or a theme row in that section still carries the
-     placeholder `(to file)` instead of its issue (the audit is not triaged: `/audit` drafts the table, the
-     orchestrator files one issue per blocking theme and replaces the placeholder);
+  2. the last audit report has no `auditGate.triageHeading` line, or a blocking theme row in that section (its Blocks
+     cell starts with `yes`) still carries the placeholder `(to file)` instead of its issue (the audit is not
+     triaged: `/audit` drafts the table, and the user, in the `/audit` triage, files one issue per blocking theme
+     and replaces the placeholder);
   3. a blocking issue is open (the audit is not fixed).
 All values come from the project binding `.claude/quality-profile.json` (`auditGate`, `integrationRef`), loaded
 through scripts/forge/quality_profile.py.
@@ -36,12 +37,14 @@ triage table is the record: the triage check accepts a blocking row whose Issue 
 Usage:
   python3 scripts/forge/audit-gate.py status [--ref <ref>] [--json]
       print the state; exit 0 whatever it is.
-  python3 scripts/forge/audit-gate.py start-line [--ref <ref>] [--remediation "#n,#m"]
+  python3 scripts/forge/audit-gate.py start-line [--ref <ref>] [--remediation "#n,#m" | --remediation "T1,T3"]
       before a new spec starts (`/specify`): print the line the spec records in its header and exit 0, or exit 1 with
       the reasons. A feature spec gets `Audit gate: started at <n>/<every> after <report>` and needs an open gate. A
       remediation spec (--remediation, naming the blocking issues it fixes) gets
       `Audit gate: remediation of <report> (#n, #m)` and is allowed while blocked by 1 or 3, never while the last
-      audit is untriaged.
+      audit is untriaged. Without an issue tracker it names the blocking themes instead (`--remediation T1,T3`:
+      each a theme of the last report's triage table whose Blocks cell is `yes`, matched by the leading id of the
+      Theme cell) and gets `Audit gate: remediation of <report> (T1, T3)`.
   python3 scripts/forge/audit-gate.py check-pr --base <ref> [--head <rev>]
       on a change: a change that adds a spec file (`auditGate.specFile`) fails while the gate is blocked, unless the
       spec carries a remediation line, or a start line with a count below the threshold (it started legally and is
@@ -49,7 +52,7 @@ Usage:
       on it.
   python3 scripts/forge/audit-gate.py triage-check [--report <path>] [--ref <ref>]
       the triage table of an audit report (default: the last report on the ref; --report reads a working-tree file)
-      after the orchestrator filed its issues: the table has `Theme`, `Blocks`, `Machine check` and `Issue` columns;
+      after the user filed its issues in the `/audit` triage: the table has `Theme`, `Blocks`, `Machine check` and `Issue` columns;
       every row names its machine check (a lint rule, ratchet or catalog test that fails on a new copy; a
       non-blocking row may say `none: <reason>`); every blocking row names at least one open issue that carries every
       blocking label, so a theme that only continues a warning-level issue cannot fail to block (without an issue
@@ -59,7 +62,17 @@ When `auditGate` is unset (`{}`, as the binding skeleton writes it without an in
 one line saying so and exits 0: no gate runs, and whether an audit is due is decided by hand. A binding without the
 `auditGate` key at all is an error (exit 2).
 
-Exit codes: 0 open / passed / gate unset; 1 blocked / failed; 2 usage, profile or git error.
+An integration ref that does not resolve is an error (exit 2, "integrationRef <ref> does not resolve ..."), except
+in a fresh project: no remote, and the working branch holds no audit report and no merged spec. There is then
+nothing to count, so the gate is open (`specs since last audit 0/<every>`, "no history yet") and `/specify` can start
+the first spec; once a merged spec or an audit lands without the ref, the error returns.
+
+The history is read from the integration ref, so a shallow clone (CI checkouts default to depth 1) is an error:
+fetch the full history (e.g. `fetch-depth: 0`).
+
+Exit codes: 0 open / passed / gate unset; 1 blocked / failed; 2 usage, profile or git error, or a shallow clone.
+A missing binding file counts as every key unset: one line (`no .claude/quality-profile.json; run python3
+scripts/forge/quality_profile.py init`) and exit 0.
 """
 from __future__ import annotations
 
@@ -77,7 +90,7 @@ import quality_profile  # noqa: E402  (sibling module; the path is set above)
 
 START_LINE = re.compile(r"Audit gate: started at (\d+)/(\d+) after (\S+)")
 REMEDIATION_LINE = re.compile(r"Audit gate: remediation of (\S+)")
-# The Issue cell of a triage row that `/audit` drafted and the orchestrator has not filed yet.
+# The Issue cell of a triage row that `/audit` drafted and the user has not filed yet (the `/audit` triage).
 PENDING_ISSUE = "(to file)"
 ISSUES_TIMEOUT_SECONDS = 120
 
@@ -87,8 +100,10 @@ class GateError(Exception):
 
 
 def git(repo: str, *args: str) -> str:
-    """Run git in the repository and return stdout; raise GateError on failure."""
-    result = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    """Run git in the repository and return stdout; raise GateError on failure. Paths are printed unquoted
+    (`core.quotepath=off`), so a spec directory with a non-ASCII name reads as itself."""
+    result = subprocess.run(["git", "-C", repo, "-c", "core.quotepath=off", *args], capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise GateError(f"git {' '.join(args)}: {result.stderr.strip()}")
     return result.stdout
@@ -112,7 +127,9 @@ def static_prefix(pattern: str) -> str:
 
 def added_files(repo: str, rev_range: str, pattern: str) -> list[tuple[str, str, str]]:
     """(commit, date, path) for every file matching `pattern` added in `rev_range`, newest first."""
-    out = git(repo, "log", "--diff-filter=A", "--format=@%H %cs", "--name-only", rev_range, "--", f":(glob){pattern}")
+    # `%cd` with `--date=short`: the short-date placeholder (`%c` + `s`) needs git 2.25 or later.
+    out = git(repo, "log", "--diff-filter=A", "--date=short", "--format=@%H %cd", "--name-only", rev_range, "--",
+              f":(glob){pattern}")
     rows, commit, date = [], "", ""
     for line in out.splitlines():
         if line.startswith("@"):
@@ -185,10 +202,50 @@ def is_remediation(repo: str, ref: str, spec_dir: str, spec_file: str) -> bool:
     return bool(REMEDIATION_LINE.search(text))
 
 
+def unresolved_ref(ref: str) -> str:
+    """The error for an integration ref that names no commit."""
+    return f"integrationRef {ref} does not resolve (no remote or no commits yet); fetch it or set integrationRef"
+
+
+def resolves(repo: str, ref: str) -> bool:
+    """Whether `ref` names a commit."""
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    except GateError:
+        return False
+    return True
+
+
+def no_history_yet(repo: str, gate: dict) -> bool:
+    """A fresh project: no remote, and the working branch (when it has a commit) holds no audit report and no merged
+    spec. The gate then has nothing to count, so a missing integration ref cannot hide a due audit."""
+    if git(repo, "remote").strip():
+        return False
+    if not resolves(repo, "HEAD"):
+        return True
+    listing = git(repo, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    return not any(matches(p, gate["auditReports"]) or matches(p, gate["mergedSpecMarker"]) for p in listing)
+
+
 def compute(repo: str, gate: dict, ref: str, issues: list[dict] | None = None, unknown: str | None = None) -> dict:
     """The gate state on `ref`; `issues` are the open blocking issues (fetched when None), `unknown` the reason they
-    could not be fetched."""
-    git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    could not be fetched. A ref that does not resolve is an error, except in a fresh project (`no_history_yet`),
+    whose gate is open with nothing counted."""
+    if not resolves(repo, ref):
+        if not no_history_yet(repo, gate):
+            raise GateError(unresolved_ref(ref))
+        if issues is None:
+            issues, unknown = blocking_issues(repo, gate)
+        return {
+            "ref": ref, "every": gate["every"], "specsSinceAudit": 0, "specs": [], "remediationSpecs": [],
+            "blockingIssues": issues, "blockingIssuesUnknown": unknown, "issueTracker": has_tracker(gate),
+            "auditsOnRef": 0, "lastAudit": None, "triage": None, "triagePending": 0,
+            "blocked": bool(issues), "reasons": [f"{len(issues)} blocking audit issue(s) open"] if issues else [],
+            "noHistory": f"{ref} does not resolve and the repository has no remote, audits or merged specs",
+        }
+    # A shallow clone's grafted root commit "adds" every file it holds, so audits and specs would be miscounted.
+    if git(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+        raise GateError("shallow clone: fetch full history (e.g. fetch-depth: 0)")
     prefix = static_prefix(gate["auditReports"])
     listing = git(repo, "ls-tree", "-r", "--name-only", ref, *([prefix] if prefix else []))
     reports = sorted(p for p in listing.splitlines() if matches(p, gate["auditReports"]))
@@ -241,11 +298,21 @@ def compute(repo: str, gate: dict, ref: str, issues: list[dict] | None = None, u
         "triagePending": pending,
         "blocked": bool(reasons),
         "reasons": reasons,
+        "noHistory": None,
     }
 
 
 def triage_section(text: str, heading: str) -> tuple[bool, int]:
-    """Whether the report has the triage heading, and how many lines of that section still carry `PENDING_ISSUE`."""
+    """Whether the report has the triage heading, and how many blocking themes of that section still carry
+    `PENDING_ISSUE`. When the triage table has a `Blocks` column, only the rows whose Blocks cell starts with `yes`
+    count (a non-blocking row needs no issue, as `triage_problems` says); without one, every line that carries the
+    placeholder counts."""
+    header, rows = triage_table(text, heading)
+    if "blocks" in header:
+        col = header.index("blocks")
+        pending = sum(1 for cells in rows if col < len(cells) and cells[col].lower().startswith("yes")
+                      and any(PENDING_ISSUE in cell for cell in cells))
+        return any(line.strip() == heading for line in text.splitlines()), pending
     present, inside, pending = False, False, 0
     level = len(heading) - len(heading.lstrip("#"))
     for line in text.splitlines():
@@ -339,6 +406,8 @@ def issues_text(state: dict) -> str:
 def status_line(state: dict) -> str:
     last = state["lastAudit"]
     where = f"{last['report']}, {last['date']}, {last['commit']}" if last else "no audit yet"
+    if state.get("noHistory"):
+        where = f"no history yet: {state['noHistory']}"
     triage = {None: "n/a", True: "present", False: "missing"}[state["triage"]]
     if state.get("triagePending"):
         triage = f"pending ({state['triagePending']} {PENDING_ISSUE})"
@@ -391,11 +460,59 @@ def check_pr(repo: str, gate: dict, base: str, head: str) -> tuple[bool, dict, l
     return passed, state, notes
 
 
-def start_line(state: dict, remediation: str | None) -> int:
-    """Print the start line of a new spec and return 0, or print the reasons it may not start and return 1."""
+def blocking_themes(repo: str, gate: dict, state: dict) -> list[str]:
+    """The Theme cells of the blocking rows (Blocks starts with `yes`) of the last audit report's triage table."""
+    last = state["lastAudit"]
+    if not last:
+        return []
+    header, rows = triage_table(git(repo, "show", f"{state['ref']}:{last['report']}"), gate["triageHeading"])
+    if "theme" not in header or "blocks" not in header:
+        return []
+    theme, blocks = header.index("theme"), header.index("blocks")
+    return [cells[theme] for cells in rows
+            if max(theme, blocks) < len(cells) and cells[blocks].lower().startswith("yes") and cells[theme]]
+
+
+def theme_named(theme: str, wanted: str) -> bool:
+    """Whether a Theme cell (`T1 copies`, `T1: copies`) is the theme id `wanted` (`T1`), ignoring case."""
+    return re.match(re.escape(wanted) + r"(?![\w-])", theme, re.IGNORECASE) is not None
+
+
+def theme_remediation(state: dict, remediation: str, themes: list[str]) -> tuple[list[str], list[str]]:
+    """Without an issue tracker: the theme ids `--remediation` names, and the problems (an id that is no blocking
+    theme of the last audit's triage table, or `#n` issue numbers)."""
+    wanted = [part for part in re.split(r"[,\s]+", remediation.strip()) if part]
+    problems = []
+    if not wanted:
+        problems.append("--remediation names no theme")
+    if any(part.startswith("#") for part in wanted):
+        problems.append("there is no issue tracker: name the blocking themes of the last audit's triage table "
+                        "(e.g. --remediation T1,T3)")
+    elif state["lastAudit"] is None:
+        problems.append("there is no audit report, so no blocking theme to remediate")
+    else:
+        problems += [f"{part} is not a blocking theme (Blocks = yes) of {state['lastAudit']['report']}"
+                     for part in wanted if not any(theme_named(theme, part) for theme in themes)]
+    return wanted, problems
+
+
+def start_line(state: dict, remediation: str | None, themes: list[str] | None = None) -> int:
+    """Print the start line of a new spec and return 0, or print the reasons it may not start and return 1.
+    `themes` are the blocking themes of the last audit (`blocking_themes`), read without an issue tracker."""
     report = state["lastAudit"]["report"] if state["lastAudit"] else "none"
     for note in unknown_note(state):
         print(f"audit-gate: {note}", file=sys.stderr)
+    if remediation is not None and state.get("issueTracker") is False:
+        wanted, problems = theme_remediation(state, remediation, themes or [])
+        if state["triage"] is False:
+            problems.insert(0, "the last audit is not triaged yet")
+        if problems:
+            print(status_line(state))
+            for problem in problems:
+                print(f"refused: {problem}")
+            return 1
+        print(f"Audit gate: remediation of {report} ({', '.join(wanted)})")
+        return 0
     if remediation is not None:
         wanted = sorted({int(n) for n in re.findall(r"\d+", remediation)})
         problems = []
@@ -456,7 +573,8 @@ def main(argv: list[str]) -> int:
     p_status.add_argument("--json", action="store_true")
     p_start = sub.add_parser("start-line")
     p_start.add_argument("--ref")
-    p_start.add_argument("--remediation", help='blocking issues this remediation spec fixes, e.g. "#3,#4"')
+    p_start.add_argument("--remediation", help='blocking issues this remediation spec fixes, e.g. "#3,#4"; without '
+                         'an issue tracker, the blocking themes of the triage table, e.g. "T1,T3"')
     p_triage = sub.add_parser("triage-check")
     p_triage.add_argument("--report", help="a working-tree audit report (default: the last report on the ref)")
     p_triage.add_argument("--ref")
@@ -485,13 +603,19 @@ def main(argv: list[str]) -> int:
         if args.command == "triage-check":
             return triage_check(repo, gate, ref, args.report)
         if args.command == "start-line":
-            return start_line(compute(repo, gate, ref), args.remediation)
+            state = compute(repo, gate, ref)
+            themes = (blocking_themes(repo, gate, state)
+                      if args.remediation is not None and not has_tracker(gate) else None)
+            return start_line(state, args.remediation, themes)
 
         passed, state, notes = check_pr(repo, gate, args.base, args.head)
         print(status_line(state))
         for note in notes:
             print(f"audit-gate: {note}")
         return 0 if passed else 1
+    except quality_profile.MissingProfile:
+        print(f"audit-gate: {quality_profile.MISSING}")
+        return 0
     except (GateError, quality_profile.ProfileError, OSError) as exc:
         print(f"audit-gate: error: {exc}", file=sys.stderr)
         return 2
