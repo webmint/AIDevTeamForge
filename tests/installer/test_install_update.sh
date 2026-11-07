@@ -47,6 +47,14 @@ check "no python caches installed" '[ -z "$(find "$P2" -name __pycache__ -o -nam
 check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_profile.py validate >/dev/null 2>&1)'
 check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
+check "conduct command and autonomous partial installed" '[ -f "$P2/.claude/commands/conduct.md" ] && [ -f "$P2/.claude/commands/_autonomous-mode.md" ]'
+check "push guard and wave preflight installed" '[ -f "$P2/.claude/hooks/forge/push-guard.py" ] && [ -x "$P2/scripts/forge/wave-preflight.py" ]'
+check "push guard registered in the hook fragment" 'jq -e "[.hooks.PreToolUse[].hooks[].command] | any(contains(\"push-guard.py\"))" "$P2/.claude/hooks/forge/settings-hooks.json" >/dev/null'
+FORCE='{"tool_name":"Bash","tool_input":{"command":"git push --force origin spec/001-x"}}'
+check "push guard inactive in interactive mode" '(printf %s "$FORCE" | CLAUDE_PROJECT_DIR="$P2" python3 "$P2/.claude/hooks/forge/push-guard.py" >/dev/null 2>&1)'
+echo '{"DELIVERY_MODE": "autonomous", "DEFAULT_BRANCH": "main"}' > "$P2/.claude/project-config.json"
+check "push guard denies a force push in autonomous mode" '! (printf %s "$FORCE" | CLAUDE_PROJECT_DIR="$P2" python3 "$P2/.claude/hooks/forge/push-guard.py" >/dev/null 2>&1)'
+rm -f "$P2/.claude/project-config.json"
 
 echo "== update from a legacy (pre-checksum) install"
 LEG="$WORK/legacy"; mkdir -p "$LEG"
