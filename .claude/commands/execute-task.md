@@ -240,7 +240,7 @@ These postconditions will be independently verified after you complete.
 
 After the agent completes, immediately create a WIP git commit to preserve the work:
 ```
-git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
+git add [files you modified] && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
 Update `.claude/wip.md` — change Phase to `3.2 (Verification)`.
@@ -274,7 +274,7 @@ For each repair attempt:
    - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
 3. After the repair agent completes, commit:
    ```
-   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
+   git add [files you modified] && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks above
 
@@ -389,7 +389,7 @@ If this was the last pending task (all other tasks in the feature are Complete),
 
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 ### 5.2: Context Maintenance
 
@@ -410,6 +410,6 @@ Context: the remaining task queue, the current feature directory.
 3. **Self-repair before escalation** — when automated verification fails (type checker, linter, build), attempt automatic repair (up to 3 times) before stopping. Code review findings are reported to the user, not auto-repaired.
 4. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
 5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/finalize` time.
-6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow.
+6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow. `.claude/wip.md` is gitignored: never stage it and never force-add it (`git add -f`); it stays a local file.
 7. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.
 8. **No per-task squash** — WIP commits accumulate and are squashed by `/finalize`. Do not run `git reset --soft` during execute-task.

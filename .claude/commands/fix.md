@@ -272,7 +272,7 @@ You are fixing a diagnosed bug.
 
 After the agent completes, commit:
 ```
-git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — fix applied"
+git add [files you modified] && git commit -m "[WIP] Fix: [short description] — fix applied"
 ```
 
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
@@ -299,7 +299,7 @@ For each repair attempt:
 2. Apply a targeted fix for ONLY those errors
 3. Commit:
    ```
-   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
+   git add [files you modified] && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks
 
@@ -499,7 +499,7 @@ If anything noteworthy happened during the fix, update `.claude/memory/MEMORY.md
 - **What caused it**: If the root cause reveals a systemic issue (e.g., "type definitions don't enforce required fields"), note it
 - **Fix approach**: If the diagnosis or fix involved a non-obvious technique, record it under What Worked
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work — not every bug fix needs a memory entry.
 
@@ -525,7 +525,8 @@ After writing, verify the file is under 40 lines. If over, trim oldest entries f
 4. **Hard gate on diagnosis** — the user must confirm the diagnosis before any code is changed
 5. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping
 6. **Scope discipline** — if the fix grows beyond 5 files, stop and recommend `/specify`. Small bugs get `/fix`, big bugs get the full pipeline
-7. **Crash safety** — always write `wip.md` before making changes and delete it only after the final commit
+7. **Crash safety** — always write `wip.md` before making changes and delete it only after the final commit. `.claude/wip.md` is gitignored: never stage it and never force-add it (`git add -f`); it stays a local file.
 8. **Verify everything** — even if hooks ran, run explicit verification after the fix
 9. **Test intentionally** — not every fix needs a test, but every fix needs a test *decision* with reasoning
 10. **Memory is selective** — only record genuinely useful patterns and pitfalls, not routine fixes
+11. **Review agents are not optional** — Phase 6 (code-reviewer) and Phase 7 (qa-engineer) run as separate agents every time. Never replace either with a self-review, even when the change looks trivial. The Phase 8 report states both verdicts.

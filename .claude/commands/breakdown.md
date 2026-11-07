@@ -4,11 +4,12 @@ Takes an approved specification and breaks it into ordered, atomic tasks with de
 
 ## Usage
 ```
-/breakdown [spec-file]
+/breakdown [spec-dir | spec.md | plan.md]
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file in `specs/`. If empty, use the most recently modified spec file in `specs/`.
+- `$ARGUMENTS` — Optional. Any of: the feature directory (`specs/NNN-feature/`), its `spec.md`, or its `plan.md`; all three resolve to the same feature directory. If empty, use the most recently modified feature directory in `specs/`.
+- **Consumes**: `spec.md` and `plan.md` of that directory (both must be Approved). **Produces**: `tasks/README.md` and `tasks/NNN-*.md` in the same directory.
 
 ## Prerequisites
 
@@ -20,7 +21,7 @@ Takes an approved specification and breaks it into ordered, atomic tasks with de
 ## PHASE 1: Load Context
 
 Read these files in order:
-1. The feature's `spec.md` (from `$ARGUMENTS` or most recent feature directory in `specs/`)
+1. The feature's `spec.md` (in the feature directory resolved from `$ARGUMENTS`, or the most recent feature directory in `specs/`)
 2. The feature's `plan.md` — technical decisions and file impact
 3. The feature's supporting docs if they exist: `research.md`, `data-model.md`, `contracts.md`
 4. `constitution.md` — architecture rules and constraints

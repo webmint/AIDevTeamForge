@@ -8,7 +8,7 @@ Verifies completed tasks against the original specification's acceptance criteri
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file. If empty, use the most recently modified spec in `specs/`.
+- `$ARGUMENTS` — Optional path to a spec file or its feature directory in `specs/`. If empty, use the most recently modified spec in `specs/`.
 
 ## PHASE 1: Load Context
 
@@ -204,7 +204,7 @@ Update `.claude/memory/MEMORY.md` with lessons learned from this feature:
 - **New patterns**: Any new code patterns introduced that should be followed in future work
 - **Pitfalls**: Gotchas discovered that should be avoided in similar work
 
-Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+Follow the **Memory Entry Rules** in `.claude/storage-rules.md` (format with date, search before appending, size budget). Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 Keep memory entries concise (1-2 lines each). Link to specific files if relevant.
 

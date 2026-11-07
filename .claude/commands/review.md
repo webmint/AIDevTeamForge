@@ -8,7 +8,7 @@ Launches specialist review agents (security, performance, test assessment) on co
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional path to a spec file. If empty, use the most recently modified spec in `specs/`.
+- `$ARGUMENTS` — Optional path to a spec file or its feature directory in `specs/`. If empty, use the most recently modified spec in `specs/`.
 
 ## PHASE 1: Load Context
 
