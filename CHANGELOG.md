@@ -5,6 +5,27 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-11-07
+
+### Added
+- **Independent gates before each HARD GATE** (`_independent-gate.md`) — an artifact the next command consumes is reviewed by a fresh agent (a different model where possible) that works adversarially to a checklist: spec-gate in `/specify`, plan-gate with architect, security and qa lenses in parallel in `/plan`, breakdown-gate in `/breakdown`. Reports in `specs/NNN-*/gates/`; one fix loop on Criticals; the counts and any open Critical are shown at the HARD GATE, where the user decides. Structural specs run the architect lens only (plus security when access control is touched) and no breakdown-gate
+- **Gate checklists** (`.claude/checklists/`, copy-if-missing, project-owned) — spec-gate 24, plan-gate 35, breakdown-gate 10, task-review 25, test-lens 25 items: seeds plus stack-neutral lessons from field use. `**Gate**: on | off` switches a gate (a deleted checklist is restored on update)
+- **Test lens** — the per-task code review gets `task-review.md` and `test-lens.md`, `/review`'s qa assessment `test-lens.md`: would each new or changed test fail if the feature were broken?
+- **Escape analysis** (`/finalize` Phase 1.5) — every defect of the feature goes to `specs/NNN-*/escapes.md` with the gate that should have caught it and a `quality:` line; each escaped defect adds one generic check to that gate's checklist
+- **Project binding `.claude/quality-profile.json`** — the per-project values of the structural-quality mechanisms (search scopes, ratchets, layers, canonical sources registry, export patterns, hub files, audit gate). `/setup-wizard` creates it (`quality_profile.py init`), `/constitute` and `/onboard` fill it; a key left empty runs its step by hand. Projects updated from older versions without the file behave as if every key were unset
+- **Quality scripts** in `scripts/forge/` (Python 3.9+, stdlib only): `quality_profile.py` (validate, consumers, init, scopes), `ratchet.py` (counts against a baseline; copies), `count-tools.py`, `audit-gate.py`, `hub-files.py`, `new-exports.py`, `check-canonical-sources.py`, `check-enforcement-map.py`, `check-task-evidence.py`, `check-decision-records.py`. Wrapper mode: product-code checks run in the Source Root repository
+- **Audit gate** (on by default) — after every 3 finished feature specs an audit is due; `/specify` runs `audit-gate.py start-line` and, when the gate is closed, the user runs `/audit` or starts anyway with a recorded reason. Blocking themes come from the project's issue tracker through a profile command (default `gh issue list`); without a tracker the triage table is the record and themes are named by id (`T1`)
+- **`/audit` structural lens** — `--since-last` cadence mode, ratchet measurements, concept inventory, derivations, variation points, placement, themes with status (fixed / shrinking / unchanged / grown) and a machine check each, a `## Theme triage` table checked by `audit-gate.py triage-check`, and an audit learning step into the gate checklists
+- **Reuse chain** — `/research` "Reuse or Extend" with `Investigated at`; `/specify` Phase 1.5 Prior Art and spec type `feature | structural` with invariant ACs; `/plan` 1.4–1.6 (Migration for structural specs, Reuse Map, responsibilities and seams, Copies and Hubs with a seam task before a third copy, open audit themes touched); `/breakdown` `**Reuse**:` task field; `/execute-task` Reuse check per new export plus the reviewer's New exports and Copies inputs; `/fix` Class Sweep
+- **`/review` Adoption Check and Structural Check** — shared sources actually consumed; ratchet growth is Critical; third copies and undecided hub edits are reported
+- **Installer tests** extended (checklists, scripts, binding on install and update) and `tests/scripts/forge/` (251 tests)
+
+### Changed
+- `/finalize`: Phase 1.6 structural hand-off (lowers reduced ratchet baselines, lists seam-first follow-ups), task evidence check before the squash, `summary.md` required when the audit gate is on
+- `/verify` proves structural specs by commands; `git commit -q` in `/fix`, `/refactor`, `/finalize`
+- CLAUDE template: "Independent Gates" (with the usefulness rule), "Structural Checks", reading budget rule; storage-rules: `gates/`, `escapes.md`, Checklist Rules, the task `**Reuse**:` field
+- Template version: 1.29.0 → 1.30.0
+
 ## [1.29.0] - 2026-11-07
 
 ### Added

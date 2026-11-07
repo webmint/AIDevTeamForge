@@ -132,7 +132,7 @@ Run these once when you first install the template:
 - **`/fix`** — Diagnose → delegate to agent → verify → code review → test assessment → doc update. Accepts enriched bug files with AC/expected/actual behavior context. Self-contained (own squash, own docs). Escalates to `/specify` if scope > 5 files.
 - **`/refactor`** — Analyze 9 categories → propose (partial approval supported) → delegate to agent → verify → code review → test assessment → doc update. Auto-selects agent by file layer. Self-contained. Escalates to `/specify` if scope > 5 files.
 - **`/security`** — On-demand security review. Target a file, directory, uncommitted changes, or full codebase (`--full`). Launches security-reviewer agent with constitution context. Reports Critical/High/Medium/Info with CWE identifiers and remediation. Read-only.
-- **`/audit`** — Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming lies, lying comments, off-by-one, cross-file contradictions, dead branches, contradictory configs, etc.). Reads recent `specs/*/review.md` to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim quote from the actual code; ungrounded findings are discarded by Phase 4 validation. Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, **not part of any workflow chain** — invoke manually after several specs ship.
+- **`/audit`** — Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming lies, lying comments, off-by-one, cross-file contradictions, dead branches, contradictory configs, etc.). Reads recent `specs/*/review.md` to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim quote from the actual code; ungrounded findings are discarded by Phase 4 validation. Writes dated reports to `audits/YYYY-MM-DD-audit.md`. A broad audit also runs a structural lens (ratchets, concepts, variation points, placement), tracks themes with a machine check each, drafts a `## Theme triage` table for the user, and adds one checklist item per root cause; `--since-last` audits what changed since the previous report. Read-only for source code, not auto-committed, **not part of any workflow chain** — the audit gate makes it due after every 3 finished features.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
 - **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console, optionally saves to `research/`.
@@ -155,6 +155,8 @@ specs/
       001-define-types.md        # Individual task files
       002-create-repository.md
       003-build-login-form.md
+    gates/                       # Independent gate reports (/specify, /plan, /breakdown)
+    escapes.md                   # Escape analysis (/finalize)
 
 bugs/
   001-null-cart-total.md         # Bug reports (/report-bug or /verify triage)
@@ -174,11 +176,14 @@ bugs/
 | setup-wizard → constitute | User confirms generated config |
 | constitute → onboard | User approves constitution |
 | onboard → specify | Docs generated (existing) or skipped (greenfield) |
-| specify → plan | User approves spec |
-| plan → breakdown | User approves technical plan |
-| breakdown → execute | User approves task list |
+| specify → plan | spec-gate review, then the user approves the spec |
+| plan → breakdown | plan-gate review (architect, security, qa lenses), then the user approves the plan |
+| breakdown → execute | breakdown-gate review, then the user approves the task list |
 | execute → verify | Automated hooks must pass |
 | verify → done | User confirms acceptance criteria met |
+| new feature spec | Audit gate: after every 3 finished features an `/audit` is due (`scripts/forge/audit-gate.py`); the user may start anyway with a recorded reason |
+
+**Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent on a different model where possible reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/NNN-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
 
 ## Automated Guardrails
 
@@ -189,6 +194,8 @@ bugs/
 - **Context guard**: a PostToolUse hook warns at 75 % and asks for a stop at 85 % of the context window, so batches pause at a safe point instead of being compacted mid-task
 - **Review effort follows severity**: Critical findings are re-reviewed after the fix; Warning-only fixes are confirmed by the checks; repair agents run one effort level higher
 - **Reuse check**: implementing agents search for existing code before every new export and report the result; the code reviewer treats a semantic duplicate as Critical
+- **Test lens**: every new or changed test faces "would it fail if the feature were broken?" in the per-task review and in `/review`
+- **Structural quality**: the project binding `.claude/quality-profile.json` drives ratchets (counts that may only fall), the third-copy trigger, hub files and the canonical sources registry; `/review`'s Structural Check treats ratchet growth as Critical, and `/audit` tracks themes with a machine check each. Unset keys run the same steps by hand
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible
