@@ -305,6 +305,8 @@ Replace ALL placeholders:
 - `{{MODEL_THINK}}` — model for Think-tier agents from Question 8 (default: `opus`). Used by: `architect`, `api-designer`, `security-reviewer`.
 - `{{MODEL_DO}}` — model for Do-tier agents from Question 8 (default: `sonnet`). Used by: `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor`.
 - `{{MODEL_VERIFY}}` — model for Verify-tier agents from Question 8 (default: `sonnet`). Used by: `code-reviewer`, `ac-verifier`, `qa-engineer`.
+- `{{DEFAULT_BRANCH}}` — the integration branch detected in Step 1 (see "Detecting DEFAULT_BRANCH" below). Used by: `devops-engineer`.
+- Agent `effort:` frontmatter is fixed per tier in the templates (`high` for Think-tier agents, `medium` for the others). Keep it as written; a project may edit it later.
 
 **Wrapper Mode section** (only included when wrapper mode is active — replace `{{WRAPPER_MODE_SECTION}}` with this):
 ```markdown

@@ -79,6 +79,8 @@ Create atomic tasks following these rules:
 - **Data layer before domain** — repositories before use cases
 - **Independent tasks before dependent ones**
 - **Riskiest changes first** — catch problems early
+- **AC-titled tests** — every AC with observable behaviour is covered by at least one test whose title starts with its AC id and carries the spec tag, e.g. `AC-3 [spec-007]: shows the total after a discount`. AC numbers repeat across specs, so the tag keeps a grep unique. A feature with UI gets a dedicated end-to-end test task (agent: `qa-engineer`) unless the project has no end-to-end runner
+- **Tests go with the code under test** — a test task or test file belongs to the agent and the task that changes the code it tests, not to the agent that owns the test directory
 
 ### Agent Assignment Rules
 
@@ -200,6 +202,19 @@ After generating all tasks, verify contract chain integrity:
 - Every "Expects" item must either already be true in the current codebase OR be produced by an upstream task's "Produces"
 - If any contract is orphaned (Produces not consumed) or unsatisfied (Expects with no source), flag it in the breakdown summary
 
+### Wave Rules
+
+Group the tasks into **waves**: runs of 2–4 consecutive tasks in dependency order, executed together with `/execute-task W<n>`. Each task keeps its own verification, code review, WIP commits and completion notes; only the full build and the full test suite move to the end of the wave.
+
+- A wave contains only tasks whose dependencies are completed by earlier waves or by earlier tasks of the same wave.
+- Start a new wave:
+  - at a dependency fan-in (a task that depends on two or more tasks);
+  - after a large task (many files, or High risk in the Risk Assessment);
+  - after 4 tasks;
+  - before a task that has a review checkpoint.
+- A task that runs the full end-to-end suite may be a wave on its own.
+- A single-task wave is fine; do not merge unrelated tasks to fill a wave.
+
 ## PHASE 4: Save the Breakdown
 
 Create the `tasks/` directory inside the feature's spec directory and save each task as a separate numbered file.
@@ -242,6 +257,15 @@ Also create a `specs/NNN-feature/tasks/README.md` index file:
 | 001 | [title] | [agent] | None | Pending |
 | 002 | [title] | [agent] | 001 | Pending |
 | ... | ... | ... | ... | ... |
+
+## Waves
+
+| Wave | Tasks | Why it ends here |
+|------|-------|------------------|
+| W1 | 001–003 | [fan-in at 004 / large task / 4 tasks] |
+| W2 | 004–005 | [...] |
+
+Run a wave with `/execute-task W1`. The batch gate (full build + full test suite) runs once at the end of each wave.
 
 ## Additions to Spec
 

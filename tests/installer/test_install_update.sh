@@ -57,6 +57,7 @@ cat > "$P1/.claude/settings.json" <<'JSON'
 }
 JSON
 echo "print('project')" > "$P1/.claude/hooks/project-guard.py"
+echo '{"PROJECT_NAME": "demo"}' > "$P1/.claude/project-config.json"
 echo "echo project tool" > "$P1/scripts/my-tool.sh"
 echo "<!-- local edit -->" >> "$P1/.claude/commands/fix.md"
 # a template that ships one Forge hook
@@ -89,6 +90,7 @@ check "checksums written" 'cmp -s "$TPL/.claude/template-checksums" "$P1/.claude
 check "project hook group kept" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
 check "retired forge hook group removed" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"retired.py\"))] | length" "$P1/.claude/settings.json")" = 0 ]'
 check "forge hook group added once" '[ "$(jq "[.hooks.PreToolUse[] | select(.hooks[0].command | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "DEFAULT_BRANCH added to project-config" '[ "$(jq -r .DEFAULT_BRANCH "$P1/.claude/project-config.json")" = main ]'
 check "other settings keys kept" '[ "$(jq -c .permissions.allow "$P1/.claude/settings.json")" = "[\"Read\"]" ]'
 
 echo "== second update: local edit vs template change, idempotent hooks"

@@ -344,7 +344,12 @@ Options:
 ```
 
 Wait for user response:
-- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/fix`."
+- **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
+  - **Critical**: after the fix, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/fix`."
+  - **Warning** (no Critical left): the fix is confirmed by re-running the Phase 5 checks (type check, lint, tests), without another review.
+  - **Suggestion / Info**: record in the report; do not fix.
+  - **Repair effort**: launch the repair agent with the Agent tool's `effort` one level above the agent's own (`medium` → `high` → `xhigh`; never `max`).
+  - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md` or `.claude/project-config.json` is reported to the user, not fixed.
 - **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 7 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report state for manual handling.
 
@@ -520,7 +525,7 @@ After writing, verify the file is under 40 lines. If over, trim oldest entries f
 ## IMPORTANT RULES
 
 1. **Diagnose before fixing** — never apply a fix without understanding the root cause. Guessing wastes time and can introduce new bugs
-2. **Minimal changes only** — fix the bug, nothing else. No refactoring, no improvements, no "while I'm here" changes
+2. **Minimal changes only** — fix the bug, nothing else. No refactoring, no improvements, no "while I'm here" changes. Consolidation exception: when the defect sits in logic that is copied elsewhere (search the codebase for the copies), the fix either extracts the shared definition and fixes it once (within the 5-file limit of rule 6) or fixes every copy and lists the copies in the report; a fix in one copy only leaves the defect in the others
 3. **Constitution is law** — all fixes must comply with constitution rules. Constitution violations are always critical
 4. **Hard gate on diagnosis** — the user must confirm the diagnosis before any code is changed
 5. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping

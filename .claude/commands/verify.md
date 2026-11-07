@@ -278,7 +278,7 @@ Wait for user response.
 
 ### 9.4: Create Bug Files (if requested)
 
-**Determine next bug number**: Scan `bugs/` for existing `.md` files, find the highest NNN prefix, and assign numbers sequentially from there. Do this ONCE before creating any files.
+**Determine next bug number**: Scan `bugs/` for existing `.md` files in this tree and in every other worktree (`git worktree list`), find the highest NNN prefix across all of them, and assign numbers sequentially from there. Do this ONCE before creating any files.
 
 For each issue being filed, create a bug file in `bugs/` following the format in `.claude/storage-rules.md`:
 1. Write `bugs/NNN-short-description.md`

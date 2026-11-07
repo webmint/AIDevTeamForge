@@ -52,7 +52,7 @@ Creates a structured specification with acceptance criteria. Asks clarifying que
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
 
 ### `/breakdown [spec-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
+Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments and waves (2–4 consecutive tasks run together). Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
 
 ### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
@@ -61,7 +61,7 @@ Executes a single task from the breakdown using the assigned specialized agent. 
 3. Post-execution verification (tsc, lint, build, done conditions, self-repair)
 4. Code review (code-reviewer agent — findings reported to user, critical issues block)
 5. Memory update
-WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
+Also takes a range (`1-3`), a wave (`W2`) or `all`. In a batch, the full build and the full test suite run once after the last task (batch gate). WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
 
 ### `/review [spec-file]`
 Launches specialist review agents (security, performance, test assessment) on completed feature code. Produces a structured review report saved to `specs/[feature]/review.md` for `/verify` to incorporate into its verdict. Does not render a verdict — findings only.
@@ -139,7 +139,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 ### Always
 1. **Read before write** — always read files before modifying them
 2. **Constitution is law** — `constitution.md` rules override everything except user instructions
-3. **Minimal changes** — every change should impact as little code as possible
+3. **Minimal changes, except consolidation** — every change should impact as little code as possible, and a copy is never the minimal change. When a task touches or adds a copy of logic that already exists elsewhere, it reuses or extracts the shared definition when that stays within the task's files and their direct consumers; otherwise it reports the copy so the plan gets a consolidation task
 4. **Memory is persistent** — check `.claude/memory/MEMORY.md` for lessons from past sessions
 5. **Specs are contracts** — once approved, implementation must satisfy every acceptance criterion
 6. **One task at a time** — execute tasks sequentially following the dependency graph
@@ -151,13 +151,14 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
+15. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
 2. **Never commit secrets** — no API keys, tokens, or credentials in code
 3. **Never commit debug artifacts** — no console.log, debugger, print() left behind
 4. **Never leave bare TODOs** — every TODO must have context and a reference
-5. **Never modify outside scope** — do not "fix" unrelated code you happen to see
+5. **Never modify outside scope** — do not "fix" unrelated code you happen to see. A copy of the logic your task touches is not unrelated: it falls under the consolidation exception (Always 3)
 6. **Never guess** — if unsure how code works, read it; if unsure what user wants, ask
 
 ## Commit Convention

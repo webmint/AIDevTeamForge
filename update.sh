@@ -424,6 +424,24 @@ if [ "$HAS_CONFIG" = true ]; then
   fi
 fi
 
+# Add DEFAULT_BRANCH when missing (used by agent templates since 1.29.0)
+if [ "$HAS_CONFIG" = true ]; then
+  has_branch="$(jq -r '.DEFAULT_BRANCH // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
+  if [ -z "$has_branch" ]; then
+    branch="$(git -C "$TARGET_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
+    if [ -z "$branch" ]; then
+      for b in main master develop; do
+        if git -C "$TARGET_DIR" show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then branch="$b"; break; fi
+      done
+    fi
+    : "${branch:=main}"
+    info "Adding DEFAULT_BRANCH=$branch to project-config.json (detected; edit it if wrong)"
+    if [ "$DRY_RUN" != true ]; then
+      jq --arg b "$branch" '. + {DEFAULT_BRANCH: $b}' "$PROJECT_CONFIG" > "${PROJECT_CONFIG}.tmp" && mv "${PROJECT_CONFIG}.tmp" "$PROJECT_CONFIG"
+    fi
+  fi
+fi
+
 # Validate config values — warn about placeholder-in-placeholder
 if [ "$HAS_CONFIG" = true ]; then
   bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$PROJECT_CONFIG" 2>/dev/null || true)"

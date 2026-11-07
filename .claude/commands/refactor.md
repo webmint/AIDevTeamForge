@@ -362,7 +362,12 @@ Options:
 ```
 
 Wait for user response:
-- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/refactor`."
+- **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
+  - **Critical**: after the fix, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/refactor`."
+  - **Warning** (no Critical left): the fix is confirmed by re-running the Phase 5 checks (type check, lint, tests), without another review.
+  - **Suggestion / Info**: record in the report; do not fix.
+  - **Repair effort**: launch the repair agent with the Agent tool's `effort` one level above the agent's own (`medium` → `high` → `xhigh`; never `max`).
+  - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md` or `.claude/project-config.json` is reported to the user, not fixed.
 - **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 7 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report state for manual handling.
 

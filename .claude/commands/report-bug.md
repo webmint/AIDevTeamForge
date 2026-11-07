@@ -25,8 +25,8 @@ If `--file` is provided, verify the file exists. If it doesn't, warn the user bu
 
 ## PHASE 2: Determine Next Bug Number
 
-1. Scan the `bugs/` directory for existing `.md` files
-2. Extract the highest NNN prefix (e.g., if `003-something.md` exists, highest is 3)
+1. Scan the `bugs/` directory for existing `.md` files, in this tree **and in every other worktree** of the repository (`git worktree list`; scan `<worktree>/bugs/` for each). Bugs filed in parallel worktrees otherwise collide on merge
+2. Extract the highest NNN prefix across all of them (e.g., if `003-something.md` exists, highest is 3)
 3. Next bug number = highest + 1 (or 1 if no bugs exist)
 4. Zero-pad to 3 digits: 001, 002, 003...
 5. Generate a short kebab-case slug from the description (2-4 words, lowercase)
