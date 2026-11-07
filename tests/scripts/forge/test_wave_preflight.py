@@ -124,6 +124,42 @@ class Preflight(unittest.TestCase):
         self.assertProblem(result, ".claude/wip.md exists")
         self.assertNotIn("tree not clean", result.stdout)
 
+    def test_allow_untracked_non_ascii_dot_prefixed_and_absolute(self):
+        write(self.root, "caf\u00e9.txt", "x\n")
+        write(self.root, "dir/sub/f.txt", "x\n")
+        write(self.root, "abs/g.txt", "x\n")
+        self.assertProblem(self.run_check(), "caf\u00e9.txt")  # shown unquoted
+        self.assertOk(self.run_check("--allow-untracked", "caf\u00e9.txt", "--allow-untracked", "./dir/",
+                                     "--allow-untracked", os.path.join(self.root, "abs")))
+
+    def test_renamed_file_is_one_problem(self):
+        git(self.root, "mv", "src/a.txt", "src/z.txt")
+        result = self.run_check()
+        self.assertProblem(result, "1 path(s)", "src/z.txt")
+
+    def test_path_in_info_exclude_is_not_dirty(self):
+        with open(os.path.join(self.root, ".git", "info", "exclude"), "a", encoding="utf-8") as handle:
+            handle.write(".claude/delivery-status.md\n")
+        write(self.root, ".claude/delivery-status.md", "ledger\n")
+        self.assertOk(self.run_check())
+
+    def test_sequencer_and_bisect_are_in_progress(self):
+        write(self.root, ".git/sequencer/todo", "pick abc\n")
+        self.assertProblem(self.run_check(), "multi-commit cherry-pick or revert")
+        shutil.rmtree(os.path.join(self.root, ".git", "sequencer"))
+        write(self.root, ".git/BISECT_LOG", "x\n")
+        self.assertProblem(self.run_check(), "git operation in progress: bisect")
+
+    def test_subdirectory_worktree_resolves_marker_and_config_from_the_toplevel(self):
+        sub = os.path.join(self.root, "src")
+        write(self.root, ".claude/wip.md", "task\n")
+        self.assertProblem(self.run_check(tree=sub), ".claude/wip.md exists")
+        os.remove(os.path.join(self.root, ".claude", "wip.md"))
+        write(self.root, ".claude/project-config.json", "{not json")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", "cfg")
+        self.assertEqual(self.run_check(tree=sub).returncode, 2)
+
     def test_head_mismatch(self):
         write(self.root, "src/b.txt", "x\n")
         git(self.root, "add", "-A")
@@ -308,6 +344,17 @@ class StaleWaits(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("warning: " + line, text)
         self.assertIn("ok", text)
+
+    def test_missing_lsof_is_one_skip_line_and_exit_unchanged(self):
+        init_repo(self.tree)
+        with mock.patch.object(self.mod, "ps_available", return_value=True), \
+                mock.patch.object(self.mod, "lsof_available", return_value=False):
+            code, text = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertEqual(text.count("warning: lsof is unavailable; the stale wait check was skipped"), 1)
+
+    def test_sleep_infinity_is_a_wait(self):
+        self.assertEqual(len(self.stale([(9, 9999, "sleep infinity")], {9: self.tree})), 1)
 
     def test_missing_ps_is_one_skip_line_and_exit_unchanged(self):
         init_repo(self.tree)

@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -41,11 +42,13 @@ import quality_profile  # noqa: E402  (sibling module; path set above)
 WIP_MARKER = os.path.join(".claude", "wip.md")
 # `git rev-parse --git-path <name>` resolves each one for a linked worktree too.
 IN_PROGRESS = (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert"),
-               ("rebase-merge", "rebase"), ("rebase-apply", "rebase"))
+               ("rebase-merge", "rebase"), ("rebase-apply", "rebase"),
+               ("sequencer", "multi-commit cherry-pick or revert"), ("BISECT_LOG", "bisect"))
 SHOWN = 8
 STALE_MINUTES = 15
 # A wait: the `sleep` program itself, a shell command line that runs `sleep <n>`, or an `until`/`while` loop around one.
 WAIT_PATTERN = re.compile(r"(^|[\s;&|(/])sleep\s+[0-9]|\b(until|while)\b.*\bsleep\b")
+WAIT_PATTERN = re.compile(WAIT_PATTERN.pattern.replace("sleep\\s+[0-9]", "sleep\\s+([0-9]|infinity)"))
 
 
 def git(tree: str, *args: str) -> subprocess.CompletedProcess:
@@ -56,21 +59,38 @@ def is_allowed(path: str, allowed: list) -> bool:
     return any(path == item or path.startswith(item + "/") for item in allowed)
 
 
+def normalize_allowed(allowed: list, top: str) -> list:
+    """The allowed paths as `/`-separated paths relative to the repository root ``top`` (an absolute path is made
+    relative to it; `./x` and `x/` become `x`)."""
+    result = []
+    for item in allowed:
+        path = os.path.relpath(item, top) if os.path.isabs(item) else os.path.normpath(item)
+        result.append(path.replace(os.sep, "/").strip("/"))
+    return result
+
+
 def dirty_paths(tree: str, allowed: list) -> list:
-    """Status lines for tracked changes and non-ignored untracked files; untracked paths in ``allowed`` are skipped."""
-    result = git(tree, "status", "--porcelain", "--untracked-files=all")
+    """Status lines for tracked changes and non-ignored untracked files; untracked paths in ``allowed`` (relative to
+    the repository root) are skipped. Paths are root-relative and unquoted (`-z`, `core.quotePath=false`)."""
+    result = git(tree, "-c", "core.quotePath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all")
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "git status failed")
+    fields = result.stdout.split("\0")
     lines = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
+    index = 0
+    while index < len(fields):
+        entry = fields[index]
+        index += 1
+        if len(entry) < 4:
             continue
-        path = line[3:].strip().strip('"')
-        if line.startswith("??") and is_allowed(path, allowed):
+        if entry[0] in "RC" or entry[1] in "RC":
+            index += 1  # a rename or copy carries its source path as a second field
+        path = entry[3:]
+        if entry.startswith("??") and is_allowed(path, allowed):
             continue
         if path == WIP_MARKER.replace(os.sep, "/"):
             continue  # reported on its own line
-        lines.append(line)
+        lines.append(entry)
     return lines
 
 
@@ -110,6 +130,10 @@ def ps_available() -> bool:
         return subprocess.run(["ps", "-axo", "pid="], capture_output=True, check=False).returncode == 0
     except OSError:
         return False
+
+
+def lsof_available() -> bool:
+    return shutil.which("lsof") is not None
 
 
 def list_processes() -> list:
@@ -163,12 +187,14 @@ def stale_waits(tree: str, stale_minutes: int = STALE_MINUTES) -> list:
 
 
 def check_tree(tree: str, label: str, allowed: list) -> list:
+    """Problems of the repository containing ``tree``; the marker and the allowed paths resolve from its root."""
+    top = toplevel(tree)
     problems: list = []
-    dirty = dirty_paths(tree, allowed)
+    dirty = dirty_paths(tree, normalize_allowed(allowed, top))
     if dirty:
         problems.append(f"{label}tree not clean: {len(dirty)} path(s): "
                         + "; ".join(line.strip() for line in dirty[:SHOWN]) + ("; ..." if len(dirty) > SHOWN else ""))
-    if os.path.exists(os.path.join(tree, WIP_MARKER)):
+    if os.path.exists(os.path.join(top, WIP_MARKER)):
         problems.append(f"{label}{WIP_MARKER} exists: a task is between its checkpoint and its squash, "
                         "or a runner died")
     for op in operations_in_progress(tree):
@@ -183,15 +209,15 @@ def toplevel(tree: str) -> str:
 def check(tree: str, expected_head: "str | None", allowed: "list | None" = None) -> list:
     """The problems of ``tree`` (and of a separate source repository), one line each; raises RuntimeError when the tree
     or the revision is unusable."""
-    allowed = [a.replace(os.sep, "/").strip("/") for a in (allowed or [])]
+    allowed = list(allowed or [])
     if git(tree, "rev-parse", "--is-inside-work-tree").stdout.strip() != "true":
         raise RuntimeError(f"{tree} is not a git worktree")
     problems = check_tree(tree, "", allowed)
     try:
-        source = quality_profile.source_root(tree)
+        source = quality_profile.source_root(toplevel(tree))
     except quality_profile.ProfileError as error:
         raise RuntimeError(str(error))
-    if os.path.realpath(source) != os.path.realpath(tree) and toplevel(source) != toplevel(tree):
+    if os.path.realpath(source) != toplevel(tree) and toplevel(source) != toplevel(tree):
         if git(source, "rev-parse", "--is-inside-work-tree").stdout.strip() == "true":
             problems += check_tree(source, "source repo: ", allowed)
     if expected_head:
@@ -225,10 +251,12 @@ def main(argv: list) -> int:
         print(f"wave-preflight: {error}", file=sys.stderr)
         return 2
     # Advisory: printed, never part of the exit code, never acted on.
-    if ps_available():
-        warnings = [f"warning: {line}" for line in stale_waits(args.worktree, args.stale_minutes)]
-    else:
+    if not ps_available():
         warnings = ["warning: ps is unavailable; the stale wait check was skipped"]
+    elif not lsof_available():
+        warnings = ["warning: lsof is unavailable; the stale wait check was skipped"]
+    else:
+        warnings = [f"warning: {line}" for line in stale_waits(args.worktree, args.stale_minutes)]
     if warnings:
         print("\n".join(warnings))
     if problems:
