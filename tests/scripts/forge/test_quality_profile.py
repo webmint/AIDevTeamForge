@@ -283,6 +283,12 @@ class ConsumerTests(RepoCase):
         profile = quality_profile.load(path) if os.path.exists(path) else {}
         self.assertEqual(quality_profile.check_consumers(profile), [])
 
+    def test_the_listed_command_files_are_shipped(self) -> None:
+        # Missing consumer files are skipped (generated agents); the commands and the template are always shipped.
+        listed = {f for files in quality_profile.CONSUMERS.values() for f in files if f.startswith(".claude/")}
+        self.assertTrue(listed)
+        self.assertEqual(sorted(f for f in listed if not os.path.isfile(os.path.join(REPO, f))), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -487,6 +487,109 @@ class TriageCheckTest(unittest.TestCase):
         self.assertIn("triage check passed", result.stdout)
 
 
+def no_tracker_profile(form: str) -> dict:
+    """The test profile without an issue tracker: `absent` drops `blockingIssues`, `empty` sets its command to ""."""
+    data = json.loads(json.dumps(PROFILE))
+    if form == "absent":
+        del data["auditGate"]["blockingIssues"]
+    else:
+        data["auditGate"]["blockingIssues"] = {"command": ""}
+    return data
+
+
+class NoTrackerTest(unittest.TestCase):
+    """`blockingIssues` absent or its command empty: no issue tracker. The cadence and the triage still run, there are
+    no blocking issues (never unknown), and a blocking triage row writes `-` in its Issue cell."""
+
+    FORMS = ("absent", "empty")
+
+    def setUp(self) -> None:
+        self.repo = Repo()
+        # A tracker answer that would block if it were read.
+        self.repo.issues([{"number": 7, "title": "theme", "labels": BLOCKING}])
+
+    def tearDown(self) -> None:
+        self.repo.cleanup()
+
+    def use(self, form: str) -> None:
+        self.repo.write(".claude/quality-profile.json", json.dumps(no_tracker_profile(form)))
+
+    def triage(self, issue: str) -> subprocess.CompletedProcess:
+        self.repo.write("audits/2026-02-01-audit.md",
+                        triage_report(f"| T1 copies | F-1 | fix | yes | no | lint no-copy | {issue} |"))
+        return self.repo.run("triage-check", "--report", "audits/2026-02-01-audit.md")
+
+    def test_both_forms_validate(self) -> None:
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.assertEqual(quality_profile.validate(no_tracker_profile(form), repo=self.repo.path), [])
+
+    def test_the_status_says_no_issue_tracker_and_nothing_blocks_on_issues(self) -> None:
+        self.repo.audit("2026-01-10")
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.use(form)
+                state = self.repo.state()
+                self.assertEqual((state["blockingIssues"], state["blockingIssuesUnknown"]), ([], None))
+                self.assertEqual((state["issueTracker"], state["blocked"]), (False, False))
+                status = self.repo.run("status")
+                self.assertEqual(status.returncode, 0, status.stderr)
+                self.assertEqual(len(status.stdout.splitlines()), 1)
+                self.assertIn("blocking issues open: 0 (no issue tracker)", status.stdout)
+                start = self.repo.run("start-line")
+                self.assertEqual(start.returncode, 0, start.stdout)
+                self.assertEqual(start.stdout.strip(), "Audit gate: started at 0/3 after audits/2026-01-10-audit.md")
+                self.assertEqual(start.stderr, "")
+
+    def test_the_cadence_still_blocks(self) -> None:
+        for name in ("001-a", "002-b", "003-c"):
+            self.repo.merge_spec(name)
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.use(form)
+                start = self.repo.run("start-line")
+                self.assertEqual(start.returncode, 1)
+                self.assertIn("blocked: 3 specs merged since the last audit (threshold 3)", start.stdout)
+                self.assertNotIn("unknown", start.stdout + start.stderr)
+
+    def test_a_blocking_row_writes_a_dash_in_the_issue_column(self) -> None:
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.use(form)
+                dash = self.triage("-")
+                self.assertEqual(dash.returncode, 0, dash.stdout)
+                self.assertIn("passed (0 problem(s))", dash.stdout)
+                self.assertNotIn("unknown", dash.stdout)
+                for issue in ("(to file)", "#7", ""):
+                    with self.subTest(issue=issue):
+                        result = self.triage(issue)
+                        self.assertEqual(result.returncode, 1, result.stdout)
+                        self.assertIn("T1 copies: blocks but its Issue cell is", result.stdout)
+
+    def test_a_machine_check_is_still_required(self) -> None:
+        self.use("empty")
+        self.repo.write("audits/2026-02-01-audit.md",
+                        triage_report("| T1 copies | F-1 | fix | yes | no | — | - |"))
+        result = self.repo.run("triage-check", "--report", "audits/2026-02-01-audit.md")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("T1 copies: no machine check", result.stdout)
+
+    def test_check_pr_accepts_an_added_report_with_a_dash(self) -> None:
+        self.repo.audit("2026-01-10")
+        self.repo.git("switch", "-q", "-c", "chore/audit-2026-02-01", "main")
+        self.repo.write("audits/2026-02-01-audit.md",
+                        triage_report("| T1 copies | F-1 | fix | yes | no | lint no-copy | - |"))
+        self.repo.commit("audit")
+        for form in self.FORMS:
+            with self.subTest(form=form):
+                self.use(form)
+                result = self.repo.run("check-pr", "--base", "main", "--head", "HEAD")
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn("triage check passed", result.stdout)
+                self.assertIn("blocking issues open: 0 (no issue tracker)", result.stdout)
+                self.assertNotIn("unknown", result.stdout)
+
+
 class ProfileTest(unittest.TestCase):
     def setUp(self) -> None:
         self.dir = tempfile.mkdtemp(prefix="quality-profile-")
@@ -519,6 +622,15 @@ class ProfileTest(unittest.TestCase):
                 "auditGate.blockingIssues.labels: must be a non-empty list of strings",
             ]),
         )
+
+    def test_a_tracker_command_still_needs_its_labels(self) -> None:
+        bad = json.loads(json.dumps(PROFILE))
+        bad["auditGate"]["blockingIssues"] = {"command": STUB}
+        self.assertEqual(quality_profile.validate(bad, repo=self.dir), ["auditGate.blockingIssues.labels: expected list"])
+        bad["auditGate"]["blockingIssues"] = {"labels": BLOCKING}
+        self.assertEqual(quality_profile.validate(bad, repo=self.dir), ["auditGate.blockingIssues.command: expected str"])
+        bad["auditGate"]["blockingIssues"] = []
+        self.assertEqual(quality_profile.validate(bad, repo=self.dir), ["auditGate.blockingIssues: expected dict"])
 
     def test_boolean_threshold_is_rejected(self) -> None:
         bad = json.loads(json.dumps(PROFILE))

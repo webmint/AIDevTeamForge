@@ -598,7 +598,7 @@ that in mind.
 A broad-mode audit ends with a drafted `## Theme triage` table; the user triages it:
 - Confirm or change each row's disposition, `Blocks` and machine check.
 - When the project uses an issue tracker, file one issue per blocking theme with the labels the binding's `auditGate.blockingIssues` command filters on, and replace the row's `(to file)` with its number (`#n`). The fixing change closes the issue.
-- Without an issue tracker (`auditGate` unset), the triage table itself is the record: write `-` in the Issue column.
+- Without an issue tracker, set `auditGate.blockingIssues.command` to `""`: the cadence and the triage check still run, and the triage table itself is the record: write `-` in the Issue column.
 - Validate with `python3 scripts/forge/audit-gate.py triage-check --report audits/YYYY-MM-DD-audit.md` (exit 1 names each problem; with `auditGate` unset it prints one line and exits 0). `python3 scripts/forge/audit-gate.py status` shows whether the gate is open.
 
 ## IMPORTANT RULES

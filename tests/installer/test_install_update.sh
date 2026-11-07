@@ -38,6 +38,14 @@ check "forge hook fragment installed" '[ -f "$P2/.claude/hooks/forge/settings-ho
 check "gate.sh installed executable" '[ -x "$P2/scripts/forge/gate.sh" ]'
 check "context guard installed" '[ -f "$P2/.claude/hooks/forge/context-guard.py" ]'
 check "tests/ not installed" '[ ! -d "$P2/tests" ]'
+check "five gate checklists installed" '[ "$(ls "$P2/.claude/checklists/"*.md | wc -l | tr -d " ")" = 5 ]'
+check "independent gate partial installed" '[ -f "$P2/.claude/commands/_independent-gate.md" ]'
+check "quality scripts installed executable" 'for f in quality_profile ratchet audit-gate hub-files new-exports count-tools check-canonical-sources check-enforcement-map check-task-evidence check-decision-records; do [ -x "$P2/scripts/forge/$f.py" ] || exit 1; done'
+check "no python caches installed" '[ -z "$(find "$P2" -name __pycache__ -o -name "*.pyc")" ]'
+# what /setup-wizard 3.9 runs, then the gate on a fresh repo
+(cd "$P2" && git init -q . && python3 scripts/forge/quality_profile.py init --integration-ref origin/main >/dev/null 2>&1)
+check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_profile.py validate >/dev/null 2>&1)'
+check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
 
 echo "== update from a legacy (pre-checksum) install"
@@ -100,10 +108,14 @@ check "forge hook entry present exactly once" '[ "$(jq "[.hooks.PreToolUse[].hoo
 check "project prompt hook in a shared group kept" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select(.type == \"prompt\")] | length" "$P1/.claude/settings.json")" = 1 ]'
 check "DEFAULT_BRANCH added to project-config" '[ "$(jq -r .DEFAULT_BRANCH "$P1/.claude/project-config.json")" = main ]'
 check "other settings keys kept" '[ "$(jq -c .permissions.allow "$P1/.claude/settings.json")" = "[\"Read\"]" ]'
+check "checklists added on update" '[ "$(ls "$P1/.claude/checklists/"*.md | wc -l | tr -d " ")" = 5 ]'
+check "quality scripts added on update" '[ -x "$P1/scripts/forge/quality_profile.py" ] && [ -x "$P1/scripts/forge/audit-gate.py" ]'
 
 echo "== second update: local edit vs template change, idempotent hooks"
 sleep 1   # distinct backup timestamp
 echo "<!-- second local edit -->" >> "$P1/.claude/commands/verify.md"
+sed -i.bak 's/^\*\*Gate\*\*: on/**Gate**: off/' "$P1/.claude/checklists/breakdown-gate.md" && rm -f "$P1/.claude/checklists/breakdown-gate.md.bak"
+rm "$P1/.claude/checklists/test-lens.md"
 echo "<!-- template change -->" >> "$TPL/.claude/commands/breakdown.md"
 (cd "$TPL" && ./update.sh --write-checksums >/dev/null)
 "$TPL/update.sh" --force "$P1" < /dev/null > "$WORK/up2.txt" 2>&1; rc=$?
@@ -115,6 +127,8 @@ check "template-changed breakdown.md not backed up" '[ ! -f "$B2/.claude/command
 check "breakdown.md updated" 'grep -q "template change" "$P1/.claude/commands/breakdown.md"'
 check "unchanged fix.md not backed up again" '[ ! -f "$B2/.claude/commands/fix.md" ]'
 check "forge hook entry still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "project-edited checklist kept" 'grep -q "^\*\*Gate\*\*: off" "$P1/.claude/checklists/breakdown-gate.md"'
+check "deleted checklist restored" '[ -f "$P1/.claude/checklists/test-lens.md" ]'
 check "project hook group still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
 
 echo ""

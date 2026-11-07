@@ -8,7 +8,8 @@ The state is derived, never stored, so every developer and CI see the same thing
   writes `specs/NNN-feature-name/summary.md`); a remediation spec (its spec file carries
   `Audit gate: remediation of <report> ...`) is not counted;
 - a blocking finding is an open issue returned by `auditGate.blockingIssues.command` that has every label in
-  `auditGate.blockingIssues.labels` (one issue per triaged theme, closed by the pull request that fixes it).
+  `auditGate.blockingIssues.labels` (one issue per triaged theme, closed by the pull request that fixes it); without
+  an issue tracker there are none (see below).
 The gate is blocked when any of these holds:
   1. `auditGate.every` specs merged since the last audit (an audit is due);
   2. the last audit report has no `auditGate.triageHeading` line, or a theme row in that section still carries the
@@ -26,6 +27,11 @@ When the command cannot answer (it is not installed, there is no network, the re
 exits non-zero, times out or prints no such array), the blocking issues are `unknown`: the state says so with the
 reason on one line, reason 3 does not count, and the other reasons and exit codes are unchanged. A remediation start
 line then names its issues unverified, and the triage check only requires a blocking row to name an issue.
+
+No issue tracker: `auditGate.blockingIssues` absent, or its `command` empty (`""`), means the project has none. The
+blocking issues are then known to be none (reason 3 never blocks and there is no `unknown` note; the status says
+`0 (no issue tracker)`), `labels` is not required, the cadence (reason 1) and the triage (reason 2) still run, and the
+triage table is the record: the triage check accepts a blocking row whose Issue cell is `-`.
 
 Usage:
   python3 scripts/forge/audit-gate.py status [--ref <ref>] [--json]
@@ -46,8 +52,8 @@ Usage:
       after the orchestrator filed its issues: the table has `Theme`, `Blocks`, `Machine check` and `Issue` columns;
       every row names its machine check (a lint rule, ratchet or catalog test that fails on a new copy; a
       non-blocking row may say `none: <reason>`); every blocking row names at least one open issue that carries every
-      blocking label, so a theme that only continues a warning-level issue cannot fail to block. Exit 1 with one line
-      per problem.
+      blocking label, so a theme that only continues a warning-level issue cannot fail to block (without an issue
+      tracker, its Issue cell is `-`). Exit 1 with one line per problem.
 
 When `auditGate` is unset (`{}`, as the binding skeleton writes it without an integration ref), every command prints
 one line saying so and exits 0: no gate runs, and whether an audit is due is decided by hand. A binding without the
@@ -121,15 +127,22 @@ def _one_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), "")
 
 
+def has_tracker(gate: dict) -> bool:
+    """Whether the project has an issue tracker: `auditGate.blockingIssues` is present and its `command` is not empty."""
+    spec = gate.get("blockingIssues")
+    return isinstance(spec, dict) and bool(str(spec.get("command") or "").strip())
+
+
 def blocking_issues(repo: str, gate: dict) -> tuple[list[dict], str | None]:
-    """The open blocking issues and None, or no issues and the reason the command could not answer (`unknown`)."""
+    """The open blocking issues and None, or no issues and the reason the command could not answer (`unknown`).
+    Without an issue tracker (see `has_tracker`) there are none, and they are known."""
+    if not has_tracker(gate):
+        return [], None
     spec = gate["blockingIssues"]
     try:
         command = shlex.split(spec["command"])
     except ValueError as exc:
         raise GateError(f"auditGate.blockingIssues.command: {exc}") from exc
-    if not command:
-        raise GateError("auditGate.blockingIssues.command: empty")
     try:
         result = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=ISSUES_TIMEOUT_SECONDS)
     except FileNotFoundError:
@@ -221,6 +234,7 @@ def compute(repo: str, gate: dict, ref: str, issues: list[dict] | None = None, u
         "remediationSpecs": remediation,
         "blockingIssues": issues,
         "blockingIssuesUnknown": unknown,
+        "issueTracker": has_tracker(gate),
         "auditsOnRef": len(reports),
         "lastAudit": last,
         "triage": triage,
@@ -278,9 +292,10 @@ def triage_table(text: str, heading: str) -> tuple[list[str], list[list[str]]]:
     return header, rows
 
 
-def triage_problems(text: str, heading: str, open_numbers: set[int] | None) -> list[str]:
+def triage_problems(text: str, heading: str, open_numbers: set[int] | None, tracker: bool = True) -> list[str]:
     """One message per triage row that names no machine check, or blocks without an open blocking issue.
-    `open_numbers` None means the blocking issues are unknown: a blocking row must then name some issue."""
+    `open_numbers` None means the blocking issues are unknown: a blocking row must then name some issue. Without an
+    issue tracker (`tracker` False) the table is the record: a blocking row writes `-` in its Issue cell."""
     header, rows = triage_table(text, heading)
     if not header:
         return [f"no table under '{heading}'"]
@@ -297,7 +312,11 @@ def triage_problems(text: str, heading: str, open_numbers: set[int] | None) -> l
         if check.lower() in NO_CHECK or (check.lower().startswith("none") and (blocks or ":" not in check)):
             problems.append(f"{theme}: no machine check (name the lint rule, ratchet or catalog test that fails on "
                             "a new copy; only a non-blocking row may say `none: <reason>`)")
-        if blocks:
+        if blocks and not tracker:
+            if cell("issue") != "-":
+                problems.append(f"{theme}: blocks but its Issue cell is {cell('issue') or 'empty'}; without an issue "
+                                "tracker write `-` (the triage table is the record)")
+        elif blocks:
             issue = cell("issue")
             numbers = {int(n) for n in re.findall(r"#(\d+)", issue)}
             named = numbers if open_numbers is None else numbers & open_numbers
@@ -309,9 +328,11 @@ def triage_problems(text: str, heading: str, open_numbers: set[int] | None) -> l
 
 
 def issues_text(state: dict) -> str:
-    """The blocking-issues part of the status line: the open count, or `unknown` with its reason."""
+    """The blocking-issues part of the status line: the open count, `unknown` with its reason, or no tracker."""
     if state.get("blockingIssuesUnknown"):
         return f"unknown ({state['blockingIssuesUnknown']})"
+    if state.get("issueTracker") is False:
+        return "0 (no issue tracker)"
     return str(len(state["blockingIssues"]))
 
 
@@ -348,7 +369,8 @@ def check_pr(repo: str, gate: dict, base: str, head: str) -> tuple[bool, dict, l
         known = state["blockingIssuesUnknown"] is None
         open_numbers = {issue["number"] for issue in state["blockingIssues"]} if known else None
         for report in reports:
-            problems = triage_problems(git(repo, "show", f"{head}:{report}"), gate["triageHeading"], open_numbers)
+            problems = triage_problems(git(repo, "show", f"{head}:{report}"), gate["triageHeading"], open_numbers,
+                                       state["issueTracker"])
             passed = passed and not problems
             notes += [f"{report}: triage: {problem}" for problem in problems] or [f"{report}: triage check passed"]
         return passed, state, notes
@@ -418,7 +440,7 @@ def triage_check(repo: str, gate: dict, ref: str, report: str | None) -> int:
     open_numbers = None if unknown else {issue["number"] for issue in issues}
     if unknown:
         print(f"triage-check: {name}: blocking issues unknown ({unknown}); a blocking row only has to name an issue")
-    problems = triage_problems(text, gate["triageHeading"], open_numbers)
+    problems = triage_problems(text, gate["triageHeading"], open_numbers, has_tracker(gate))
     for problem in problems:
         print(f"triage-check: {name}: {problem}")
     print(f"triage-check: {name}: {'FAILED' if problems else 'passed'} ({len(problems)} problem(s))")

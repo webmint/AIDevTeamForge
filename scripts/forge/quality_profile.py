@@ -174,18 +174,21 @@ NEW_EXPORT_OPTIONAL = {
     "$comment": str,
 }
 
-# auditGate: every key is required when the section is present.
+# auditGate: every key is required when the section is present, except `blockingIssues`.
 AUDIT_GATE = {
     "every": int,
     "auditReports": str,
     "triageHeading": str,
     "mergedSpecMarker": str,
     "specFile": str,
+}
+AUDIT_GATE_OPTIONAL = {
     "blockingIssues": dict,
 }
 
 # auditGate.blockingIssues: a command printing a JSON array of issues ({number, title, labels}) and the labels an open
-# issue must all carry to block.
+# issue must all carry to block. The section absent, or its command empty (`""`), means the project has no issue
+# tracker: there are no blocking issues, the triage table is the record, and `labels` is not required.
 BLOCKING_ISSUES = {
     "command": str,
     "labels": list,
@@ -201,34 +204,107 @@ BLOCKING_ISSUES = {
 # Per-task agents (implementers, the per-task code reviewer) are not consumers: the runner that launches them resolves
 # `searchScopes` into the prompt, and they consult the registry through the lookup of check-canonical-sources.py
 # (`--concepts`, `--rows`), so they never read the binding file.
-# Command files (`.claude/commands/*.md`) are not listed yet; they are added when the commands name the binding.
-# Until then a key with no script consumer has an empty list.
+# Files that only write a key (`/setup-wizard`, `/constitute`, `/onboard` fill the binding) are not consumers.
+# A key that nothing reads yet has an empty list.
 CONSUMERS: dict[str, list[str]] = {
-    "searchScopes": ["scripts/forge/quality_profile.py"],
-    "generatedDirs": ["scripts/forge/quality_profile.py"],
+    "searchScopes": [
+        "scripts/forge/quality_profile.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/execute-task.md",
+        ".claude/commands/fix.md",
+        ".claude/commands/plan.md",
+        ".claude/commands/refactor.md",
+        ".claude/commands/research.md",
+        ".claude/commands/review.md",
+        ".claude/commands/specify.md",
+        ".claude/commands/verify.md",
+    ],
+    "generatedDirs": [
+        "scripts/forge/quality_profile.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/execute-task.md",
+        ".claude/commands/fix.md",
+        ".claude/commands/plan.md",
+        ".claude/commands/refactor.md",
+        ".claude/commands/research.md",
+        ".claude/commands/review.md",
+        ".claude/commands/specify.md",
+        ".claude/commands/verify.md",
+    ],
     "integrationRef": [
         "scripts/forge/audit-gate.py",
         "scripts/forge/check-decision-records.py",
         "scripts/forge/check-task-evidence.py",
         "scripts/forge/hub-files.py",
         "scripts/forge/new-exports.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/research.md",
+        ".claude/commands/review.md",
+        ".claude/commands/specify.md",
     ],
-    "auditGate": ["scripts/forge/audit-gate.py"],
-    "baselineFile": ["scripts/forge/ratchet.py"],
+    "auditGate": [
+        "scripts/forge/audit-gate.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/plan.md",
+        ".claude/commands/specify.md",
+    ],
+    "baselineFile": [
+        "scripts/forge/ratchet.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/finalize.md",
+    ],
     "ratchets": [
         "scripts/forge/ratchet.py",
         "scripts/forge/count-tools.py",
         "scripts/forge/check-enforcement-map.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/execute-task.md",
+        ".claude/commands/finalize.md",
+        ".claude/commands/fix.md",
+        ".claude/commands/plan.md",
+        ".claude/commands/review.md",
+        ".claude/commands/specify.md",
+        ".claude/commands/verify.md",
     ],
-    "enforcementMap": ["scripts/forge/check-enforcement-map.py"],
+    "enforcementMap": [
+        "scripts/forge/check-enforcement-map.py",
+        ".claude/commands/audit.md",
+    ],
     "catalogTests": [],
-    "layers": [],
-    "planningSources": [],
-    "canonicalSources": ["scripts/forge/check-canonical-sources.py"],
-    "newExports": ["scripts/forge/new-exports.py"],
-    "decisionRecords": ["scripts/forge/check-decision-records.py"],
-    "semanticClones": [],
-    "hubFiles": ["scripts/forge/hub-files.py"],
+    "layers": [
+        ".claude/commands/audit.md",
+        ".claude/commands/plan.md",
+    ],
+    "planningSources": [
+        ".claude/commands/audit.md",
+        ".claude/commands/plan.md",
+    ],
+    "canonicalSources": [
+        "scripts/forge/check-canonical-sources.py",
+        ".claude/commands/audit.md",
+        ".claude/commands/execute-task.md",
+        ".claude/commands/fix.md",
+        ".claude/commands/plan.md",
+        ".claude/commands/refactor.md",
+        ".claude/commands/review.md",
+        ".claude/commands/specify.md",
+    ],
+    "newExports": [
+        "scripts/forge/new-exports.py",
+        ".claude/commands/execute-task.md",
+        ".claude/commands/review.md",
+    ],
+    "decisionRecords": [
+        "scripts/forge/check-decision-records.py",
+    ],
+    "semanticClones": [
+        ".claude/commands/audit.md",
+    ],
+    "hubFiles": [
+        "scripts/forge/hub-files.py",
+        ".claude/commands/plan.md",
+        ".claude/commands/review.md",
+    ],
 }
 
 # Scripts other than Python that read the binding file themselves, with the reason they cannot use the loader.
@@ -293,16 +369,24 @@ def validate(profile: dict, repo: str = REPO) -> list[str]:
             # bool is a subclass of int; `true` is not a threshold.
             elif not isinstance(gate[key], expected) or isinstance(gate[key], bool):
                 problems.append(f"auditGate.{key}: expected {expected.__name__}")
+        for key, expected in AUDIT_GATE_OPTIONAL.items():
+            if key in gate and not isinstance(gate[key], expected):
+                problems.append(f"auditGate.{key}: expected {expected.__name__}")
         for key in gate:
-            if key not in AUDIT_GATE and key != "$comment":
+            if key not in AUDIT_GATE and key not in AUDIT_GATE_OPTIONAL and key != "$comment":
                 problems.append(f"auditGate: unknown key: {key}")
         issues = gate.get("blockingIssues")
         if isinstance(issues, dict):
+            command = issues.get("command")
+            tracker = isinstance(command, str) and bool(command.strip())
             for key, expected in BLOCKING_ISSUES.items():
-                if not isinstance(issues.get(key), expected):
+                # Without a tracker (`command` empty) the labels are not required.
+                if (tracker or key in issues or key == "command") and not isinstance(issues.get(key), expected):
                     problems.append(f"auditGate.blockingIssues.{key}: expected {expected.__name__}")
             labels = issues.get("labels")
-            if isinstance(labels, list) and (not labels or not all(isinstance(x, str) for x in labels)):
+            if isinstance(labels, list) and not all(isinstance(x, str) for x in labels):
+                problems.append("auditGate.blockingIssues.labels: must be a non-empty list of strings")
+            elif tracker and isinstance(labels, list) and not labels:
                 problems.append("auditGate.blockingIssues.labels: must be a non-empty list of strings")
         every = gate.get("every")
         if isinstance(every, int) and not isinstance(every, bool) and every < 1:
@@ -693,7 +777,8 @@ def _validate_semantic_clones(profile: dict, repo: str) -> list[str]:
 
 # The Forge default audit gate: active from the first feature spec. `init --integration-ref` writes it, so a new
 # project audits after its first `every` merged feature specs instead of after an audit nobody scheduled. The blocking
-# issues come from a profile command, so a project on another issue tracker replaces only the command.
+# issues come from a profile command, so a project on another issue tracker replaces only the command, and a project
+# without one sets it to `""` (the cadence and the triage check still run).
 DEFAULT_AUDIT_GATE = {
     "every": 3,
     "auditReports": "audits/*-audit.md",
