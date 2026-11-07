@@ -284,6 +284,8 @@ expected/actual behavior, and affected files — enough context for a fresh
 
 Wait for user response.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `bugs`): "Yes" — file every issue; this run never fixes product code.
+
 ### 9.4: Create Bug Files (if requested)
 
 **Determine next bug number**: Scan `bugs/` for existing `.md` files in this tree and in every other worktree (`git worktree list`), find the highest NNN prefix across all of them, and assign numbers sequentially from there. Do this ONCE before creating any files.

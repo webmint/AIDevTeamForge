@@ -212,6 +212,8 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 
 Use `AskUserQuestion` to ask: **"Save this research to a file?"**
 
+**Autonomous mode** (`_autonomous-mode.md`, point `research-save`): save it without asking and commit nothing.
+
 - **If yes**: Save to `research/YYYY-MM-DD-[topic-slug].md` at project root.
   - `YYYY-MM-DD` = current date (e.g., `2026-03-25`)
   - `[topic-slug]` = lowercase kebab-case, 2-4 words derived from the topic (e.g., `caching-strategy`, `websocket-real-time`, `authentication-options`)

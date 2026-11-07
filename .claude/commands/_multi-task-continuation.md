@@ -25,6 +25,7 @@ After Phase 5.2 completes for the current task:
       2. **Review** — show git diff from preceding tasks before continuing
       3. **Pause** — stop execution here, resume later with /execute-task [N]
       ```
+      **Autonomous mode** (`_autonomous-mode.md`, point `checkpoint`): "Continue".
       Wait for user response:
       - **Continue**: proceed to step b.
       - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.

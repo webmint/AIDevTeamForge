@@ -300,6 +300,8 @@ Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `
 
 **HARD GATE**: The task breakdown MUST be approved before execution begins.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `breakdown`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting.
+
 Present a summary:
 
 "I've broken down the spec into **[N] tasks** at `specs/[NNN-feature]/tasks/`:
