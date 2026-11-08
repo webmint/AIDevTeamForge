@@ -5,6 +5,20 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-11-08
+
+### Added
+- **`/review-pr <PR number | PR URL | issue key>`** — strict review of a pull request that never went through the spec cycle (no spec, no per-task review): code-reviewer (constitution, architecture, a search of the whole repository for existing patterns; a divergent new pattern is at least a Warning), security-reviewer, performance-analyst and qa-engineer in parallel, the linked issue as acceptance criteria, verdict APPROVE / APPROVE WITH WARNINGS / REQUEST CHANGES / BLOCK in chat. Read-only, not part of any workflow chain, not run by `/conduct`
+  - The code host is set by the developer: `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF` (commands with `<N>` / `<KEY>` placeholders; GitHub `gh` and GitLab `glab` presets) and `PR_REMOTE` (fork workflows)
+  - The PR head is fetched into `refs/forge/review-pr/<N>` and read with `git show`, never from the working tree; the refs are deleted before the command ends; the report names the head commit it reviewed
+  - The issue tracker is set by the developer: `ISSUE_TRACKER` `jira` (through the MCP server named in `JIRA_MCP_SERVER`, site in `JIRA_SITE`) | `github` | `none`, `ISSUE_KEY_PATTERN`; key candidates are tried in order and only a key the tracker knows counts (`SHA-256` is skipped)
+- `/setup-wizard` Question 11 (pull request commands, PR remote, issue tracker); skipped keys are written as `""`
+
+### Changed
+- `/research` reads an issue its topic (or the conductor's Inputs) names through the same tracker keys and records it in the report header (`**Issue**`); it never searches for one
+- CLAUDE template and README: the `/review-pr` command
+- Template version: 1.31.0 → 1.32.0
+
 ## [1.31.0] - 2026-11-08
 
 ### Added

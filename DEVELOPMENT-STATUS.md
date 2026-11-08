@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (21 commands + 7 shared partials in `.claude/commands/`)
+### Commands (22 commands + 7 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -25,6 +25,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
 - `security.md` — On-demand security review: targeted (file, directory, uncommitted changes) or full codebase (`--full`). Launches security-reviewer agent with constitution context. Module-based subagents for large codebases. Read-only
 - `audit.md` — Standalone adversarial whole-codebase audit for periodic "second opinion" reviews. Launches code-reviewer + architect + qa-engineer + security-reviewer in adversarial mode with a structured Mislogic Hunt Checklist; reads recent `specs/*/review.md` for recurring-issue tracking. Anti-hallucination grounding via verbatim Evidence requirement + Phase 4 validation that re-reads cited files and discards ungrounded findings. Algorithmic-only cross-agent and recurring merging (no LLM similarity judgment). Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, NOT part of any workflow chain — invoke manually
+- `review-pr.md` (1.32.0) — strict review of a pull request without a spec: code-reviewer constitution/architecture pass plus the `/review` agents, the linked issue as acceptance criteria; code host commands and issue tracker set by the developer in `project-config.json` (Question 11); PR head read from fetched refs, never the working tree; read-only, report in chat
 - `conduct.md` (1.31.0) — opt-in autonomous delivery: the main session drives the spec cycle, one subagent per phase, reads only result blocks, parks blocked specs and continues with the roadmap, keeps a local ledger; `disable-model-invocation: true`
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
@@ -118,6 +119,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 25. **Audit gate on by default** (1.30.0) — an audit is due after every 3 finished features, while patterns are still cheap to fix; the user may start a spec anyway with a recorded reason. The issue tracker is optional
 26. **Autonomy is opt-in and earned per gate** (1.31.0) — interactive delivery stays the default; `/conduct` self-approves a HARD GATE only after its independent gate ran clean, and keeps the user for STOP conditions and merges. The push guard is the safety net that makes this acceptable
 27. **A thin conductor** (1.31.0) — the main session never reads sources or artifacts; one subagent per phase, result blocks only, a local ledger that is never committed (it would otherwise land in squashes and open pull requests)
+28. **Hosts and trackers are configuration, not code** (1.32.0) — `/review-pr` and `/research` name no host or tracker in their steps: the developer supplies the PR commands (presets for GitHub and GitLab) and the tracker (`jira` via a named MCP server, `github`, `none`); an unset key stops the command or skips the step and says so, never falls back to a guess
 
 ### Onboarding System (`/onboard`)
 - Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input
