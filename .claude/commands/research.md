@@ -45,6 +45,8 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `existing-spec`): return `blocked (existing spec specs/NNN-*)`; the conductor resumes that spec instead.
+
 ## PHASE 2: Codebase Investigation
 
 ### Step 1: Keyword Extraction
@@ -211,6 +213,8 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 ### Step 1: Ask to Save
 
 Use `AskUserQuestion` to ask: **"Save this research to a file?"**
+
+**Autonomous mode** (`_autonomous-mode.md`, point `research-save`): save it without asking and commit nothing.
 
 - **If yes**: Save to `research/YYYY-MM-DD-[topic-slug].md` at project root.
   - `YYYY-MM-DD` = current date (e.g., `2026-03-25`)

@@ -340,7 +340,8 @@ class MissingBindingTests(unittest.TestCase):
 
 class WorkflowWordingTests(unittest.TestCase):
     """The harness scripts describe the interactive workflow (the user in the `/audit` triage, `/review`'s Structural
-    Check before `/finalize`), not an orchestrator or a steward that the workflow does not have."""
+    Check before `/finalize`) and, in autonomous mode, the conductor (`/conduct`); never an orchestrator or a steward,
+    words of a harness that Forge does not ship."""
 
     def test_no_script_names_an_orchestrator_or_a_steward(self) -> None:
         for name in sorted(os.listdir(SCRIPTS)):

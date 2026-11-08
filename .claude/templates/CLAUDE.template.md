@@ -111,6 +111,9 @@ On-demand security review. Targets a specific file (with optional line range), d
 ### `/audit [--full | --uncommitted | path]`
 Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming-vs-behavior mismatches, lying comments, off-by-one errors, dead branches, cross-file contradictions, contradictory configs). Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
 
+### `/conduct ["feature" | specs/NNN-feature]` (autonomous mode only)
+Opt-in autonomous delivery: with `DELIVERY_MODE: autonomous` in `.claude/project-config.json`, the main session drives the whole spec cycle, one subagent per phase, and the runners decide where the commands would ask (`.claude/commands/_autonomous-mode.md`). A HARD GATE self-approves only after its independent gate ran with no open Critical; `DELIVERY_GATES` keeps chosen points interactive. The user is asked only at STOP conditions; only the user merges.
+
 ### Additional Commands
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)
@@ -134,6 +137,10 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 - **Test lens**: the per-task code review gets `task-review.md` and `test-lens.md`, the `/review` qa assessment `test-lens.md`: would each new or changed test fail if the feature were broken?
 - **Learning**: `/finalize` records every defect of the feature in `escapes.md`, with the gate that should have caught it, and adds one generic check per escaped defect to that gate's checklist.
 - **Usefulness**: a gate that catches nothing for 3 consecutive features may be lightened (fewer items, a cheaper model) or switched off on its checklist's `**Gate**:` line; a gate whose escapes keep recurring is strengthened. The `quality:` lines in `escapes.md` are the evidence.
+
+### Delivery Mode
+- **Interactive** (default): every command stops at its gates and questions.
+- **Autonomous** (opt-in, `DELIVERY_MODE: autonomous`): `/conduct` runs the commands as subagents; their interactive points follow `.claude/commands/_autonomous-mode.md` (self-approval after a clean independent gate, decisions recorded, STOP conditions). The push guard (`.claude/hooks/forge/push-guard.py`) then allows only pushes of `PUSH_BRANCH_PREFIXES` branches to `PUSH_REMOTE`, and denies force pushes, tags, remote deletions, merges and settings writes. A command the user runs by hand stays interactive.
 
 ### Automated Guards (run automatically)
 - **PostToolUse hook**: Type Check Command runs automatically after every file Edit/Write (Lint Command runs during explicit verification phases, not per-edit — this is intentional to avoid noise)

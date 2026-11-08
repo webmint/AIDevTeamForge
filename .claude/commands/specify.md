@@ -34,6 +34,8 @@ Determine the repository's default branch using these methods in order:
 3. If that fails, check if `master` exists: `git show-ref --verify --quiet refs/heads/master`
 4. If none found, ask the user what their default branch is
 
+**Autonomous mode** (`_autonomous-mode.md`, point `default-branch`): use `DEFAULT_BRANCH` from `.claude/project-config.json`; never ask.
+
 ### 0.3: Branch Decision
 
 **If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
@@ -56,15 +58,20 @@ Options:
 
 Wait for user choice and execute accordingly.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `branch`): switch to the default branch, then create the spec branch.
+
 ### 0.4: Audit Gate
 
 When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge/audit-gate.py start-line`. When the request remediates audit themes, the spec is structural (see "Spec type" in Phase 4; ask the user when unsure) and runs `start-line --remediation "#n,#m"` instead, naming the blocking issues it fixes (without an issue tracker, the theme ids: `--remediation T1,T3`):
 - **Exit 0**: keep the printed `Audit gate: …` line; Phase 4 writes it verbatim into the spec header.
 - **Exit 1**: show the printed reason and ask the user: run `/audit` first (stop here), or start anyway. On "start anyway", the header records `Audit gate: started while blocked — <user's reason>`.
+  **Autonomous mode** (`_autonomous-mode.md`, point `audit-gate`): STOP 8 — return `blocked (audit due)`; never start anyway.
 
 - **Exit 2**: show the error line (for example an `integrationRef` that does not resolve yet), note it in the HARD GATE summary and continue. A remediation request needs its printed line (without it `check-pr` rejects the spec while the gate is blocked): fix the cause (for example `git fetch` the integration ref) and run it again; when it still exits 2, ask the user how to proceed.
 
 When `auditGate` is unset, or the script reports the state as unknown, note it in the HARD GATE summary and continue.
+
+**Autonomous mode** (`_autonomous-mode.md`, point `audit-gate`): exit 1, and exit 2 on a remediation request after the retry, are STOP 8. Spec type when unsure: `structural` only when the request remediates audit themes or names no behaviour change; record the choice under Decisions.
 
 ## Pre-Step: Reset Session State
 
@@ -123,6 +130,8 @@ Based on the description, identify ambiguities and ask clarifying questions. Ask
 - After each round, decide if more clarification is needed based on the answers
 - Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
 - If the description is clear enough, skip to Phase 3
+
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions.
 
 ## PHASE 3: Codebase Analysis
 
@@ -266,6 +275,8 @@ Read `.claude/commands/_independent-gate.md` and run the **spec-gate** on `specs
 ## PHASE 5: User Approval
 
 **HARD GATE**: The spec MUST be approved before proceeding to `/breakdown`.
+
+**Autonomous mode** (`_autonomous-mode.md`, point `specify`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting.
 
 Present the spec summary to the user:
 

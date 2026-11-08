@@ -18,6 +18,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
 2. Generate description from spec overview (`## 1. Overview`, first 1-2 sentences)
 3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
+   **Autonomous mode** (`_autonomous-mode.md`, point `commit`): use the proposed message.
 4. On confirmation: `git -C $SOURCE_ROOT reset --soft [squash-base] && git -C $SOURCE_ROOT commit -m "<confirmed message>"`
 5. If WIP commits were already pushed to remote, skip squash and warn user
 

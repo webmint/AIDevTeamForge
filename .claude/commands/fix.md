@@ -41,6 +41,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
 2. Generate description from bug description (Phase 2.2)
 3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
+   **Autonomous mode** (`_autonomous-mode.md`, point `commit`): use the proposed message.
 4. On confirmation: `git -C $SOURCE_ROOT reset --soft $SOURCE_CHECKPOINT && git -C $SOURCE_ROOT commit -m "<confirmed message>"`
 5. If WIP commits were already pushed to remote, skip squash and warn user
 
@@ -125,6 +126,8 @@ Proceed with /fix anyway? (not recommended)
 
 Wait for user decision. If they say proceed, continue. If not, stop.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `fix-scope`): STOP 1 — return `blocked` with the scope estimate; never proceed.
+
 ## PHASE 2: Diagnose
 
 Identify the root cause BEFORE writing any code.
@@ -174,6 +177,8 @@ Read `.claude/commands/_agent-assignment.md` and select the agent based on the a
 ```
 
 Present this to the user. **HARD GATE**: Wait for user confirmation before applying the fix. The user must agree with the diagnosis.
+
+**Autonomous mode** (`_autonomous-mode.md`, point `fix`): self-confirm the diagnosis once the evidence shows the root cause (a reproduction, a failing test or a quoted code path) and record it in the fix report; the code-review and test-assessment steps stay mandatory.
 
 ## PHASE 3: Pre-Flight Check
 
@@ -349,6 +354,8 @@ Options:
 2. **Continue** — proceed despite warnings (Critical issues CANNOT be skipped)
 3. **Stop** — halt execution, keep WIP state for manual handling
 ```
+
+**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" for a Critical; a Warning is fixed when cheap, otherwise "Continue" with it recorded in the fix report.
 
 Wait for user response:
 - **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:

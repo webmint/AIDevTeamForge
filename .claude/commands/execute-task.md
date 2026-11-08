@@ -335,6 +335,8 @@ Options:
 3. **Stop** — halt execution, keep WIP state for manual handling
 ```
 
+**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" for a Critical; a Warning is fixed when cheap, otherwise "Continue" with it recorded in the Completion Notes.
+
 Wait for user response:
 - **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
   - **Critical**: after the fix, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/execute-task [N]`."

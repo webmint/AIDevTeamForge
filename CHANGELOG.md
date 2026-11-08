@@ -5,6 +5,22 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-11-08
+
+### Added
+- **Opt-in autonomous delivery** (`DELIVERY_MODE: autonomous` in `.claude/project-config.json`; interactive stays the default and is unchanged) — `/conduct` runs the spec cycle from the main session, one subagent per phase (research, specify, plan, breakdown, one runner per wave, review, verify, `/fix` per bug, closing), with the model tier and effort chosen per phase. The main session reads only result blocks and keeps a local ledger (`.claude/delivery-status.md`: current spec, parked specs with their resume command, completed specs with quality, timing, cost and context Δ)
+- **`_autonomous-mode.md`** — the rules for conductor runners: one row per interactive point of the workflow (17 points), self-approval of a HARD GATE only after its independent gate ran with no open Critical (a gate that is off keeps the HARD GATE interactive; a rejected Critical stays open unless the reviewer accepts it), sources of truth, decisions, STOP conditions 1–8, what every runner follows (wait for nested agents, no sleep polling, checks through `gate.sh`, explicit-path staging, run reports in `specs/NNN-*/runs/`), the result block, and pull requests. `DELIVERY_GATES` keeps chosen points interactive. A command the user runs by hand stays interactive in every mode
+- **Park and continue, roadmap, merge modes** — a blocker confined to one spec parks it and the conductor continues with the next eligible `ROADMAP_FILE` item; `MERGE_MODE` `local` (the user merges) or `pr` (the closing runner pushes the spec branch and opens a pull request; a red CI run gets a `/fix` and a superseding `-r<n>` pull request). Only the user merges
+- **Push guard** (`.claude/hooks/forge/push-guard.py`, PreToolUse, active only in autonomous mode) — G1 pushes only to `PUSH_REMOTE`, by name, to a `PUSH_BRANCH_PREFIXES` branch, never the default branch; G2 no force push; G3 no tags or mirror pushes; G4 no remote branch deletion; G5 no `gh pr merge`, `gh api` writes, settings, secret or workflow-dispatch writes; G6 no credential or token reads; G7 no git config that re-routes pushes or hooks. Parses nested shells, wrappers, heredocs and `git -C`; fails open on its own errors
+- **`scripts/forge/wave-preflight.py`** — the conductor's check before a writing runner starts in a tree another runner used: tree clean, no crash marker, no git operation in progress, expected HEAD, stale `sleep` / `until` waits reported
+- **`scripts/forge/spec-cost.py`** + `model-prices.json` — tokens, cost and wall time per spec, branch and phase from the project's transcripts (worktrees included); phases come from the conductor's reference prompts and the gate reviewers' first lines; a lower bound (assistant responses only); unknown models are reported as unpriced
+- `/setup-wizard` Question 10 (delivery mode, kept-interactive points, merge mode, roadmap file)
+
+### Changed
+- Every interactive point of `/specify`, `/plan`, `/breakdown`, `/execute-task`, `/fix`, `/verify`, `/finalize`, `/research`, `_multi-task-continuation.md` and `_recovery.md` names its autonomous behaviour in one line; the interactive text is unchanged
+- CLAUDE template: "Delivery Mode" and the `/conduct` command; storage-rules: `runs/`, the conductor's ledger
+- Template version: 1.30.0 → 1.31.0
+
 ## [1.30.0] - 2026-11-07
 
 ### Added

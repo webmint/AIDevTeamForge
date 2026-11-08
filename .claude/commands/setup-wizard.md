@@ -260,6 +260,19 @@ Add the chrome-devtools MCP server to `.mcp.json`:
 ```
 If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.json` — it would be useless for these projects.
 
+### Question 10: Delivery Mode
+"How should features be delivered?"
+- **Interactive** (recommended, default) — every command stops at its gates and questions; you approve each spec, plan and breakdown.
+- **Autonomous** (opt-in) — `/conduct` runs the whole spec cycle with one subagent per phase. A HARD GATE self-approves only after its independent gate ran with no open Critical; you are asked only at STOP conditions (`.claude/commands/_autonomous-mode.md`). The push guard hook then limits pushes to feature branches and denies force pushes, merges and settings writes.
+
+**Conditional follow-ups (if Autonomous):**
+- "Which points stay interactive?" (multi-select, default none): `specify`, `plan`, `breakdown`, `fix`, the other point ids of `_autonomous-mode.md` → "Interactive Points". Store as `DELIVERY_GATES`, space-separated `<point>=interactive` pairs (empty string for none).
+- "How does a finished feature reach the default branch?" — **Local** (default: the feature is squashed on its branch; you merge) or **Pull request** (the branch is pushed and a PR opened; you merge; needs an authenticated `gh`). Store as `MERGE_MODE` (`local` | `pr`).
+- "Is there a roadmap file listing the features in order?" (optional): a markdown table with `ID`, `Title`, `Depends on` columns. Store its path as `ROADMAP_FILE`, or an empty string.
+- `PUSH_REMOTE` (default `origin`) and `PUSH_BRANCH_PREFIXES` (default `spec/ fix/ refactor/ chore/`) are written with their defaults; mention that they can be edited.
+
+(Default to "Interactive" if the user skips. Interactive writes `DELIVERY_MODE: "interactive"` and leaves the other delivery keys out.)
+
 ## STEP 3: Generate Configuration Files
 
 Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
@@ -509,7 +522,8 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
   "AC_VERIFICATION_URL": "http://localhost:5173",
   "AC_VERIFICATION_API_BASE": "",
   "DEFAULT_BRANCH": "main",
-  "TYPE_SAFETY_RULES": "- No `any` types without documented justification\n- Null/undefined properly handled (optional chaining, null checks)\n- Generic types used correctly\n- No unsafe type assertions"
+  "TYPE_SAFETY_RULES": "- No `any` types without documented justification\n- Null/undefined properly handled (optional chaining, null checks)\n- Generic types used correctly\n- No unsafe type assertions",
+  "DELIVERY_MODE": "interactive"
 }
 ```
 
@@ -521,6 +535,8 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 5. If none found, default to `main`
 
 **Required keys**: `PROJECT_NAME`, `PROJECT_TYPE`, `FRAMEWORK`, `LANGUAGE`, `BUILD_TOOL`, `BUILD_COMMAND`, `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `SOURCE_ROOT`, `PROJECT_MODE`, `ARCHITECTURE`, `ERROR_HANDLING`, `API_LAYER`, `STATE_MANAGEMENT`, `STYLING`, `MONOREPO_TOOL`, `TESTING`, `PROJECT_PATHS`, `PROJECT_STRUCTURE`, `DEV_COMMANDS`, `AGENT_LIST`, `WRAPPER_MODE_SECTION`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`, `AC_VERIFICATION`, `AC_VERIFICATION_URL`, `AC_VERIFICATION_API_BASE`, `DEFAULT_BRANCH`, `TYPE_SAFETY_RULES`.
+
+**Optional delivery keys** (Question 10; a missing key means its default, so older configs need no migration): `DELIVERY_MODE` (`interactive` | `autonomous`), and in autonomous mode `DELIVERY_GATES`, `MERGE_MODE`, `ROADMAP_FILE`, `PUSH_REMOTE`, `PUSH_BRANCH_PREFIXES`. Every value is a JSON string, as for the other keys.
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 
@@ -567,7 +583,7 @@ Create `.claude/quality-profile.json`, the per-project binding of the generic qu
 1. Review the generated files and adjust if needed
 2. Run /constitute to generate your project's constitution
 3. [Existing projects only] Run /onboard to generate comprehensive codebase documentation
-4. Start working with /specify "your first feature"
+4. Start working with /specify "your first feature" (autonomous mode: /conduct "your first feature")
 ```
 
 4. **Write setup completion marker**: After presenting the summary, write `.claude/setup-complete` with content:

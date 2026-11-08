@@ -59,6 +59,8 @@ Options:
 
 Wait for user to choose.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `recovery`): "Resume" when the marker names the same command, task and feature as this runner's prompt; otherwise return `blocked (crash marker: <marker summary>)` without touching it.
+
 ## 0.4: Execute Choice
 
 **If Resume:**

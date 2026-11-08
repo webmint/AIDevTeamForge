@@ -330,6 +330,8 @@ Read `.claude/commands/_independent-gate.md` and run the **plan-gate** (architec
 
 **HARD GATE**: The plan MUST be approved before `/breakdown` can generate tasks.
 
+**Autonomous mode** (`_autonomous-mode.md`, point `plan`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting. A question for the user is answered as point `clarify` says.
+
 Present a summary:
 
 "I've created the technical plan at `specs/[feature-name]/plan.md`.
