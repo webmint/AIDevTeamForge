@@ -280,7 +280,7 @@ Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads
 
 "Which commands show a pull request?" — show the proposed `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND` and `PR_HEAD_REF`; the user accepts, edits any of them, or skips them.
 
-"Which remote holds the pull requests?" — only when `git remote` lists more than `origin` (a fork workflow usually has `upstream`): propose `upstream` when it exists → `PR_REMOTE`. Otherwise skip it (the default is `PUSH_REMOTE`, else `origin`).
+"Which remote holds the pull requests?" — only when `git remote` lists more than `origin` (a fork workflow usually has `upstream`): propose `upstream` when it exists → `PR_REMOTE`; with the GitHub preset, also suggest `gh repo set-default <upstream repo>` so `gh` reads the PRs from the same repository. Otherwise skip it (the default is `PUSH_REMOTE`, else `origin`).
 
 "Which issue tracker does the team use?"
 - **None** (default) — `ISSUE_TRACKER: "none"`.
