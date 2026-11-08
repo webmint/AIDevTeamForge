@@ -2,8 +2,10 @@
 """Spec cost: tokens, USD cost and wall time of the Claude Code work in this project, read from its transcripts.
 
 Reads the Claude Code session transcripts of this project (main sessions and every subagent, nested ones included,
-which land flat in `<session>/subagents/`), counts every API response whose timestamp falls inside the window,
-attributes it by the transcript line's `gitBranch` and prices it with the prices file.
+which land flat in `<session>/subagents/`), counts every API response whose first line falls inside the window,
+attributes it by the transcript line's `gitBranch` and prices it with the prices file. It counts the assistant
+responses in the transcripts: a lower bound; Claude Code's own background calls such as titles and summaries are not
+in them.
 
 Usage:
   python3 scripts/forge/spec-cost.py --since <ISO-8601 UTC> [--until <ISO-8601 UTC>] [options]
@@ -20,15 +22,16 @@ Usage:
   After a spec merges: `--by-phase --all-trees --branch <spec branch> --since <start> --until <merge>`.
 
 Output: a `window` line (start, end, wall time, the dirs read), one line per model (calls, input, cache write, cache
-read and output tokens, cost), a `total` line, a `prices` line (the file's `verified` date), the optional breakdowns,
-and a closing `SUMMARY wall=<h:mm> cost=$<usd>` line. A model the prices file does not name is counted in tokens and
-shown as `cost unknown`; its calls are left out of every dollar figure, and each row that left calls out says
-`unpriced <n>`, the total line lists the models and SUMMARY ends with `unpriced=yes`. No unpriced call is counted as $0.
+read and output tokens, cost), a `total` line, a `note: lower bound (assistant responses only)` line, a `prices` line
+(the file's `verified` date), the optional breakdowns, and a closing `SUMMARY wall=<h:mm> cost=$<usd>` line. A model
+the prices file does not name is counted in tokens and shown as `cost unknown`; its calls are left out of every dollar
+figure, and each row that left calls out says `unpriced <n>`, the total line lists the models and SUMMARY ends with
+`unpriced=yes`. No unpriced call is counted as $0.
 Exit codes: 0 the report was printed; 2 bad arguments (a bad timestamp, an empty window, a missing transcript dir or
 session) or an unreadable prices file or project config.
 
-Prices (`model-prices.json`): USD per million tokens under `models`, keyed by model id or by model family (a key
-that is a prefix of the id up to a `-`; the exact id wins, then the longest family). Each entry has `input`,
+Prices (`model-prices.json`): USD per million tokens under `models`, keyed by exact model id (a newer id that only
+shares a prefix with a listed one is unpriced, never priced at an older model's rates). Each entry has `input`,
 `output`, `cache_write_5m`, `cache_write_1h` and `cache_read`; an optional `long_context` entry (`threshold` plus the
 same five rates) applies when a request's prompt (input + cache write + cache read) exceeds `threshold` tokens.
 `fast_multiplier` prices fast-mode calls (`usage.speed == "fast"`); without it they are unpriced. `verified` (the
@@ -46,6 +49,9 @@ is counted twice. Lines without `gitBranch` are reported under `(none)`.
 Notes:
 - One API response is often written as several JSONL lines (streamed content blocks); lines are deduplicated by
   (message.id, requestId) and the largest value of each usage counter is kept (output_tokens grows across them).
+  The whole response belongs to the window of its first line, even when later lines fall after `--until`.
+- A line that is not valid UTF-8 or not a JSON object (a half-written line of a live transcript) is skipped.
+- Timestamps accept `Z`, `+HH:MM` or `+HHMM` offsets and any number of fractional-second digits.
 - Wall time is `until - since` (`until` defaults to now), not the sum of API time.
 - Cache writes the transcript does not split into 5m and 1h are priced as 5m.
 - Standard library only; Python 3.9+.
@@ -60,10 +66,11 @@ By-phase rule (`--by-phase`):
   (`<session>.jsonl`) are the conductor (`/conduct`) and belong to no phase.
 - Phase label: the first line of a run's first user message.
   `Forge conductor mode, phase runner. Phase: <phase>[ task <NNN>| wave W<n>]. …` gives `/<command>` for a Forge
-  command (`/research`, `/specify`, `/plan`, `/breakdown`, `/execute-task` for task and wave runners, `/review`,
-  `/verify`, `/fix`, `/summarize`, `/finalize`), `closing` when the phase field names the closing phase, and the
-  field's first word otherwise (e.g. `rebase`). `Independent gate reviewer. Gate: <gate>[, lens <lens>]. …` (the
-  prompt of `.claude/commands/_independent-gate.md`) gives `<gate>` or `<gate>-<lens>`. Any other prompt (chores,
+  command (`/research`, `/specify`, `/plan`, `/breakdown`, `/execute-task` for task runners and for the `wave`
+  phase, `/review`, `/verify`, `/fix`, `/summarize`, `/finalize`), `closing` when the phase field names the closing
+  phase, and the field's first word otherwise (e.g. `pr-update`, `rebase`).
+  `Independent gate reviewer. Gate: <gate>[, lens <lens>]. …` (the prompt of `.claude/commands/_independent-gate.md`)
+  gives `<gate>` or `<gate>-<lens>`. Any other prompt (chores,
   probes, an unlabeled run) is `other`. A later message to a running agent (a gate-fix or "resume" message) does not
   change its phase.
 - A run's wall time is the span from its first to its last API call, nested agents included (a runner waits for
@@ -114,9 +121,11 @@ RUNNER_LABEL = re.compile(r"Forge conductor mode, phase runner\. Phase: ([^\n]*)
 GATE_LABEL = re.compile(r"Independent gate reviewer\. Gate: ([a-z][a-z0-9-]*)(?:, lens ([a-z][a-z-]*))?")
 COMMAND_PHASES = ("research", "specify", "plan", "breakdown", "execute-task", "review", "verify", "fix",
                   "summarize", "finalize")
+# Phase names of the conductor's Phases table that run a Forge command under another name.
+PHASE_ALIASES = {"wave": "execute-task"}
 GATE_PHASES = ("spec-gate", "plan-gate", "breakdown-gate")
 PHASE_ORDER = ("/research", "/specify", "spec-gate", "/plan", "plan-gate", "/breakdown", "breakdown-gate",
-               "/execute-task", "/review", "/verify", "/fix", "/summarize", "/finalize", "closing")
+               "/execute-task", "/review", "/verify", "/fix", "/summarize", "/finalize", "closing", "pr-update")
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 
 
@@ -185,13 +194,8 @@ def normalize_model(model: str) -> str:
 
 
 def model_rates(model: str, prices: dict) -> dict | None:
-    """Rates of a model: the exact id first, then the longest family key (a prefix up to a `-`); None when unpriced."""
-    name = normalize_model(model)
-    models = prices["models"]
-    if name in models:
-        return models[name]
-    families = [key for key in models if name.startswith(key + "-")]
-    return models[max(families, key=len)] if families else None
+    """Rates of a model by its exact id after `normalize_model`; None when unpriced."""
+    return prices["models"].get(normalize_model(model))
 
 
 def call_cost(model: str, tokens: dict, speed: str | None, prices: dict) -> float | None:
@@ -215,10 +219,13 @@ def call_cost(model: str, tokens: dict, speed: str | None, prices: dict) -> floa
 
 
 def parse_ts(value: str) -> datetime:
-    """Parse an ISO-8601 timestamp; naive values are taken as UTC."""
+    """Parse an ISO-8601 timestamp; naive values are taken as UTC. Normalized first, because Python 3.9's
+    `fromisoformat` takes neither `Z`, nor `+HHMM`, nor fractional seconds other than 3 or 6 digits."""
     text = value.strip()
-    if text.endswith("Z"):
+    if text[-1:] in ("Z", "z"):
         text = text[:-1] + "+00:00"
+    text = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", text)
+    text = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], text, count=1)
     dt = datetime.fromisoformat(text)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -257,9 +264,19 @@ def integration_branch(repo: str = REPO) -> str:
     return value.strip()
 
 
+def json_object(line: str) -> dict | None:
+    """One transcript line as a JSON object; None for a broken line or any other JSON value."""
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        return None
+    return entry if isinstance(entry, dict) else None
+
+
 def message_text(entry: dict) -> str | None:
     """Text of a user entry, or None when it carries tool results or no text."""
-    content = (entry.get("message") or {}).get("content")
+    msg = entry.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -281,15 +298,12 @@ def first_prompt_ts(project_dir: str, session: str) -> datetime:
     if not os.path.isfile(path):
         raise UsageError(f"transcript not found: {path}")
     fallback = None
-    with open(path, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             if '"user"' not in line:
                 continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("type") != "user" or entry.get("isSidechain") or entry.get("isMeta"):
+            entry = json_object(line)
+            if entry is None or entry.get("type") != "user" or entry.get("isSidechain") or entry.get("isMeta"):
                 continue
             if entry.get("isCompactSummary") or not entry.get("timestamp"):
                 continue
@@ -365,30 +379,30 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
                 continue  # file last written before the window: nothing inside it
         except OSError:
             continue
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if '"usage"' not in line:
                     continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
+                entry = json_object(line)
+                if entry is None or entry.get("type") != "assistant" or not entry.get("timestamp"):
                     continue
-                if entry.get("type") != "assistant" or not entry.get("timestamp"):
+                msg = entry.get("message")
+                if not isinstance(msg, dict):
                     continue
-                msg = entry.get("message") or {}
                 usage = msg.get("usage")
                 model = msg.get("model") or "unknown"
-                if not isinstance(usage, dict) or model in SKIP_MODELS:
+                if not isinstance(usage, dict) or not isinstance(model, str) or model in SKIP_MODELS:
                     continue
                 try:
                     ts = parse_ts(entry["timestamp"])
-                except (TypeError, ValueError):
+                except (AttributeError, TypeError, ValueError):
                     continue
-                if ts < since or ts > until:
-                    continue
+                if ts < since:
+                    continue  # a line after --until still counts: its call may have started inside the window
                 if cwd_filter is not None and not cwd_filter(entry.get("cwd")):
                     continue
-                cc = usage.get("cache_creation") or {}
+                cc = usage.get("cache_creation")
+                cc = cc if isinstance(cc, dict) else {}
                 cw_total = usage.get("cache_creation_input_tokens") or 0
                 cw1h = cc.get("ephemeral_1h_input_tokens") or 0
                 cw5m = cc.get("ephemeral_5m_input_tokens") or 0
@@ -407,7 +421,8 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
                     prev["first"], prev["last"] = min(prev["first"], ts), max(prev["last"], ts)
                     for field in TOKEN_FIELDS:
                         prev["tokens"][field] = max(prev["tokens"][field], tokens[field])
-    return calls
+    # A call belongs to the window of its first line (a streamed response may straddle --until).
+    return {key: call for key, call in calls.items() if call["first"] <= until}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -458,7 +473,7 @@ def parse_label(text: str | None) -> tuple[str, str]:
         return "other", "other"
     if re.search(r"\bclosing\b", field):
         return "closing", "runner"
-    name = word.group(1)
+    name = PHASE_ALIASES.get(word.group(1), word.group(1))
     return ("/" + name if name in COMMAND_PHASES else name), "runner"
 
 
@@ -470,15 +485,12 @@ def phase_label(text: str | None) -> str:
 def first_user_text(path: str) -> str | None:
     """Text of the first user entry of a transcript (the run's prompt)."""
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if '"user"' not in line:
                     continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if entry.get("type") == "user":
+                entry = json_object(line)
+                if entry is not None and entry.get("type") == "user":
                     return message_text(entry)
     except OSError:
         return None
@@ -507,7 +519,7 @@ class RunIndex:
         chain = [path]
         while True:
             try:
-                with open(chain[-1][:-len(".jsonl")] + ".meta.json", encoding="utf-8") as fh:
+                with open(chain[-1][:-len(".jsonl")] + ".meta.json", encoding="utf-8", errors="replace") as fh:
                     parent = json.load(fh).get("parentAgentId")
             except (OSError, ValueError, AttributeError):
                 break  # no sidecar: a depth-1 run
@@ -734,6 +746,7 @@ def report(args: argparse.Namespace) -> int:
     files = len({call["file"] for call in calls.values()})
     print(f"total ${total:.2f}  api calls {len(calls)}  transcript files {files}"
           + (f"  unpriced models: {', '.join(sorted(unknown))}" if unknown else ""))
+    print("note: lower bound (assistant responses only)")
     shown = os.path.abspath(args.prices)
     shown = os.path.relpath(shown, REPO) if shown.startswith(REPO + os.sep) else args.prices
     print(f"prices {shown} verified {prices['verified']}")

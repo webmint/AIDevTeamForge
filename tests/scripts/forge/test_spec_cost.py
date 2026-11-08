@@ -145,15 +145,18 @@ class PricesTests(SpecCostCase):
         self.assertAlmostEqual(sc.call_cost("model-small", short, None, prices), 0.01)
         self.assertAlmostEqual(sc.call_cost("model-small", long, None, prices), 100_001 * 0.5 / 1_000_000)
 
-    def test_model_id_tags_and_families(self) -> None:
-        data = json.loads(json.dumps(PRICES))
-        data["models"]["model-fam"] = dict(data["models"]["model-alpha"])
-        prices = sc.load_prices(self.write_prices(data))
+    def test_model_id_tags_are_stripped(self) -> None:
+        prices = sc.load_prices(self.prices)
         self.assertIs(sc.model_rates("model-alpha[1m]", prices), prices["models"]["model-alpha"])
         self.assertIs(sc.model_rates("model-alpha-20260101", prices), prices["models"]["model-alpha"])
-        self.assertIs(sc.model_rates("model-fam-7", prices), prices["models"]["model-fam"])
-        self.assertIsNone(sc.model_rates("model-family", prices))  # a prefix must end at a `-`
         self.assertIsNone(sc.model_rates("model-gamma", prices))
+
+    def test_a_newer_id_sharing_a_prefix_is_unpriced(self) -> None:
+        # Regression: a family-prefix match priced an unknown newer id at an older model's rates.
+        prices = sc.load_prices(self.prices)
+        self.assertIsNone(sc.model_rates("model-alpha-7", prices))
+        tokens = {"in": 1, "cw5m": 0, "cw1h": 0, "cr": 0, "out": 1}
+        self.assertIsNone(sc.call_cost("model-alpha-7", tokens, None, prices))
 
     def test_unknown_model_and_unpriced_fast_mode_are_none_not_zero(self) -> None:
         data = json.loads(json.dumps(PRICES))
@@ -181,6 +184,57 @@ class PricesTests(SpecCostCase):
 
 
 class TotalsTests(SpecCostCase):
+    def test_total_is_marked_as_a_lower_bound(self) -> None:
+        self.fx.session("s1", [self.fx.assistant(ts(1))])
+        code, out, _ = self.run_cli()
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        total = next(i for i, ln in enumerate(lines) if ln.startswith("total "))
+        self.assertEqual(lines[total + 1], "note: lower bound (assistant responses only)")
+
+    def test_broken_lines_are_skipped_not_fatal(self) -> None:
+        # Regression: a half-written UTF-8 character, a JSON list and a string message each raised a traceback.
+        path = self.fx.session("s1", [self.fx.assistant(ts(1))])
+        with open(path, "ab") as handle:
+            handle.write(b'{"type": "assistant", "usage": "\xe2\x82\n')
+            handle.write(b'["usage", 1]\n')
+            handle.write(json.dumps({"type": "assistant", "timestamp": ts(2), "message": "usage"}).encode() + b"\n")
+            handle.write(json.dumps({"type": "user", "timestamp": ts(3), "message": "usage"}).encode() + b"\n")
+        agent = self.fx.agent("s1", "a1", "\u00e9 chore", [self.fx.assistant(ts(4))])
+        with open(agent, "rb") as handle:
+            raw = handle.read()
+        with open(agent, "wb") as handle:
+            handle.write(b'["user"]\n{"type": "user", "x": "\xff"}\n' + raw)
+        code, out, err = self.run_cli("--by-phase", "--by-branch")
+        self.assertEqual(code, 0, err)
+        self.assertIn("api calls 2", out)
+        with open(os.path.join(self.root, "list.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write('["user"]\n')
+        self.assertIsNone(sc.first_user_text(os.path.join(self.root, "list.jsonl")))
+        self.assertIsNone(sc.message_text({"type": "user", "message": "text"}))
+
+    def test_a_call_straddling_until_counts_whole_in_its_first_window(self) -> None:
+        # Regression: only the streamed lines before --until were counted, so the output tokens were cut short.
+        first = self.fx.assistant("2026-01-01T17:59:59.000Z", usage={"input_tokens": 1_000_000, "output_tokens": 1},
+                                  msg_id="m1")
+        last = self.fx.assistant("2026-01-01T18:00:01.000Z", msg_id="m1")
+        late = self.fx.assistant("2026-01-01T18:00:02.000Z", msg_id="m2")
+        self.fx.session("s1", [first, last, late])
+        code, out, _ = self.run_cli()
+        self.assertEqual(code, 0)
+        self.assertIn("total $3.00  api calls 1", out)
+
+    def test_timestamps_with_compact_offsets_and_odd_fractions_parse_on_every_python(self) -> None:
+        # Regression: Python 3.9's fromisoformat rejected `+0200` and `.5Z`.
+        self.fx.session("s1", [self.fx.assistant(ts(1))])
+        code, out, err = self.run_cli("--since", "2026-01-01T11:00:00+0200", "--until", "2026-01-01T18:00:00.5Z",
+                                      window=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn("window 2026-01-01T09:00:00Z -> 2026-01-01T18:00:00Z", out)
+        self.assertEqual(sc.parse_ts("2026-01-01T10:00:00.1234567-0130").isoformat(),
+                         "2026-01-01T11:30:00.123456+00:00")
+        self.assertEqual(sc.parse_ts("2026-01-01T10:00:00").isoformat(), "2026-01-01T10:00:00+00:00")
+
     def test_streamed_lines_are_deduplicated_keeping_the_largest_counters(self) -> None:
         partial = self.fx.assistant(ts(1), usage={"input_tokens": 1_000_000, "output_tokens": 10}, msg_id="m1")
         final = self.fx.assistant(ts(1), usage={"input_tokens": 1_000_000, "output_tokens": 1_000_000}, msg_id="m1")
@@ -313,6 +367,11 @@ class LabelTests(unittest.TestCase):
             RUNNER.format("research"): "/research",
             RUNNER.format("closing (/summarize + /finalize)"): "closing",
             RUNNER.format("rebase"): "rebase",
+            RUNNER.format("pr-update"): "pr-update",
+            RUNNER.format("closing"): "closing",
+            # Regression: the conductor's Phases table names the wave phase `wave`; it was not counted as waves.
+            "Forge conductor mode, phase runner. Phase: wave W2. Feature: specs/001-x. Branch: spec/001-x.":
+                "/execute-task",
             "  \n" + RUNNER.format("/verify"): "/verify",
         }
         for text, phase in cases.items():
@@ -350,6 +409,16 @@ class ByPhaseTests(SpecCostCase):
         fx.agent("s1", "v2", RUNNER.format("/verify"), [fx.assistant(ts(0, hour=13)), fx.assistant(ts(10, hour=13))])
         fx.agent("s1", "misc", "Resume where you stopped", [fx.assistant(ts(0, hour=14)),
                                                            fx.assistant(ts(5, hour=14))])
+
+    def test_wave_runner_counts_as_waves(self) -> None:
+        fx = self.fx
+        fx.agent("s1", "w2", "Forge conductor mode, phase runner. Phase: wave W2. Feature: specs/001-x. "
+                 "Branch: spec/001-x.", [fx.assistant(ts(0), branch="spec/001-x"),
+                                         fx.assistant(ts(25), branch="spec/001-x")])
+        code, out, _ = self.run_cli("--by-phase")
+        self.assertEqual(code, 0)
+        self.assertIn("runs   1  wall   0:25", self.line(out, "/execute-task "))
+        self.assertIn("TIMING spec/001-x wall 0:25; gates 0:00 (0%); rework 0:00 (0%); waves 0:25;", out)
 
     def test_phase_rows_gate_split_and_timing(self) -> None:
         self.build_spec()
