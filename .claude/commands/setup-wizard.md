@@ -273,6 +273,22 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 
 (Default to "Interactive" if the user skips. Interactive writes `DELIVERY_MODE: "interactive"` and leaves the other delivery keys out.)
 
+### Question 11: Pull Requests and Issue Tracker
+Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads an issue the topic names). Run the git commands of this question inside the Source Root in wrapper mode. Detect the host from `git remote get-url origin` and propose the matching preset from `.claude/commands/review-pr.md` → "Configuration":
+- `github.com` in the URL → the GitHub (`gh`) preset; `gitlab` in the URL → the GitLab (`glab`) preset.
+- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set).
+
+"Which commands show a pull request?" — show the proposed `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND` and `PR_HEAD_REF`; the user accepts, edits any of them, or skips them.
+
+"Which remote holds the pull requests?" — only when `git remote` lists more than `origin` (a fork workflow usually has `upstream`): propose `upstream` when it exists → `PR_REMOTE`; with the GitHub preset, also suggest `gh repo set-default <upstream repo>` so `gh` reads the PRs from the same repository. Otherwise skip it (the default is `PUSH_REMOTE`, else `origin`).
+
+"Which issue tracker does the team use?"
+- **None** (default) — `ISSUE_TRACKER: "none"`.
+- **Jira** — read through an MCP server that has a tool reading one issue by key (the Atlassian server's `getJiraIssue`). Ask for the server name as it appears in its tool names `mcp__<server>__…` (default `atlassian`; propose the name of a connected server with such a tool) → `JIRA_MCP_SERVER`, and for the site when the account has several (`acme.atlassian.net`) → `JIRA_SITE`. Key pattern default `[A-Z][A-Z0-9]+-[0-9]+`.
+- **GitHub Issues** — read with `gh issue view`. Key pattern default `#[0-9]+`; with the GitHub preset, propose `in:title,body` in `PR_SEARCH_COMMAND` (PRs name issues in the description: `Closes #123`).
+
+Show the key pattern default and let the user replace it → `ISSUE_KEY_PATTERN`.
+
 ## STEP 3: Generate Configuration Files
 
 Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
@@ -523,7 +539,12 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
   "AC_VERIFICATION_API_BASE": "",
   "DEFAULT_BRANCH": "main",
   "TYPE_SAFETY_RULES": "- No `any` types without documented justification\n- Null/undefined properly handled (optional chaining, null checks)\n- Generic types used correctly\n- No unsafe type assertions",
-  "DELIVERY_MODE": "interactive"
+  "DELIVERY_MODE": "interactive",
+  "PR_VIEW_COMMAND": "gh pr view <N> --json number,title,body,headRefName,headRefOid,baseRefName,url,closingIssuesReferences",
+  "PR_DIFF_COMMAND": "gh pr diff <N>",
+  "PR_SEARCH_COMMAND": "gh pr list --search \"<KEY> in:title\" --state all --json number,title,url",
+  "PR_HEAD_REF": "pull/<N>/head",
+  "ISSUE_TRACKER": "none"
 }
 ```
 
@@ -537,6 +558,8 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 **Required keys**: `PROJECT_NAME`, `PROJECT_TYPE`, `FRAMEWORK`, `LANGUAGE`, `BUILD_TOOL`, `BUILD_COMMAND`, `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `SOURCE_ROOT`, `PROJECT_MODE`, `ARCHITECTURE`, `ERROR_HANDLING`, `API_LAYER`, `STATE_MANAGEMENT`, `STYLING`, `MONOREPO_TOOL`, `TESTING`, `PROJECT_PATHS`, `PROJECT_STRUCTURE`, `DEV_COMMANDS`, `AGENT_LIST`, `WRAPPER_MODE_SECTION`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`, `AC_VERIFICATION`, `AC_VERIFICATION_URL`, `AC_VERIFICATION_API_BASE`, `DEFAULT_BRANCH`, `TYPE_SAFETY_RULES`.
 
 **Optional delivery keys** (Question 10; a missing key means its default, so older configs need no migration): `DELIVERY_MODE` (`interactive` | `autonomous`), and in autonomous mode `DELIVERY_GATES`, `MERGE_MODE`, `ROADMAP_FILE`, `PUSH_REMOTE`, `PUSH_BRANCH_PREFIXES`. Every value is a JSON string, as for the other keys.
+
+**Optional review keys** (Question 11; a missing key means its default): `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF`, `PR_REMOTE`, `ISSUE_TRACKER` (`jira` | `github` | `none`), `ISSUE_KEY_PATTERN`, and for Jira `JIRA_MCP_SERVER`, `JIRA_SITE`. Write the user's answers as JSON strings; every Question 11 key that is skipped or does not apply is `""`, never `"N/A"` (the rule below is for the other keys). The example above shows the GitHub preset with no tracker; with Jira add `ISSUE_KEY_PATTERN`, `JIRA_MCP_SERVER` and `JIRA_SITE`. Placeholders `<N>` and `<KEY>` stay literal: commands replace them at run time.
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 
