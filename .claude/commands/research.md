@@ -42,7 +42,7 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 4. Read `docs/architecture.md` if it exists — for current architecture patterns
 5. Scan `specs/` directory names to check if this topic overlaps with an existing or in-progress feature
 6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate.
-7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic contains a match of `ISSUE_KEY_PATTERN`, read that issue the way `/review-pr` PHASE 1 step 5 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`) and fold its summary and description into the topic: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it and say so in the report.
+7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why.
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
 
@@ -130,7 +130,7 @@ Generate the full report and **render it directly in the console** so the user c
 **Investigated at**: [`git rev-parse <ref>` at investigation time, `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`; the report is valid only for the code at this commit]
 **Scoped paths**: [the paths Phase 2 searched, so staleness can be checked against them]
 **Topic**: [user's original description]
-**Issue**: [KEY — summary; omit this line when no issue was read]
+**Issue**: [KEY — summary; `KEY — not read (<reason>)`; omit this line when the topic names no issue]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
 
 ## Summary
