@@ -116,6 +116,15 @@ Run these once when you first install the template:
 - **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
 - **`/finalize`** — Feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR.
 
+### Autonomous Delivery (opt-in)
+
+```
+/conduct "feature description"   ← one feature, research to finalize
+/conduct                         ← resume, or the next item of ROADMAP_FILE
+```
+
+With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive. A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
+
 ### Standalone Commands (use anytime)
 
 ```
@@ -183,6 +192,8 @@ bugs/
 | verify → done | User confirms acceptance criteria met |
 | new feature spec | Audit gate: after every 3 finished features an `/audit` is due (`scripts/forge/audit-gate.py`); the user may start anyway with a recorded reason |
 
+In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become self-approval after a clean independent gate; a gate that is off keeps its approval with the user.
+
 **Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent on a different model where possible reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/NNN-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
 
 ## Automated Guardrails
@@ -196,6 +207,8 @@ bugs/
 - **Reuse check**: implementing agents search for existing code before every new export and report the result; the code reviewer treats a semantic duplicate as Critical
 - **Test lens**: every new or changed test faces "would it fail if the feature were broken?" in the per-task review and in `/review`
 - **Structural quality**: the project binding `.claude/quality-profile.json` drives ratchets (counts that may only fall), the third-copy trigger, hub files and the canonical sources registry; `/review`'s Structural Check treats ratchet growth as Critical, and `/audit` tracks themes with a machine check each. Unset keys run the same steps by hand
+- **Push guard** (autonomous mode only): a PreToolUse hook allows pushes only of feature branches to the configured remote, and denies force pushes, tags, remote deletions, pull request merges, `gh api` and settings writes, workflow dispatches, credential reads and git config that re-routes pushes
+- **Pre-wave check** (autonomous mode): before a runner writes in a tree another runner used, `scripts/forge/wave-preflight.py` confirms a clean tree, no crash marker, no git operation in progress and the expected HEAD
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible
