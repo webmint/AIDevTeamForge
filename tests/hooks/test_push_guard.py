@@ -270,6 +270,87 @@ ROWS = [
     ("git merge --ff-only x", None),
     ("ls -la | head", None),
     ("$EDITOR file.txt", None),
+    # --- unlisted wrappers: the words from a literal git/gh word are analysed ---
+    ("find . -exec git push origin main \\;", "G1"),
+    ("find . -exec git push -f origin spec/x {} +", "G2"),
+    ("find . -name x -exec git status \\;", None),
+    ("setsid git push origin main", "G1"),
+    ("setsid git status", None),
+    ("watch git push origin main", "G1"),
+    ("watch 'git push origin main'", "G1"),
+    ("watch -n 5 'gh pr checks 1'", None),
+    ("arch -arm64 git push origin main", "G1"),
+    ("arch -arm64 git push -u origin spec/x", None),
+    ("ionice -c 3 git push origin main", "G1"),
+    ("flock /tmp/l git push origin main", "G1"),
+    ("flock /tmp/l -c 'git push origin main'", "G1"),
+    ("su -c 'git push origin main' me", "G1"),
+    ("su me -c 'git status'", None),
+    ("script -q -c 'gh pr merge 1' /dev/null", "G5"),
+    ("script -q /dev/null git push origin main", "G1"),
+    ("parallel 'git push origin {}' ::: main", "G1"),
+    ("chronic git push origin main", "G1"),
+    ("chronic git push -u origin fix/x", None),
+    ("python3 -m unittest discover -s tests", None),
+    ("make test", None),
+    ("echo git push origin main", None),
+    ('grep -rn "git push origin main" docs', None),
+    # --- unquoted heredoc bodies expand substitutions for any receiving command ---
+    ("cat <<EOF\n$(git push origin main)\nEOF", "G1"),
+    ("cat > notes.txt <<EOF\nx `gh pr merge 1` y\nEOF", "G5"),
+    ("cat <<-EOF\n\t$(git push --force origin spec/x)\n\tEOF", "G2"),
+    ("cat <<'EOF'\n$(git push origin main)\nEOF", None),
+    ('cat <<"EOF"\n$(git push origin main)\nEOF', None),
+    ("cat <<\\EOF\n$(git push origin main)\nEOF", None),
+    ("cat <<EOF\nbranch: $(git log -1 --format=%h)\nEOF", None),
+    # --- xargs supplying git or gh operands ---
+    ("echo push origin main | xargs git", "G1"),
+    ("echo origin main | xargs git push", "G1"),
+    ("echo push | xargs git config alias.p", "G1"),
+    ("echo 3 | xargs gh pr", "G5"),
+    ("echo 3 | xargs gh pr close", "G5"),
+    ("echo repos/o/r | xargs gh api", "G5"),
+    ("echo 3 | xargs gh pr view", None),
+    ("echo f | xargs git add", None),
+    # --- non-literal gh group or verb ---
+    ("V=merge; gh pr $V 3", "G5"),
+    ("G=pr; gh $G merge 3", "G5"),
+    ('gh pr view "$N"', None),
+    ('gh api "repos/$O/r/pulls"', None),
+    # --- shell options after -c ---
+    ("bash -c -o pipefail 'git push origin main'", "G1"),
+    ("bash -o pipefail -c 'git push origin main'", "G1"),
+    ("bash -c -e 'gh pr merge 1'", "G5"),
+    ("bash -ec -o pipefail 'git status'", None),
+    # --- remote rewrites, keys, labels, run deletion, credential and tracking config ---
+    ("gh repo sync", "G4"),
+    ("gh repo sync o/r --force", "G4"),
+    ("gh repo deploy-key add k.pub", "G6"),
+    ("gh ssh-key add k.pub", "G6"),
+    ("gh repo deploy-key list", None),
+    ("gh ssh-key list", None),
+    ("gh label create x", "G5"),
+    ("gh label edit x", "G5"),
+    ("gh label delete x", "G5"),
+    ("gh label list", None),
+    ("gh run delete 1", "G5"),
+    ('git config core.sshCommand "ssh -i k"', "G7"),
+    ("git config credential.helper store", "G7"),
+    ("git config credential.https://example.com.helper x", "G7"),
+    ("git config branch.spec/x.remote upstream", "G7"),
+    ("git config branch.spec/x.merge refs/heads/main", "G7"),
+    ("git -c core.sshCommand=x push origin spec/x", "G7"),
+    ("git config core.editor vim", None),
+    ("git config credential.username x", None),
+    # --- the word pre-filter ignores -, . and / adjacency ---
+    ("$PY tests/hooks/test-push-guard.py", None),
+    ("$PY scripts/git-config-check.py", None),
+    ("$PY .git/hooks/pre-commit", None),
+    ("$X push origin main", "G1"),
+    ("$X /usr/bin/git status", "G1"),
+    # --- HEAD without a resolvable directory ---
+    ("git push -u origin HEAD", "G1"),
+    ('git push -u origin "$(git branch --show-current)"', "G1"),
 ]
 
 
@@ -308,6 +389,88 @@ class RuleTableTest(unittest.TestCase):
         d = deny_of(cmd)
         self.assertIsNotNone(d)
         self.assertEqual(d.rule, "G1")
+
+
+def git(cwd, *args):
+    """Run git in a fixture repository (no global or system config)."""
+    env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com"] + list(args),
+                   cwd=cwd, env=env, check=True, capture_output=True)
+
+
+class CurrentBranchTest(unittest.TestCase):
+    """HEAD and `$(git branch --show-current)` refspecs resolve to the checked-out branch."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = os.path.realpath(tempfile.mkdtemp(prefix="push-guard-git-"))
+        cls.repos = {}
+        for name, branch in (("spec", "spec/x"), ("main", None), ("detached", "detached")):
+            d = os.path.join(cls.base, name)
+            os.makedirs(d)
+            git(d, "init", "-q", "-b", "main")
+            git(d, "commit", "-q", "--allow-empty", "-m", "root")
+            if branch == "detached":
+                git(d, "checkout", "-q", "--detach")
+            elif branch:
+                git(d, "checkout", "-q", "-b", branch)
+            cls.repos[name] = d
+        cls.repos["none"] = os.path.join(cls.base, "not-a-repo")
+        os.makedirs(cls.repos["none"])
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.base, True)
+
+    def rule(self, command, where):
+        try:
+            guard.check_command(command, guard.Config(), self.repos[where])
+        except guard.Deny as d:
+            return d.rule, d.refused
+        return None, ""
+
+    def test_allowed_current_branch(self):
+        for cmd in ("git push -u origin HEAD", "git push origin HEAD",
+                    'git push -u origin "$(git branch --show-current)"',
+                    "git push origin $(git rev-parse --abbrev-ref HEAD)",
+                    'git push origin "$(git symbolic-ref --short HEAD)"',
+                    "git push -u origin `git branch --show-current`",
+                    "git -C %s push origin HEAD" % self.repos["spec"],
+                    "cd %s && git push origin HEAD" % self.repos["spec"]):
+            with self.subTest(command=cmd):
+                where = "main" if self.repos["spec"] in cmd else "spec"
+                self.assertEqual(self.rule(cmd, where), (None, ""))
+
+    def test_denied_current_branch(self):
+        cases = [("git push origin HEAD", "main", "default branch"),
+                 ('git push -u origin "$(git branch --show-current)"', "main", "default branch"),
+                 ("git -C %s push origin HEAD" % self.repos["main"], "spec", "default branch"),
+                 ("cd %s && git push origin HEAD" % self.repos["main"], "spec", "default branch"),
+                 ("git push origin HEAD", "detached", "detached"),
+                 ("git push origin HEAD", "none", "could not be resolved"),
+                 ("cd ~/x && git push origin HEAD", "spec", "cannot be determined"),
+                 ("git --git-dir=/x/.git push origin HEAD", "spec", "cannot be determined"),
+                 ("GIT_DIR=/x/.git git push origin HEAD", "spec", "cannot be determined"),
+                 ('git push origin "$(git branch)"', "spec", "not a literal"),
+                 ("git push -f origin HEAD", "spec", "force"),
+                 ("git push", "spec", "without an explicit remote")]
+        for cmd, where, text in cases:
+            with self.subTest(command=cmd):
+                rule, refused = self.rule(cmd, where)
+                self.assertIn(rule, ("G1", "G2"))
+                self.assertIn(text, refused)
+
+    def test_hook_uses_payload_cwd(self):
+        stdin = json.dumps({"tool_name": "Bash", "cwd": self.repos["spec"],
+                            "tool_input": {"command": "git push -u origin HEAD"}})
+        env = dict(os.environ, FORGE_PUSH_GUARD="1")
+        proc = subprocess.run([sys.executable, HOOK], input=stdin, capture_output=True,
+                              text=True, env=env, timeout=30)
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+        stdin = stdin.replace(self.repos["spec"], self.repos["main"])
+        proc = subprocess.run([sys.executable, HOOK], input=stdin, capture_output=True,
+                              text=True, env=env, timeout=30)
+        self.assertEqual(proc.returncode, 2)
 
 
 class ConfigTest(unittest.TestCase):
@@ -349,13 +512,16 @@ class HookProcessTest(unittest.TestCase):
         with open(os.path.join(self.project, ".claude", "project-config.json"), "w") as f:
             f.write(raw if raw is not None else json.dumps(data))
 
-    def run_hook(self, command=None, stdin=None, tool="Bash", **env):
-        full = {k: v for k, v in os.environ.items() if k != "FORGE_PUSH_GUARD"}
-        full["CLAUDE_PROJECT_DIR"] = self.project
+    def run_hook(self, command=None, stdin=None, tool="Bash", cwd=None, project_env=True,
+                 **env):
+        full = {k: v for k, v in os.environ.items()
+                if k not in ("FORGE_PUSH_GUARD", "CLAUDE_PROJECT_DIR")}
+        if project_env:
+            full["CLAUDE_PROJECT_DIR"] = self.project
         full.update(env)
         if stdin is None:
             stdin = json.dumps({"tool_name": tool, "tool_input": {"command": command},
-                                "cwd": self.project})
+                                "cwd": cwd or self.project})
         proc = subprocess.run([sys.executable, HOOK], input=stdin, capture_output=True,
                               text=True, env=full, timeout=30)
         return proc.returncode, proc.stderr, proc.stdout
@@ -427,6 +593,22 @@ class HookProcessTest(unittest.TestCase):
                      "PUSH_BRANCH_PREFIXES": "", "DEFAULT_BRANCH": ""})
         self.assertEqual(self.run_hook("git push origin chore/x")[0], 0)
         self.assertEqual(self.run_hook("git push origin main")[0], 2)
+
+    def test_config_found_walking_up_to_git_toplevel(self):
+        self.config({"DELIVERY_MODE": "autonomous"})
+        os.makedirs(os.path.join(self.project, ".git"))
+        sub = os.path.join(self.project, "a", "b")
+        os.makedirs(sub)
+        code, err, _ = self.run_hook("gh pr merge 1", cwd=sub, project_env=False)
+        self.assertEqual(code, 2)
+        self.assertTrue(err.startswith("push guard [G5]: "))
+
+    def test_config_above_git_toplevel_is_ignored(self):
+        self.config({"DELIVERY_MODE": "autonomous"})
+        inner = os.path.join(self.project, "inner")
+        os.makedirs(os.path.join(inner, ".git"))
+        self.assertEqual(self.run_hook("gh pr merge 1", cwd=inner, project_env=False),
+                         (0, "", ""))
 
     def test_other_tools_and_bad_payloads_are_allowed(self):
         self.config({"DELIVERY_MODE": "autonomous"})
