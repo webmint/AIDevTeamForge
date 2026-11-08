@@ -47,6 +47,7 @@ check "no python caches installed" '[ -z "$(find "$P2" -name __pycache__ -o -nam
 check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_profile.py validate >/dev/null 2>&1)'
 check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
+check "review-pr command installed" '[ -f "$P2/.claude/commands/review-pr.md" ]'
 check "conduct command and autonomous partial installed" '[ -f "$P2/.claude/commands/conduct.md" ] && [ -f "$P2/.claude/commands/_autonomous-mode.md" ]'
 check "push guard and wave preflight installed" '[ -f "$P2/.claude/hooks/forge/push-guard.py" ] && [ -x "$P2/scripts/forge/wave-preflight.py" ]'
 check "push guard registered in the hook fragment" 'jq -e "[.hooks.PreToolUse[].hooks[].command] | any(contains(\"push-guard.py\"))" "$P2/.claude/hooks/forge/settings-hooks.json" >/dev/null'
@@ -77,7 +78,11 @@ cat > "$P1/.claude/settings.json" <<'JSON'
 }
 JSON
 echo "print('project')" > "$P1/.claude/hooks/project-guard.py"
-echo '{"PROJECT_NAME": "demo"}' > "$P1/.claude/project-config.json"
+cat > "$P1/.claude/project-config.json" <<'JSON'
+{"PROJECT_NAME": "demo", "PR_VIEW_COMMAND": "gh pr view <N> --json title", "PR_SEARCH_COMMAND": "gh pr list --search \"<KEY> in:title\"", "ISSUE_TRACKER": "jira"}
+JSON
+review_keys() { jq -c '[.PR_VIEW_COMMAND, .PR_SEARCH_COMMAND, .ISSUE_TRACKER]' "$1"; }
+review_keys_before="$(review_keys "$P1/.claude/project-config.json")"
 echo "echo project tool" > "$P1/scripts/my-tool.sh"
 echo "<!-- local edit -->" >> "$P1/.claude/commands/fix.md"
 # a template that ships one Forge hook
@@ -114,6 +119,8 @@ check "project hook group kept" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select(
 check "retired forge hook group removed" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"retired.py\"))] | length" "$P1/.claude/settings.json")" = 0 ]'
 check "forge hook entry present exactly once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"fake-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
 check "project prompt hook in a shared group kept" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select(.type == \"prompt\")] | length" "$P1/.claude/settings.json")" = 1 ]'
+check "review keys with <N>/<KEY> kept verbatim" '[ "$(review_keys "$P1/.claude/project-config.json")" = "$review_keys_before" ]'
+check "review keys raise no placeholder warning" '! grep -q "unresolved placeholders" "$WORK/up1.txt"'
 check "DEFAULT_BRANCH added to project-config" '[ "$(jq -r .DEFAULT_BRANCH "$P1/.claude/project-config.json")" = main ]'
 check "other settings keys kept" '[ "$(jq -c .permissions.allow "$P1/.claude/settings.json")" = "[\"Read\"]" ]'
 check "checklists added on update" '[ "$(ls "$P1/.claude/checklists/"*.md | wc -l | tr -d " ")" = 5 ]'
