@@ -103,7 +103,7 @@ class Scan(NamedTuple):
 
     pending: list[Pending]  # launched and not finished, in launch order
     launched: list[Pending]  # everything launched, in launch order (finished or not)
-    denials: int  # refused SubagentHandback results since the last notification, peer or successful hand-back
+    denials: int  # refused SubagentHandback results since the last notification or peer hand-back of tracked work, or a successful hand-back
 
 
 def decode_lines(lines) -> list[dict[str, Any]]:
@@ -188,6 +188,20 @@ def is_peer_handback(record: dict[str, Any]) -> str | None:
     return sender if isinstance(sender, str) and sender else None
 
 
+GONE_TASK = re.compile(r"No task found|is not running", re.I)
+
+
+def result_text(block: dict[str, Any]) -> str:
+    """The text of a tool_result block (a string, or the text parts of a list)."""
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(part.get("text", "") for part in content
+                        if isinstance(part, dict) and isinstance(part.get("text"), str))
+    return ""
+
+
 def scan(records: list[dict[str, Any]]) -> Scan:
     """Replay decoded transcript records in order and return the pending work, all launches and the denial count."""
     uses: dict[str, tuple[str, dict[str, Any]]] = {}  # tool_use id -> (tool name, input)
@@ -215,17 +229,18 @@ def scan(records: list[dict[str, Any]]) -> Scan:
         timestamp = record.get("timestamp") if isinstance(record.get("timestamp"), str) else ""
         text = notification_text(record)
         sender = is_peer_handback(record)
-        if text is not None or sender is not None:
-            denials = 0
         if text is not None:
             for block in NOTIFICATION_BLOCK.findall(text):
                 raw_id = tag(block, "task-id")
                 work_id = resolve(raw_id) or by_use.get(tag(block, "tool-use-id")) or raw_id
+                if work_id in items:
+                    denials = 0  # news about work this runner launched; events of other ids (Monitor) do not count
                 if work_id and is_final(block):
                     finalised.add(work_id)
                     if work_id in items:
                         state[work_id] = False
         if sender is not None and sender in items:
+            denials = 0
             state[sender] = False
         if record.get("type") == "assistant":
             for block in message_blocks(record):
@@ -259,6 +274,11 @@ def scan(records: list[dict[str, Any]]) -> Scan:
             elif isinstance(shell_id, str) and shell_id and name and name not in STOP_TOOLS and not failed:
                 launch(Pending("shell", shell_id, name, timestamp), use_id)
             if failed:
+                if name in STOP_TOOLS and GONE_TASK.search(result_text(block)):
+                    gone = resolve(tool_input.get("task_id") or tool_input.get("shell_id"))
+                    if gone:
+                        finalised.add(gone)
+                        state[gone] = False
                 continue
             if name in STOP_TOOLS:
                 stopped = resolve(tool_input.get("task_id") or tool_input.get("shell_id"))
@@ -322,9 +342,8 @@ def deny_reason(pending: list[Pending]) -> str:
     listing = "; ".join(describe(item) for item in pending)
     return (f"[nested-wait-guard] Hand-back refused: work you launched has no final completion notification yet: "
             f"{listing}. Wait for each completion notification: end your turn without calling {TOOL_NAME}; "
-            f"the notification wakes you. Do not sleep-poll. Stop work you no longer need with TaskStop. "
-            f"A real STOP hands back with status: blocked, a blockers: line with its STOP number and a nested: "
-            f"line naming each id above.")
+            f"the notification wakes you. Do not sleep-poll. Stop work you no longer need with TaskStop; a wait "
+            f"loop you started never ends on its own.")
 
 
 def load_config(project_dir: str) -> dict[str, Any] | None:
@@ -387,7 +406,7 @@ def log_event(root: str, event: str, **fields: str) -> None:
         details = " ".join(f"{key}={value}" for key, value in fields.items() if value)
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"{stamp} {event} {details}\n")
-    except OSError:
+    except Exception:  # noqa: BLE001 - logging is best effort
         return
 
 
@@ -486,8 +505,9 @@ def check(payload: Any, root: str) -> int:
 
 def main() -> int:
     """Entry point: inactive = 0; the hook never crashes the session, any unexpected error fails open."""
-    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or "."
     try:
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
         try:
             payload = json.loads(sys.stdin.read())
         except ValueError:

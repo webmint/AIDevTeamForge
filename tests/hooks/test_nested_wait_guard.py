@@ -273,6 +273,29 @@ class GuardParser(unittest.TestCase):
         self.assertEqual(guard.scan(records).denials, 3)
 
 
+    def test_a_failed_stop_of_a_task_that_is_gone_ends_it(self):
+        for text in ("<tool_use_error>No task found with ID: AG1</tool_use_error>",
+                     "Task AG1 is not running (status: completed)"):
+            records = self.r.agent("u1", "AG1") + [
+                self.r.use("k1", "TaskStop", {"task_id": "AG1"}), self.r.result("k1", error=True, text=text)]
+            scanned = guard.scan(records)
+            self.assertEqual(scanned.pending, [], text)
+            self.assertEqual(ids(scanned.launched), ["AG1"])
+
+    def test_a_failed_stop_for_another_reason_keeps_it_pending(self):
+        records = self.r.agent("u1", "AG1") + [
+            self.r.use("k1", "TaskStop", {"task_id": "AG1"}),
+            self.r.result("k1", error=True, text="Task AG1 is owned by X; agent Y cannot stop it")]
+        self.assertEqual(ids(guard.scan(records).pending), ["AG1"])
+
+    def test_notifications_of_untracked_ids_do_not_reset_the_denial_count(self):
+        records = self.r.agent("u1", "AG1")
+        for i in range(3):
+            records += self.r.refused_handback(f"h{i}")
+            records.append(self.r.notify(f"mon{i}", summary="Monitor event"))
+        self.assertEqual(guard.scan(records).denials, 3)
+
+
 class GuardHelpers(unittest.TestCase):
     def test_message_fields_handles_markdown_keys_and_continuations(self):
         message = ("phase: execute\n**status**: blocked\n- `blockers`: waiting on the user\n  STOP 3: credentials\n"
@@ -300,6 +323,11 @@ class GuardHelpers(unittest.TestCase):
         self.assertFalse(guard.stop_exempt("status: in-progress\nblockers: x (STOP 3)\nnested: AG1 bsh1", pending))
         self.assertFalse(guard.stop_exempt("status: done\nblockers: STOP 3 mentioned\nnested: AG1 bsh1", pending))
         self.assertFalse(guard.stop_exempt(None, pending))
+
+    def test_deny_reason_does_not_teach_the_stop_exemption(self):
+        reason = guard.deny_reason([guard.Pending("agent", "AG1", "x", "")])
+        self.assertNotIn("STOP", reason)
+        self.assertNotIn("blockers", reason)
 
     def test_deny_reason_names_ids_and_the_way_to_wait_but_no_text(self):
         reason = guard.deny_reason([guard.Pending("agent", "AG1", "backend-engineer", "2026-01-02T12:00:01Z"),

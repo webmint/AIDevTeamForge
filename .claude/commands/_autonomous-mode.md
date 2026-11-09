@@ -98,11 +98,11 @@ gates: <name=exit (counts)>, …
 decisions logged: <n> in <file> | none
 blockers: <one line each, with its STOP number or finding id> | none
 duration: <h:mm>
-nested: all completed (<n>) | none
+nested: all completed (<n>) | none | pending <ids> (a STOP only)
 next: <exact next command>
 ```
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
-- `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree.
+- `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
 - The independent gates run inside the authoring command (`_independent-gate.md`); their reviewers return the gate's own lines, and the authoring runner puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n> I<n>` in `gates:`.
 
 ## Pull Requests

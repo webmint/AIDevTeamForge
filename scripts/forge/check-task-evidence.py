@@ -88,7 +88,7 @@ def row_statuses(text: str) -> dict[str, str]:
 
 def complete_ids(text: str) -> set[str]:
     """Task numbers whose status cell (see `row_statuses`) is `Complete`."""
-    return {number for number, status in row_statuses(text).items() if status == "Complete"}
+    return {number for number, status in row_statuses(text).items() if is_complete(status)}
 
 
 def task_status(text: str) -> str | None:
@@ -176,10 +176,10 @@ def task_problems(repo: str, base: str, feature: str, number: str, subjects: lis
         with open(files[0], encoding="utf-8") as fh:
             text = fh.read()
         status = task_status(text)
-        if status is not None and not is_complete(status) and row == "Complete":
+        if status is not None and not is_complete(status) and is_complete(row):
             problems.append(f"{feature} task {number}: task file Status is '{status}' while tasks/README.md marks it "
                             "Complete")
-        if is_complete(status) and row is not None and row != "Complete":
+        if is_complete(status) and row is not None and not is_complete(row):
             problems.append(f"{feature} task {number}: task file Status is Complete while tasks/README.md row is "
                             f"'{row}'")
         if not completion_notes(text):

@@ -229,6 +229,12 @@ class StatusAgreement(EvidenceRepo):
         self.commit("feat(x): one")
         self.assertEqual(self.run_check(), ([], 1))
 
+    def test_readme_complete_with_a_remark_is_accepted(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1.replace("| None | Complete |", "| None | Complete (merged) |", 1))
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
     def test_a_later_numbered_non_status_table_does_not_hide_or_add_rows(self):
         # A rationale table after the task index (last cell free text, even "Complete") is not a status table.
         self.write("specs/900-x/tasks/README.md", DONE_1 + RATIONALE)
