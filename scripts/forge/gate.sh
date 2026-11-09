@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Run a quality check with its output kept out of the agent's context.
 #
-# Usage: scripts/forge/gate.sh <name> -- <command> [args...]
+# Usage: scripts/forge/gate.sh <name> [-C <dir>] -- <command> [args...]
 #   e.g. scripts/forge/gate.sh 003-typecheck -- npx tsc --noEmit
+#        scripts/forge/gate.sh 003-lint -C app/packages/web -- npx eslint src
+#
+# -C runs the command inside <dir>: relative to <project> (the directory that holds scripts/forge/), never to
+# the caller's cwd, so a wrapper project runs checks in its source repo whatever directory the session is in.
 #
 # Full output goes to $FORGE_LOG_DIR/<name>.log (default <project>/.claude/.gate-logs, gitignored;
 # <project> is the directory that holds scripts/forge/, so logs stay out of a wrapped source repo).
@@ -13,23 +17,42 @@
 # Heavy commands (builds and test runs) first take one of FORGE_HEAVY_SLOTS machine-wide slots
 # (default 2; directories under <git-common-dir>/forge-gate-slots/, shared by every worktree and
 # session of the repository; slots of dead processes are reclaimed) and run at lower CPU priority.
+#   FORGE_GATE_SLOT_DIR=<dir>        share the slots through <dir> instead (e.g. ~/.cache/forge-gate-slots for
+#                                    several clones or projects building on one machine)
 #   FORGE_GATE_HEAVY=0|1             override the heavy classification
 #   FORGE_GATE_HEAVY_RE=<regex>      override the heavy-command pattern (extended regex)
 #   FORGE_HEAVY_SLOTS=<n>            slot count (default 2)
 #   FORGE_GATE_MAX_WAIT=<s>          give up waiting for a slot after s seconds and run anyway (default 1800)
 #   FORGE_GATE_QOS=utility|background|none   macOS taskpolicy clamp (default utility; nice -n 10 elsewhere)
 # One TSV line per gate is appended to $FORGE_LOG_DIR/gate-timing.tsv:
-#   ISO time, tree path, gate name, heavy 0/1, waited s, ran s, exit code.
+#   ISO time, run directory, gate name, heavy 0/1, waited s, ran s, exit code.
 set -uo pipefail
 
-if [[ $# -lt 3 || "$2" != "--" ]]; then
-  echo "usage: scripts/forge/gate.sh <name> -- <command> [args...]" >&2
+usage() {
+  echo "usage: scripts/forge/gate.sh <name> [-C <dir>] -- <command> [args...]" >&2
   exit 2
-fi
+}
 
+[[ $# -ge 1 ]] || usage
 name="$1"
-shift 2
+shift
 project_root="$(cd "$(dirname "$0")/../.." && pwd)"
+run_dir="$PWD"
+if [[ "${1:-}" == "-C" ]]; then
+  [[ $# -ge 2 ]] || usage
+  case "$2" in
+    /*) run_dir="$2" ;;
+    *) run_dir="$project_root/$2" ;;
+  esac
+  if [[ ! -d "$run_dir" ]]; then
+    echo "gate.sh: -C $2: no such directory ($run_dir)" >&2
+    exit 2
+  fi
+  run_dir="$(cd "$run_dir" && pwd)"
+  shift 2
+fi
+[[ $# -ge 2 && "$1" == "--" ]] || usage
+shift
 log_dir="${FORGE_LOG_DIR:-$project_root/.claude/.gate-logs}"
 log="$log_dir/$name.log"
 mkdir -p "$log_dir"
@@ -96,18 +119,22 @@ acquire_slot() {
 }
 
 if [[ "$heavy" == "1" ]]; then
-  # Plain --git-common-dir works on every git version; make it absolute ourselves.
-  common=$(cd "$project_root" && git rev-parse --git-common-dir 2>/dev/null || true)
-  if [[ -n "$common" && "$common" != /* ]]; then
-    common="$project_root/$common"
+  slot_root="${FORGE_GATE_SLOT_DIR:-}"
+  if [[ -z "$slot_root" ]]; then
+    # Plain --git-common-dir works on every git version; make it absolute ourselves.
+    common=$(cd "$project_root" && git rev-parse --git-common-dir 2>/dev/null || true)
+    if [[ -n "$common" && "$common" != /* ]]; then
+      common="$project_root/$common"
+    fi
+    [[ -n "$common" && -d "$common" ]] && slot_root="$common/forge-gate-slots"
   fi
-  if [[ -n "$common" && -d "$common" ]]; then
+  if [[ -n "$slot_root" ]]; then
     slots="${FORGE_HEAVY_SLOTS:-2}"
     [[ "$slots" =~ ^[1-9][0-9]*$ ]] || slots=2
     max_wait="${FORGE_GATE_MAX_WAIT:-1800}"
     [[ "$max_wait" =~ ^[0-9]+$ ]] || max_wait=1800
     wait_start=$(date +%s)
-    until acquire_slot "$common/forge-gate-slots" "$slots"; do
+    until acquire_slot "$slot_root" "$slots"; do
       if (( $(date +%s) - wait_start >= max_wait )); then
         echo "gate.sh: no free slot after ${max_wait}s; running without one" >&2
         break
@@ -130,12 +157,12 @@ if [[ "$heavy" == "1" && "$qos" != "none" ]]; then
 fi
 
 run_start=$(date +%s)
-"${prefix[@]+"${prefix[@]}"}" "$@" >"$log" 2>&1
+(cd "$run_dir" && "${prefix[@]+"${prefix[@]}"}" "$@") >"$log" 2>&1
 code=$?
 ran=$(( $(date +%s) - run_start ))
 release_slot
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PWD" "$name" "$heavy" "$waited" "$ran" "$code" \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$run_dir" "$name" "$heavy" "$waited" "$ran" "$code" \
   >>"$log_dir/gate-timing.tsv"
 
 echo "$name=$code (waited ${waited}s, ran ${ran}s)  (log: $log)"

@@ -203,7 +203,7 @@ In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become se
 - **PostToolUse hooks**: Type checking runs after every file edit
 - **Build verification**: Runs the project's Type Check Command, Lint Command, and Build Command after each task to catch type errors, style violations, and bundler-specific failures
 - **Self-repair loop**: When verification catches errors (tsc, lint, or build), a repair agent automatically fixes them (up to 3 attempts) before escalating
-- **Check output out of context**: checks run through `scripts/forge/gate.sh`, which keeps the full output in `.claude/.gate-logs/` and prints only the result and the first errors; heavy runs share machine-wide slots across worktrees
+- **Check output out of context**: checks run through `scripts/forge/gate.sh`, which keeps the full output in `.claude/.gate-logs/` and prints only the result and the first errors; `-C <dir>` runs a check in another directory relative to the project root (a wrapper's source repo); heavy runs share slots across worktrees (`FORGE_GATE_SLOT_DIR` shares them across clones or projects)
 - **Context guard**: a PostToolUse hook warns at 75 % and asks for a stop at 85 % of the context window, so batches pause at a safe point instead of being compacted mid-task
 - **Review effort follows severity**: Critical findings are re-reviewed after the fix; Warning-only fixes are confirmed by the checks; repair agents run one effort level higher
 - **Reuse check**: implementing agents search for existing code before every new export and report the result; the code reviewer treats a semantic duplicate as Critical
