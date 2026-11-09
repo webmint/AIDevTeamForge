@@ -50,6 +50,13 @@ mkdir -p sub && (cd sub && unset FORGE_LOG_DIR && "$GATE" sublog -- true >/dev/n
 check "default logs under <project>/.claude/.gate-logs" '[ -f "$WORK/.claude/.gate-logs/sublog.log" ] && [ ! -d "$WORK/sub/.claude" ]'
 
 check "npm run build:prod is heavy" 'FORGE_GATE_QOS=none "$GATE" bp -- bash -c "true # npm run build:prod" >/dev/null; [ "$(awk -F"\t" "\$3==\"bp\"{print \$4}" "$FORGE_LOG_DIR/gate-timing.tsv")" = 1 ]'
+heavy_of() { awk -F"\t" -v n="$1" '$3==n{print $4}' "$FORGE_LOG_DIR/gate-timing.tsv"; }
+for c in "npm run test-unit -w @ap/functions:tu" "npm run build-prod:bd" "firebase emulators:exec --only firestore x:fe" "firebase emulators:start:fs"; do
+  FORGE_GATE_QOS=none "$GATE" "${c##*:}" -- bash -c "true # ${c%:*}" >/dev/null
+done
+check "dash-suffixed scripts and emulators are heavy" '[ "$(heavy_of tu)$(heavy_of bd)$(heavy_of fe)$(heavy_of fs)" = 1111 ]'
+FORGE_GATE_QOS=none "$GATE" ln -- bash -c "true # npm run lint; git status; ./latest-build.sh" >/dev/null
+check "lint, git and a word ending in -build stay light" '[ "$(heavy_of ln)" = 0 ]'
 
 # a held slot does not block forever
 slots="$(git rev-parse --git-common-dir)/forge-gate-slots"; mkdir -p "$slots/slot.1"; echo $$ > "$slots/slot.1/pid"
