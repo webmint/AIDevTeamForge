@@ -5,6 +5,20 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-11-09
+
+### Added
+- **`gate.sh <name> [-C <dir>] -- <command>`** — runs a check inside `<dir>`, relative to the project root (never to the session's current directory), so a wrapper project runs checks in its source repo; the timing line records the run directory. An empty `-C` and gate names starting with `-` are usage errors
+- **`FORGE_GATE_SLOT_DIR`** — shares the heavy-run slots across clones or projects on one machine (default unchanged: `<git-common-dir>/forge-gate-slots`)
+- **`/finalize` Phase 3.5 "Close Session State"** — after the squash, `.claude/session-state.md` is overwritten with a "no active feature" snapshot built only from facts read in the run (commit hashes, push state, the feature's open follow-ups), so later sessions no longer read the finished feature's last task as current work; autonomous runners skip it; `/fix` and `/refactor` keep its "Open Follow-ups"
+- **`/review-pr`: `<HEAD>` in `PR_HEAD_REF`** — for a host without PR refs, the head branch name from the view output (`refs/heads/<HEAD>`, same-repository PRs only). The name is PR-author text: used only when it matches `^[A-Za-z0-9._/-]+$` and passes `git check-ref-format`, single-quoted; otherwise the review is diff-only. A short head hash must have at least 7 hex characters
+- **`update.sh` reports project-local copies of Forge components** — a `settings.json` hook whose script has the basename of a `.claude/hooks/forge/` file, or `scripts/<x>` next to `scripts/forge/<x>`, prints a `DUPLICATE` line in the plan. Report only, nothing is removed
+- **`DELIVERY_GATES=all`** — every interactive point except `context` stays interactive in autonomous mode; the wizard offers **All**
+
+### Changed
+- `/setup-wizard` Question 11: command credentials (API tokens) live only in the environment, never in `project-config.json`
+- Template version: 1.33.0 → 1.34.0
+
 ## [1.33.0] - 2026-11-09
 
 ### Added
