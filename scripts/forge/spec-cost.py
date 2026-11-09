@@ -3,7 +3,7 @@
 
 Reads the Claude Code session transcripts of this project (main sessions and every subagent, nested ones included,
 which land flat in `<session>/subagents/`), counts every API response whose first line falls inside the window,
-attributes it by the transcript line's `gitBranch` and prices it with the prices file. It counts the assistant
+attributes it to a branch (see "Branch rule") and prices it with the prices file. It counts the assistant
 responses in the transcripts: a lower bound; Claude Code's own background calls such as titles and summaries are not
 in them.
 
@@ -13,7 +13,8 @@ Usage:
       --project-dir <dir>          transcript dir (default: `~/.claude/projects/<project path, every non-alphanumeric
                                    character replaced by ->`; `CLAUDE_CONFIG_DIR` replaces `~/.claude`)
       --all-trees                  also read the transcript dirs of every git worktree of this project
-      --branch <name>              (repeatable) count only calls made on that git branch; `(none)` is allowed
+      --branch <name>              (repeatable) count only calls attributed to that branch (see "Branch rule");
+                                   `(none)` is allowed
       --by-branch                  add a per-branch breakdown (cost, calls, active span)
       --by-phase                   add a per-phase breakdown of the subagent runs and one TIMING line per spec branch
       --integration-branch <name>  the branch that carries the conductor's own calls (default: `DEFAULT_BRANCH` of
@@ -44,7 +45,16 @@ is a tree root's dir name, or when its name is the main worktree's dir name or t
 (the dir of a removed `../<repo>-<name>` worktree, or of a session started in a subdirectory). A project whose name
 merely shares the prefix (`<repo>2`) does not match. Within those dirs a call counts only when the line's `cwd` is a
 tree root, a subdirectory of one, or a sibling `<main>-<suffix>` path. Calls are deduplicated across dirs, so nothing
-is counted twice. Lines without `gitBranch` are reported under `(none)`.
+is counted twice.
+
+Branch rule: a subagent call belongs to the branch named by the `Branch: <name>` field of its depth-1 run's first
+prompt (the conductor's reference prompt, `conduct.md` → "Reference Prompts"; the field is read from the first 2000
+characters, either after a `… conductor mode` prefix on the same line or at the start of a line; the placeholder
+`<branch>` does not count). A runner in a sibling worktree is recorded under the main tree's `gitBranch` (the shell
+cwd resets after each command), so its prompt is the reliable source. A main-session call, and a subagent call whose
+run prompt names no branch, keeps the line's `gitBranch`; a line without one is reported under `(none)`. A trailing
+`-r<n>` (a re-pushed pull request branch, `_autonomous-mode.md` → "Pull Requests") is stripped from every branch name,
+`--branch` values included, so a real branch whose name ends in `-r<n>` is counted with its base name.
 
 Notes:
 - One API response is often written as several JSONL lines (streamed content blocks); lines are deduplicated by
@@ -77,10 +87,10 @@ By-phase rule (`--by-phase`):
   them); a runner resumed via SendMessage keeps one run, so the idle gap before the resume counts. The time a runner
   waits on its own gate reviewers (the union of their spans inside its span) is the gates' time and is taken out of
   the runner's wall. A phase's `wall` is the sum over its runs; `span` is first start to last end.
-- Branch: with `--branch`, a run is included whole when any of its calls (nested included) was made on a named
-  branch, so a `/specify` runner that starts on the integration branch counts fully. Per-phase totals can therefore
-  differ from the per-call totals above them. A run's spec is the branch with most of its calls: a named branch
-  first, then any branch other than the integration branch, `HEAD` and `(none)`.
+- Branch: with `--branch`, a run is included whole when any of its calls (nested included) is attributed to a
+  named branch, so a run without a `Branch:` field that starts on the integration branch counts fully. Per-phase
+  totals can therefore differ from the per-call totals above them. A run's spec is the branch with most of its
+  calls: a named branch first, then any branch other than the integration branch, `HEAD` and `(none)`.
 - Per spec (`TIMING`): wall = the sum of its labeled runs' walls (`other` runs excluded); gates = every gate
   reviewer run (parallel lenses are summed); rework = every `/fix` run, every `/fix` runner nested in another phase
   (e.g. launched by `/verify`), and the `/verify` runs after the spec's first one; waves = `/execute-task`;
@@ -123,6 +133,9 @@ COMMAND_PHASES = ("research", "specify", "plan", "breakdown", "execute-task", "r
                   "summarize", "finalize")
 # Phase names of the conductor's Phases table that run a Forge command under another name.
 PHASE_ALIASES = {"wave": "execute-task"}
+# The `Branch:` field of a run prompt (see "Branch rule"), and the re-push suffix of a pull request branch.
+BRANCH_FIELD = re.compile(r"^[^\S\n]*(?:[^\n]*?\bconductor mode\b[^\n]*?\s)?Branch:\s*([^\s,;]+?)\.?(?:\s|$)", re.M)
+REVISION_SUFFIX = re.compile(r"-r\d+$")
 GATE_PHASES = ("spec-gate", "plan-gate", "breakdown-gate")
 PHASE_ORDER = ("/research", "/specify", "spec-gate", "/plan", "plan-gate", "/breakdown", "breakdown-gate",
                "/execute-task", "/review", "/verify", "/fix", "/summarize", "/finalize", "closing", "pr-update")
@@ -370,6 +383,8 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
     line's cwd. The dedupe table is shared across dirs."""
     since_epoch = since.timestamp()
     calls: dict = {}
+    index = RunIndex()
+    prompt_branches: dict = {}
     files = [(d, f) for d in project_dirs for f in sorted(glob.glob(os.path.join(d, "**", "*.jsonl"), recursive=True))]
     for project_dir, path in files:
         if os.path.relpath(path, project_dir).split(os.sep)[0] == "memory":
@@ -379,6 +394,7 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
                 continue  # file last written before the window: nothing inside it
         except OSError:
             continue
+        labelled = transcript_branch(path, index, prompt_branches)
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if '"usage"' not in line:
@@ -415,7 +431,8 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
                 prev = calls.get(key)
                 if prev is None:
                     calls[key] = {"model": model, "file": path, "speed": usage.get("speed"),
-                                  "branch": entry.get("gitBranch") or "(none)", "first": ts, "last": ts,
+                                  "branch": norm_branch(labelled or entry.get("gitBranch") or "(none)"),
+                                  "first": ts, "last": ts,
                                   "tokens": tokens}
                 else:
                     prev["first"], prev["last"] = min(prev["first"], ts), max(prev["last"], ts)
@@ -495,6 +512,29 @@ def first_user_text(path: str) -> str | None:
     except OSError:
         return None
     return None
+
+
+def norm_branch(name: str) -> str:
+    """Branch name without a trailing `-r<n>` (a re-pushed pull request branch)."""
+    return REVISION_SUFFIX.sub("", name)
+
+
+def prompt_branch(text: str | None) -> str | None:
+    """Branch named by the `Branch: <name>` field of a run prompt, if any (see "Branch rule")."""
+    match = BRANCH_FIELD.search((text or "")[:2000])
+    return match.group(1) if match and match.group(1) != "<branch>" else None
+
+
+def transcript_branch(path: str, index: RunIndex, cache: dict) -> str | None:
+    """Branch named by the first prompt of the depth-1 run a subagent transcript belongs to; None for a main
+    session or a run prompt without a `Branch:` field."""
+    chain = index.chain(path)
+    if not chain:
+        return None
+    root = chain[-1]
+    if root not in cache:
+        cache[root] = prompt_branch(first_user_text(root))
+    return cache[root]
 
 
 class RunIndex:
@@ -712,6 +752,7 @@ def report(args: argparse.Namespace) -> int:
     else:
         calls = collect(dirs, since, until)
     all_calls = calls  # --by-phase attributes whole runs, so it needs the unfiltered calls
+    args.branch = [norm_branch(b) for b in args.branch]
     if args.branch:
         calls = {k: v for k, v in calls.items() if v["branch"] in args.branch}
 
@@ -788,8 +829,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Claude Code transcript directory (default: derived from the project path)")
     parser.add_argument("--all-trees", action="store_true", help="include the transcript dirs of all worktrees")
     parser.add_argument("--branch", action="append", default=[], metavar="NAME",
-                        help="count only calls with this gitBranch (repeatable; '(none)' allowed)")
-    parser.add_argument("--by-branch", action="store_true", help="print a per-gitBranch breakdown")
+                        help="count only calls attributed to this branch (repeatable; '(none)' allowed)")
+    parser.add_argument("--by-branch", action="store_true", help="print a per-branch breakdown")
     parser.add_argument("--by-phase", action="store_true",
                         help="print a per-phase breakdown of subagent runs and per-spec TIMING lines")
     parser.add_argument("--integration-branch", metavar="NAME",

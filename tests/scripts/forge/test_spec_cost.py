@@ -483,5 +483,44 @@ class ByPhaseTests(SpecCostCase):
         self.assertNotIn("/plan ", out)
 
 
+class PromptBranchTests(SpecCostCase):
+    """A subagent call is attributed to the `Branch:` field of its depth-1 run's prompt (see "Branch rule")."""
+
+    def test_prompt_branch_parsing(self) -> None:
+        self.assertEqual(sc.prompt_branch(RUNNER.format("/verify")), SPEC)
+        self.assertEqual(sc.prompt_branch("Acme conductor mode, phase runner. Phase: plan. Branch: spec/7-x."),
+                         "spec/7-x")
+        self.assertEqual(sc.prompt_branch("Do the chore.\nBranch: chore/x-y\nmore"), "chore/x-y")
+        self.assertEqual(sc.prompt_branch("Forge conductor mode, phase runner. Phase: closing. Feature: specs/1-a. "
+                                          "Branch: release/v-1.35.0."), "release/v-1.35.0")
+        self.assertIsNone(sc.prompt_branch("Forge conductor mode, phase runner. Phase: plan. Branch: <branch>."))
+        self.assertIsNone(sc.prompt_branch("Compare it with the old Branch: spec/1-old in the notes."))
+        self.assertIsNone(sc.prompt_branch("no field here"))
+        self.assertIsNone(sc.prompt_branch(None))
+
+    def test_norm_branch_strips_only_a_trailing_revision_suffix(self) -> None:
+        self.assertEqual(sc.norm_branch("spec/046-registry-r2"), "spec/046-registry")
+        self.assertEqual(sc.norm_branch("spec/046-registry-r12"), "spec/046-registry")
+        self.assertEqual(sc.norm_branch("spec/046-r2-registry"), "spec/046-r2-registry")
+        self.assertEqual(sc.norm_branch("(none)"), "(none)")
+
+    def test_worktree_runner_and_its_nested_agents_count_under_the_prompt_branch(self) -> None:
+        fx = self.fx
+        fx.session("s1", [fx.assistant(ts(0), branch="trunk")])
+        fx.agent("s1", "run", RUNNER.format("/verify").replace(SPEC + ".", SPEC + "-r2."),
+                 [fx.assistant(ts(1), branch="trunk"), fx.assistant(ts(9), branch="trunk")])
+        fx.agent("s1", "helper", "look up the callers", [fx.assistant(ts(5), branch="trunk")], parent="run")
+        fx.agent("s1", "chore", "no field: keeps its gitBranch", [fx.assistant(ts(20), branch="spec/1-other")])
+        code, out, _ = self.run_cli("--by-branch")
+        self.assertEqual(code, 0)
+        self.assertIn("calls     3", self.line(out, SPEC + " "))  # runner 2 + nested helper 1, -r2 stripped
+        self.assertIn("calls     1", self.line(out, "trunk "))  # only the main session keeps trunk
+        self.assertIn("calls     1", self.line(out, "spec/1-other "))
+        code, out, _ = self.run_cli("--branch", SPEC + "-r3", "--by-phase")
+        self.assertEqual(code, 0)
+        self.assertIn("api calls 3", out)
+        self.assertIn(f"TIMING {SPEC} wall 0:08", out)
+
+
 if __name__ == "__main__":
     unittest.main()
