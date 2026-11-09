@@ -266,7 +266,7 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 - **Autonomous** (opt-in) — `/conduct` runs the whole spec cycle with one subagent per phase. A HARD GATE self-approves only after its independent gate ran with no open Critical; you are asked only at STOP conditions (`.claude/commands/_autonomous-mode.md`). The push guard hook then limits pushes to feature branches and denies force pushes, merges and settings writes.
 
 **Conditional follow-ups (if Autonomous):**
-- "Which points stay interactive?" (multi-select, default none): `specify`, `plan`, `breakdown`, `fix`, the other point ids of `_autonomous-mode.md` → "Interactive Points". Store as `DELIVERY_GATES`, space-separated `<point>=interactive` pairs (empty string for none).
+- "Which points stay interactive?" (multi-select, default none): `specify`, `plan`, `breakdown`, `fix`, the other point ids of `_autonomous-mode.md` → "Interactive Points". Store as `DELIVERY_GATES`, space-separated `<point>=interactive` pairs (empty string for none), or `all` when the user keeps every point interactive.
 - "How does a finished feature reach the default branch?" — **Local** (default: the feature is squashed on its branch; you merge) or **Pull request** (the branch is pushed and a PR opened; you merge; needs an authenticated `gh`). Store as `MERGE_MODE` (`local` | `pr`).
 - "Is there a roadmap file listing the features in order?" (optional): a markdown table with `ID`, `Title`, `Depends on` columns. Store its path as `ROADMAP_FILE`, or an empty string.
 - `PUSH_REMOTE` (default `origin`) and `PUSH_BRANCH_PREFIXES` (default `spec/ fix/ refactor/ chore/`) are written with their defaults; mention that they can be edited.
