@@ -86,7 +86,7 @@ Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existi
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
-15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>`. It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
+15. **Check output stays out of context** — run type checks, lint, builds and tests through `scripts/forge/gate.sh <name> -- <command>` (a check that runs in another directory, such as the Source Root of a wrapper project, adds `-C <dir>`: relative to the project root, never to the current directory). It prints `<name>=<exit>` plus a few summary or error lines and writes the full output to `.claude/.gate-logs/<name>.log`; read a log only with a targeted grep, to diagnose a failure
 16. **Resume agents, don't restart them** — when an agent you launched ends on an API error (timeout, server error) before it reports, first resume it with `SendMessage`: "resume where you stopped; check `git status` and what you already wrote first". Launch a fresh agent only when the resume fails. Before trusting either, check the tree for what actually landed.
 17. **Reading budget** — a survey of more than ~5 files or ~30k tokens goes to Explore subagents, in parallel, each with a precise question and a `file:line` answer format. Read directly only what you quote or what a contract relies on. A generated directory is never read as the definition of what it generates.
 
@@ -130,7 +130,7 @@ This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
 - **A sliding window** — only tracks the last 3 tasks' modifications and last 3 decisions
 - **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
-- **Updated automatically** by `/execute-task` (Phase 7)
+- **Updated automatically** by `/execute-task` (Phase 7); closed by `/finalize` (Phase 3.5) with a "no active feature" snapshot after the squash; reset by `/specify` for the next feature
 
 If you run `/clear` or context is compacted, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
 

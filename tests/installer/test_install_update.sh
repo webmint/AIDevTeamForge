@@ -48,6 +48,14 @@ check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_prof
 check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
 check "review-pr command installed" '[ -f "$P2/.claude/commands/review-pr.md" ]'
+# update.sh on settings.json shapes with no local hook paths must not stop (set -e, pipefail)
+cp "$P2/.claude/hooks/forge/settings-hooks.json" "$P2/.claude/settings.json"
+"$TPL/update.sh" --dry-run "$P2" < /dev/null > "$WORK/dup-forge-only.txt" 2>&1; rc=$?
+check "update dry run with only Forge hooks completes" '[ $rc -eq 0 ] && grep -q "Dry run complete" "$WORK/dup-forge-only.txt"'
+echo '{"permissions": {"allow": ["Read"]}}' > "$P2/.claude/settings.json"
+"$TPL/update.sh" --dry-run "$P2" < /dev/null > "$WORK/dup-no-hooks.txt" 2>&1; rc=$?
+check "update dry run with no hooks key completes" '[ $rc -eq 0 ] && grep -q "Dry run complete" "$WORK/dup-no-hooks.txt"'
+rm -f "$P2/.claude/settings.json"
 check "conduct command and autonomous partial installed" '[ -f "$P2/.claude/commands/conduct.md" ] && [ -f "$P2/.claude/commands/_autonomous-mode.md" ]'
 check "push guard and wave preflight installed" '[ -f "$P2/.claude/hooks/forge/push-guard.py" ] && [ -x "$P2/scripts/forge/wave-preflight.py" ]'
 check "nested-wait guard and nested-pending installed" '[ -f "$P2/.claude/hooks/forge/nested-wait-guard.py" ] && [ -x "$P2/scripts/forge/nested-pending.py" ]'
@@ -74,6 +82,9 @@ cat > "$P1/.claude/settings.json" <<'JSON'
       { "matcher": "Read", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/forge/retired.py" } ] },
       { "matcher": "Edit", "hooks": [ { "type": "command", "command": "python3 .claude/hooks/forge/fake-guard.py" },
                                       { "type": "prompt", "prompt": "project prompt hook" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/context-guard.py\" || true" } ] }
     ]
   },
   "permissions": { "allow": ["Read"] }
@@ -86,6 +97,7 @@ JSON
 review_keys() { jq -c '[.PR_VIEW_COMMAND, .PR_SEARCH_COMMAND, .ISSUE_TRACKER]' "$1"; }
 review_keys_before="$(review_keys "$P1/.claude/project-config.json")"
 echo "echo project tool" > "$P1/scripts/my-tool.sh"
+echo "# hand-ported copy" > "$P1/scripts/gate.sh"
 echo "<!-- local edit -->" >> "$P1/.claude/commands/fix.md"
 # a template that ships one Forge hook
 cat > "$TPL/.claude/hooks/forge/settings-hooks.json" <<'JSON'
@@ -110,6 +122,10 @@ check "dry run flags the edited command for backup" 'grep -q "backup)  .claude/c
 
 "$TPL/update.sh" --force "$P1" < /dev/null > "$WORK/up1.txt" 2>&1; rc=$?
 check "update 1 exits 0" '[ $rc -eq 0 ]'
+check "local hook duplicating a Forge hook is reported" 'grep -q "DUPLICATE  settings.json runs .*\.claude/hooks/context-guard.py" "$WORK/up1.txt"'
+check "local script duplicating a Forge script is reported" 'grep -q "DUPLICATE  scripts/gate.sh" "$WORK/up1.txt"'
+check "duplicates are only reported, never removed" '[ -f "$P1/scripts/gate.sh" ] && jq -e "[.hooks.PostToolUse[].hooks[].command] | any(contains(\"hooks/context-guard.py\"))" "$P1/.claude/settings.json" >/dev/null'
+check "a project hook without a Forge counterpart is not reported" '! grep -q "DUPLICATE.*project-guard" "$WORK/up1.txt" && ! grep -q "DUPLICATE  scripts/my-tool.sh" "$WORK/up1.txt"'
 check "project script untouched" 'grep -q "project tool" "$P1/scripts/my-tool.sh"'
 check "project hook untouched" '[ -f "$P1/.claude/hooks/project-guard.py" ]'
 check "fix.md now equals the template" 'cmp -s "$TPL/.claude/commands/fix.md" "$P1/.claude/commands/fix.md"'

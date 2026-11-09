@@ -266,7 +266,7 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 - **Autonomous** (opt-in) — `/conduct` runs the whole spec cycle with one subagent per phase. A HARD GATE self-approves only after its independent gate ran with no open Critical; you are asked only at STOP conditions (`.claude/commands/_autonomous-mode.md`). The push guard hook then limits pushes to feature branches and denies force pushes, merges and settings writes.
 
 **Conditional follow-ups (if Autonomous):**
-- "Which points stay interactive?" (multi-select, default none): `specify`, `plan`, `breakdown`, `fix`, the other point ids of `_autonomous-mode.md` → "Interactive Points". Store as `DELIVERY_GATES`, space-separated `<point>=interactive` pairs (empty string for none).
+- "Which points stay interactive?" (multi-select, default none; offer **All** first): `specify`, `plan`, `breakdown`, `fix`, the other point ids of `_autonomous-mode.md` → "Interactive Points". Store as `DELIVERY_GATES`, space-separated `<point>=interactive` pairs (empty string for none), or `all` when the user picks **All** (every point except `context`).
 - "How does a finished feature reach the default branch?" — **Local** (default: the feature is squashed on its branch; you merge) or **Pull request** (the branch is pushed and a PR opened; you merge; needs an authenticated `gh`). Store as `MERGE_MODE` (`local` | `pr`).
 - "Is there a roadmap file listing the features in order?" (optional): a markdown table with `ID`, `Title`, `Depends on` columns. Store its path as `ROADMAP_FILE`, or an empty string.
 - `PUSH_REMOTE` (default `origin`) and `PUSH_BRANCH_PREFIXES` (default `spec/ fix/ refactor/ chore/`) are written with their defaults; mention that they can be edited.
@@ -276,7 +276,7 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 ### Question 11: Pull Requests and Issue Tracker
 Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads an issue the topic names). Run the git commands of this question inside the Source Root in wrapper mode. Detect the host from `git remote get-url origin` and propose the matching preset from `.claude/commands/review-pr.md` → "Configuration":
 - `github.com` in the URL → the GitHub (`gh`) preset; `gitlab` in the URL → the GitLab (`glab`) preset.
-- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set).
+- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set). A host without PR refs uses `refs/heads/<HEAD>` as `PR_HEAD_REF` (`<HEAD>` = the head branch name in the view output). Credentials for the commands (an API token) live only in the environment and are referenced from the command (`$VAR`), never written into `project-config.json`.
 
 "Which commands show a pull request?" — show the proposed `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND` and `PR_HEAD_REF`; the user accepts, edits any of them, or skips them.
 

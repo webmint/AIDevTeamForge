@@ -18,7 +18,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `review.md` — Expert code review: launches specialist agents (security-reviewer, performance-analyst, qa-engineer) on all changed files. Produces structured review report saved to `specs/[feature]/review.md`. No verdict — findings only
 - `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); incorporates `/review` findings if available; renders verdict (APPROVED/NEEDS WORK/REJECTED); Phase 9 presents issues with batch bug filing — does not invoke /fix
 - `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; reads DEFAULT_BRANCH from config; wrapper mode source repo handling. Run after `/verify`, before `/finalize`
-- `finalize.md` — Feature documentation via tech-writer + feature squash using `git merge-base`. Gate-checked: spec must be Complete. The last step before creating a PR
+- `finalize.md` — Feature documentation via tech-writer + feature squash using `git merge-base`; closes `session-state.md` after the squash (1.34.0). Gate-checked: spec must be Complete. The last step before creating a PR
 - `fix.md` — Lightweight bug-fix workflow: diagnose → delegate to agent → verify → code review → test → doc update, with runtime-debugger, code-reviewer, qa-engineer, and tech-writer agents; accepts enriched bug file paths from `bugs/`; agent selection via shared `_agent-assignment.md`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → delegate to agent → verify → code review → test → doc update, with auto-selected agent via `_agent-assignment.md`, code-reviewer, qa-engineer, and tech-writer agents
@@ -67,8 +67,8 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - **Forge-owned namespaces** (1.29.0): Forge ships scripts only under `scripts/forge/` and hooks only under `.claude/hooks/forge/`; the rest of `scripts/` and `.claude/hooks/` is project-owned. Hook entries ship as `.claude/hooks/forge/settings-hooks.json` and are merged into `settings.json` per entry (`hookFragments` in the manifest)
 - **Installer tests**: `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py`, `tests/scripts/forge/` (repo-only)
 
-### Forge Scripts and Hooks (1.29.0–1.33.0)
-- `scripts/forge/gate.sh` — runs a check with its output in `.claude/.gate-logs/`, prints only the result and first errors; machine-wide slots for heavy runs
+### Forge Scripts and Hooks (1.29.0–1.34.0)
+- `scripts/forge/gate.sh` — runs a check with its output in `.claude/.gate-logs/`, prints only the result and first errors; `-C <dir>` relative to the project root (1.34.0); machine-wide slots for heavy runs, `FORGE_GATE_SLOT_DIR` to share them across clones
 - `.claude/hooks/forge/context-guard.py` — PostToolUse hook; wind-down at 75 %, stop at 85 % of `FORGE_CONTEXT_WINDOW`
 - Quality scripts (1.30.0, Python 3.9+, stdlib): `quality_profile.py` (loader/validator of `.claude/quality-profile.json`; `init`, `validate`, `consumers`, `scopes`), `ratchet.py`, `count-tools.py`, `audit-gate.py`, `hub-files.py`, `new-exports.py`, `check-canonical-sources.py`, `check-enforcement-map.py`, `check-task-evidence.py`, `check-decision-records.py`. Unset or missing binding = the command's manual form (one line, exit 0); wrapper mode inspects the Source Root repository. Tests in `tests/scripts/forge/`
 - Autonomous delivery (1.31.0): `.claude/hooks/forge/push-guard.py` (PreToolUse, G1–G7, active only with `DELIVERY_MODE: autonomous`), `scripts/forge/wave-preflight.py` (pre-wave check), `scripts/forge/spec-cost.py` + `model-prices.json` (tokens, cost, wall time per spec and phase). Tests in `tests/hooks/` and `tests/scripts/forge/`

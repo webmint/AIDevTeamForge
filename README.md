@@ -64,7 +64,7 @@ When the template is improved, you can push updates to projects that already use
 | **Copy if missing** | Copied only if absent | New files added to the template that projects don't have yet; `.claude/checklists/` |
 | **Forge hooks** | Forge entries in `.claude/settings.json` replaced, project entries untouched | Hook entries pointing into `.claude/hooks/forge/` |
 
-Everything else under `scripts/` and `.claude/hooks/` belongs to the project and is never touched.
+Everything else under `scripts/` and `.claude/hooks/` belongs to the project and is never touched; `update.sh` only reports a same-named local copy of a Forge hook or script (`DUPLICATE`), it never removes one.
 
 ### Local edits and backups
 
@@ -123,7 +123,7 @@ Run these once when you first install the template:
 /conduct                         ← resume, or the next item of ROADMAP_FILE
 ```
 
-With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive. A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
+With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive (or `all`). A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
 
 ### Standalone Commands (use anytime)
 
@@ -203,7 +203,7 @@ In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become se
 - **PostToolUse hooks**: Type checking runs after every file edit
 - **Build verification**: Runs the project's Type Check Command, Lint Command, and Build Command after each task to catch type errors, style violations, and bundler-specific failures
 - **Self-repair loop**: When verification catches errors (tsc, lint, or build), a repair agent automatically fixes them (up to 3 attempts) before escalating
-- **Check output out of context**: checks run through `scripts/forge/gate.sh`, which keeps the full output in `.claude/.gate-logs/` and prints only the result and the first errors; heavy runs share machine-wide slots across worktrees
+- **Check output out of context**: checks run through `scripts/forge/gate.sh`, which keeps the full output in `.claude/.gate-logs/` and prints only the result and the first errors; `-C <dir>` runs a check in another directory relative to the project root (a wrapper's source repo); heavy runs share slots across worktrees (`FORGE_GATE_SLOT_DIR` shares them across clones or projects)
 - **Context guard**: a PostToolUse hook warns at 75 % and asks for a stop at 85 % of the context window, so batches pause at a safe point instead of being compacted mid-task
 - **Review effort follows severity**: Critical findings are re-reviewed after the fix; Warning-only fixes are confirmed by the checks; repair agents run one effort level higher
 - **Reuse check**: implementing agents search for existing code before every new export and report the result; the code reviewer treats a semantic duplicate as Critical

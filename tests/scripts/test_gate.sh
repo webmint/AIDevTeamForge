@@ -61,4 +61,28 @@ rm -rf "$slots/slot.1"
 "$GATE" 2>/dev/null; rc=$?
 check "usage error exits 2" '[ $rc -eq 2 ]'
 
+# -C runs inside a directory relative to the project root, whatever the caller's cwd
+mkdir -p src/pkg other
+out="$(cd other && "$GATE" cdir -C src/pkg -- bash -c 'pwd')"; rc=$?
+check "-C runs in <project>/<dir> from another cwd" '[ $rc -eq 0 ] && grep -q "/src/pkg$" "$FORGE_LOG_DIR/cdir.log"'
+check "-C run directory in the timing line" '[ "$(awk -F"\t" "\$3==\"cdir\"{print \$2}" "$FORGE_LOG_DIR/gate-timing.tsv")" = "$(cd src/pkg && pwd)" ]'
+"$GATE" cabs -C "$WORK/src" -- bash -c 'pwd' >/dev/null
+check "-C accepts an absolute directory" 'grep -q "/src$" "$FORGE_LOG_DIR/cabs.log"'
+"$GATE" cmiss -C nope -- true 2>/dev/null; rc=$?
+check "-C on a missing directory exits 2" '[ $rc -eq 2 ] && [ ! -f "$FORGE_LOG_DIR/cmiss.log" ]'
+"$GATE" cbad -C 2>/dev/null; rc=$?
+check "-C without a directory is a usage error" '[ $rc -eq 2 ]'
+"$GATE" cempty -C "" -- true 2>/dev/null; rc=$?
+check "-C with an empty directory is a usage error" '[ $rc -eq 2 ]'
+"$GATE" -C src -- true 2>/dev/null; rc=$?
+check "a gate name starting with - is a usage error" '[ $rc -eq 2 ]'
+"$GATE" nodash true 2>/dev/null; rc=$?
+check "missing -- is a usage error" '[ $rc -eq 2 ]'
+
+# FORGE_GATE_SLOT_DIR moves the slots out of the repository
+shared="$WORK/shared-slots"
+FORGE_GATE_SLOT_DIR="$shared" FORGE_HEAVY_SLOTS=1 FORGE_GATE_QOS=none "$GATE" sd1 -- bash -c 'ls "'"$shared"'" > "'"$WORK"'/held.txt" # build' >/dev/null
+check "FORGE_GATE_SLOT_DIR holds the slot during the run" 'grep -q "slot.1" "$WORK/held.txt"'
+check "FORGE_GATE_SLOT_DIR slot released" '[ -z "$(ls -A "$shared")" ]'
+
 echo ""; echo "passed: $PASS  failed: $FAIL"; [ "$FAIL" -eq 0 ]
