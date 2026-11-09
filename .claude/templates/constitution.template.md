@@ -93,9 +93,9 @@ function process(input) {
 
 **DRY (Don't Repeat Yourself)** — the extraction threshold (one definition for the whole project):
 - **A business rule or derived figure** (a value computed from data, a policy, a closed-set mapping) gets one definition from its **second consumer**: the second consumer moves it to the shared layer instead of copying it.
-- **Incidental structural similarity** is extracted only at its **third copy**; two occurrences are fine.
+- **Repeated structure with the same purpose** (a setup pattern, a UI pattern, boilerplate) is extracted at its **third copy**; two are fine.
 - **Nothing is extracted "for the future"**: no abstraction without a consumer that needs it now (KISS below).
-- DRY applies to logic, not to code that looks similar but serves different purposes. Two functions that happen to look alike but handle different domain concepts should stay separate.
+- DRY applies to logic, not to code that looks similar but serves different purposes. Two functions that happen to look alike but handle different domain concepts stay separate at any count.
 
 **KISS (Keep It Simple, Stupid):**
 - Choose the simplest solution that works correctly.

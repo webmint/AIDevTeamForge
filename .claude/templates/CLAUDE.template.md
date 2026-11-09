@@ -35,7 +35,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Workflow Commands
 
-Flow: `/setup-wizard` → `/constitute` → `/onboard` (once each) → `/research` (optional) → `/specify` → `/plan` → `/breakdown` → `/execute-task` (per task) → `/review` → `/verify` → `/summarize` → `/finalize` (per feature). Standalone: `/fix` (small bugs, 1–5 files), `/refactor` (behavior-preserving, 1–5 files), `/security`, `/audit` (periodic; the audit gate makes it due), `/review-pr` (a pull request without a spec), `/refresh-docs`, `/report-bug`. Autonomous mode: `/conduct` drives the flow (see "Delivery Mode"). Each command is described in its own file under `.claude/commands/`.
+Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existing projects) → `/research` (optional) → `/specify` → `/plan` → `/breakdown` → `/execute-task` (per task) → `/review` → `/verify` → `/summarize` → `/finalize` (per feature). Standalone: `/fix` (small bugs, 1–5 files), `/refactor` (behavior-preserving, 1–5 files), `/security`, `/audit` (periodic; the audit gate makes it due), `/review-pr` (a pull request without a spec), `/refresh-docs`, `/report-bug`, `/setup-wizard` (re-run to regenerate the config files). Autonomous mode: `/conduct` drives the flow (see "Delivery Mode"). Each command is described in its own file under `.claude/commands/`.
 
 ## Available Agents
 
@@ -59,7 +59,7 @@ Flow: `/setup-wizard` → `/constitute` → `/onboard` (once each) → `/researc
 
 ### Delivery Mode
 - **Interactive** (default): every command stops at its gates and questions.
-- **Autonomous** (opt-in, `DELIVERY_MODE: autonomous`): `/conduct` runs the commands as subagents; their interactive points follow `.claude/commands/_autonomous-mode.md` (self-approval after a clean independent gate, decisions recorded, STOP conditions). The push guard (`.claude/hooks/forge/push-guard.py`) then allows only pushes of `PUSH_BRANCH_PREFIXES` branches to `PUSH_REMOTE`, and denies force pushes, tags, remote deletions, merges and settings writes. A command the user runs by hand stays interactive.
+- **Autonomous** (opt-in, `DELIVERY_MODE: autonomous`): `/conduct` runs the commands as subagents; their interactive points follow `.claude/commands/_autonomous-mode.md` (self-approval after a clean independent gate, decisions recorded, STOP conditions; `DELIVERY_GATES` in `.claude/project-config.json` keeps chosen points interactive). The push guard (`.claude/hooks/forge/push-guard.py`) then allows only pushes of `PUSH_BRANCH_PREFIXES` branches to `PUSH_REMOTE`, and denies force pushes, tags, remote deletions, merges and settings writes. A command the user runs by hand stays interactive.
 
 ### Automated Guards (run automatically)
 - **PostToolUse hook**: Type Check Command runs automatically after every file Edit/Write (Lint Command runs during explicit verification phases, not per-edit — this is intentional to avoid noise)
@@ -82,7 +82,7 @@ Flow: `/setup-wizard` → `/constitute` → `/onboard` (once each) → `/researc
 8. **Lint everything** — linting must pass on all changed files before task completion
 9. **Handle both paths** — every fallible operation must handle success AND error cases
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
-11. **SOLID, DRY, KISS** — single responsibility, no copied logic (a second copy is extracted, see Always 3), keep it simple
+11. **SOLID, DRY, KISS** — single responsibility, no copied logic (a business rule's second copy, a repeated pattern's third, constitution §3.6; see Always 3), keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
 13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
 14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
