@@ -103,7 +103,9 @@ class Scan(NamedTuple):
 
     pending: list[Pending]  # launched and not finished, in launch order
     launched: list[Pending]  # everything launched, in launch order (finished or not)
-    denials: int  # refused SubagentHandback results since the last notification or peer hand-back of tracked work, or a successful hand-back
+    # refused SubagentHandback results since the last notification or peer hand-back of tracked work,
+    # or a successful hand-back
+    denials: int
 
 
 def decode_lines(lines) -> list[dict[str, Any]]:
@@ -491,7 +493,7 @@ def check(payload: Any, root: str) -> int:
     tool_input = payload.get("tool_input")
     message = tool_input.get("message") if isinstance(tool_input, dict) else ""
     if stop_exempt(message, result.pending):
-        log_event(root, "allow-stop", path=path, **ids)
+        log_event(root, "allow-stop", path=path, pending=",".join(item.id for item in result.pending), **ids)
         return 0
     if result.denials >= LOOP_LIMIT:
         print(f"[nested-wait-guard] warning: {result.denials} refusals without a notification; hand-back allowed",

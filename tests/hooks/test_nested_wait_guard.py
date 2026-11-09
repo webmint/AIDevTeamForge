@@ -449,6 +449,7 @@ class GuardHook(HookCase):
         result = self.run_with(self.r.agent("u1", "AG1"), message=message)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("allow-stop", self.log_text())
+        self.assertRegex(self.log_text(), r"allow-stop .*pending=AG1")
 
     def test_stop_continuation_line_and_every_id_are_accepted(self):
         message = "status: blocked\nblockers:\n  STOP 6: same blocker after 3 attempts\nnested: AG1, bsh1"
