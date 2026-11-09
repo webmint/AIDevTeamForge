@@ -130,7 +130,7 @@ This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
 - **A sliding window** — only tracks the last 3 tasks' modifications and last 3 decisions
 - **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
-- **Updated automatically** by `/execute-task` (Phase 7)
+- **Updated automatically** by `/execute-task` (Phase 7); closed by `/finalize` (Phase 3.5) with a "no active feature" snapshot after the squash; reset by `/specify` for the next feature
 
 If you run `/clear` or context is compacted, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
 
