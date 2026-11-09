@@ -76,7 +76,7 @@ STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run 
 ## What Every Runner Follows
 
 - **Run the skill**: a phase runner invokes the Forge command its prompt names (Skill tool) and runs it to completion, applying this file at its interactive points. It launches the command's specialist agents itself.
-- **Wait for nested agents**: return only after the completion notification of every agent you launched, and after every background shell command you started has ended or been stopped. Never end the turn while one runs.
+- **Wait for nested agents**: return only after the completion notification of every agent you launched, and after every background shell command you started has ended or been stopped. Never hand back while one runs: ending your turn without a hand-back is how you wait, and the notification wakes you; never sleep-poll. A busy nested agent is never a reason to return `blocked`: wait for its completion notification. In autonomous mode `.claude/hooks/forge/nested-wait-guard.py` refuses a hand-back while work you launched is pending.
 - **No sleep polling**: never wait with sleep loops, background `sleep` timers or `until` polls; the completion notification arrives on its own. A wait on an external condition is one foreground command with a bounded timeout. Stop every background shell you started before you return.
 - **Check output stays out of context**: run every check (type check, lint, tests, build) through `scripts/forge/gate.sh <name> -- <command>`; read the log only with a targeted search, to diagnose a failure.
 - **Review effort follows severity**, as in the `task-review` row. A repair of the same failed item relaunches the specialist one `effort` level above its definition (`medium` → `high` → `xhigh`; never `max`).
@@ -98,11 +98,11 @@ gates: <name=exit (counts)>, …
 decisions logged: <n> in <file> | none
 blockers: <one line each, with its STOP number or finding id> | none
 duration: <h:mm>
-nested: all completed (<n>) | none
+nested: all completed (<n>) | none | pending <ids> (a STOP only)
 next: <exact next command>
 ```
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
-- `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree.
+- `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
 - The independent gates run inside the authoring command (`_independent-gate.md`); their reviewers return the gate's own lines, and the authoring runner puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n> I<n>` in `gates:`.
 
 ## Pull Requests

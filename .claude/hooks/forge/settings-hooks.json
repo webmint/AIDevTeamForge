@@ -22,6 +22,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "SubagentHandback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/forge/nested-wait-guard.py\"",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

@@ -23,6 +23,7 @@ specs/
     data-model.md                  # Entity definitions (/plan) — optional
     contracts.md                   # API contracts (/plan) — optional
     tasks/                         # Task breakdown (/breakdown)
+      README.md                    # Task index: status, dependencies, waves
       001-short-task-title.md      # Individual task files
       002-short-task-title.md
       003-short-task-title.md

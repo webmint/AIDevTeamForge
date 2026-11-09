@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for scripts/forge/check-task-evidence.py (stdlib unittest; Python 3.9+): a newly Complete task needs filled
-Completion Notes and, mid-branch, a commit that names it.
+Completion Notes, a task file Status that agrees with the task index and, mid-branch, a commit that names it.
 
 A throwaway git repository holds a base commit with one open task and a work branch. All names are invented.
 
@@ -36,7 +36,9 @@ TEMPLATE_NOTES = (
 )
 
 
-class EvidenceCase(unittest.TestCase):
+class EvidenceRepo(unittest.TestCase):
+    """The throwaway repository and its helpers; it holds no tests of its own."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -65,6 +67,8 @@ class EvidenceCase(unittest.TestCase):
     def run_check(self):
         return checker.check(self.repo, "base")
 
+
+class EvidenceCase(EvidenceRepo):
     def test_an_unresolvable_integration_ref_names_the_fix(self):
         with self.assertRaises(ValueError) as caught:
             checker.check(self.repo, "origin/main")
@@ -185,6 +189,102 @@ class EvidenceCase(unittest.TestCase):
         self.assertTrue(checker.names_task("fix (T3)", "003"))
         self.assertFalse(checker.names_task("[WIP] Task 13: x", "003"))
         self.assertFalse(checker.names_task("[WIP] Task 30: x", "003"))
+
+
+
+STATUS_DONE = "# Task\n\n**Status**: Complete\n\n## Completion Notes\n\nDone, gates green.\n"
+STATUS_OPEN = "# Task\n\n**Status**: In Progress\n\n## Completion Notes\n\nDone, gates green.\n"
+RATIONALE = ("\n## Rationale\n\n| # | Decision | Why |\n|---|---|---|\n| 001 | Split | Pending |\n"
+             "| 002 | Merge | Complete |\n| 003 | Extra | Complete |\n")
+
+
+class StatusAgreement(EvidenceRepo):
+    """The task file's Status line and the tasks/README.md row must agree for a newly Complete task."""
+
+    def test_task_file_complete_while_the_readme_row_is_pending_is_flagged(self):
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        problems, examined = self.run_check()
+        self.assertEqual(examined, 1)
+        self.assertEqual(problems, ["900-x task 001: task file Status is Complete while tasks/README.md row is 'Pending'"])
+
+    def test_readme_complete_while_the_task_file_is_in_progress_is_flagged(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1)
+        self.write("specs/900-x/tasks/001-one.md", STATUS_OPEN)
+        self.commit("feat(x): one")
+        problems, examined = self.run_check()
+        self.assertEqual(examined, 1)
+        self.assertEqual(problems, ["900-x task 001: task file Status is 'In Progress' while tasks/README.md marks it "
+                                    "Complete"])
+
+    def test_both_complete_is_ok(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1)
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_complete_with_a_remark_is_accepted(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1)
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE.replace("Complete\n\n##", "Complete (header set by x)\n\n##", 1))
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_readme_complete_with_a_remark_is_accepted(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1.replace("| None | Complete |", "| None | Complete (merged) |", 1))
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_a_later_numbered_non_status_table_does_not_hide_or_add_rows(self):
+        # A rationale table after the task index (last cell free text, even "Complete") is not a status table.
+        self.write("specs/900-x/tasks/README.md", DONE_1 + RATIONALE)
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_first_row_per_task_number_wins(self):
+        again = "\n## Review\n\n" + ROWS + "| 001 | One again | a | None | Pending |\n"
+        self.write("specs/900-x/tasks/README.md", DONE_1 + again)
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_task_file_without_a_status_line_is_not_flagged(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1)
+        self.write("specs/900-x/tasks/001-one.md", NOTES)
+        self.commit("feat(x): one")
+        self.assertEqual(self.run_check(), ([], 1))
+
+    def test_one_task_gets_one_set_of_lines_when_both_sources_mark_it_complete(self):
+        self.write("specs/900-x/tasks/README.md", DONE_1)
+        self.write("specs/900-x/tasks/001-one.md", "# Task\n\n**Status**: Complete\n")
+        self.commit("feat(x): one")
+        problems, examined = self.run_check()
+        self.assertEqual(examined, 1)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("Completion Notes", problems[0])
+
+    def test_task_file_complete_at_the_base_is_not_new(self):
+        self.git("checkout", "-q", "main")
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE)
+        self.commit("old")
+        self.git("branch", "-f", "base", "main")
+        self.git("checkout", "-q", "work")
+        self.git("rebase", "-q", "main")
+        self.write("specs/900-x/tasks/001-one.md", STATUS_DONE + "\nextra line\n")
+        self.commit("tweak")
+        self.assertEqual(self.run_check(), ([], 0))
+
+    def test_unit_helpers(self):
+        self.assertEqual(checker.row_statuses(DONE_1 + RATIONALE), {"001": "Complete", "002": "Pending"})
+        self.assertEqual(checker.complete_ids(DONE_1 + RATIONALE), {"001"})
+        self.assertEqual(checker.task_status("# T\n\n**Status**: Complete (x)  \n"), "Complete (x)")
+        self.assertIsNone(checker.task_status("# T\n"))
+        self.assertTrue(checker.is_complete("Complete"))
+        self.assertTrue(checker.is_complete("Complete (remark)"))
+        self.assertFalse(checker.is_complete("Completed"))
+        self.assertFalse(checker.is_complete("Incomplete"))
+        self.assertFalse(checker.is_complete(None))
 
 
 if __name__ == "__main__":

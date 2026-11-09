@@ -137,7 +137,7 @@ Check the code against these categories, ordered by priority. If the user provid
 1. **Long Functions** (>40 lines per constitution rule 3.5) — identify extraction candidates with clear responsibilities
 2. **Deep Nesting** (>3 levels) — identify early-return conversions and guard clauses
 3. **SOLID Violations** — single responsibility violations (functions/components doing multiple things), tight coupling, concrete dependencies where abstractions should be used
-4. **DRY Violations** (3+ occurrences per constitution rule 3.6) — duplicated logic that should be extracted into a shared utility or function
+4. **DRY Violations** (per constitution 3.6: a business rule or derived figure at its second copy, repeated structure at its third) — duplicated logic that should be extracted into a shared utility or function
 5. **Type Safety Issues** — `any` types without justification, missing null checks, unsafe type assertions
 6. **Naming Inconsistencies** — identifiers that don't match codebase conventions found in related files
 7. **Dead Code** — unused functions, variables, imports, commented-out blocks

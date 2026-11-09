@@ -67,11 +67,12 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - **Forge-owned namespaces** (1.29.0): Forge ships scripts only under `scripts/forge/` and hooks only under `.claude/hooks/forge/`; the rest of `scripts/` and `.claude/hooks/` is project-owned. Hook entries ship as `.claude/hooks/forge/settings-hooks.json` and are merged into `settings.json` per entry (`hookFragments` in the manifest)
 - **Installer tests**: `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py`, `tests/scripts/forge/` (repo-only)
 
-### Forge Scripts and Hooks (1.29.0–1.31.0)
+### Forge Scripts and Hooks (1.29.0–1.33.0)
 - `scripts/forge/gate.sh` — runs a check with its output in `.claude/.gate-logs/`, prints only the result and first errors; machine-wide slots for heavy runs
 - `.claude/hooks/forge/context-guard.py` — PostToolUse hook; wind-down at 75 %, stop at 85 % of `FORGE_CONTEXT_WINDOW`
 - Quality scripts (1.30.0, Python 3.9+, stdlib): `quality_profile.py` (loader/validator of `.claude/quality-profile.json`; `init`, `validate`, `consumers`, `scopes`), `ratchet.py`, `count-tools.py`, `audit-gate.py`, `hub-files.py`, `new-exports.py`, `check-canonical-sources.py`, `check-enforcement-map.py`, `check-task-evidence.py`, `check-decision-records.py`. Unset or missing binding = the command's manual form (one line, exit 0); wrapper mode inspects the Source Root repository. Tests in `tests/scripts/forge/`
 - Autonomous delivery (1.31.0): `.claude/hooks/forge/push-guard.py` (PreToolUse, G1–G7, active only with `DELIVERY_MODE: autonomous`), `scripts/forge/wave-preflight.py` (pre-wave check), `scripts/forge/spec-cost.py` + `model-prices.json` (tokens, cost, wall time per spec and phase). Tests in `tests/hooks/` and `tests/scripts/forge/`
+- Nested-wait guard (1.33.0): `.claude/hooks/forge/nested-wait-guard.py` (PreToolUse `SubagentHandback`, autonomous mode only) refuses a runner's hand-back while its launched work is pending; `scripts/forge/nested-pending.py` and `wave-preflight.py --runner` give the conductor the same check
 - `.claude/checklists/` (1.30.0, copy-if-missing, project-owned) — spec-gate, plan-gate, breakdown-gate, task-review, test-lens; `**Gate**: on | off`; grown by `/finalize` and `/audit` learning steps
 
 ### Other
@@ -120,6 +121,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 26. **Autonomy is opt-in and earned per gate** (1.31.0) — interactive delivery stays the default; `/conduct` self-approves a HARD GATE only after its independent gate ran clean, and keeps the user for STOP conditions and merges. The push guard is the safety net that makes this acceptable
 27. **A thin conductor** (1.31.0) — the main session never reads sources or artifacts; one subagent per phase, result blocks only, a local ledger that is never committed (it would otherwise land in squashes and open pull requests)
 28. **Hosts and trackers are configuration, not code** (1.32.0) — `/review-pr` and `/research` name no host or tracker in their steps: the developer supplies the PR commands (presets for GitHub and GitLab) and the tracker (`jira` via a named MCP server, `github`, `none`); an unset key stops the command or skips the step and says so, never falls back to a guess
+29. **A runner rule that failed as text becomes a hook** (1.33.0) — "wait for nested agents" was written down and still broken in field use; the nested-wait guard checks it from the runner's own transcript, fails open, and leaves the real STOP and a loop guard as exits
 
 ### Onboarding System (`/onboard`)
 - Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input
