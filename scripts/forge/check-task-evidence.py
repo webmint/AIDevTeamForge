@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Task completion evidence check: a task newly marked `Complete` has run evidence.
 
-A task that a feature's task index (`specs/<feature>/tasks/README.md`, the Task Index table whose last column is the
-status) newly marks `Complete` must have run evidence:
-  - a filled "Completion Notes" section in its task file (`specs/<feature>/tasks/<NNN>-*.md`): at least one line that
+A task that is newly `Complete` must have run evidence. Newly Complete is the union of (a) rows that a feature's task
+index (`specs/<feature>/tasks/README.md`) newly marks `Complete` and (b) task files `specs/<feature>/tasks/<NNN>-*.md`
+changed in the branch whose own `**Status**:` line is Complete now and was not at the merge base (a task file can be
+marked Complete while the index row is not, and the reverse). For each such task:
+  - the task file exists and its `**Status**:` line, when it has one, is Complete (a file without a Status line is not
+    contradicted), and the index row, when the index has one, is Complete. The index status is read only from the table
+    whose header row has a `Status` column (the Task Index), first row per task number; later numbered tables are not
+    read;
+  - a filled "Completion Notes" section in its task file: at least one line that
     is not the template's placeholder text (a whole-line `[...]` placeholder, or a `**Field**:` line whose value is
     empty or still holds a `[...]` placeholder, as `/breakdown` writes it);
   - while the branch still holds its task commits (more than one non-merge commit since the merge base), a commit whose
     subject names the task: `Task N:` or `TN` (the `[WIP] Task N: <title> — complete` form of `/execute-task`).
 
-Scope: only rows that turned `Complete` between the merge base of HEAD with the integration ref (`integrationRef` in
-`.claude/quality-profile.json`, or `--base`) and the working tree. Historical features are never re-checked, and a task
-index untouched by the branch is not read. After `/finalize` squashes the branch into one commit the subject no longer
+Scope: only tasks that turned `Complete` between the merge base of HEAD with the integration ref (`integrationRef` in
+`.claude/quality-profile.json`, or `--base`) and the working tree. Historical features are never re-checked; a task
+index untouched by the branch is read only for a task whose file changed. After `/finalize` squashes the branch into one commit the subject no longer
 names a task, so the commit evidence is required only when the range has more than one non-merge commit (a pull
 request merge ref adds a merge commit on top of the squashed one); the Completion Notes check always applies.
 
@@ -38,6 +44,9 @@ import quality_profile  # noqa: E402  (sibling module; path set above)
 
 PREFIX = "task-evidence"
 README = re.compile(r"^specs/[^/]+/tasks/README\.md$")
+TASK_FILE = re.compile(r"^specs/([^/]+)/tasks/(\d+)-[^/]+\.md$")
+STATUS_LINE = re.compile(r"^\*\*Status\*\*:[ \t]*(.*?)[ \t]*$", re.M)
+SEPARATOR_CELL = re.compile(r":?-+:?")
 # Template text of the Completion Notes section: a whole-line `[...]` placeholder, a `**Field**: value` line, and a
 # `[...]` placeholder inside a value (two or more characters, so a `[x]` checkbox is not one; nor is a markdown link).
 PLACEHOLDER_LINE = re.compile(r"^\s*\[[^\]]+\]\s*$")
@@ -55,14 +64,42 @@ def git(repo: str, *args: str, check: bool = True) -> str:
     return result.stdout
 
 
-def complete_ids(text: str) -> set[str]:
-    """Task numbers of the table rows whose last cell is `Complete`."""
-    ids: set[str] = set()
+def row_statuses(text: str) -> dict[str, str]:
+    """Task number -> status cell, read only from the tables whose header row has a `Status` column (the Task Index).
+    Other numbered tables have no such column and are ignored; the first row of a task number wins."""
+    rows: dict[str, str] = {}
+    status_col: int | None = None
+    in_table = False
     for line in text.splitlines():
+        if not line.strip().startswith("|"):
+            in_table = False
+            continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if line.strip().startswith("|") and len(cells) >= 2 and re.fullmatch(r"\d+", cells[0]) and cells[-1] == "Complete":
-            ids.add(cells[0])
-    return ids
+        if not in_table:  # the header row of a table
+            in_table = True
+            status_col = next((i for i, c in enumerate(cells) if c.lower() == "status"), None)
+            continue
+        if all(SEPARATOR_CELL.fullmatch(c) for c in cells):
+            continue
+        if status_col is not None and status_col < len(cells) and re.fullmatch(r"\d+", cells[0]):
+            rows.setdefault(cells[0], cells[status_col])
+    return rows
+
+
+def complete_ids(text: str) -> set[str]:
+    """Task numbers whose status cell (see `row_statuses`) is `Complete`."""
+    return {number for number, status in row_statuses(text).items() if status == "Complete"}
+
+
+def task_status(text: str) -> str | None:
+    """The value of the task file's `**Status**:` line, or None when it has none."""
+    match = STATUS_LINE.search(text)
+    return match.group(1) if match else None
+
+
+def is_complete(status: str | None) -> bool:
+    """Whether a status value is Complete (a trailing parenthesised remark is allowed: `Complete (remark)`)."""
+    return status is not None and re.fullmatch(r"Complete(\s*\(.*\))?", status) is not None
 
 
 def _filled(line: str) -> bool:
@@ -98,8 +135,7 @@ def check(repo: str, base: str) -> tuple[list[str], int]:
     merge_base = git(repo, "merge-base", base, "HEAD").strip()
     changed = git(repo, "diff", "--name-only", "--no-renames", merge_base, "--", "specs").split()
     subjects = git(repo, "log", "--no-merges", "--format=%s", f"{merge_base}..HEAD").splitlines()
-    problems: list[str] = []
-    examined = 0
+    readme_new: set[tuple[str, str]] = set()
     for path in sorted(p for p in changed if README.match(p)):
         full = os.path.join(repo, path)
         if not os.path.exists(full):
@@ -107,19 +143,50 @@ def check(repo: str, base: str) -> tuple[list[str], int]:
         with open(full, encoding="utf-8") as fh:
             now = complete_ids(fh.read())
         before = complete_ids(git(repo, "show", f"{merge_base}:{path}", check=False))
-        feature = path.split("/")[1]
-        for number in sorted(now - before):
-            examined += 1
-            files = sorted(glob.glob(os.path.join(repo, "specs", feature, "tasks", f"{number}-*.md")))
-            if not files:
-                problems.append(f"{feature} task {number}: marked Complete but has no task file")
-            else:
-                with open(files[0], encoding="utf-8") as fh:
-                    if not completion_notes(fh.read()):
-                        problems.append(f"{feature} task {number}: marked Complete without filled Completion Notes")
-            if len(subjects) > 1 and not any(names_task(s, number) for s in subjects):
-                problems.append(f"{feature} task {number}: marked Complete but no commit since {base} names the task")
-    return problems, examined
+        readme_new.update((path.split("/")[1], number) for number in now - before)
+    file_new: set[tuple[str, str]] = set()
+    for path in changed:
+        match = TASK_FILE.match(path)
+        full = os.path.join(repo, path)
+        if not match or not os.path.exists(full):
+            continue
+        with open(full, encoding="utf-8") as fh:
+            now_status = task_status(fh.read())
+        before_status = task_status(git(repo, "show", f"{merge_base}:{path}", check=False))
+        if is_complete(now_status) and not is_complete(before_status):
+            file_new.add((match.group(1), match.group(2)))
+    problems: list[str] = []
+    for feature, number in sorted(readme_new | file_new):
+        problems.extend(task_problems(repo, base, feature, number, subjects))
+    return problems, len(readme_new | file_new)
+
+
+def task_problems(repo: str, base: str, feature: str, number: str, subjects: list[str]) -> list[str]:
+    """The evidence problems of one newly Complete task (index row and task file status must agree)."""
+    problems: list[str] = []
+    files = sorted(glob.glob(os.path.join(repo, "specs", feature, "tasks", f"{number}-*.md")))
+    readme = os.path.join(repo, "specs", feature, "tasks", "README.md")
+    row = None
+    if os.path.exists(readme):
+        with open(readme, encoding="utf-8") as fh:
+            row = row_statuses(fh.read()).get(number)
+    if not files:
+        problems.append(f"{feature} task {number}: marked Complete but has no task file")
+    else:
+        with open(files[0], encoding="utf-8") as fh:
+            text = fh.read()
+        status = task_status(text)
+        if status is not None and not is_complete(status) and row == "Complete":
+            problems.append(f"{feature} task {number}: task file Status is '{status}' while tasks/README.md marks it "
+                            "Complete")
+        if is_complete(status) and row is not None and row != "Complete":
+            problems.append(f"{feature} task {number}: task file Status is Complete while tasks/README.md row is "
+                            f"'{row}'")
+        if not completion_notes(text):
+            problems.append(f"{feature} task {number}: marked Complete without filled Completion Notes")
+    if len(subjects) > 1 and not any(names_task(s, number) for s in subjects):
+        problems.append(f"{feature} task {number}: marked Complete but no commit since {base} names the task")
+    return problems
 
 
 def main(argv: list[str]) -> int:

@@ -7,6 +7,7 @@ conductor (`/conduct` → "Pre-Wave Check") runs this check before it launches a
 
 Usage:
   python3 scripts/forge/wave-preflight.py <worktree> [<expected-head>] [--stale-minutes N] [--allow-untracked PATH]...
+      [--runner AGENT_ID_OR_TRANSCRIPT]...
 
 It checks tree state only, and reports one line per problem:
   - tracked changes (staged or not), or untracked files that .gitignore does not cover, in the whole worktree;
@@ -22,14 +23,19 @@ Advisory only: it also lists `sleep` processes and `until`/`while ... sleep` she
 (default 15) whose working directory is inside the worktree, as `warning: stale wait: pid <pid> age <age> cwd <dir>:
 <command>`. It cannot tell an orphan from the bounded wait of a runner that is still alive, so it warns, never changes
 the exit code, and never kills anything. When `ps` is unavailable the check is skipped with one line saying so.
-It cannot see agent state: a nested agent that is still running but has not touched the tree leaves a clean tree.
+Tree state cannot show a nested agent that is still running but has not touched the tree yet. For that, pass the runner
+that just returned with `--runner <agent-id|transcript>` (repeatable): its transcript is replayed by
+`scripts/forge/nested-pending.py` (the agents and background shells it launched, and, recursively, those of the agents
+it launched), and each launch with no final completion notification becomes a problem line
+`runner <id>: nested work still pending: <item>`. Only ids, kinds, types and timestamps are printed.
 
-Prints `ok`, or one line per problem. Exit codes: 0 ok; 1 problems; 2 bad usage, not a git repository, or an unusable
-revision.
+Prints `ok`, or one line per problem. Exit codes: 0 ok; 1 problems; 2 bad usage, not a git repository, an unusable
+revision, or a runner whose transcript cannot be resolved or read.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import re
 import shutil
@@ -230,6 +236,33 @@ def check(tree: str, expected_head: "str | None", allowed: "list | None" = None)
     return problems
 
 
+def load_nested_pending():
+    """The scripts/forge/nested-pending.py module, loaded by path (its file name is not importable)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nested-pending.py")
+    spec = importlib.util.spec_from_file_location("nested_pending", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def runner_problems(runners: list) -> list:
+    """One `runner <id>: nested work still pending: <item>` line per unfinished launch of each runner; raises
+    RuntimeError when a runner's transcript cannot be resolved or read."""
+    if not runners:
+        return []
+    nested = load_nested_pending()
+    problems: list = []
+    for runner in runners:
+        try:
+            lines = nested.pending_for(runner)
+        except nested.Unresolvable as error:
+            raise RuntimeError(f"runner {runner}: {error}") from error
+        problems.extend(f"runner {runner}: nested work still pending: {line.removeprefix('pending: ')}" for line in lines)
+    return problems
+
+
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description="Pre-wave tree check.")
     parser.add_argument("worktree", help="the worktree the next runner will use")
@@ -238,6 +271,9 @@ def main(argv: list) -> int:
                         help=f"age from which a sleep or wait loop in the tree is reported (default {STALE_MINUTES})")
     parser.add_argument("--allow-untracked", action="append", default=[], metavar="PATH",
                         help="an untracked file or directory that is not a problem (repeatable)")
+    parser.add_argument("--runner", action="append", default=[], metavar="AGENT_ID_OR_TRANSCRIPT",
+                        help="a runner that returned (agent id or transcript path): its unfinished nested agents and "
+                             "background shells are problems (repeatable)")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exit_:
@@ -247,6 +283,7 @@ def main(argv: list) -> int:
         return 2
     try:
         problems = check(args.worktree, args.expected_head, args.allow_untracked)
+        problems.extend(runner_problems(args.runner))
     except RuntimeError as error:
         print(f"wave-preflight: {error}", file=sys.stderr)
         return 2
