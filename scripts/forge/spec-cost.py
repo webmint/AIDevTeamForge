@@ -48,13 +48,18 @@ tree root, a subdirectory of one, or a sibling `<main>-<suffix>` path. Calls are
 is counted twice.
 
 Branch rule: a subagent call belongs to the branch named by the `Branch: <name>` field of its depth-1 run's first
-prompt (the conductor's reference prompt, `conduct.md` → "Reference Prompts"; the field is read from the first 2000
-characters, either after a `… conductor mode` prefix on the same line or at the start of a line; the placeholder
-`<branch>` does not count). A runner in a sibling worktree is recorded under the main tree's `gitBranch` (the shell
-cwd resets after each command), so its prompt is the reliable source. A main-session call, and a subagent call whose
-run prompt names no branch, keeps the line's `gitBranch`; a line without one is reported under `(none)`. A trailing
-`-r<n>` (a re-pushed pull request branch, `_autonomous-mode.md` → "Pull Requests") is stripped from every branch name,
-`--branch` values included, so a real branch whose name ends in `-r<n>` is counted with its base name.
+prompt (the conductor's reference prompt, `conduct.md` → "Reference Prompts"). A runner in a sibling worktree is
+recorded under the main tree's `gitBranch` (the shell cwd resets after each command), so its prompt is the reliable
+source. The field is read from the first 2000 characters: the last `Branch:` on a line containing `conductor mode`,
+else a `Branch:` that starts a line. Its value is the text up to the next whitespace, `,` or `;`, without surrounding
+backticks, quotes or brackets and without trailing `.`, `:` or `)`; a placeholder (`<branch>`) is no value. It counts
+only when it is a plausible git branch name (letters, digits, `.`, `_`, `/`, `-`; no `..`; not starting with `-` or
+`.`, not ending with `/`) and is not the integration branch, `HEAD`, `N/A` or `none` (case ignored): a `/specify`
+runner starts on the default branch and creates its spec branch midway, so its calls keep their own lines' branches.
+A main-session call, and a subagent call whose run prompt has no usable field, keeps the line's `gitBranch`; a line
+without one is reported under `(none)`. A trailing `-r<n>` (a re-pushed pull request branch, `_autonomous-mode.md` →
+"Pull Requests") is stripped from every branch name, `--branch` and `--integration-branch` values included, so a real
+branch whose name ends in `-r<n>` is counted with its base name.
 
 Notes:
 - One API response is often written as several JSONL lines (streamed content blocks); lines are deduplicated by
@@ -134,7 +139,9 @@ COMMAND_PHASES = ("research", "specify", "plan", "breakdown", "execute-task", "r
 # Phase names of the conductor's Phases table that run a Forge command under another name.
 PHASE_ALIASES = {"wave": "execute-task"}
 # The `Branch:` field of a run prompt (see "Branch rule"), and the re-push suffix of a pull request branch.
-BRANCH_FIELD = re.compile(r"^[^\S\n]*(?:[^\n]*?\bconductor mode\b[^\n]*?\s)?Branch:\s*([^\s,;]+?)\.?(?:\s|$)", re.M)
+BRANCH_FIELD = re.compile(r"^[^\S\n]*(?:[^\n]*\bconductor mode\b[^\n]*\s)?Branch:[^\S\n]*([^\s,;]*)", re.M)
+BRANCH_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._/-]*")
+NOT_A_BRANCH = {"head", "n/a", "none", "(none)"}
 REVISION_SUFFIX = re.compile(r"-r\d+$")
 GATE_PHASES = ("spec-gate", "plan-gate", "breakdown-gate")
 PHASE_ORDER = ("/research", "/specify", "spec-gate", "/plan", "plan-gate", "/breakdown", "breakdown-gate",
@@ -378,9 +385,10 @@ def tree_project_dirs(projects_root: str, roots: list[str], main: str) -> list[s
     return sorted(d for d in dirs if os.path.isdir(d))
 
 
-def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filter=None) -> dict:
+def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filter=None,
+            integration: str | None = None) -> dict:
     """Deduplicated API calls inside [since, until]; `cwd_filter(cwd) -> bool` optionally restricts them by the
-    line's cwd. The dedupe table is shared across dirs."""
+    line's cwd. The dedupe table is shared across dirs. A prompt `Branch:` naming `integration` is ignored."""
     since_epoch = since.timestamp()
     calls: dict = {}
     index = RunIndex()
@@ -395,6 +403,8 @@ def collect(project_dirs: list[str], since: datetime, until: datetime, cwd_filte
         except OSError:
             continue
         labelled = transcript_branch(path, index, prompt_branches)
+        if labelled is not None and integration is not None and norm_branch(labelled) == integration:
+            labelled = None
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if '"usage"' not in line:
@@ -520,9 +530,19 @@ def norm_branch(name: str) -> str:
 
 
 def prompt_branch(text: str | None) -> str | None:
-    """Branch named by the `Branch: <name>` field of a run prompt, if any (see "Branch rule")."""
+    """Branch named by the `Branch: <name>` field of a run prompt, if it is a plausible branch name (see "Branch
+    rule"); the integration-branch check is the caller's."""
     match = BRANCH_FIELD.search((text or "")[:2000])
-    return match.group(1) if match and match.group(1) != "<branch>" else None
+    if not match:
+        return None
+    value = match.group(1)
+    if value.startswith("<"):  # the reference prompt's placeholder
+        return None
+    value = value.rstrip(".:)").strip("`'\"([]").rstrip(".:)")
+    if (not BRANCH_NAME.fullmatch(value) or ".." in value or value.endswith("/")
+            or value.lower() in NOT_A_BRANCH):
+        return None
+    return value
 
 
 def transcript_branch(path: str, index: RunIndex, cache: dict) -> str | None:
@@ -743,14 +763,12 @@ def report(args: argparse.Namespace) -> int:
         raise UsageError(f"bad timestamp: {exc}") from exc
     if until < since:
         raise UsageError("--until is before the window start")
-    integration = None
-    if args.by_branch or args.by_phase:
-        integration = args.integration_branch or integration_branch()
+    integration = norm_branch(args.integration_branch or integration_branch())
 
     if args.all_trees:
-        calls = collect(dirs, since, until, lambda cwd: cwd_allowed(cwd, roots, main_tree))
+        calls = collect(dirs, since, until, lambda cwd: cwd_allowed(cwd, roots, main_tree), integration)
     else:
-        calls = collect(dirs, since, until)
+        calls = collect(dirs, since, until, integration=integration)
     all_calls = calls  # --by-phase attributes whole runs, so it needs the unfiltered calls
     args.branch = [norm_branch(b) for b in args.branch]
     if args.branch:
