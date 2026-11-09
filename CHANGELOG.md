@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **`spec-cost.py` counted worktree runners under the wrong branch** — a runner in a sibling worktree is recorded under the main tree's `gitBranch`, so `--branch <spec>` could show 0 runs for a spec that had many (one real spec: 0 → 1775 calls, totals unchanged). A subagent call now belongs to the `Branch:` field of its depth-1 run's prompt, falling back to the line's `gitBranch`; a field naming the integration branch, `HEAD`, `N/A` or an implausible name is ignored. A trailing `-r<n>` (re-pushed pull request branch) is stripped from every branch name, so a spec's re-push runs count with it
+- **`gate.sh` ran dash-suffixed scripts as light** — `npm run test-unit`, `test-integration` or `build-prod` took no heavy slot because only `:` or a space could follow `build` / `test` in the default heavy pattern; a `-<suffix>` now counts like `:<suffix>`, and `emulators:exec` / `emulators:start` are heavy. `FORGE_GATE_HEAVY_RE` still replaces the whole pattern
 
 ## [1.34.0] - 2026-11-09
 
