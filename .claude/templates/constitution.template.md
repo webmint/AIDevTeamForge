@@ -91,9 +91,10 @@ function process(input) {
 - **Interface Segregation** — don't force consumers to depend on methods they don't use. Prefer small, focused interfaces over large ones.
 - **Dependency Inversion** — depend on abstractions (interfaces, types), not concrete implementations. High-level modules should not import from low-level modules directly.
 
-**DRY (Don't Repeat Yourself):**
-- If the same logic appears in 3+ places, extract it into a shared function or utility.
-- 2 occurrences are fine — don't abstract prematurely. Wait for the third.
+**DRY (Don't Repeat Yourself)** — the extraction threshold (one definition for the whole project):
+- **A business rule or derived figure** (a value computed from data, a policy, a closed-set mapping) gets one definition from its **second consumer**: the second consumer moves it to the shared layer instead of copying it.
+- **Incidental structural similarity** is extracted only at its **third copy**; two occurrences are fine.
+- **Nothing is extracted "for the future"**: no abstraction without a consumer that needs it now (KISS below).
 - DRY applies to logic, not to code that looks similar but serves different purposes. Two functions that happen to look alike but handle different domain concepts should stay separate.
 
 **KISS (Keep It Simple, Stupid):**

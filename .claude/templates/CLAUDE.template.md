@@ -35,91 +35,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Workflow Commands
 
-### Spec-Driven Development Flow
-
-```
-/setup-wizard → /constitute → /onboard → /research → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
-   (once)         (once)       (once)    (optional)  (per feat)  (per feat) (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
-```
-
-### `/research "topic or idea"` (optional)
-Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based), and displays the full report in the console. You're then asked whether to save — if yes, saves to `research/YYYY-MM-DD-[topic-slug].md`. Does NOT create specs or modify code. Use before `/specify` when you're unsure whether an idea is viable or how it fits.
-
-### `/specify "feature description"`
-Creates a structured specification with acceptance criteria. Asks clarifying questions as needed (no artificial limit — the AI judges how many based on input clarity). Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.** Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
-
-### `/plan [spec-file]`
-Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
-
-### `/breakdown [spec-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments and waves (2–4 consecutive tasks run together). Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
-
-### `/execute-task [number]`
-Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
-1. Pre-flight check (constitution, memory, file state, contract preconditions)
-2. Agent execution with scope constraints (agent writes code + inline docs)
-3. Post-execution verification (tsc, lint, build, done conditions, self-repair)
-4. Code review (code-reviewer agent — findings reported to user, critical issues block)
-5. Memory update
-Also takes a range (`1-3`), a wave (`W2`) or `all`. In a batch, the full build and the full test suite run once after the last task (batch gate). WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
-
-### `/review [spec-file]`
-Launches specialist review agents (security, performance, test assessment) on completed feature code. Produces a structured review report saved to `specs/[feature]/review.md` for `/verify` to incorporate into its verdict. Does not render a verdict — findings only.
-
-### `/verify [spec-file]`
-Verifies all completed tasks against the spec's acceptance criteria. When AC verification is enabled (`AC_VERIFICATION` in project-config.json), launches the **ac-verifier** agent to test acceptance criteria against the running app via Chrome DevTools MCP and/or API calls — falls back to code reading when MCP is not available. Incorporates `/review` findings if available (warns if missing). Performs cross-task integration check (not full code review — that was done per-task). Updates memory with lessons learned.
-
-### `/summarize [spec-file]`
-Generates a concise, PR-ready summary of a completed feature. Reads spec, plan, tasks, and git history. Saves to `specs/[feature]/summary.md`. Run after `/verify` approves, before `/finalize`.
-
-### `/finalize [spec-file]`
-Generates feature-level documentation via tech-writer, then squashes all WIP commits into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
-
-### `/constitute`
-One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.
-
-### `/onboard`
-One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
-
-### `/fix "bug description"`
-Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the full spec→plan→breakdown pipeline. Phases:
-1. Diagnosis (runtime-debugger agent for runtime errors, manual tracing for logic bugs)
-2. User confirms root cause (hard gate)
-3. Apply minimal fix with WIP checkpoint
-4. Verification (tsc, lint, build, self-repair loop)
-5. Code review (code-reviewer agent)
-6. Test assessment (qa-engineer agent)
-7. Clean commit + memory update
-
-If the bug grows beyond 5 files, recommends escalating to `/specify`.
-
-### `/refactor path/to/file.ts "goal"`
-Focused code refactoring workflow for behavior-preserving restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path. Phases:
-1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
-2. User approves proposal with specific items (hard gate, partial approval supported)
-3. Apply refactoring with auto-selected agent (architect, frontend-engineer, or backend-engineer based on file layer)
-4. Verification (tsc, lint, build, tests, self-repair loop)
-5. Code review (code-reviewer agent)
-6. Test assessment (qa-engineer agent — tests must pass unchanged since refactoring is behavior-preserving)
-7. Clean commit + memory update
-
-If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
-
-### `/security [file|dir|--full]`
-On-demand security review. Targets a specific file (with optional line range), directory, uncommitted changes (default), or the full codebase (`--full`). Launches the security-reviewer agent with constitution and memory context. Reports findings by severity (Critical/High/Medium/Info) with CWE identifiers and remediation suggestions. Read-only — does not modify code. Full codebase mode uses module-based subagents for large projects.
-
-### `/audit [--full | --uncommitted | path]`
-Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming-vs-behavior mismatches, lying comments, off-by-one errors, dead branches, cross-file contradictions, contradictory configs). Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
-
-### `/review-pr <PR number | PR URL | issue key>`
-Strict review of a pull request that has no spec (work done outside the spec cycle). Runs code-reviewer (constitution and architecture, with a search of the whole repository for existing patterns), security-reviewer, performance-analyst and qa-engineer in parallel, with the linked issue as acceptance criteria. Reads the PR through the commands in `.claude/project-config.json` (`PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF`, `PR_REMOTE`) and the issue through `ISSUE_TRACKER` (`jira` via the MCP server `JIRA_MCP_SERVER`, `github`, or `none`); the PR head is read from git, never from the working tree. Prints the report with a verdict in chat; read-only, **NOT part of any workflow chain**.
-
-### `/conduct ["feature" | specs/NNN-feature]` (autonomous mode only)
-Opt-in autonomous delivery: with `DELIVERY_MODE: autonomous` in `.claude/project-config.json`, the main session drives the whole spec cycle, one subagent per phase, and the runners decide where the commands would ask (`.claude/commands/_autonomous-mode.md`). A HARD GATE self-approves only after its independent gate ran with no open Critical; `DELIVERY_GATES` keeps chosen points interactive. The user is asked only at STOP conditions; only the user merges.
-
-### Additional Commands
-
-- `/setup-wizard` — Re-run initial project setup (regenerates config files)
+Flow: `/setup-wizard` → `/constitute` → `/onboard` (once each) → `/research` (optional) → `/specify` → `/plan` → `/breakdown` → `/execute-task` (per task) → `/review` → `/verify` → `/summarize` → `/finalize` (per feature). Standalone: `/fix` (small bugs, 1–5 files), `/refactor` (behavior-preserving, 1–5 files), `/security`, `/audit` (periodic; the audit gate makes it due), `/review-pr` (a pull request without a spec), `/refresh-docs`, `/report-bug`. Autonomous mode: `/conduct` drives the flow (see "Delivery Mode"). Each command is described in its own file under `.claude/commands/`.
 
 ## Available Agents
 
@@ -204,39 +120,7 @@ Opt-in autonomous delivery: with `DELIVERY_MODE: autonomous` in `.claude/project
 
 ## Artifact Storage
 
-```
-research/
-  YYYY-MM-DD-topic-slug.md        # Research reports (/research) — exploratory, pre-spec
-
-specs/
-  001-feature-name/            # Numbered feature directories
-    spec.md                    # /specify output
-    plan.md                    # /plan output
-    research.md                # /plan research (optional)
-    data-model.md              # /plan data model (optional)
-    contracts.md               # /plan API contracts (optional)
-    tasks/                     # /breakdown output
-      README.md                # Task index with dependency graph
-      001-define-types.md      # Individual task files
-      002-create-repo.md
-      003-build-component.md
-    gates/                     # Independent gate reports (/specify, /plan, /breakdown)
-    escapes.md                 # Escape analysis (/finalize)
-
-docs/
-  overview.md                  # Project overview
-  architecture.md              # Architecture and patterns
-  features/                    # Feature docs (one file per area)
-  api/                         # API docs (one file per resource)
-  guides/                      # How-to guides
-```
-
-- Feature dirs: `NNN-kebab-name`, sequential numbering (001, 002, ...)
-- Task files: `NNN-short-title.md`, sequential within feature
-- Everything for a feature lives in one directory
-- Docs are organized by topic (not by task/date) in `docs/`
-- See `.claude/storage-rules.md` for full conventions
-- **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
+Features live in `specs/NNN-kebab-name/` (`spec.md`, `plan.md`, optional `research.md`, `data-model.md`, `contracts.md`, `tasks/` with `README.md` and `NNN-short-title.md`, `gates/`, `escapes.md`); research reports in `research/YYYY-MM-DD-topic-slug.md`; docs by topic in `docs/` (`overview.md`, `architecture.md`, `features/`, `api/`, `guides/`). Full conventions: `.claude/storage-rules.md`. **Wrapper mode**: all artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`.
 
 ## Session Continuity
 
