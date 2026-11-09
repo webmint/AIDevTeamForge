@@ -483,5 +483,77 @@ class ByPhaseTests(SpecCostCase):
         self.assertNotIn("/plan ", out)
 
 
+class PromptBranchTests(SpecCostCase):
+    """A subagent call is attributed to the `Branch:` field of its depth-1 run's prompt (see "Branch rule")."""
+
+    def test_prompt_branch_parsing(self) -> None:
+        self.assertEqual(sc.prompt_branch(RUNNER.format("/verify")), SPEC)
+        self.assertEqual(sc.prompt_branch("Acme conductor mode, phase runner. Phase: plan. Branch: spec/7-x."),
+                         "spec/7-x")
+        self.assertEqual(sc.prompt_branch("Do the chore.\nBranch: chore/x-y\nmore"), "chore/x-y")
+        self.assertEqual(sc.prompt_branch("Forge conductor mode, phase runner. Phase: closing. Feature: specs/1-a. "
+                                          "Branch: release/v-1.35.0."), "release/v-1.35.0")
+        self.assertIsNone(sc.prompt_branch("Forge conductor mode, phase runner. Phase: plan. Branch: <branch>."))
+        self.assertIsNone(sc.prompt_branch("Compare it with the old Branch: spec/1-old in the notes."))
+        self.assertIsNone(sc.prompt_branch("no field here"))
+        self.assertIsNone(sc.prompt_branch(None))
+
+    def test_prompt_branch_value_is_cleaned_or_rejected(self) -> None:
+        for raw in ("`spec/7-x`", '"spec/7-x".', "(spec/7-x).", "spec/7-x:", "spec/7-x...", "spec/7-x;"):
+            with self.subTest(raw):
+                self.assertEqual(sc.prompt_branch(f"Branch: {raw}"), "spec/7-x")
+        for raw in ("N/A", "none", "HEAD", "<branch>", "[source-branch-name or N/A]", "-x", "a..b", "spec/", ""):
+            with self.subTest(raw):
+                self.assertIsNone(sc.prompt_branch(f"Branch: {raw}"))
+        self.assertIsNone(sc.prompt_branch("Do it.\nBranch:\nFollow the rules."))  # never the next line's word
+        self.assertEqual(sc.prompt_branch("Forge conductor mode, phase runner. Phase: specify. Feature: new: rename "
+                                          "the Branch: field. Branch: spec/2-y."), "spec/2-y")  # the last field
+
+    def test_norm_branch_strips_only_a_trailing_revision_suffix(self) -> None:
+        self.assertEqual(sc.norm_branch("spec/046-registry-r2"), "spec/046-registry")
+        self.assertEqual(sc.norm_branch("spec/046-registry-r12"), "spec/046-registry")
+        self.assertEqual(sc.norm_branch("spec/046-r2-registry"), "spec/046-r2-registry")
+        self.assertEqual(sc.norm_branch("(none)"), "(none)")
+
+    def test_worktree_runner_and_its_nested_agents_count_under_the_prompt_branch(self) -> None:
+        fx = self.fx
+        fx.session("s1", [fx.assistant(ts(0), branch="trunk")])
+        fx.agent("s1", "run", RUNNER.format("/verify").replace(SPEC + ".", SPEC + "-r2."),
+                 [fx.assistant(ts(1), branch="trunk"), fx.assistant(ts(9), branch="trunk")])
+        fx.agent("s1", "helper", "look up the callers", [fx.assistant(ts(5), branch="trunk")], parent="run")
+        fx.agent("s1", "chore", "no field: keeps its gitBranch", [fx.assistant(ts(20), branch="spec/1-other")])
+        code, out, _ = self.run_cli("--by-branch")
+        self.assertEqual(code, 0)
+        self.assertIn("calls     3", self.line(out, SPEC + " "))  # runner 2 + nested helper 1, -r2 stripped
+        self.assertIn("calls     1", self.line(out, "trunk "))  # only the main session keeps trunk
+        self.assertIn("calls     1", self.line(out, "spec/1-other "))
+        code, out, _ = self.run_cli("--branch", SPEC + "-r3", "--by-phase")
+        self.assertEqual(code, 0)
+        self.assertIn("api calls 3", out)
+        self.assertIn(f"TIMING {SPEC} wall 0:08", out)
+
+
+    def test_a_runner_naming_the_integration_branch_keeps_its_line_branches(self) -> None:
+        """/specify starts on the default branch and creates the spec branch midway (conduct.md names no spec
+        branch in its prompt), so its calls and its gate reviewer's keep their own branches."""
+        fx = self.fx
+        prompt = "Forge conductor mode, phase runner. Phase: specify. Feature: new: x. Branch: trunk."
+        fx.agent("s1", "spec", prompt, [fx.assistant(ts(0), branch="trunk"), fx.assistant(ts(30))])
+        fx.agent("s1", "gate", GATE.format("spec-gate"), [fx.assistant(ts(10)), fx.assistant(ts(20))],
+                 parent="spec")
+        code, out, _ = self.run_cli("--branch", SPEC, "--by-phase")
+        self.assertEqual(code, 0)
+        self.assertIn("api calls 3", out)
+        self.assertIn(f"TIMING {SPEC} wall 0:30; gates 0:10 (33%)", out)
+
+    def test_a_main_session_prompt_field_is_ignored(self) -> None:
+        fx = self.fx
+        fx.session("s1", [fx.assistant(ts(1), branch="trunk")], prompt="Branch: spec/1-other")
+        code, out, _ = self.run_cli("--by-branch")
+        self.assertEqual(code, 0)
+        self.assertIn("calls     1", self.line(out, "trunk "))
+        self.assertNotIn("spec/1-other", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,7 +59,7 @@ mkdir -p "$log_dir"
 
 # --- heavy classification ---------------------------------------------------------------------
 cmd_text="$*"
-default_heavy_re='(^|[[:space:]:/])(build|test|tests|e2e|playwright|vitest|jest|pytest|tox|nox|bench)(:[^[:space:]]+)?([[:space:]]|$)|cargo (build|test)|go (build|test)|gradlew?[[:space:]]|mvnw?[[:space:]]|xcodebuild|flutter (build|test)|docker (build|compose)'
+default_heavy_re='(^|[[:space:]:/])(build|test|tests|e2e|playwright|vitest|jest|pytest|tox|nox|bench)([-:][^[:space:]]+)?([[:space:]]|$)|emulators:(exec|start)|cargo (build|test)|go (build|test)|gradlew?[[:space:]]|mvnw?[[:space:]]|xcodebuild|flutter (build|test)|docker (build|compose)'
 heavy_re="${FORGE_GATE_HEAVY_RE:-$default_heavy_re}"
 if [[ -n "${FORGE_GATE_HEAVY:-}" ]]; then
   heavy="$FORGE_GATE_HEAVY"

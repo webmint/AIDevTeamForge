@@ -69,6 +69,7 @@ Wait for your nested agents by their completion notifications: never with sleep 
 Write the full report to specs/<NNN-*>/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (≤ 10 lines).
 ```
 
+- **Branch**: the spec branch the runner works on; the default branch for `research` and for a `/specify` that creates the spec branch (`spec-cost.py` then counts those calls under the branch each was made on).
 - **research**: runs on the default branch; no spec directory exists yet, so the report itself is the run report (its result block names the path). It stays untracked: the `/specify` runner's Inputs add "commit the research report <path> with the spec's first commit".
 - **closing** adds to its prompt, when `MERGE_MODE` is `pr`: "After /finalize, open the pull request as `_autonomous-mode.md` → "Pull Requests" says, and put its URL in `artifacts:`."
 - **fix** adds: "The /fix skill's code-review step and its test-assessment step are mandatory, not replaceable by self-review." The conductor checks both verdicts in the run report before it continues.

@@ -5,6 +5,20 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2026-11-09
+
+### Added
+- **Checklist items from escapes in shipped specs** (field use): PG-A13 (a plan that adds a shared helper, config block or dependency lists every existing file that must change with it: guard and lint allow lists, the dependency manifest, config constraints an intermediate state breaks), PG-Q12 (an AC's probe sits in a suite that the AC's named command actually runs), SG-25 (a spec that fences edits of existing tests names the follow-on edits its own decisions force). **Existing projects**: checklists are copy-if-missing and project-owned, so `update.sh` does not change them — copy the new and amended items from `.claude/checklists/` by hand
+
+### Changed
+- Checklist amendments: TR-19 also covers tests that compare an edited text with a copy elsewhere, docs-only tasks included; TL-09 makes pins and snapshots fix the clock and any date or random default that reaches them; TL-17 no longer calls such a fixed clock or seed a workaround; TL-13 says a case seen failing because a read did not wait is fixed, never rerun until it passes
+- `/conduct` reference prompts: `Branch:` names the default branch for `research` and for a `/specify` that creates the spec branch
+- Template version: 1.34.0 → 1.35.0
+
+### Fixed
+- **`spec-cost.py` counted worktree runners under the wrong branch** — a runner in a sibling worktree is recorded under the main tree's `gitBranch`, so `--branch <spec>` could show 0 runs for a spec that had many (one real spec: 0 → 1775 calls, totals unchanged). A subagent call now belongs to the `Branch:` field of its depth-1 run's prompt, falling back to the line's `gitBranch`; a field naming the integration branch, `HEAD`, `N/A` or an implausible name is ignored. A trailing `-r<n>` (re-pushed pull request branch) is stripped from every branch name, so a spec's re-push runs count with it
+- **`gate.sh` ran dash-suffixed scripts as light** — `npm run test-unit`, `test-integration` or `build-prod` took no heavy slot because only `:` or a space could follow `build` / `test` in the default heavy pattern; a `-<suffix>` now counts like `:<suffix>`, and `emulators:exec` / `emulators:start` are heavy. `FORGE_GATE_HEAVY_RE` still replaces the whole pattern
+
 ## [1.34.0] - 2026-11-09
 
 ### Added
