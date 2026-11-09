@@ -165,7 +165,7 @@ Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single cl
 
 Skip if `.claude/session-state.md` does not exist.
 
-**Autonomous mode**: a runner skips this phase (`_autonomous-mode.md` → "Session state": the conductor owns the file).
+**Autonomous mode**: a runner skips this phase (`_autonomous-mode.md` → "Session state": parallel runners would overwrite each other's snapshot; the conductor's ledger is the resume source).
 
 After the squash, the snapshot of the feature's last task is stale for every later session (fixes, research, questions) until `/specify` resets it for the next feature. FULLY OVERWRITE `.claude/session-state.md` with this closed-feature template (never append):
 
@@ -177,10 +177,14 @@ Last updated after /finalize of [NNN-feature-name] ([YYYY-MM-DD])
 ## Current Feature
 None active. Last finalized: [NNN-feature-name]
 
+## Session Stats
+Tasks completed this session: 0
+Estimated context load: light (<3 tasks) | moderate (3-5) | heavy (6+)
+
 ## Progress
 - Finalized: `[short hash]` [commit message] (wrapper mode: wrapper `[short hash]` [message]; source `[short hash]` [message], or "no source changes")
-- Pushed: no (finalize never pushes); PR: not created
-- Next: push the branch and open the PR; then any deploy or runtime check that `summary.md` or `verification.md` lists as pending
+- Pushed: [no (finalize never pushes) / WIP commits were already pushed, squash skipped]; PR: not created
+- Next: push the branch(es) and open the PR; then any deploy or runtime check that `summary.md` or `verification.md` lists as pending
 
 ## Open Follow-ups
 - [up to 5 items that the feature's summary.md / verification.md / review.md mark deferred or open, each with its file pointer; "None" if there are none]
@@ -189,7 +193,7 @@ None active. Last finalized: [NNN-feature-name]
 - [up to 3 constraints that outlive this feature; omit the section if there are none]
 ```
 
-Write only facts read in this run (the Phase 3 commit hashes, the follow-ups from the feature's own files). Do not carry over the previous snapshot's decisions, file lists or task counters. Never stage the file: Phase 3 has already committed, and this write belongs to no commit.
+Write only facts read in this run (the Phase 3 commit hashes, the follow-ups from the feature's own files). Do not carry over the previous snapshot's decisions, file lists or task counters. Never stage the file (the template's `.gitignore` lists it): Phase 3 has already committed, and this write belongs to no commit. A later `/fix` or `/refactor` keeps the "Open Follow-ups" section while Current Feature is "None active".
 
 ## PHASE 4: Present Results
 

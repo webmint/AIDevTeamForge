@@ -64,7 +64,7 @@ When the template is improved, you can push updates to projects that already use
 | **Copy if missing** | Copied only if absent | New files added to the template that projects don't have yet; `.claude/checklists/` |
 | **Forge hooks** | Forge entries in `.claude/settings.json` replaced, project entries untouched | Hook entries pointing into `.claude/hooks/forge/` |
 
-Everything else under `scripts/` and `.claude/hooks/` belongs to the project and is never touched.
+Everything else under `scripts/` and `.claude/hooks/` belongs to the project and is never touched; `update.sh` only reports a same-named local copy of a Forge hook or script (`DUPLICATE`), it never removes one.
 
 ### Local edits and backups
 
@@ -123,7 +123,7 @@ Run these once when you first install the template:
 /conduct                         ← resume, or the next item of ROADMAP_FILE
 ```
 
-With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive. A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
+With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive (or `all`). A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
 
 ### Standalone Commands (use anytime)
 

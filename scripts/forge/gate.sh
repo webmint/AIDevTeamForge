@@ -33,13 +33,13 @@ usage() {
   exit 2
 }
 
-[[ $# -ge 1 ]] || usage
+[[ $# -ge 1 && -n "$1" && "$1" != -* ]] || usage
 name="$1"
 shift
 project_root="$(cd "$(dirname "$0")/../.." && pwd)"
 run_dir="$PWD"
 if [[ "${1:-}" == "-C" ]]; then
-  [[ $# -ge 2 ]] || usage
+  [[ $# -ge 2 && -n "$2" ]] || usage
   case "$2" in
     /*) run_dir="$2" ;;
     *) run_dir="$project_root/$2" ;;

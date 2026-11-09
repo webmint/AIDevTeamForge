@@ -528,7 +528,7 @@ Keep entries concise (1-2 lines each). Only update if there's something genuinel
 If `.claude/session-state.md` exists, update it to reflect the fix. FULLY OVERWRITE the file (same sliding-window pattern as `/execute-task`):
 
 1. Read the current session-state.md
-2. Increment "Tasks completed this session" by 1
+2. Increment "Tasks completed this session" by 1 (when Current Feature is "None active" after `/finalize`, keep its "Open Follow-ups" section as it is)
 3. Update "Last completed" to reference this bug fix (use the commit message as the title)
 4. Update "Files Modified Recently" with the files changed in this fix
 5. Re-estimate context load based on the new task count

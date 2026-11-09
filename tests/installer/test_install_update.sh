@@ -48,6 +48,14 @@ check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_prof
 check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
 check "review-pr command installed" '[ -f "$P2/.claude/commands/review-pr.md" ]'
+# update.sh on settings.json shapes with no local hook paths must not stop (set -e, pipefail)
+cp "$P2/.claude/hooks/forge/settings-hooks.json" "$P2/.claude/settings.json"
+"$TPL/update.sh" --dry-run "$P2" < /dev/null > "$WORK/dup-forge-only.txt" 2>&1; rc=$?
+check "update dry run with only Forge hooks completes" '[ $rc -eq 0 ] && grep -q "Dry run complete" "$WORK/dup-forge-only.txt"'
+echo '{"permissions": {"allow": ["Read"]}}' > "$P2/.claude/settings.json"
+"$TPL/update.sh" --dry-run "$P2" < /dev/null > "$WORK/dup-no-hooks.txt" 2>&1; rc=$?
+check "update dry run with no hooks key completes" '[ $rc -eq 0 ] && grep -q "Dry run complete" "$WORK/dup-no-hooks.txt"'
+rm -f "$P2/.claude/settings.json"
 check "conduct command and autonomous partial installed" '[ -f "$P2/.claude/commands/conduct.md" ] && [ -f "$P2/.claude/commands/_autonomous-mode.md" ]'
 check "push guard and wave preflight installed" '[ -f "$P2/.claude/hooks/forge/push-guard.py" ] && [ -x "$P2/scripts/forge/wave-preflight.py" ]'
 check "nested-wait guard and nested-pending installed" '[ -f "$P2/.claude/hooks/forge/nested-wait-guard.py" ] && [ -x "$P2/scripts/forge/nested-pending.py" ]'

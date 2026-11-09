@@ -7,7 +7,7 @@ Referenced by `/conduct` and by every command that has an interactive point. Int
 All of these hold:
 1. `.claude/project-config.json` sets `DELIVERY_MODE` to `autonomous` (a missing key means `interactive`).
 2. The command runs as a conductor runner: its prompt starts with `Forge conductor mode,` (see `/conduct` → "Reference Prompts").
-3. The point is not kept interactive. `DELIVERY_GATES` in the same file is a space-separated list of `<point>=interactive` pairs (for example `"specify=interactive fix=interactive"`; empty or missing = none), or `all`: every point stays interactive, so `/conduct` still runs one runner per phase and each point comes back to the user as `blocked (user gate <point>)`; `all` also covers points added to the table later. The points are the ids in the "Interactive Points" table.
+3. The point is not kept interactive. `DELIVERY_GATES` in the same file is a space-separated list of `<point>=interactive` pairs (for example `"specify=interactive fix=interactive"`; empty or missing = none), or `all`: every point except `context` stays interactive (a subagent cannot compact itself, so `context` keeps its autonomous rule), so `/conduct` still runs one runner per phase and each point comes back to the user as `blocked (user gate <point>)`; `all` also covers points added to the table later. The points are the ids in the "Interactive Points" table.
 
 When rule 1 or 2 fails, the command keeps its interactive form, even when the user runs it by hand in an autonomous project. At a point kept interactive (rule 3), the runner stops there: it writes its run report, returns `status: blocked (user gate <point>)` with the summary it would have shown the user, and the conductor asks the user and resumes the runner with the answer.
 

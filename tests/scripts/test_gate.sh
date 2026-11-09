@@ -72,6 +72,10 @@ check "-C accepts an absolute directory" 'grep -q "/src$" "$FORGE_LOG_DIR/cabs.l
 check "-C on a missing directory exits 2" '[ $rc -eq 2 ] && [ ! -f "$FORGE_LOG_DIR/cmiss.log" ]'
 "$GATE" cbad -C 2>/dev/null; rc=$?
 check "-C without a directory is a usage error" '[ $rc -eq 2 ]'
+"$GATE" cempty -C "" -- true 2>/dev/null; rc=$?
+check "-C with an empty directory is a usage error" '[ $rc -eq 2 ]'
+"$GATE" -C src -- true 2>/dev/null; rc=$?
+check "a gate name starting with - is a usage error" '[ $rc -eq 2 ]'
 "$GATE" nodash true 2>/dev/null; rc=$?
 check "missing -- is a usage error" '[ $rc -eq 2 ]'
 

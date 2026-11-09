@@ -656,7 +656,7 @@ if [ -f "$TARGET_DIR/.claude/settings.json" ]; then
         if [ -f "$TEMPLATE_DIR/.claude/hooks/forge/$base" ]; then
           warn "DUPLICATE  settings.json runs $hook_path; Forge ships .claude/hooks/forge/$base and registers it too — remove the local hook entry (move its settings into env) unless it does something else"
         fi
-      done
+      done || true  # no local hook paths: grep finds nothing, which must not end the update (set -e, pipefail)
 fi
 if [ -d "$TARGET_DIR/scripts" ] && [ -d "$TEMPLATE_DIR/scripts/forge" ]; then
   for local_script in "$TARGET_DIR"/scripts/*; do
