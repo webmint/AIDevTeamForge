@@ -51,15 +51,15 @@ Branch rule: a subagent call belongs to the branch named by the `Branch: <name>`
 prompt (the conductor's reference prompt, `conduct.md` → "Reference Prompts"). A runner in a sibling worktree is
 recorded under the main tree's `gitBranch` (the shell cwd resets after each command), so its prompt is the reliable
 source. The field is read from the first 2000 characters: the last `Branch:` on a line containing `conductor mode`,
-else a `Branch:` that starts a line. Its value is the text up to the next whitespace, `,` or `;`, without surrounding
-backticks, quotes or brackets and without trailing `.`, `:` or `)`; a placeholder (`<branch>`) is no value. It counts
-only when it is a plausible git branch name (letters, digits, `.`, `_`, `/`, `-`; no `..`; not starting with `-` or
-`.`, not ending with `/`) and is not the integration branch, `HEAD`, `N/A` or `none` (case ignored): a `/specify`
-runner starts on the default branch and creates its spec branch midway, so its calls keep their own lines' branches.
-A main-session call, and a subagent call whose run prompt has no usable field, keeps the line's `gitBranch`; a line
-without one is reported under `(none)`. A trailing `-r<n>` (a re-pushed pull request branch, `_autonomous-mode.md` →
-"Pull Requests") is stripped from every branch name, `--branch` and `--integration-branch` values included, so a real
-branch whose name ends in `-r<n>` is counted with its base name.
+else a `Branch:` that starts a line. Its value is the text up to the next whitespace, `,` or `;`, without
+surrounding backticks, quotes or brackets and without trailing `.`, `:` or `)`; a placeholder (`<…>`, `[…]`) is no
+value. It counts only when it is a plausible git branch name (letters, digits, `.`, `_`, `/`, `-`; no `..`; not
+starting with `-` or `.`, not ending with `/`) and is not the integration branch, `HEAD`, `N/A` or `none` (case
+ignored): a `/specify` runner starts on the default branch and creates its spec branch midway, so its calls keep
+their own lines' branches. A main-session call, and a subagent call whose run prompt has no usable field, keeps the
+line's `gitBranch`; a line without one is reported under `(none)`. A trailing `-r<n>` (a re-pushed pull request
+branch, `_autonomous-mode.md` → "Pull Requests") is stripped from every branch name, `--branch` and
+`--integration-branch` values included, so a real branch whose name ends in `-r<n>` is counted with its base name.
 
 Notes:
 - One API response is often written as several JSONL lines (streamed content blocks); lines are deduplicated by
@@ -536,7 +536,7 @@ def prompt_branch(text: str | None) -> str | None:
     if not match:
         return None
     value = match.group(1)
-    if value.startswith("<"):  # the reference prompt's placeholder
+    if value.startswith(("<", "[")):  # a placeholder: `<branch>`, `[source-branch-name or N/A]`
         return None
     value = value.rstrip(".:)").strip("`'\"([]").rstrip(".:)")
     if (not BRANCH_NAME.fullmatch(value) or ".." in value or value.endswith("/")

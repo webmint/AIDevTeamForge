@@ -502,7 +502,7 @@ class PromptBranchTests(SpecCostCase):
         for raw in ("`spec/7-x`", '"spec/7-x".', "(spec/7-x).", "spec/7-x:", "spec/7-x...", "spec/7-x;"):
             with self.subTest(raw):
                 self.assertEqual(sc.prompt_branch(f"Branch: {raw}"), "spec/7-x")
-        for raw in ("N/A", "none", "HEAD", "<branch>", "-x", "a..b", "spec/", ""):
+        for raw in ("N/A", "none", "HEAD", "<branch>", "[source-branch-name or N/A]", "-x", "a..b", "spec/", ""):
             with self.subTest(raw):
                 self.assertIsNone(sc.prompt_branch(f"Branch: {raw}"))
         self.assertIsNone(sc.prompt_branch("Do it.\nBranch:\nFollow the rules."))  # never the next line's word

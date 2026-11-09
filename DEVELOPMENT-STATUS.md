@@ -67,13 +67,13 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - **Forge-owned namespaces** (1.29.0): Forge ships scripts only under `scripts/forge/` and hooks only under `.claude/hooks/forge/`; the rest of `scripts/` and `.claude/hooks/` is project-owned. Hook entries ship as `.claude/hooks/forge/settings-hooks.json` and are merged into `settings.json` per entry (`hookFragments` in the manifest)
 - **Installer tests**: `tests/installer/test_install_update.sh`, `tests/scripts/test_gate.sh`, `tests/hooks/test_context_guard.py`, `tests/scripts/forge/` (repo-only)
 
-### Forge Scripts and Hooks (1.29.0–1.34.0)
+### Forge Scripts and Hooks (1.29.0–1.35.0)
 - `scripts/forge/gate.sh` — runs a check with its output in `.claude/.gate-logs/`, prints only the result and first errors; `-C <dir>` relative to the project root (1.34.0); machine-wide slots for heavy runs, `FORGE_GATE_SLOT_DIR` to share them across clones
 - `.claude/hooks/forge/context-guard.py` — PostToolUse hook; wind-down at 75 %, stop at 85 % of `FORGE_CONTEXT_WINDOW`
 - Quality scripts (1.30.0, Python 3.9+, stdlib): `quality_profile.py` (loader/validator of `.claude/quality-profile.json`; `init`, `validate`, `consumers`, `scopes`), `ratchet.py`, `count-tools.py`, `audit-gate.py`, `hub-files.py`, `new-exports.py`, `check-canonical-sources.py`, `check-enforcement-map.py`, `check-task-evidence.py`, `check-decision-records.py`. Unset or missing binding = the command's manual form (one line, exit 0); wrapper mode inspects the Source Root repository. Tests in `tests/scripts/forge/`
-- Autonomous delivery (1.31.0): `.claude/hooks/forge/push-guard.py` (PreToolUse, G1–G7, active only with `DELIVERY_MODE: autonomous`), `scripts/forge/wave-preflight.py` (pre-wave check), `scripts/forge/spec-cost.py` + `model-prices.json` (tokens, cost, wall time per spec and phase). Tests in `tests/hooks/` and `tests/scripts/forge/`
+- Autonomous delivery (1.31.0): `.claude/hooks/forge/push-guard.py` (PreToolUse, G1–G7, active only with `DELIVERY_MODE: autonomous`), `scripts/forge/wave-preflight.py` (pre-wave check), `scripts/forge/spec-cost.py` + `model-prices.json` (tokens, cost, wall time per spec and phase; subagent runs attributed by their prompt's `Branch:` field since 1.35.0). Tests in `tests/hooks/` and `tests/scripts/forge/`
 - Nested-wait guard (1.33.0): `.claude/hooks/forge/nested-wait-guard.py` (PreToolUse `SubagentHandback`, autonomous mode only) refuses a runner's hand-back while its launched work is pending; `scripts/forge/nested-pending.py` and `wave-preflight.py --runner` give the conductor the same check
-- `.claude/checklists/` (1.30.0, copy-if-missing, project-owned) — spec-gate, plan-gate, breakdown-gate, task-review, test-lens; `**Gate**: on | off`; grown by `/finalize` and `/audit` learning steps
+- `.claude/checklists/` (1.30.0, copy-if-missing, project-owned) — spec-gate, plan-gate, breakdown-gate, task-review, test-lens; `**Gate**: on | off`; grown by `/finalize` and `/audit` learning steps; field items added in 1.35.0 reach existing installs only by hand
 
 ### Other
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
