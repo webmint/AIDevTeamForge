@@ -646,6 +646,28 @@ PROJECT_OWNED_FILES="$(echo "$PROJECT_OWNED_PATTERNS" | expand_patterns "$TARGET
 SKIP_COUNT="$(echo "$PROJECT_OWNED_FILES" | grep -c . || true)"
 skipped "SKIP  $SKIP_COUNT project-owned file(s)"
 
+# Project-local copies of Forge components (hand-ported before Forge shipped them): report only, never removed
+if [ -f "$TARGET_DIR/.claude/settings.json" ]; then
+  jq -r '(.hooks // {}) | .[]? | .[]? | .hooks[]? | .command? // empty' "$TARGET_DIR/.claude/settings.json" 2>/dev/null \
+    | grep -v -F "${HOOK_PREFIX:-.claude/hooks/forge/}" \
+    | grep -o -E '[^[:space:]"'"'"']+\.(py|sh|js)' | sort -u \
+    | while IFS= read -r hook_path; do
+        base="$(basename "$hook_path")"
+        if [ -f "$TEMPLATE_DIR/.claude/hooks/forge/$base" ]; then
+          warn "DUPLICATE  settings.json runs $hook_path; Forge ships .claude/hooks/forge/$base and registers it too — remove the local hook entry (move its settings into env) unless it does something else"
+        fi
+      done
+fi
+if [ -d "$TARGET_DIR/scripts" ] && [ -d "$TEMPLATE_DIR/scripts/forge" ]; then
+  for local_script in "$TARGET_DIR"/scripts/*; do
+    [ -f "$local_script" ] || continue
+    base="$(basename "$local_script")"
+    if [ -f "$TEMPLATE_DIR/scripts/forge/$base" ]; then
+      warn "DUPLICATE  scripts/$base next to Forge's scripts/forge/$base — remove the local copy (point its callers at scripts/forge/) unless it does something else"
+    fi
+  done
+fi
+
 # Meta files
 added "WRITE  .claude/template-version → $TEMPLATE_VERSION"
 if [ "$CONFIG_CHANGED" = true ]; then
