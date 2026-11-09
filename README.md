@@ -210,6 +210,7 @@ In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become se
 - **Test lens**: every new or changed test faces "would it fail if the feature were broken?" in the per-task review and in `/review`
 - **Structural quality**: the project binding `.claude/quality-profile.json` drives ratchets (counts that may only fall), the third-copy trigger, hub files and the canonical sources registry; `/review`'s Structural Check treats ratchet growth as Critical, and `/audit` tracks themes with a machine check each. Unset keys run the same steps by hand
 - **Push guard** (autonomous mode only): a PreToolUse hook allows pushes only of feature branches to the configured remote, and denies force pushes, tags, remote deletions, pull request merges, `gh api` and settings writes, workflow dispatches, credential reads and git config that re-routes pushes
+- **Nested-wait guard** (autonomous mode only): a PreToolUse hook refuses a runner's hand-back while an agent or background shell it launched has not finished; a real STOP, a loop guard and fail-open paths stay allowed
 - **Pre-wave check** (autonomous mode): before a runner writes in a tree another runner used, `scripts/forge/wave-preflight.py` confirms a clean tree, no crash marker, no git operation in progress and the expected HEAD
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones

@@ -5,6 +5,22 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-11-09
+
+### Added
+- **Nested-wait guard** (`.claude/hooks/forge/nested-wait-guard.py`, PreToolUse on `SubagentHandback`, active only with `DELIVERY_MODE: autonomous` or `FORGE_NESTED_WAIT_GUARD=1`; `=0` forces it off) — replays the calling runner's transcript and refuses its hand-back while an agent it launched or a background shell it started has no final completion notification. Text rules alone did not stop early hand-backs in field use; the first live run gave one correct refusal, after which the runner waited and returned with all its nested agents completed
+  - Allowed anyway: a real STOP (`status: blocked`, a STOP number, `nested: pending <ids>`), the loop guard (5 refusals with no news about the runner's own work), fail open on any internal error; every allow and deny is logged to `<git-common-dir>/forge/nested-wait-guard.log`
+  - A `TaskStop` that fails because the task is already gone ends the item, so a vanished agent never traps its runner
+- `scripts/forge/nested-pending.py` — the conductor-side check: a runner's pending nested work, recursive into the agents it launched; `wave-preflight.py --runner <agent-id|transcript>` makes it part of the pre-wave check
+- `check-task-evidence.py` — each newly Complete task file's `**Status**:` must agree with `tasks/README.md` (both directions; `Complete (remark)` accepted)
+
+### Changed
+- **Constitution template §3.6 DRY states the extraction threshold in full**: a business rule or derived figure gets one definition from its second consumer; repeated structure with the same purpose is extracted at its third copy; code with different purposes stays separate at any count; nothing is extracted for the future. Replaces "wait for the third", which contradicted the third-copy trigger and the canonical sources registry. `/refactor` and the CLAUDE template name both thresholds. **Existing projects**: `constitution.md` is project-owned and is not updated — copy the new DRY bullets from `.claude/templates/constitution.template.md` §3.6 by hand
+- **CLAUDE template slimmed** (19,984 → about 11,500 bytes, loaded in every context): "Workflow Commands" is the flow line plus a pointer to `.claude/commands/`, "Artifact Storage" one line plus `.claude/storage-rules.md`. Reaches installs through the three-way merge; a project that edited inside those sections gets a merge-conflict warning and keeps its `CLAUDE.md`
+- Runner rule "Wait for nested agents": never hand back while one runs; ending the turn without a hand-back is how a runner waits. `/conduct` Phase 0 confirms both guards are registered; the Pre-Wave Check reads the guard log and has a recorded waiver for pending work confirmed gone
+- `storage-rules.md`: `tasks/README.md` listed
+- Template version: 1.32.0 → 1.33.0
+
 ## [1.32.0] - 2026-11-08
 
 ### Added
