@@ -276,7 +276,7 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 ### Question 11: Pull Requests and Issue Tracker
 Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads an issue the topic names). Run the git commands of this question inside the Source Root in wrapper mode. Detect the host from `git remote get-url origin` and propose the matching preset from `.claude/commands/review-pr.md` → "Configuration":
 - `github.com` in the URL → the GitHub (`gh`) preset; `gitlab` in the URL → the GitLab (`glab`) preset.
-- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set).
+- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set). A host without PR refs uses `refs/heads/<HEAD>` as `PR_HEAD_REF` (`<HEAD>` = the head branch name in the view output). Credentials for the commands (an API token) live only in the environment and are referenced from the command (`$VAR`), never written into `project-config.json`.
 
 "Which commands show a pull request?" — show the proposed `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND` and `PR_HEAD_REF`; the user accepts, edits any of them, or skips them.
 

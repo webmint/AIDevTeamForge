@@ -25,7 +25,7 @@ All keys live in `.claude/project-config.json` and are set by `/setup-wizard` (Q
 | `PR_VIEW_COMMAND` | Prints the PR's title, description, head branch, base branch, URL and head commit. `<N>` = PR number | — (required) |
 | `PR_DIFF_COMMAND` | Prints the PR's diff. `<N>` = PR number | — (required) |
 | `PR_SEARCH_COMMAND` | Lists the PRs that name an issue key, with number and title. `<KEY>` = the key | none: an issue-key argument is not supported |
-| `PR_HEAD_REF` | Remote ref that holds the PR's head commit. `<N>` = PR number | none: agents review the diff only |
+| `PR_HEAD_REF` | Remote ref that holds the PR's head commit. `<N>` = PR number; `<HEAD>` = the head branch name from the view output, for a host without PR refs (`refs/heads/<HEAD>`, same-repository PRs only) | none: agents review the diff only |
 | `PR_REMOTE` | Remote that holds the PRs and their base branches (`upstream` in a fork workflow) | `PUSH_REMOTE`, else `origin` |
 | `ISSUE_TRACKER` | `jira`, `github` or `none` | `none` |
 | `ISSUE_KEY_PATTERN` | Extended regex of an issue key | `[A-Z][A-Z0-9]+-[0-9]+` (jira), `#[0-9]+` (github), none (`none`) |
@@ -60,7 +60,7 @@ Presets the wizard offers (any host works with its own commands):
    - A URL argument: when the view's URL is not the argument's URL (host and path up to the number), stop: the URL belongs to another repository, and the commands review this project's repository only.
    - Read the diff from the command's output. **Never write it to an intermediate file** (`/tmp/*.diff` or similar) and read it back: a saved diff is stale the moment the PR gets a new commit, and nothing invalidates it.
    - A diff too large for one output: run step 5 first; with the PR head fetched, read the diff per path with `git diff <merge-base> refs/forge/review-pr/<N> -- <paths>`. Without it, re-run `PR_DIFF_COMMAND` piped through `sed -n '<a>,<b>p'` for consecutive line ranges (each run is fresh); stop at what fits and list the remaining files under "Not reviewed".
-5. **Fetch the PR head** (when `PR_HEAD_REF` is set; `<remote>` = `PR_REMOTE`):
+5. **Fetch the PR head** (when `PR_HEAD_REF` is set; `<remote>` = `PR_REMOTE`). When `PR_HEAD_REF` contains `<HEAD>`, replace it with the head branch name read from the view output (for example `headRefName` in `gh`, `source_branch` in `glab`, `source.branch.name` in the Bitbucket API); when the output names no head branch, do not fetch: treat it as a failed fetch.
    ```
    git fetch <remote> +<PR_HEAD_REF>:refs/forge/review-pr/<N> +refs/heads/<base branch>:refs/forge/review-pr/<N>-base
    git merge-base refs/forge/review-pr/<N> refs/forge/review-pr/<N>-base
