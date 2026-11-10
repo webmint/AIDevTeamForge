@@ -112,6 +112,10 @@ If ANY criterion is FAIL or PARTIAL:
 - Suggest which task needs to be re-executed or a new task to address the gap
 - Do NOT attempt to fix it in this command — that's what `/execute-task` is for
 
+## PHASE 3.5: Intent Check
+
+The ACs above come from the spec; this phase checks the change against the user's own request, which the spec may have narrowed. Read `.claude/commands/_intent-check.md` and follow its "Running the Check" and "Handling the Result". An included DIRECT surface is a Critical issue in "Issues Found" and makes the verdict NEEDS WORK (when covering it is more than a small fix, the next step is a spec revision with `/specify`, not `/fix`); a surface the user excludes is closed.
+
 ## PHASE 4: Integration Check
 
 Individual code quality was reviewed per-task during `/execute-task` Phase 3.3. This phase checks what only the epic-level view can see: cross-task integration and overall consistency.
@@ -132,7 +136,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
-- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope
+- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope. Files changed to cover a surface the user included (an Include answer in the spec's Request section) are in scope
 - **Leftover artifacts**: Check for debug logs, bare TODOs, commented-out code across all changed files
 
 ## PHASE 5: Generate Verification Report
@@ -153,6 +157,9 @@ Run these on ALL changed files across all tasks. Run each command check through 
 ...
 
 **Result**: [ALL PASS / X of Y PASS]
+
+### Intent Check
+[From Phase 3.5, as `_intent-check.md` → "Handling the Result" (Report) lays out: readings, the reading implemented, DIRECT surfaces with their outcome, BROADER as Info; or its skip or could-not-run line]
 
 ### Code Quality
 - Type checker: PASS/FAIL
@@ -192,7 +199,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 
 ## PHASE 6: Update Spec Status
 
-If all acceptance criteria pass and code quality checks pass:
+If all acceptance criteria pass, code quality checks pass and no included intent surface is open (Phase 3.5):
 1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/NNN-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
 2. Update the spec file status to "Complete"
    - In the spec's **Acceptance Criteria** section, change `- [ ]` to `- [x]` for every AC that passed verification
@@ -298,7 +305,7 @@ For each issue being filed, create a bug file in `bugs/` following the format in
    - **Severity**: from the verification report
    - **Feature**: path to the feature's spec.md
    - **AC**: the acceptance criterion that failed (e.g., AC-2), or N/A
-   - **Expected Behavior**: what the AC says should happen (from the spec)
+   - **Expected Behavior**: what the AC says should happen (from the spec); for an intent issue, the request's words the surface rests on
    - **Actual Behavior**: what verification observed (from the report evidence)
    - **File(s)**: affected files with area/function references (not line numbers)
    - **Evidence**: verification method and specific output
@@ -318,7 +325,7 @@ After fixes, run `/verify` to confirm.
 
 ## IMPORTANT RULES
 
-1. **Verify against spec, not assumptions** — the spec is the contract. If the code does something useful but the spec didn't ask for it, that's scope creep
+1. **Verify against spec, not assumptions** — the spec is the contract. If the code does something useful but the spec didn't ask for it, that's scope creep. The one exception is the intent check (Phase 3.5), which checks the change against the user's verbatim request: there, only the user's answer excludes a surface, never the spec's Out of Scope
 2. **Be specific about failures** — "AC-2 fails because `orderState.soldToParty` is null when ShippingTypeEnum is SoldTo, but it should return the party data" not "AC-2 fails"
 3. **Verification does not fix code** — /verify does not modify source code or invoke /fix. It verifies, reports findings, and renders a verdict. The user decides next steps. Docs and squashing are handled by `/finalize`
 4. **Memory updates are mandatory** — even if everything passed, record what you learned

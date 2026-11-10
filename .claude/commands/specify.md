@@ -86,7 +86,7 @@ No tasks executed yet. This file is updated automatically after each `/execute-t
 
 ## PHASE 1: Understand the Request
 
-Read the user's description from `$ARGUMENTS`.
+Read the user's description from `$ARGUMENTS`. The spec records it verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
 
 Before doing ANY analysis, read these files for context:
 1. `constitution.md` — project rules and patterns
@@ -130,8 +130,9 @@ Based on the description, identify ambiguities and ask clarifying questions. Ask
 - After each round, decide if more clarification is needed based on the answers
 - Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
 - If the description is clear enough, skip to Phase 3
+- Each question as asked and the user's answer as given go verbatim into the spec's `## Request (verbatim)` section
 
-**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions.
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never Request entries.
 
 ## PHASE 3: Codebase Analysis
 
@@ -201,6 +202,10 @@ The acceptance criteria of a structural spec are invariants, each with the check
 **Author**: Claude + [User]
 **Type**: feature | structural
 [The `Audit gate: …` line from Phase 0.4, verbatim; omit when `auditGate` is unset]
+
+## Request (verbatim)
+
+[The request and the Phase 2 questions and answers, word for word; rules in `.claude/commands/_intent-check.md` → "The Request Record"]
 
 ## 1. Overview
 
@@ -288,6 +293,8 @@ Present the spec summary to the user:
 - [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
+
+A change request that adds or excludes scope is appended to the Request section, verbatim and dated.
 
 ## IMPORTANT RULES
 
