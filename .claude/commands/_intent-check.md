@@ -10,15 +10,16 @@ Referenced by `/specify` (the spec's `## Request (verbatim)` section) and `/veri
 
 The spec's `## Request (verbatim)` section holds, each as a quoted or fenced block:
 1. `$ARGUMENTS` exactly as `/specify` received it. When it was empty, the description the user gave in reply.
-2. When the request names a file: the part of it that states the request, verbatim (a `/research` report: its `**Topic**:` line).
-3. Each Phase 2 clarification question as asked and the user's answer as given, as Q/A pairs.
-4. At the `/specify` HARD GATE, a change request that adds or excludes scope: the user's words, dated.
-5. The intent check's questions and the user's answers, Include and Exclude alike, dated ("Handling the Result").
+2. When `/specify` starts from a `/research` report (the user names it, or `$ARGUMENTS` is its path): the report's `**Request (verbatim)**` block (the run of `>` lines after the field), copied whole, labels included. A report from before this block existed: its `**Topic**:` line, labelled `research Topic line, not verbatim`. Arguments beyond the path are recorded separately, labelled `/specify arguments`; a bare path is not recorded as item 1.
+3. When the request names another file: the part of it that states the request, verbatim.
+4. Each Phase 2 clarification question as asked and the user's answer as given, as Q/A pairs.
+5. At the `/specify` HARD GATE, a change request that adds or excludes scope: the user's words, dated.
+6. The intent check's questions and the user's answers, Include and Exclude alike, dated ("Handling the Result").
 
 Rules:
 - Never paraphrased or summarised. A dated entry reads `Q (<source>, YYYY-MM-DD): <question as asked>` and `A: <answer as given>`, or `User (HARD GATE, YYYY-MM-DD): <words>`. `<source>` is `Phase 2` for clarification questions and `intent check` for the intent check's.
-- After the spec is approved, entries are only appended (items 4 and 5); nothing is edited or removed.
-- **Autonomous mode**: the section holds the roadmap row or the description from the conductor's Inputs, verbatim, plus the research report's `**Topic**:` line when the Inputs name one; not the previous result block or other Inputs. An answer the runner takes from the sources of truth is a decision, recorded under Decisions, never a Request entry.
+- After the spec is approved, entries are only appended (items 5 and 6); nothing is edited or removed.
+- **Autonomous mode**: the section holds the research report's `**Request (verbatim)**` block when the Inputs name a report that has one (the runner's `/specify` arguments, the same topic, are then not recorded again), otherwise the roadmap row or the description from the conductor's Inputs, verbatim; not the previous result block or other Inputs. An answer the runner takes from the sources of truth is a decision, recorded under Decisions, never a Request entry.
 
 ## Running the Check
 

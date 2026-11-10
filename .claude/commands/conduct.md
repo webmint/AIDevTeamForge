@@ -41,8 +41,8 @@ This session runs only the loop:
 
 | Phase | Command run by the runner | Model | Effort |
 |-------|---------------------------|-------|--------|
-| research | `research "<topic>"` (the topic: the roadmap row or the description; saved without asking) | `MODEL_THINK` | high |
-| specify | `specify "<topic>"`, with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
+| research | `research "<topic>"` (the topic: the roadmap row or the description, as given; saved without asking) | `MODEL_THINK` | high |
+| specify | `specify "<topic>"` (the same topic, as given), with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
 | plan | `plan specs/NNN-*`; runs the plan-gate lenses itself | `MODEL_THINK` | xhigh |
 | breakdown | `breakdown specs/NNN-*`; runs the breakdown-gate itself | `MODEL_DO` | medium |
 | wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_DO` | medium |
