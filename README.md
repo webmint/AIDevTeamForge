@@ -112,7 +112,7 @@ Run these once when you first install the template:
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task W2` — a wave from `tasks/README.md` | `/execute-task all` — all pending
   - In a batch, each task keeps type check, lint and affected tests; the full build and the full test suite run once per wave (batch gate)
 - **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-engineer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
-- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
+- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Intent check: a fresh auditor compares the change with your verbatim request (kept in the spec) and asks about every surface the request describes that the change leaves as before. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
 - **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
 - **`/finalize`** — Feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR.
 
