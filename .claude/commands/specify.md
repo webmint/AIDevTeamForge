@@ -8,7 +8,7 @@ Create a structured specification for a feature or change. This command takes a 
 ```
 
 ## Arguments
-- `$ARGUMENTS` — The feature description provided by the user. If empty, ask the user to describe what they want.
+- `$ARGUMENTS` — The feature description provided by the user, or the path of a `/research` report. If empty, ask the user to describe what they want.
 
 ## PHASE 0: Branch Setup
 
@@ -42,7 +42,7 @@ Determine the repository's default branch using these methods in order:
 
 **If on the default branch**: Prepare for spec branch creation (branch is created in Phase 4 after the spec number is determined):
 
-1. **Generate short description**: From `$ARGUMENTS`, generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`). Save this for use in Phase 4.
+1. **Generate short description**: From `$ARGUMENTS` (a research report path: from the report's Request block), generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`). Save this for use in Phase 4.
 
 2. **Note**: Branch creation is deferred to Phase 4 so the branch number matches the spec directory number. Phases 1-3 are read-only research and safe to run on the default branch.
 
@@ -86,7 +86,7 @@ No tasks executed yet. This file is updated automatically after each `/execute-t
 
 ## PHASE 1: Understand the Request
 
-Read the user's description from `$ARGUMENTS`.
+Read the user's description from `$ARGUMENTS`, or from the report's Request block when `$ARGUMENTS` is a research report path. The spec records it verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
 
 Before doing ANY analysis, read these files for context:
 1. `constitution.md` — project rules and patterns
@@ -98,7 +98,7 @@ Before doing ANY analysis, read these files for context:
    - `docs/features/*.md` — scan for features related to the request
    - `docs/api/*.md` — if the request involves API changes
    - If `docs/` doesn't exist or is empty, skip — rely on codebase analysis in Phase 3
-5. The `/research` report for this request (`research/YYYY-MM-DD-<slug>.md`), when the user names one. Its "Reuse or Extend" rows are the first prior-art candidates of Phase 1.5, and its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use the report, tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
+5. The `/research` report for this request (`research/YYYY-MM-DD-<slug>.md`), when the user names one or `$ARGUMENTS` is its path (its `**Request (verbatim)**` block is then the request). Its "Reuse or Extend" rows are the first prior-art candidates of Phase 1.5, and its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use its findings (its Request block is still the request: copy it), tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
 
 ## PHASE 1.5: Prior Art
 
@@ -130,8 +130,9 @@ Based on the description, identify ambiguities and ask clarifying questions. Ask
 - After each round, decide if more clarification is needed based on the answers
 - Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
 - If the description is clear enough, skip to Phase 3
+- Each question as asked and the user's answer as given go verbatim into the spec's `## Request (verbatim)` section
 
-**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions.
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never Request entries.
 
 ## PHASE 3: Codebase Analysis
 
@@ -201,6 +202,10 @@ The acceptance criteria of a structural spec are invariants, each with the check
 **Author**: Claude + [User]
 **Type**: feature | structural
 [The `Audit gate: …` line from Phase 0.4, verbatim; omit when `auditGate` is unset]
+
+## Request (verbatim)
+
+[The request and the Phase 2 questions and answers, word for word; rules in `.claude/commands/_intent-check.md` → "The Request Record"]
 
 ## 1. Overview
 
@@ -288,6 +293,8 @@ Present the spec summary to the user:
 - [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
+
+A change request that adds or excludes scope is appended to the Request section, verbatim and dated.
 
 ## IMPORTANT RULES
 

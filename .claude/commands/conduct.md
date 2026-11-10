@@ -41,8 +41,8 @@ This session runs only the loop:
 
 | Phase | Command run by the runner | Model | Effort |
 |-------|---------------------------|-------|--------|
-| research | `research "<topic>"` (the topic: the roadmap row or the description; saved without asking) | `MODEL_THINK` | high |
-| specify | `specify "<topic>"`, with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
+| research | `research "<topic>"` (the topic: the roadmap row or the description, as given; saved without asking) | `MODEL_THINK` | high |
+| specify | `specify "<topic>"` (the same topic, as given), with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
 | plan | `plan specs/NNN-*`; runs the plan-gate lenses itself | `MODEL_THINK` | xhigh |
 | breakdown | `breakdown specs/NNN-*`; runs the breakdown-gate itself | `MODEL_DO` | medium |
 | wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_DO` | medium |
@@ -64,7 +64,7 @@ Phase runner (fill `<…>`; add only the listed inputs; the first line is parsed
 ```
 Forge conductor mode, phase runner. Phase: <phase>[ task <NNN> | wave W<n>]. Feature: <specs/NNN-* or "new: <topic>">. Branch: <branch>.
 Follow .claude/commands/_autonomous-mode.md at every interactive point and in "What Every Runner Follows". Invoke Skill "<command>" with args "<args>" and run it to completion.
-Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the bug file for /fix>.
+Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
 Wait for your nested agents by their completion notifications: never with sleep loops, background timers or `until` polls; stop every background shell you started before you return.
 Write the full report to specs/<NNN-*>/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (≤ 10 lines).
 ```
@@ -96,6 +96,7 @@ A runner that ends on an API error (timeout, server error) is resumed first via 
 - **`blocked (existing spec …)`** from research: resume that spec instead.
 - **`blocked (crash marker …)`**: a marker of another command or task is in the tree; STOP 6 for the spec, with the marker summary in the report.
 - **`blocked (user gate <point>)`**: show the user the runner's summary and the point, take the answer, and resume the same runner with it.
+- **`blocked (intent: <n> questions)`** from verify (STOP 1): park the spec, with the questions in its ledger row. On resume (`/conduct specs/NNN-*`), show the user each surface with its Include/Exclude options, take the answers verbatim, and launch a fresh `/verify` runner whose Inputs carry each question with its answer, verbatim (`_intent-check.md` records them before its auditor runs).
 - **`blocked (write refused: <path>)`**: save the content the runner returned verbatim to that path, commit it as `[WIP] Docs: <feature> — <file>`, and resume the runner.
 - **`/verify` files bugs**: run one `fix` runner per bug, sequentially (pre-wave check before each), then `/verify` again. A spec still failing after 3 verify cycles is STOP 6.
 - **Open items** (`## For the register` in run reports): list them in the spec's ledger row; at the end of the spec tell the user in one line where they are.

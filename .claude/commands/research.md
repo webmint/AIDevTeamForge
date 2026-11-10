@@ -41,8 +41,8 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 3. Read `CLAUDE.md` for project structure, tech stack, and available patterns
 4. Read `docs/architecture.md` if it exists — for current architecture patterns
 5. Scan `specs/` directory names to check if this topic overlaps with an existing or in-progress feature
-6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate.
-7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic or the Inputs: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why.
+6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate. Keep `$ARGUMENTS` exactly (or the user's reply when you asked) for the report's `**Request (verbatim)**` block; in autonomous mode, the roadmap row or the description from the conductor's Inputs. Never paraphrase it.
+7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic; copy its description verbatim into the report's `**Request (verbatim)**` block, under the label line `> Issue <KEY> — <title (summary)>:`, preceded by a lone `>` line: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic or the Inputs: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why.
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
 
@@ -132,6 +132,11 @@ Generate the full report and **render it directly in the console** so the user c
 **Topic**: [user's original description]
 **Issue**: [KEY — summary; `KEY — not read (<reason>)`; omit this line when the topic names no issue]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
+**Request (verbatim)**:
+> [the request kept in Phase 1 step 6, word for word; every line prefixed `> `, a blank line as `>`]
+>
+> Issue [KEY] — [title]:
+> [the issue's description from step 7, quoted the same way; omit these lines when no issue was read]
 
 ## Summary
 
@@ -203,8 +208,8 @@ Generate the full report and **render it directly in the console** so the user c
 
 [One of three outcomes with a concrete next step:]
 
-- **Proceed**: "Run `/specify "[refined description]"` to create a formal specification."
-- **Uncertain areas**: "Run `/specify "[description]"` — it will ask clarifying questions about [uncertainties] before writing the spec."
+- **Proceed**: "Run `/specify research/[this file].md` to create a formal specification." (Not saved: `/specify "[the request, verbatim]"`.)
+- **Uncertain areas**: "Run `/specify` the same way — it will ask clarifying questions about [uncertainties] before writing the spec."
 - **Not recommended**: "[Reason]. Consider [alternative] instead."
 ```
 
@@ -214,7 +219,7 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 
 ### Step 1: Ask to Save
 
-Use `AskUserQuestion` to ask: **"Save this research to a file?"**
+Use `AskUserQuestion` to ask: **"Save this research to a file?"** When an issue was read, recommend Yes: an unsaved report's `/specify` line carries only the request, not the issue text.
 
 **Autonomous mode** (`_autonomous-mode.md`, point `research-save`): save it without asking and commit nothing.
 
@@ -232,12 +237,12 @@ Present next steps to the user:
 
 ```
 Next steps:
-- To proceed: `/specify "[refined description]"`
+- To proceed: `/specify research/[filename].md`
 - To research deeper: `/research "[narrower sub-topic]"`
 - To shelve: no action needed
 ```
 
-Tailor the next steps to the verdict. If not recommended, lead with the alternative. If feasible, lead with `/specify`.
+When the report was not saved, the proceed line is `/specify "[the request, verbatim]"`: the request kept in Phase 1 step 6, unchanged, never a refined description. Tailor the next steps to the verdict. If not recommended, lead with the alternative. If feasible, lead with `/specify`.
 
 ## IMPORTANT RULES
 
@@ -246,6 +251,6 @@ Tailor the next steps to the verdict. If not recommended, lead with the alternat
 3. **No code modifications** — this command only reads and reports. No file edits, no branches, no commits.
 4. **Constitution awareness** — all feasibility assessments must account for architecture rules and NON-NEGOTIABLE constraints.
 5. **Check for duplicates** — scan `specs/` for existing features that overlap. Don't research what's already specified.
-6. **Recommend concretely** — always suggest a specific next command with a refined description the user can copy-paste.
+6. **Recommend concretely** — always suggest a specific next command the user can copy-paste: `/specify` with the saved report's path, or with the request verbatim; never a refined description.
 7. **Consult memory** — check `MEMORY.md` for lessons, gotchas, or decisions about similar areas.
 8. **Concise over comprehensive** — the report should help the user decide quickly. Trim anything that doesn't aid the decision.

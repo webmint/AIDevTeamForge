@@ -31,6 +31,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `checkpoint` | `_multi-task-continuation.md` review checkpoint | "Continue" |
 | `context` | `_multi-task-continuation.md` context health | Ignore the task count. On a context guard message: finish the current task, run the Batch Gate over the completed tasks (unless the stop message forbids it), and return `status: paused (context)` with `next` naming the remaining tasks; never show the compaction prompt |
 | `recovery` | `_recovery.md` 0.3, a crash marker `.claude/wip.md` exists | "Resume" when the marker names the same command, task and feature as this runner's prompt; otherwise return `blocked (crash marker: <its summary>)` without touching it |
+| `intent` | `/verify` Phase 3.5, the intent check lists DIRECT surfaces the spec's Request section does not answer yet | STOP 1: write the run report and return `blocked (intent: <n> questions)` with the surfaces as questions; never answer them from the sources of truth or the spec. The answers come back on resume (`/conduct` → "Runner Outcomes") |
 | `bugs` | `/verify` 9.3 bug filing | "Yes": file every issue. The runner never fixes product code; the conductor runs one `/fix` per bug |
 | `fix-scope` | `/fix` Phase 1, "larger than expected" | STOP 1: return `blocked`; the conductor parks it and proposes a `/specify` |
 | `fix` | `/fix` Phase 2 diagnosis HARD GATE | Self-confirm the root cause once the evidence shows it (a reproduction, a failing test or a quoted code path), and record it. Without such evidence: STOP 6 after 3 attempts |
@@ -66,7 +67,7 @@ When sources conflict, earlier entries win:
 ## STOP Conditions
 
 Stop, report, and wait for the user:
-1. A product decision the sources do not answer and that is costly to reverse (scope, money or legal semantics, data loss).
+1. A product decision the sources do not answer and that is costly to reverse (scope, money or legal semantics, data loss). DIRECT surfaces the Request section does not answer yet are STOP 1: only the user answers them (point `intent`).
 2. An irreconcilable conflict between sources of truth, or a needed change to a constitution rule.
 3. Credentials, accounts, paid or external services: a push other than the routine one under "Pull Requests", any force push, merging a pull request or any merge into a remote branch, a deploy, a change to repository, CI or cloud settings or secrets. A local fast-forward of the default branch to its remote (`git merge --ff-only`) is routine.
 4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` are routine.

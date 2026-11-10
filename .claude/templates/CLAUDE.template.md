@@ -49,7 +49,7 @@ Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existi
 - Spec approval → before `/plan` can run
 - Plan approval → before `/breakdown` can run
 - Task breakdown approval → before `/execute-task` can start
-- Acceptance criteria → verified in `/verify`
+- Acceptance criteria → verified in `/verify`, which also checks the change against the user's verbatim request (`.claude/commands/_intent-check.md`): only the user's answer excludes a surface the request describes
 
 ### Independent Gates (run before each HARD GATE)
 - An artifact the next command consumes is reviewed by someone other than its author: a fresh agent, on a different model where possible, works adversarially to `.claude/checklists/<gate>.md` (`.claude/commands/_independent-gate.md`). spec-gate runs in `/specify`, plan-gate (architect, security and qa lenses) in `/plan`, breakdown-gate in `/breakdown`; the findings are shown at the HARD GATE.
