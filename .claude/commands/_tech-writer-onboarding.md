@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Tech-Writer Onboarding Instructions
 
 These instructions are included in the tech-writer agent prompt when running `/onboard`. They define how to scan an existing codebase and generate comprehensive project documentation.

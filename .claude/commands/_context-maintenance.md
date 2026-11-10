@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Context Maintenance: Post-Task Bookkeeping
 
 This file is read by `/execute-task` after every task completion (Phase 5.2). It manages session state and context health.

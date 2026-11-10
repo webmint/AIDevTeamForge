@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Independent Gate: Fresh-Context Review Before a HARD GATE
 
 Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (breakdown-gate), right before their HARD GATE. An artifact that the next command consumes is reviewed by someone other than its author: a fresh agent that reads the primary sources and works adversarially to a checklist. The user still approves at the HARD GATE; the gate gives them an independent finding list to approve against.
