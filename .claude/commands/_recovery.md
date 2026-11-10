@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Recovery: Interrupted Command Session
 
 This file is read by `/execute-task`, `/fix`, and `/refactor` when `.claude/wip.md` exists at the start of execution. The calling command provides `CALLING_COMMAND` (one of: `execute-task`, `fix`, `refactor`).

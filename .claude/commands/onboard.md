@@ -106,7 +106,7 @@ The docs you write must answer these questions for any agent picking up a task:
 
 ## SECTION A: Tech-Writer Onboarding Instructions
 
-Read `.claude/commands/_tech-writer-onboarding.md` and include its full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
+Read `.claude/commands/_tech-writer-onboarding.md` and include its full content after the frontmatter block in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
 
 ---
 

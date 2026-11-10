@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Multi-Task Continuation
 
 This file is read by `/execute-task` when the task queue (built in Phase 1.1) contains more than one task. Read this after Phase 5.2 (context maintenance) completes for the current task.

@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Agent Assignment: File-Layer Mapping
 
 This file is the single source of truth for assigning agents based on the files being changed. Referenced by `/breakdown`, `/fix`, and `/refactor`.

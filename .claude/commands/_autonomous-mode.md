@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+user-invocable: false
+---
 # Autonomous Mode: Rules for Conductor Runs
 
 Referenced by `/conduct` and by every command that has an interactive point. Interactive delivery is the default: every command waits for the user at its gates and questions. Autonomous delivery is opt-in. In it, `/conduct` runs the spec cycle one subagent per phase, and the runners decide where the commands would ask, within the rules below. The user is consulted only for STOP conditions and for the points the project keeps interactive.
