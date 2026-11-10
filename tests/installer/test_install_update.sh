@@ -29,6 +29,28 @@ cp "$TPL/.claude/template-checksums" "$WORK/sums.committed"
 check "template-checksums matches the tree (run ./update.sh --write-checksums)" \
   'cmp -s "$WORK/sums.committed" "$TPL/.claude/template-checksums"'
 
+echo "== command file size budget"
+# After a compaction Claude Code re-attaches only the start of each invoked command (5,000 tokens,
+# about 20,000 characters): steps past that point drop out for the rest of the session.
+# New files stay within CMD_BUDGET; the files already over it may not grow past their ceiling.
+# A file that shrinks gets a lower ceiling here; one back within the budget leaves the list.
+CMD_BUDGET=20000
+cmd_ceiling() {
+  case "$1" in
+    audit.md) echo 51734 ;; setup-wizard.md) echo 39916 ;; execute-task.md) echo 29753 ;;
+    fix.md) echo 26990 ;; refactor.md) echo 26601 ;; plan.md) echo 22723 ;;
+    *) echo "$CMD_BUDGET" ;;
+  esac
+}
+over=""; stale=""
+for f in "$TPL/.claude/commands/"*.md; do
+  n="$(basename "$f")"; size="$(wc -c < "$f" | tr -d ' ')"; cap="$(cmd_ceiling "$n")"
+  [ "$size" -gt "$cap" ] && over="$over $n($size>$cap)"
+  [ "$cap" -gt "$CMD_BUDGET" ] && [ "$size" -le "$CMD_BUDGET" ] && stale="$stale $n"
+done
+check "no command file over its size ceiling:${over:- none}" '[ -z "$over" ]'
+check "no ceiling kept for a file back within the budget:${stale:- none}" '[ -z "$stale" ]'
+
 echo "== fresh install"
 P2="$WORK/fresh"; mkdir -p "$P2"
 "$TPL/install.sh" "$P2" >/dev/null
