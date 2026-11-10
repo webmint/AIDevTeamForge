@@ -5,6 +5,21 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-11-10
+
+### Added
+- **Intent check in `/verify`** (Phase 3.5, `.claude/commands/_intent-check.md`) — every other review grades a feature against its own spec, so a spec that narrows the request (a path the change also had to cover, moved to Out of Scope or pinned to the old behaviour by an AC) passes them all. A fresh auditor, on a different model where possible, now sees only the user's verbatim request, the code diff and the code — never the spec — and lists the surfaces the request describes that the change leaves as before (`DIRECT`) apart from those only a wider reading reaches (`BROADER`, reported as Info)
+  - Each DIRECT surface is a question to the user: include (a Critical issue, verdict NEEDS WORK; a large one goes back to `/specify`) or exclude. Both answers are appended verbatim to the spec, so a re-run does not ask again; only the user's answer closes a surface, never the spec's Out of Scope, the plan or a test
+  - Autonomous mode: unanswered DIRECT surfaces are STOP 1 — the spec is parked with the questions, and `/conduct specs/NNN-*` resumes `/verify` with the user's answers
+  - Validated before shipping on a frozen brownfield benchmark: the auditor named the path the change missed in all failing runs (10/10) and nothing in the passing control (2/2), then again 4/4 with the shipped prompt
+- **`/specify` keeps the request verbatim** — new spec section `## Request (verbatim)`: the arguments (or the description given when there were none), the request part of a named research report, the Phase 2 questions and answers, and scope changes asked at the HARD GATE; never paraphrased, not edited after approval except by the intent check's recorded answers. Specs written before 1.36.0 skip the intent check with one line in the report
+- **Checklist item SG-26** (spec-gate): an exclusion in the spec (Out of Scope, a "not modified" list, an AC that keeps existing behaviour on a path the change reaches) quotes the request or a recorded user answer; one resting on inferred intent is a Warning. **Existing projects**: checklists are copy-if-missing and project-owned — copy SG-26 from `.claude/checklists/spec-gate.md` by hand
+
+### Changed
+- `/verify` scope-creep check: files changed to cover a surface the user included are in scope
+- `/conduct`: Runner Outcomes handles `blocked (intent: <n> questions)`; a resumed `/verify` runner's Inputs carry each question with the user's answer
+- Template version: 1.35.1 → 1.36.0
+
 ## [1.35.1] - 2026-11-10
 
 ### Fixed
