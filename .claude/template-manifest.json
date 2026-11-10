@@ -1,5 +1,5 @@
 {
-  "version": "1.35.0",
+  "version": "1.35.1",
   "description": "Manifest for AIDevTeamForge update system",
   "templateOwned": {
     "description": "Files 100% owned by the template — overwritten on update. A file whose content differs from the checksum recorded at install/update time (.claude/template-checksums) is a local edit: update.sh backs it up to .claude/.update-backup/<from>-to-<to>-<timestamp>/ before overwriting. Forge ships its own scripts and hooks only under scripts/forge/ and .claude/hooks/forge/; everything else under scripts/ and .claude/hooks/ belongs to the project.",

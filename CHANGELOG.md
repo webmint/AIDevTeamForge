@@ -5,6 +5,14 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.1] - 2026-11-10
+
+### Fixed
+- **Shared partials showed up as commands** — the seven `_`-prefixed files in `.claude/commands/` were listed in the `/` menu and in the model's skill listing, and sessions in the field invoked `_recovery` and `_agent-assignment` through the Skill tool with no calling command. Each partial now has `disable-model-invocation: true` and `user-invocable: false`: hidden from both, still read by path as before (paths unchanged). `/onboard` passes `_tech-writer-onboarding.md` to the tech-writer without its frontmatter
+
+### Changed
+- Template version: 1.35.0 → 1.35.1
+
 ## [1.35.0] - 2026-11-09
 
 ### Added

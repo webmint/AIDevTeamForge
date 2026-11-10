@@ -29,7 +29,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `conduct.md` (1.31.0) — opt-in autonomous delivery: the main session drives the spec cycle, one subagent per phase, reads only result blocks, parks blocked specs and continues with the roadmap, keeps a local ledger; `disable-model-invocation: true`
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
-Shared partials (`_`-prefixed, loaded on-demand by parent commands):
+Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from the `/` menu and the model's skill listing by `disable-model-invocation` + `user-invocable: false` since 1.35.1):
 - `_recovery.md` — Phase 0 crash recovery with deterministic hash-based rollback, shared by execute-task, fix, and refactor
 - `_context-maintenance.md` — Phase 5.2 session state and context health (execute-task)
 - `_multi-task-continuation.md` — Phase 5.3 batch queue management (execute-task multi-task mode)
