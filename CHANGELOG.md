@@ -5,6 +5,29 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-11-12
+
+### Added
+- **Spec-gate and plan-gate in their own `/conduct` runner** — the `/specify` and `/plan` runners stop at their gate step and leave `## Sources read` and `## HARD GATE notes` in their run report; a fresh `spec-gate` / `plan-gate` runner runs the gate, applies the fixes and self-approves. The large authoring context no longer waits idle on the reviewers while its 5-minute cache expires. A gate that is off skips the phase (the HARD GATE stays interactive). Interactive `/specify` and `/plan` are unchanged; the breakdown-gate stays inside `/breakdown`
+- **Two model switches, on by default** — optional keys in `.claude/project-config.json`; a missing key means the default
+  - `MODEL_LIGHT` (missing = `haiku`) runs the `/conduct` wave runner, which only orchestrates; a relaunch after `failed` or `blocked` runs on `MODEL_DO`. Implementing agents and reviewers keep their models. Off: set it to the `MODEL_DO` value
+  - `MODEL_ARCHITECT_LENS` (missing = the `MODEL_DO` value) runs the plan-gate architect lens; the security and QA lenses keep their models. Off: set it to the `MODEL_THINK` value
+- **Reading budget and a smaller conductor** — runners read each file once and only the part they need, and send long Bash output to a file read with `tail` or `grep`. The conductor only conducts, is best run on Sonnet (recommended in PHASE 0), and stops at a phase boundary above ~250k tokens, so a 1M-token window no longer grows to the guard's 85 % stop
+- **Agent `tools:` lists** — every agent template has one; measured: a haiku probe's first-call prompt fell from 16.5k to 7.6k tokens. Each list has Read, Edit, Write, Bash, Agent and context7, except the code-reviewer (no Edit) and the tech-writer (no context7); the four browser agents add ToolSearch and chrome-devtools. The lists leave out Glob, Grep, WebFetch, WebSearch and MCP servers other than context7 and chrome-devtools (a Figma server, for example): a project that needs one adds it to the agent's `tools:` line. Body lines that named Grep, Glob or TaskCreate now use Bash, and the design-auditor works from the screenshot or spec it is given. A list applies only when the agent is launched by its type (`/execute-task` implementing agents and the per-task code-reviewer, the plan-gate lenses, `/verify`'s ac-verifier); a command that reads `.claude/agents/<name>.md` into a general-purpose prompt (`/review`, `/review-pr`, `/audit`, the tech-writer in `/finalize`, `/fix`, `/refactor` and `/refresh-docs`) keeps the full tool set
+- **Comment rule and TR-27** — a 1–2 line doc comment on exported or public API only; inline comments only for a why, an invariant, a non-obvious decision or a file that must stay in step; no spec, AC, task or phase ids in source (test titles keep theirs). Replaces the doc comment on every new public symbol in `/execute-task` and the agent templates. Task-review item TR-27 records a miss as a Suggestion
+
+### Changed
+- **Quieter gates** — reviewers report Critical, Warning and Suggestion only, nothing for an item that passes; the plan-gate merges the same finding from different lenses; a Critical re-check runs in a fresh reviewer that reads only the findings it re-checks; a re-run after HARD GATE changes reports Warning and above. PG-A08: a missed reuse is Critical only when it changes behaviour or duplicates a `canonicalSources` concept, otherwise a Warning
+- **Stricter AC rules**
+  - breakdown-gate: a task that omits or contradicts an AC's wording or a contract behaviour is fixed, never deferred
+  - A gate fix may not turn an AC into an untested exception (manual, Out of Scope, accepted without a test); a finding only such a fix would close goes to the HARD GATE as an open Critical
+  - TL-01: one mutant per count clause (exactly N, at most N, all, none). TR-21: the report names the search run per new export and its hits, or the item counts as not checked
+  - Intent check: work the request assigns to another ticket is BROADER, never DIRECT
+- **Cheaper models for mechanical work** — read-only searches run as Explore on haiku; `/summarize` is its own `/conduct` phase on haiku; `/finalize` runs the tech-writer on haiku, on sonnet when the feature changes an ADR, a contract document or `docs/architecture.md`; the breakdown-gate reviewer runs on sonnet; `_agent-assignment.md` sends shared utilities, type definitions and unclear files to the layer's specialist instead of the architect
+- **Autonomous task review fixes every Warning at its task** (`/execute-task`, `/fix`) — "Address now", not only when cheap, in one repair run after the Critical repair is re-reviewed and committed; a Warning repair whose checks fail is reverted and recorded, not a STOP
+- **Existing projects**: checklists (`.claude/checklists/*`) are copy-if-missing and project-owned — copy by hand TR-27 and TR-21 (`task-review.md`), TL-01 (`test-lens.md`), PG-A08 (`plan-gate.md`), the `**Runs**` line of `breakdown-gate.md`, and the severity line under "How to use" of the spec-, plan- and breakdown-gate checklists. Generated agents (`.claude/agents/*`) take the `tools:` lines and the other template changes, and `CLAUDE.md` the Independent Gates line of `CLAUDE.template.md`, through the three-way merge; a file without a baseline or with a merge conflict stays unchanged — copy an agent's `tools:` line from `.claude/templates/agents/<name>.template.md`, or that line from `.claude/templates/CLAUDE.template.md`, by hand
+- Template version: 1.36.0 → 1.37.0
+
 ## [1.36.0] - 2026-11-10
 
 ### Added
