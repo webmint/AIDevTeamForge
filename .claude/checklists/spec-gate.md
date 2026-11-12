@@ -2,12 +2,13 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: in `/specify`, after the spec is written and before its HARD GATE · **Reviewer**: `general-purpose`; a fresh context; a different model from the author where possible.
-**Inputs**: `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; the source files the spec's Affected Areas name.
+**Inputs**: `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; the source files the spec's Affected Areas name; `specs/NNN-*/gates/reviewer-inputs.txt` and `specs/NNN-*/gates/spec.citations.txt`.
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
 - Severity is Critical, Warning or Suggestion. Critical when the spec breaks a project rule (`CLAUDE.md`, `constitution.md`), leaves an AC untestable, leaves an open question unclosed that an AC depends on, or can be read two ways on an AC. Otherwise Warning or Suggestion.
 - Defects outside the list are reported too, as `new`.
+- Severity floor: a finding whose subject is authorisation, access scope, path or key construction, or personal data is at least Warning and is tagged `[security-floor]`. Every finding carries a `path:line` citation with the verbatim quote (syntax: `.claude/commands/_independent-gate.md` → "Spec-gate checks").
 
 **Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape NNN/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
 
@@ -39,3 +40,4 @@
 - **SG-24** A rule that classifies or displays the failures of an operation family on several surfaces (forms, lists, bulk actions) names the behaviour for every error the operation can raise on that surface, read from the operation's source; an error left to the default on one surface is a Warning. — field
 - **SG-25** A spec that limits edits of existing tests to named classes (a permitted-change list, "no assertion weakened") also names the follow-on test edits its own decisions force, found by searching the existing tests for the objects each decision changes: tests that enumerate permissions or objects, snapshots, mocks of a changed or new interface. A decision whose consequence in existing tests fits no named class is a Warning. — field
 - **SG-26** An exclusion in the spec (an Out of Scope entry, a "not modified" list, an AC that keeps existing behaviour on a path the change reaches) that removes something the `## Request (verbatim)` section describes quotes the request or a recorded user answer that excludes it. An exclusion that rests on inferred intent ("the request did not mean to touch it") is a Warning. — field
+- **SG-27** Every identifier taken from the request or a token and used both for an access or scope decision and to address data (a path, key or query) must be the same value on both uses. Trace it through the whole body of each validator, normaliser, path builder and DAO on both paths, including their callees. Look for trim, case, slashes, encoding, Unicode and defaults. A normalisation applied on one side only, or a check on a value other than the one used for the read or write, is Critical. The spec must either reject non-canonical input or canonicalise once before both uses. — field
