@@ -44,8 +44,8 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 
 A HARD GATE self-approves only after its independent gate (`_independent-gate.md`):
 - The gate must run. When its checklist says `**Gate**: off` (or the file is missing), the point is interactive: stop as at a point kept interactive. A breakdown-gate that `_independent-gate.md` skips for a structural spec is not off: the runner checks itself that every copy the plan lists and every Reuse Map row lands in a task, records that in its run report, and self-approves.
-- The gate's loop ends with no open Critical. In autonomous mode a Critical the author `rejected` stays open unless the same reviewer's re-check accepts the rejection. A Critical still open after the loop is STOP 6 (the conductor parks the spec).
-- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> S<n> I<n>, open Critical: none` under the header, and continue.
+- The gate's loop ends with no open Critical. In autonomous mode a Critical the author `rejected` stays open unless the fresh re-check reviewer (`_independent-gate.md` → "Loop" step 1) accepts the rejection. A Critical still open after the loop, or a finding that Loop step 2 or 5 sends to the HARD GATE as open, is STOP 6 (the conductor parks the spec).
+- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> S<n>, open Critical: none` under the header, and continue.
 
 An artifact that the user never saw is approved on evidence, not on trust: the gate is what makes self-approval acceptable.
 
@@ -108,7 +108,7 @@ next: <exact next command>
 ```
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
 - `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
-- The independent gates run inside the authoring command (`_independent-gate.md`); their reviewers return the gate's own lines, and the authoring runner puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n> I<n>` in `gates:`.
+- The independent gates run inside the authoring command (`_independent-gate.md`); their reviewers return the gate's own lines, and the authoring runner puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n>` in `gates:`.
 
 ## Pull Requests
 

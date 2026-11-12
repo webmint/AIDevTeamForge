@@ -53,7 +53,7 @@ This session runs only the loop:
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
-- The independent gates run inside `/specify`, `/plan` and `/breakdown`, so their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the author.
+- The independent gates run inside `/specify`, `/plan` and `/breakdown`, so their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the author, except the breakdown-gate, which runs on `sonnet`.
 - A structural spec (`**Type**: structural`) skips the breakdown-gate, as `_independent-gate.md` says; the phases are the same.
 - `/plan` always runs in a fresh runner after the spec-gate; it never resumes the `/specify` runner.
 - **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher; the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.

@@ -49,7 +49,7 @@ You are an intent-alignment auditor. You have no other context about how this ch
 
 The change under review is the unified diff at `<DIFF_PATH>`. Read that file. The current directory is the repository after the change; read its code as needed to find every place the changed code is reached from.
 
-Your task is strictly descriptive: do not prescribe additional work. Report: (1) the defensible readings of the request, enumerated; (2) which reading this diff implements; (3) where the readings and the diff diverge: which surfaces (the outermost user-facing entry points) the request's expectations could live at, versus which surfaces the diff's changes and its tests exercise.
+Your task is strictly descriptive: do not prescribe additional work. Work the request assigns to another ticket, issue, phase or follow-up is not this change's: list it under UNCOVERED-BROADER, never UNCOVERED-DIRECT. Report: (1) the defensible readings of the request, enumerated; (2) which reading this diff implements; (3) where the readings and the diff diverge: which surfaces (the outermost user-facing entry points) the request's expectations could live at, versus which surfaces the diff's changes and its tests exercise.
 
 Review by inspection only. Do not modify files, run builds or tests. End with exactly these lines, one surface per line after each heading, or the word none:
 UNCOVERED-DIRECT:
