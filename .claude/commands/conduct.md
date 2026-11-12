@@ -18,7 +18,7 @@ Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` 
 
 ## PHASE 0: Preconditions
 
-1. Read `.claude/project-config.json`. When `DELIVERY_MODE` is not `autonomous`, stop: "⛔ /conduct needs `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (re-run `/setup-wizard` or edit the file). Interactive mode: run the commands one by one." Note `DEFAULT_BRANCH`, `DELIVERY_GATES`, `ROADMAP_FILE`, `MERGE_MODE` (missing = `local`), `PUSH_REMOTE` (missing = `origin`), `MODEL_THINK`, `MODEL_DO`.
+1. Read `.claude/project-config.json`. When `DELIVERY_MODE` is not `autonomous`, stop: "⛔ /conduct needs `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (re-run `/setup-wizard` or edit the file). Interactive mode: run the commands one by one." Note `DEFAULT_BRANCH`, `DELIVERY_GATES`, `ROADMAP_FILE`, `MERGE_MODE` (missing = `local`), `PUSH_REMOTE` (missing = `origin`), `MODEL_THINK`, `MODEL_DO`, `MODEL_LIGHT` (missing = `haiku`).
 2. `constitution.md` must be populated (no `_Run /constitute to populate_`), and the five gate checklists should exist with `**Gate**: on`: a gate that is off makes its HARD GATE interactive (`_autonomous-mode.md` → "Self-Approval").
 3. `MERGE_MODE` `pr`: `gh auth status` must succeed; otherwise STOP 3.
 4. The push guard and the hand-back guard are active in autonomous mode: confirm `.claude/settings.json` lists `.claude/hooks/forge/push-guard.py` and `.claude/hooks/forge/nested-wait-guard.py` under `PreToolUse`; when either is missing, say so in one line (an older install: run `update.sh`) and continue only after the user confirms.
@@ -49,7 +49,7 @@ This session runs only the loop:
 | plan | `plan specs/NNN-*`; stops before its gate when the gate is on | `MODEL_THINK` | xhigh |
 | plan-gate | the same for the plan (`/plan` from its gate step) | `MODEL_THINK` | high |
 | breakdown | `breakdown specs/NNN-*`; runs the breakdown-gate itself | `MODEL_DO` | medium |
-| wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_DO` | medium |
+| wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_LIGHT` | medium |
 | review | `review specs/NNN-*` | `MODEL_DO` | medium |
 | verify | `verify specs/NNN-*` | `MODEL_THINK` | high |
 | fix | `fix bugs/NNN-*.md` (one runner per bug) | `MODEL_DO` when the bug names its root cause, else `MODEL_THINK` | medium / high |
@@ -58,11 +58,11 @@ This session runs only the loop:
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
-- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the runner, except the breakdown-gate, which runs on `sonnet`.
+- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers are fresh agents launched by the runner, on the models `_independent-gate.md` → "Model" sets.
 - A structural spec (`**Type**: structural`) skips the breakdown-gate, as `_independent-gate.md` says; the phases are the same.
 - A gate phase launches only when the authoring runner returned `done` with `next: <gate> specs/NNN-*`. When the gate is off, the user gate is answered by resuming the authoring runner, and the gate phase is skipped.
 - `/plan` always runs in a fresh runner after the spec-gate, or after `/specify` when its gate is off; it never resumes the `/specify` runner.
-- **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher; the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.
+- **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher (a wave after `failed` or `blocked`: on `MODEL_DO` too); the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.
 
 ## Reference Prompts
 
@@ -118,7 +118,7 @@ When two specs in flight (parallel sessions, git worktrees) overlap in files, se
 - The later spec's waves start only after the earlier spec merges; its branch rebases onto the default branch as its first task.
 - Research, specify, plan, the gates and breakdown may still run in parallel: they edit no code.
 - An overlap only in prose (`docs/`, `specs/`) does not sequence the waves: the later spec makes those edits at its closing, after its rebase.
-- Bug numbers are shared across worktrees (`/verify` 9.4 already counts every worktree).
+- Bug numbers are shared across worktrees (`/verify` 9.4 counts every worktree).
 - Only one conductor drives a given working tree.
 
 ## Park and Continue
