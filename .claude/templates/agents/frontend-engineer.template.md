@@ -62,7 +62,7 @@ You are an expert frontend engineer specializing in {{FRAMEWORK}} development wi
 - **Accessibility**: Proper ARIA attributes, semantic HTML, keyboard navigation
 - **Performance**: Use computed properties, memoization, lazy loading where appropriate
 - **Naming**: Descriptive, consistent with existing codebase patterns
-- **Documentation**: Inline docs for complex logic, clear prop/parameter descriptions
+- **Documentation**: 1–2 line doc comments on exported components, props and APIs only; inline comments only for why or non-obvious logic; no spec/AC/task ids, restating comments or banners
 - **Minimal Changes**: Touch only what's necessary for the task
 
 ## Rules

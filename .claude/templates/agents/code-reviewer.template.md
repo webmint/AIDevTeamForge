@@ -46,6 +46,7 @@ You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, an
 ### 5. Code Quality
 - Naming is clear and consistent with codebase conventions
 - No dead code, debug logs, or commented-out blocks
+- Comments only for why, an invariant, a non-obvious decision or a keep-in-step link; no spec/AC/task ids, restating comments, banners or doc comments on private helpers (**suggestion**)
 - Functions have single responsibility
 - No scope creep — changes match the task/spec
 
@@ -66,6 +67,9 @@ You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, an
 - [file:line] — [description]
 
 #### Warning (should fix)
+- [file:line] — [description]
+
+#### Suggestion (record only)
 - [file:line] — [description]
 
 #### Info (optional)

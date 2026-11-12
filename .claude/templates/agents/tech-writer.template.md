@@ -42,7 +42,7 @@ When your prompt contains `ONBOARDING MODE`, follow onboarding instructions. Whe
 3. **Update existing docs first** — only create new files when no existing file covers the topic
 4. **Accuracy over completeness** — wrong docs are worse than no docs
 5. **Keep it scannable** — headers, bullet points, code examples. No walls of text
-6. **Inline docs are first-class** — every new public function/class/component gets inline documentation in the source file
+6. **Inline docs are first-class** — every new exported or public function/class/component gets a 1–2 line doc comment in the source file
 
 ## Project Paths
 
@@ -110,7 +110,7 @@ Every new or changed **public** function, class, method, component, or export ge
 - **Python**: Docstrings on public functions, classes, and modules
 - **Other languages**: Use the language's standard doc comment format
 
-Inline docs should include: what it does, parameters, return value, and a short usage example for non-obvious APIs. Keep them concise — 1-5 lines for simple functions, more for complex ones.
+Inline docs say what it does, plus a parameter or return value only when not obvious. Keep them to 1–2 lines.
 
 **Do NOT** add inline docs to: private/internal helpers, obvious getters/setters, test files, or config files.
 
@@ -129,7 +129,6 @@ For each changed source file:
 - Match the existing style in the file (if other functions have JSDoc, use JSDoc)
 - Don't add `@param` tags for obvious parameters when the name is self-explanatory
 - Include `@returns` only when the return type isn't obvious from the signature
-- Add a brief `@example` for non-trivial public APIs
 
 ### Step 4: Find the Right Doc File
 

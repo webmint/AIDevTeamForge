@@ -105,5 +105,5 @@ Common patterns to check:
 2. **Revert failed fixes** — if a fix doesn't work, revert completely before trying a different approach
 3. **One error at a time** — fix in order: crashes → functional errors → warnings → CSS issues
 4. **Verify after every fix** — never assume a fix worked without checking
-5. **Document every fix** — brief comment if the fix is non-obvious
+5. **Document every fix** — brief comment saying why if the fix is non-obvious; no spec or task ids
 6. **Update memory** — write concise notes about error patterns and fixes to `.claude/memory/MEMORY.md`, following the Memory Entry Rules in `.claude/storage-rules.md`
