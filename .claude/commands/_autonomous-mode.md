@@ -73,7 +73,7 @@ Stop, report, and wait for the user:
 4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` are routine.
 5. A destructive or irreversible operation outside the spec branch (rewriting the default branch's history, deleting user files).
 6. The same blocker after 3 attempts (failing tests, flaky infrastructure, a review BLOCK after repair, a gate Critical after its loop).
-7. The context guard's stop message in the conductor session.
+7. The context guard's stop message in the conductor session, or its phase-boundary `--report` above ~250k tokens (`/conduct` → "Context Limit").
 8. The audit gate is closed (an audit is due, or its blocking themes are unfixed): an audit and its triage need the user.
 
 STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run (`/conduct` → "Park and Continue"). Every STOP report gives what is blocked, the options with a recommendation, and the exact resume command.
@@ -85,6 +85,7 @@ STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run 
 - **No sleep polling**: never wait with sleep loops, background `sleep` timers or `until` polls; the completion notification arrives on its own. A wait on an external condition is one foreground command with a bounded timeout. Stop every background shell you started before you return.
 - **Check output stays out of context**: run every check (type check, lint, tests, build) through `scripts/forge/gate.sh <name> -- <command>`; read the log only with a targeted search, to diagnose a failure.
 - **Searches on Haiku**: launch read-only codebase searches as `subagent_type: Explore` with the Agent tool's `model: haiku`. For a long file, read the Explore digest instead of the whole file.
+- **Reading budget**: read each file once per run, and only the part you need (`offset`/`limit`, a heading, `grep`) unless you need all of it; re-read it only when it changed since. A Bash command whose output may run past ~50 lines (other than the checks, which go through `gate.sh`) writes to a file that you read with `tail` or `grep`.
 - **Review effort follows severity**, as in the `task-review` row. A repair of the same failed item relaunches the specialist one `effort` level above its definition (`medium` → `high` → `xhigh`; never `max`).
 - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md`, `.claude/commands/*.md` or `.claude/project-config.json` beyond an acceptance criterion is recorded for the user, not fixed.
 - **Session state**: a runner skips the commands' steps that write or reset `.claude/session-state.md` (reading it is fine): parallel runners would overwrite each other's snapshot. The conductor's ledger is the resume source.

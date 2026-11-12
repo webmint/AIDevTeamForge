@@ -24,6 +24,7 @@ Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` 
 4. The push guard and the hand-back guard are active in autonomous mode: confirm `.claude/settings.json` lists `.claude/hooks/forge/push-guard.py` and `.claude/hooks/forge/nested-wait-guard.py` under `PreToolUse`; when either is missing, say so in one line (an older install: run `update.sh`) and continue only after the user confirms.
 5. Read the ledger `.claude/delivery-status.md` (create it from the template under "Status Ledger" when missing). It is local state of this working tree, never committed: add its path once to `$(git rev-parse --git-path info/exclude)` (a local ignore, no tracked change), so it survives branch switches, stays out of squashes and pull requests, and never makes the tree dirty.
 6. Record the context size: `python3 .claude/hooks/forge/context-guard.py --report`, and `date -u` as the spec's start.
+7. Recommended: run this session on Sonnet (`/model sonnet`); the conductor only launches runners and reads result blocks.
 
 ## The Conductor's Role
 
@@ -35,6 +36,7 @@ This session runs only the loop:
 
 - It never reads sources, specs, plans or task files, never loads other commands, and never writes spec, plan, task, review or QA artifacts. Its writes are the ledger, content a runner returned because its write was refused (committed on the spec branch, before the closing), the rebases under "Rebase Points" and the local fast-forward under "Merge".
 - Its messages to the user stay short: one line per phase result.
+- It does only conducting: side work (tracker edits, messages to other sessions, ad-hoc investigation) goes to a separate session.
 - Target: the conductor's own context grows by at most ~40k tokens per spec; when a spec exceeds it, name the cause in its ledger row.
 
 ## Phases
@@ -140,6 +142,8 @@ STOP the run only when no eligible item remains, or for a STOP that is not confi
 The context guard (`.claude/hooks/forge/context-guard.py`) reports the main-session size:
 - **Wind-down message**: finish the current phase, start nothing new.
 - **Stop message**: hard stop at the nearest safe point (no half-applied edit; the last runner returned and its output is committed). Update the ledger's **Current** line (spec, phase, exact next command), then tell the user: "Context limit reached — clear the context, then resume with: /conduct".
+- **Phase boundary**: run `python3 .claude/hooks/forge/context-guard.py --report`; above ~250k tokens, act as on the stop message, even below the guard's own threshold.
+- After a compaction of this session, re-read "Phases" before launching the next runner.
 
 ## Status Ledger
 
