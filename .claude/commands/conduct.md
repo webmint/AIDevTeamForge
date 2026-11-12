@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /conduct — Autonomous Delivery (Conductor)
 
-Runs the whole spec cycle (`/research` → `/specify` → `/plan` → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → `/summarize` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
+Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → `/summarize` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
 
 ## Usage
 ```
@@ -42,8 +42,10 @@ This session runs only the loop:
 | Phase | Command run by the runner | Model | Effort |
 |-------|---------------------------|-------|--------|
 | research | `research "<topic>"` (the topic: the roadmap row or the description, as given; saved without asking) | `MODEL_THINK` | high |
-| specify | `specify "<topic>"` (the same topic, as given), with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
-| plan | `plan specs/NNN-*`; runs the plan-gate lenses itself | `MODEL_THINK` | xhigh |
+| specify | `specify "<topic>"` (the same topic, as given), with the research report path; stops before its gate when the gate is on | `MODEL_THINK` | xhigh |
+| spec-gate | no command: `_independent-gate.md` (spec-gate) on the spec, then `/specify` from its gate step (inputs: the specify run report's `## Sources read` and `## HARD GATE notes`) | `MODEL_THINK` | high |
+| plan | `plan specs/NNN-*`; stops before its gate when the gate is on | `MODEL_THINK` | xhigh |
+| plan-gate | the same for the plan (`/plan` from its gate step) | `MODEL_THINK` | high |
 | breakdown | `breakdown specs/NNN-*`; runs the breakdown-gate itself | `MODEL_DO` | medium |
 | wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_DO` | medium |
 | review | `review specs/NNN-*` | `MODEL_DO` | medium |
@@ -54,9 +56,10 @@ This session runs only the loop:
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
-- The independent gates run inside `/specify`, `/plan` and `/breakdown`, so their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the author, except the breakdown-gate, which runs on `sonnet`.
+- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the runner, except the breakdown-gate, which runs on `sonnet`.
 - A structural spec (`**Type**: structural`) skips the breakdown-gate, as `_independent-gate.md` says; the phases are the same.
-- `/plan` always runs in a fresh runner after the spec-gate; it never resumes the `/specify` runner.
+- A gate phase launches only when the authoring runner returned `done` with `next: <gate> specs/NNN-*`. When the gate is off, the user gate is answered by resuming the authoring runner, and the gate phase is skipped.
+- `/plan` always runs in a fresh runner after the spec-gate, or after `/specify` when its gate is off; it never resumes the `/specify` runner.
 - **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher; the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.
 
 ## Reference Prompts
@@ -65,13 +68,14 @@ Phase runner (fill `<…>`; add only the listed inputs; the first line is parsed
 ```
 Forge conductor mode, phase runner. Phase: <phase>[ task <NNN> | wave W<n>]. Feature: <specs/NNN-* or "new: <topic>">. Branch: <branch>.
 Follow .claude/commands/_autonomous-mode.md at every interactive point and in "What Every Runner Follows". Invoke Skill "<command>" with args "<args>" and run it to completion.
-Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
+Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the feature directory and the authoring run report path for a gate phase; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
 Wait for your nested agents by their completion notifications: never with sleep loops, background timers or `until` polls; stop every background shell you started before you return.
 Write the full report to specs/<NNN-*>/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (≤ 10 lines).
 ```
 
 - **Branch**: the spec branch the runner works on; the default branch for `research` and for a `/specify` that creates the spec branch (`spec-cost.py` then counts those calls under the branch each was made on).
 - **research**: runs on the default branch; no spec directory exists yet, so the report itself is the run report (its result block names the path). It stays untracked: the `/specify` runner's Inputs add "commit the research report <path> with the spec's first commit".
+- **spec-gate**, **plan-gate**: the `Invoke Skill` sentence reads "Read .claude/commands/_independent-gate.md, run the <gate> on <the spec or the plan>, then follow .claude/commands/<specify|plan>.md from its gate step to its end."
 - **closing** adds to its prompt, when `MERGE_MODE` is `pr`: "After /finalize, open the pull request as `_autonomous-mode.md` → "Pull Requests" says, and put its URL in `artifacts:`."
 - **fix** adds: "The /fix skill's code-review step and its test-assessment step are mandatory, not replaceable by self-review." The conductor checks both verdicts in the run report before it continues.
 
