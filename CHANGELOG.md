@@ -5,6 +5,24 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1-step1] - 2026-11-12
+
+Test release on `test/v-1.37.1-step1`: mechanical checks in the spec-gate. The plan-gate, the breakdown-gate, models, waves and Explore settings are as in 1.37.0.
+
+### Added
+- **SG-27 identifier identity** (`spec-gate.md`) — an identifier from the request or a token that drives both an access or scope decision and a data address (path, key, query) must be the same value on both uses, traced through every validator, normaliser, path builder and DAO including callees; a normalisation on one side only is Critical. The spec-gate reviewer reads validation, normalisation and path-building code whole, not by line window
+- **`scripts/forge/verify_citations.py`** — every spec-gate finding carries a `path:line` citation with the verbatim quote; the script checks that the file exists inside the project, the lines are in range and the quote is a whitespace-normalised substring of them (`report` mode on the gate report, `spec` mode on the spec's own citations). A failure goes back once to the reviewer; one that still fails is `unverified` and not acted on. Writes `gates/spec-gate.citations.txt` and `gates/spec.citations.txt`
+- **Severity floor** — a finding about authorisation, access scope, path or key construction, or personal data is at least Warning (`[security-floor]`); it may be recorded, deferred or rejected only with a disposition that quotes the cited code, checked by the same script
+- **`scripts/forge/spec_lint.py`** — `lint`: blocking duplicate or gapped AC ids, AC definitions off the template, dangling AC and § references, an unclosed code fence; advisory one noun with two numbers, vague non-functional words without a number and unit or a named standard, `file:line` evidence shape (ported from 2.0's spec checks). Runs before the reviewer and after every fix round; the blocking findings are fixed, the rest go to the HARD GATE (`gates/spec-lint.txt`). A § reference to another document names it (`contract §13`)
+- **Spec hash** — `spec_lint.py hash` records the SHA-256 of the spec as last reviewed in the gate report (`**Spec hash**:`, the `**Status**:` and self-approval lines excluded), lists fixes made after it (`**Unreviewed changes**:`), and `--check` states at the HARD GATE and in `/plan`'s prerequisites whether the spec changed after its last review (`gates/spec-hash.txt`)
+- **`scripts/forge/spec_paths.py`** — the reviewer's "files to verify": every repository path the spec cites plus the `/specify` run report's `## Sources read`, the author's notes on validation and normalisation, and a security focus paragraph (`gates/reviewer-inputs.txt`)
+- Every spec-gate disposition ends with the mechanism that produced or blocked it (`[reviewer]`, `[re-check]`, `[spec-lint]`, `[verify-citations]`); a conductor runner commits every `gates/*` file it wrote
+
+### Changed
+- `_independent-gate.md` → new section "Spec-gate checks"; spec-gate reviewer prompt: findings as `### <id>` headings, the citation syntax, `Correct citations only`
+- **Existing projects**: checklists are copy-if-missing — copy by hand into `.claude/checklists/spec-gate.md` SG-27, the new "How to use" bullet (severity floor and citations) and the new `**Inputs**:` line
+- Template version: 1.37.0 → 1.37.1-step1
+
 ## [1.37.0] - 2026-11-12
 
 ### Added
