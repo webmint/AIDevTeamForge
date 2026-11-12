@@ -20,7 +20,7 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 
 | Gate | Reviewer | Inputs (pass the paths; the reviewer reads them) |
 |------|----------|--------------------------------------------------|
-| spec-gate | `general-purpose` | `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; the source files the spec's Affected Areas name; `specs/NNN-*/gates/reviewer-inputs.txt` and `specs/NNN-*/gates/spec.citations.txt` ("Spec-gate checks" step 1) |
+| spec-gate | `general-purpose` | `specs/NNN-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any, with its `-ledger.md` and `-closure.txt`; the source files the spec's Affected Areas name; `specs/NNN-*/gates/reviewer-inputs.txt` and `specs/NNN-*/gates/spec.citations.txt` ("Spec-gate checks" step 1) |
 | plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names |
 | breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `.claude/commands/_agent-assignment.md` |
 

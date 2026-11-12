@@ -31,6 +31,7 @@
       ".claude/commands/_independent-gate.md",
       ".claude/commands/_autonomous-mode.md",
       ".claude/commands/_intent-check.md",
+      ".claude/commands/_research-coverage.md",
       ".claude/commands/conduct.md",
       ".claude/template-manifest.json",
       ".claude/storage-rules.md",

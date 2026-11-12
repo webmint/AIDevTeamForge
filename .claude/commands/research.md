@@ -1,6 +1,6 @@
 # /research — Quick Feasibility & Fit Research
 
-Lightweight pre-step before `/specify`. Use when you have a vague idea or topic and want to quickly check whether it fits the project, what already exists, and what approaches are viable — without committing to a full specification.
+Pre-step before `/specify`. Use when you have a vague idea or topic and want to check whether it fits the project, what already exists (read and quoted item by item), and what approaches are viable — without committing to a full specification.
 
 ## Usage
 ```
@@ -50,6 +50,8 @@ If an existing spec already covers this topic, inform the user and ask whether t
 
 ## PHASE 2: Codebase Investigation
 
+Read `.claude/commands/_research-coverage.md` now: it fixes the report path and decides what this phase must read.
+
 ### Step 1: Keyword Extraction
 
 From the user's description, extract 3-7 search terms:
@@ -65,7 +67,8 @@ When `.claude/quality-profile.json` sets `searchScopes`, search only inside them
 For each keyword:
 - Use Grep to find occurrences in source files and documentation (`docs/`) — docs may already describe existing functionality related to the topic
 - Use Glob to find files with related names (in both source and docs)
-- Read the most relevant files (up to 10 total across all keywords)
+
+Then run `_research-coverage.md` Steps A–C: the two searches (the keywords seed both), the ten facets, and the ledger with its closure. The closure decides what you read; there is no file limit.
 
 Map what you find:
 - **Existing infrastructure**: What code already relates to this idea?
@@ -119,7 +122,7 @@ Keep it concise — this is a feasibility check, not a full evaluation
 
 ## PHASE 4: Generate Research Report
 
-Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation.
+Choose the recommended approach, then run `_research-coverage.md` Step D (pass 2). Write the full report to its path, run Step E's checks and fix their blocking findings, then **render it in the console** so the user can read it immediately. Phase 5 asks whether to keep it.
 
 ### Report Format
 
@@ -132,6 +135,7 @@ Generate the full report and **render it directly in the console** so the user c
 **Topic**: [user's original description]
 **Issue**: [KEY — summary; `KEY — not read (<reason>)`; omit this line when the topic names no issue]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
+**Checks**: [closure-check <n> blocking, <n> advisory (<index>); research-lint <n> blocking, <n> advisory; or the exit-2 message]
 **Request (verbatim)**:
 > [the request kept in Phase 1 step 6, word for word; every line prefixed `> `, a blank line as `>`]
 >
@@ -161,6 +165,14 @@ Generate the full report and **render it directly in the console** so the user c
 
 ### Gaps
 - [What infrastructure or patterns are missing]
+
+## Search routes
+
+[`_research-coverage.md` Step E]
+
+## Facets
+
+[`_research-coverage.md` Step E: ten bullets]
 
 ## Constitution Constraints
 
@@ -211,6 +223,10 @@ Generate the full report and **render it directly in the console** so the user c
 - **Proceed**: "Run `/specify research/[this file].md` to create a formal specification." (Not saved: `/specify "[the request, verbatim]"`.)
 - **Uncertain areas**: "Run `/specify` the same way — it will ask clarifying questions about [uncertainties] before writing the spec."
 - **Not recommended**: "[Reason]. Consider [alternative] instead."
+
+## Coverage
+
+[`_research-coverage.md` Step E: one bullet per closure item]
 ```
 
 ## PHASE 5: Ask to Save & Recommend
@@ -219,17 +235,17 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 
 ### Step 1: Ask to Save
 
-Use `AskUserQuestion` to ask: **"Save this research to a file?"** When an issue was read, recommend Yes: an unsaved report's `/specify` line carries only the request, not the issue text.
+The report and its traces are already on disk (Phase 4). Use `AskUserQuestion` to ask: **"Save this research to a file?"** When an issue was read, recommend Yes: an unsaved report's `/specify` line carries only the request, not the issue text.
 
 **Autonomous mode** (`_autonomous-mode.md`, point `research-save`): save it without asking and commit nothing.
 
-- **If yes**: Save to `research/YYYY-MM-DD-[topic-slug].md` at project root.
+- **If yes**: keep it at the path chosen in Phase 2 (`research/YYYY-MM-DD-[topic-slug].md` at project root, chosen by these rules):
   - `YYYY-MM-DD` = current date (e.g., `2026-03-25`)
   - `[topic-slug]` = lowercase kebab-case, 2-4 words derived from the topic (e.g., `caching-strategy`, `websocket-real-time`, `authentication-options`)
   - Create the `research/` directory if it doesn't exist
-  - If a file at that path already exists, append `-2`, `-3`, etc. (e.g., `2026-03-26-caching-strategy-2.md`)
+  - A path already taken by another report got `-2`, `-3`, etc. (e.g., `2026-03-26-caching-strategy-2.md`)
   - Confirm: `Saved to research/[filename].md`
-- **If no**: Do nothing. The research stays in the console only.
+- **If no**: delete the report and its `-ledger.md`, `-closure.txt` and `-research-lint.txt`. The research stays in the console only.
 
 ### Step 2: Next Steps
 
@@ -246,11 +262,11 @@ When the report was not saved, the proceed line is `/specify "[the request, verb
 
 ## IMPORTANT RULES
 
-1. **Lightweight, not exhaustive** — this is a quick check, not a full analysis. Aim for useful in minutes, not hours.
+1. **Short report, complete coverage** — the prose is a quick read; the coverage is not cut short: every closure item is read with a verified quote or excluded with a reason (`_research-coverage.md`).
 2. **Signal-based external research** — do not web search unless signals justify it. Simple ideas that only touch existing codebase patterns need no external research.
-3. **No code modifications** — this command only reads and reports. No file edits, no branches, no commits.
+3. **No code modifications** — this command only reads and reports. It writes only its report, ledger and check outputs under `research/`: no other file edits, no branches, no commits.
 4. **Constitution awareness** — all feasibility assessments must account for architecture rules and NON-NEGOTIABLE constraints.
 5. **Check for duplicates** — scan `specs/` for existing features that overlap. Don't research what's already specified.
 6. **Recommend concretely** — always suggest a specific next command the user can copy-paste: `/specify` with the saved report's path, or with the request verbatim; never a refined description.
 7. **Consult memory** — check `MEMORY.md` for lessons, gotchas, or decisions about similar areas.
-8. **Concise over comprehensive** — the report should help the user decide quickly. Trim anything that doesn't aid the decision.
+8. **Concise prose** — the report should help the user decide quickly. Trim prose that doesn't aid the decision, never a Coverage row, a facet or a quote.
