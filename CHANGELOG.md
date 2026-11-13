@@ -5,6 +5,25 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1-step3.2] - 2026-11-13
+
+Test release on `test/v-1.37.1-step3.2`, built on 1.37.1-step3.1: a cheaper and wider `/research` closure. Still language- and stack-neutral: the runner reads code and records it, the scripts extract text and check. Everything else is as in 1.37.1-step3.1.
+
+### Added
+- **`scripts/forge/research_query.py`** (read-only) — `bodies` prints many bodies with line numbers in one call, each under its ledger heading. Body ends come from the ctags `end` field, else from a language-neutral rule (brace balance, else indentation, else the head line), and the output says when an end is uncertain. `pending` prints the next batch of closure items to read; `items` prints the item list for Coverage; `callers` lists the uses of a symbol grouped by enclosing definition; `siblings` lists the other definitions in a file, marked when they mention the resource's terms; `trace` reads the runner's turns and peak context from the Claude Code transcript
+- **`scripts/forge/research_check.py`** — `closure_check.py` and `research_lint.py` as one command on one definition index; the procedure runs it at most three times
+- **Roles** — every ledger seed and entry carries `[access]`, `[data]`, `[other]` or `[container]` (`ledger_no_role` blocks without one)
+- **Containers** — a class or module body is not read whole: its entry lists the members that matter, which become items at the container's depth; `container_no_entry` blocks a container without an entry that is not excluded
+- **Four more seed kinds** — duplicates (by the rule's literals), callers (one level up from what the approach changes or depends on), siblings (same file, same resource) and test infrastructure; `## Search routes` gains a bullet for each, and `seed_kind_missing` blocks one that has neither a seed nor `none — searched:`
+- **`## Excluded`** in the ledger — exclusions planned before the report exists
+- **`**Runner trace**`** in the research report header: turns and peak context
+
+### Changed
+- **Cap by role, not by count** — the fixed cap of 60 items (`--cap`) is gone. Depth 0–1 items are read in full; depth-2 `access` and `data` items are always in; depth-2 `other` items share a line budget of half the depth-0–1 body lines (`--budget-share`), smallest first; the rest are `not covered: over budget` (`over cap` is still read)
+- `research_lint.py`: `over_budget_in_budget` replaces `over_cap_in_cap`; new `quoted_over_budget` blocks an over-budget item that the report cites or quotes
+- `/research`: code is read in batches; the checks run once when the ledger is complete, once when the report is written, and once after its fixes
+- Template version: 1.37.1-step3.1 → 1.37.1-step3.2
+
 ## [1.37.1-step3.1] - 2026-11-13
 
 Test release on `test/v-1.37.1-step3`: Universal Ctags detection only. Everything else is as in 1.37.1-step3.
