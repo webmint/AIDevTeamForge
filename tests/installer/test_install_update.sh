@@ -124,6 +124,9 @@ review_keys_before="$(review_keys "$P1/.claude/project-config.json")"
 echo "echo project tool" > "$P1/scripts/my-tool.sh"
 echo "# hand-ported copy" > "$P1/scripts/gate.sh"
 echo "<!-- local edit -->" >> "$P1/.claude/commands/fix.md"
+# a project .gitignore without a final newline, and a template line it lacks (union_lines)
+printf 'node_modules/\nproject-local.tmp' > "$P1/.gitignore"
+printf '\n.forge-test-ignore/\n' >> "$TPL/.gitignore"
 # a template that ships one Forge hook
 cat > "$TPL/.claude/hooks/forge/settings-hooks.json" <<'JSON'
 {
@@ -168,6 +171,10 @@ check "DEFAULT_BRANCH added to project-config" '[ "$(jq -r .DEFAULT_BRANCH "$P1/
 check "other settings keys kept" '[ "$(jq -c .permissions.allow "$P1/.claude/settings.json")" = "[\"Read\"]" ]'
 check "checklists added on update" '[ "$(ls "$P1/.claude/checklists/"*.md | wc -l | tr -d " ")" = 5 ]'
 check "quality scripts added on update" '[ -x "$P1/scripts/forge/quality_profile.py" ] && [ -x "$P1/scripts/forge/audit-gate.py" ]'
+check ".gitignore: last project line kept whole, before the added lines" 'grep -qxF "project-local.tmp" "$P1/.gitignore"'
+check ".gitignore: new template line added as its own line" 'grep -qxF ".forge-test-ignore/" "$P1/.gitignore"'
+check ".gitignore: every template line present" '! grep -v "^$" "$TPL/.gitignore" | while IFS= read -r l; do grep -qxF -- "$l" "$P1/.gitignore" || echo "$l"; done | grep -q .'
+gi_lines="$(wc -l < "$P1/.gitignore")"
 
 echo "== second update: local edit vs template change, idempotent hooks"
 sleep 1   # distinct backup timestamp
@@ -188,6 +195,7 @@ check "forge hook entry still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | sel
 check "project-edited checklist kept" 'grep -q "^\*\*Gate\*\*: off" "$P1/.claude/checklists/breakdown-gate.md"'
 check "deleted checklist restored" '[ -f "$P1/.claude/checklists/test-lens.md" ]'
 check "project hook group still once" '[ "$(jq "[.hooks.PreToolUse[].hooks[] | select((.command? // \"\") | contains(\"project-guard\"))] | length" "$P1/.claude/settings.json")" = 1 ]'
+check ".gitignore unchanged by a second update" '[ "$(wc -l < "$P1/.gitignore")" = "$gi_lines" ]'
 
 echo ""
 echo "passed: $PASS  failed: $FAIL"
