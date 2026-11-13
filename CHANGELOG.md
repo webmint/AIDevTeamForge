@@ -5,6 +5,25 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1-step3] - 2026-11-13
+
+Test release on `test/v-1.37.1-step3`, built on 1.37.1-step1 (step 2 is not included): `/research` completeness by coverage. Every mechanism is language-neutral: the research runner reads the code and records what it calls; the scripts only check ledgers, coverage, quotes and identifiers. Step 1's spec-gate checks, models, waves, the other gates and Explore settings are as in 1.37.1-step1.
+
+### Added
+- **Call ledger and closure** (`.claude/commands/_research-coverage.md`) — the research runner records, for every function it reads, the repository symbols the body calls or references with their definition `path:N` (or `external`), in `research/<report>-ledger.md`. Seeds: the request, the ten facets and two independent Explore searches (pass 1); after the recommendation, every existing function the approach will call, and the callers of every function it will change (pass 2). The closure follows the ledger to depth 2 with a cap of 60 items; items past the cap are listed as `not covered: over cap`
+- **`scripts/forge/closure_check.py`** — computes the closure from the ledger and blocks on an item within depth that was not read (`not_read`) or a malformed ledger line; its missed-reference check tokenises every read body and looks the identifiers up in a definition index: Universal Ctags when installed (blocking; a member access such as `obj.m()` or `pkg.F()` to a definition in another file stays advisory, since a name lookup cannot tell it from a namesake), else a regex set of common definition forms (advisory). A body that calls a repository helper the ledger does not name is caught in any language (`research/<report>-closure.txt`). Neither index is required
+- **`## Coverage`** in the research report — every closure item is `read` with a `path:N[-M]` and the verbatim line that decides its behaviour, or `excluded — <reason>`. No behaviour claim without such a quote; nothing on the access or data path is skimmed; Explore digests are pointers only
+- **Ten fixed facets** (`## Facets`) — entry point, authorisation path, data path, data model, validators and normalisers, error mapping, runtime limits and configuration, test infrastructure, duplicates, contracts and docs: each with a quoted site or `none — searched: …`
+- **Two search routes** (`## Search routes`) — top-down from the entry points and bottom-up from data and names, in parallel; one-route items are marked, unreached bottom-up hits become seeds
+- **`scripts/forge/research_lint.py`** — blocking: a closure item without a Coverage row, a `read` row whose quote does not verify (through `verify_citations.py`'s checks), a missing or unsupported facet, a missing search route; advisory: a behaviour claim without a quote (`research/<report>-research-lint.txt`)
+
+### Changed
+- `/research`: the report is written to `research/` before the checks run and is deleted when the user does not keep it; the "up to 10 files" limit is gone; a `**Checks**:` header line
+- `/specify`: the research report's `read` Coverage rows count as known; its own code reads are for gaps, each with a reason; the spec cites the Coverage rows it relies on
+- Spec-gate reviewer inputs add the research report's `-ledger.md` and `-closure.txt`; a conductor `/specify` runner commits them with the report
+- **Existing projects**: no hand copies; the changed commands and the new partial are template-owned. Install Universal Ctags (`ctags --version` must name it) to make missed references blocking
+- Template version: 1.37.1-step1 → 1.37.1-step3
+
 ## [1.37.1-step1] - 2026-11-12
 
 Test release on `test/v-1.37.1-step1`: mechanical checks in the spec-gate. The plan-gate, the breakdown-gate, models, waves and Explore settings are as in 1.37.0.
