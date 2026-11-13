@@ -5,9 +5,12 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.37.1-step1] - 2026-11-12
+## [1.37.1] - 2026-11-13
 
-Test release on `test/v-1.37.1-step1`: mechanical checks in the spec-gate. The plan-gate, the breakdown-gate, models, waves and Explore settings are as in 1.37.0.
+Mechanical checks in the spec-gate, on top of 1.37.0. The plan-gate, the breakdown-gate, models, waves and Explore settings (read-only searches as Explore on Haiku) are as in 1.37.0. Chosen over two candidates after field trials on two tickets of one client, each spec phase run up to the HARD GATE by `/conduct` in fresh copies of the project:
+- **AP-1305** (spec scored out of 45, mean of two blind scorers): this release 42.0, 1.36.0 41.5; spec-phase cost $12.55 against $15.85.
+- **AP-1308** (another repository and stack): this release 42.5, the 1.36.0 control pair 43.0 (the gap is within scorer noise); cost $10.84 against $14.47 and $21.16.
+- Not taken: a research coverage procedure (call ledger and closure check) doubled research recall on AP-1305 and showed no gain on AP-1308, gave no better spec on either, and cost more; running research on Sonnet gave no gain.
 
 ### Added
 - **SG-27 identifier identity** (`spec-gate.md`) — an identifier from the request or a token that drives both an access or scope decision and a data address (path, key, query) must be the same value on both uses, traced through every validator, normaliser, path builder and DAO including callees; a normalisation on one side only is Critical. The spec-gate reviewer reads validation, normalisation and path-building code whole, not by line window
@@ -21,7 +24,12 @@ Test release on `test/v-1.37.1-step1`: mechanical checks in the spec-gate. The p
 ### Changed
 - `_independent-gate.md` → new section "Spec-gate checks"; spec-gate reviewer prompt: findings as `### <id>` headings, the citation syntax, `Correct citations only`
 - **Existing projects**: checklists are copy-if-missing — copy by hand into `.claude/checklists/spec-gate.md` SG-27, the new "How to use" bullet (severity floor and citations) and the new `**Inputs**:` line
-- Template version: 1.37.0 → 1.37.1-step1
+- **An `unverified` Critical stays open** (`_independent-gate.md` → "Spec-gate checks" step 3, `_autonomous-mode.md`) — a Critical whose citation still fails after the correction round keeps its severity and goes to the HARD GATE as an open Critical; autonomous mode no longer self-approves over it (STOP 6). Unverified Warnings and Suggestions are not open, as before
+- Template version: 1.37.0 → 1.37.1
+
+### Fixed
+- **`update.sh` joined two `.gitignore` lines** — the `union_lines` merge appended template lines to a project `.gitignore` without a final newline, so its last line and the first added line became one pattern (`*.tmp.claude/session-state.md`) and neither worked; the next update added the line again. The merge now adds the missing newline first. **Existing projects** updated by an earlier version: look for a joined line at the end of `.gitignore` and split it
+- **`model-prices.json`** — Sonnet 5.5 cache reads were priced at $0.20/M instead of $0.10/M, so `spec-cost.py` overstated every Sonnet 5.5 phase; Fable 5.2 ($8/$40) and the Mythos ids had no row and showed `cost unknown`. All rows checked on 2026-11-13; Opus 4.7 and 4.6 keep their 2026-11-08 rates
 
 ## [1.37.0] - 2026-11-12
 
