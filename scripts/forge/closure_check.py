@@ -5,26 +5,37 @@ Language-neutral: the research runner reads the code and writes the ledger; this
 edges, looks identifier tokens up in a definition index and compares. Formats: research_closure.py.
 
 Usage:
-  python3 scripts/forge/closure_check.py <research/<report>.md> [--ledger <path>] [--depth N] [--cap N]
+  python3 scripts/forge/closure_check.py <research/<report>.md> [--ledger <path>] [--depth N] [--budget-share F]
                                         [--index auto|ctags|regex|none] [--root <dir>]
-      --ledger   default: <report>-ledger.md next to the report
-      --depth    closure depth from the seeds (default 2)
-      --cap      closure size; items past it are listed as `over cap` (default 60)
-      --index    definition index: Universal Ctags when installed (auto), the regex fallback, or none
-      --root     project root that cited paths resolve against (default: the current directory)
+      --ledger        default: <report>-ledger.md next to the report
+      --depth         closure depth from the seeds (default 2)
+      --budget-share  the depth-N `other` items share a line budget of F × the depth < N entry lines (default 0.5)
+      --index         definition index: Universal Ctags when installed (auto), the regex fallback, or none
+      --root          project root that cited paths resolve against (default: the current directory)
+research_check.py runs this and research_lint.py as one command; research_query.py prints bodies in batches.
 
 The report may not exist yet (the check also runs while the runner is still reading); its `## Coverage` section,
-when present, supplies the `excluded` items.
+when present, and the ledger's optional `## Excluded` section (`- `<symbol>` `<path:N>` — <reason>`, the exclusions
+planned before the report exists) supply the `excluded` items.
+
+Items (research_closure.py): depth < --depth items are read in full; depth-N `access` and `data` items are always
+in; depth-N `other` items are kept smallest first within the line budget, the rest are `over budget`. Containers
+(a `[container]` tag, or a class/module/… kind in the index) need no entry and cost no budget: their members are the
+items.
 
 Findings (one line each; blocking ones first):
   ledger_*      blocking  the ledger has no `## Seeds` or `## Read` section, a malformed seed, entry or edge (an
-                          edge target is `path:N`, `external`, or `ignored — <reason>`), or a citation whose file
-                          does not resolve or whose lines are out of range
-  not_read      blocking  a closure item within the cap at depth < --depth with no ledger `### ` entry (its callees
-                          are unknown) and not `excluded` in the report's Coverage
+                          edge target is `path:N`, `external`, or `ignored — <reason>`), a seed or entry without a
+                          role tag (`ledger_no_role`), or a citation whose file does not resolve or whose lines are
+                          out of range
+  not_read      blocking  a closure item at depth < --depth, not a container, with no ledger `### ` entry (its
+                          callees are unknown) and not `excluded` in the report's Coverage
+  container_no_entry  blocking  a container at depth < --depth with no `### ` entry (its members are unknown)
+                          and not `excluded`; a container's entry lists the members that matter as edges, and
+                          they stand at the container's own depth
   missed_ref    blocking with the ctags index, `advisory` with the regex index: an identifier token in the body
                           (`path:N-M`; comments and string literals dropped, code interpolated into a string
-                          kept) of the ledger entry of a closure item within the cap and below --depth, that the
+                          kept) of the ledger entry of a closure item below --depth (containers skipped), that the
                           index defines outside that body, and that is neither an edge or `ignored` token of the
                           entry (compared on the last name segment), nor defined at an edge's target or an
                           `excluded` row's line or at the definition that line names (ctags: the innermost
@@ -33,9 +44,11 @@ Findings (one line each; blocking ones first):
                           a member or qualified access (after `.`, `->`, `::`, `?.`: `repo.get()`, Go `pkg.F()`,
                           `mod::f()`) and every definition is in another file: name lookup cannot tell these from
                           namesakes, so check each advisory line
+  excluded_not_in_closure  advisory  a ledger `## Excluded` line that names no closure item (a wrong line?)
   note          an ambiguous path (first candidate used), a missing report
-Output: `<report>-closure.txt` next to the report, also printed: a header, one line per closure item
-(`D<depth> `<symbol>` <path:N> — <state>`), the findings, then `closure-check: <b> blocking, <a> advisory`.
+Output: `<report>-closure.txt` next to the report, also printed: a header (depth, budget, seeds, items), one line
+per closure item (`D<depth> `<symbol>` <path:N> [<role>] — <state>`), the findings, then
+`closure-check: <b> blocking, <a> advisory`.
 Exit codes: 0 no blocking finding; 1 at least one; 2 bad arguments, an unreadable ledger, an unwritable output, or a
 forced ctags index that is missing or fails.
 """
@@ -44,7 +57,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import research_closure as rc  # noqa: E402  (sibling module; path set above)
@@ -104,7 +117,7 @@ def _anchors(locs: Set[Tuple[str, int]], index: rc.Index, def_lines: Dict[str, L
 
 def missed_refs(nodes: List[rc.Node], index: rc.Index, res: rc.Resolver, excluded: Set[Tuple[str, int]],
                 max_depth: int) -> List[str]:
-    """Missed-reference lines for the entries of the closure items within the cap and below max_depth.
+    """Missed-reference lines for the entries of the closure items in budget below max_depth, containers skipped.
     `excluded`: the raw (realpath, line) of the Coverage rows marked excluded."""
     out: List[str] = []
     done: Set[int] = set()
@@ -112,7 +125,7 @@ def missed_refs(nodes: List[rc.Node], index: rc.Index, res: rc.Resolver, exclude
     excluded = _anchors(excluded, index, def_lines)
     for node in nodes:
         entry = node.entry
-        if entry is None or not node.in_cap or node.depth >= max_depth or id(entry) in done:
+        if entry is None or node.container or not node.in_cap or node.depth >= max_depth or id(entry) in done:
             continue
         done.add(id(entry))
         real = res.file(entry.body.path)[0]
@@ -139,8 +152,59 @@ def missed_refs(nodes: List[rc.Node], index: rc.Index, res: rc.Resolver, exclude
     return out
 
 
-def run(report_path: str, ledger_path: str, root: str, max_depth: int, cap: int, index_mode: str) -> Tuple[str, int]:
-    """(output text, blocking count). Raises OSError for an unreadable ledger or a failed forced index."""
+class Closure(NamedTuple):
+    ledger: rc.Ledger
+    nodes: List[rc.Node]
+    budget: rc.Budget
+    coverage: Dict[Tuple[str, int], rc.CoverageRow]
+    excluded: Set[Tuple[str, int]]  # item keys excluded in Coverage or in the ledger's `## Excluded`
+    excluded_raw: Set[Tuple[str, int]]  # the (realpath, line) those rows name, as written
+
+
+def closure_state(ledger: rc.Ledger, report: Optional[str], res: rc.Resolver, index: rc.Index, max_depth: int,
+                  share: float) -> Closure:
+    """The closure with its budget applied, the report's Coverage rows by item key ({} without a report), and the
+    excluded items (Coverage `excluded` rows and the ledger's `## Excluded`)."""
+    nodes = rc.compute_closure(ledger, res, max_depth, index.containers)
+    nodes, budget = rc.apply_budget(nodes, res, index, max_depth, share)
+    rows = (rc.parse_coverage(report) or []) if report is not None else []
+    coverage = rc.coverage_by_key(rows, res, ledger.entries, index.containers)
+    refs = [row.ref for row in coverage.values() if row.status == "excluded"] + [ref for ref, _r in ledger.excluded]
+    excluded: Set[Tuple[str, int]] = set()
+    excluded_raw: Set[Tuple[str, int]] = set()
+    for ref in refs:
+        key = rc._key(ref, res, ledger.entries, index.containers)
+        if key is not None:
+            excluded.add(key)
+            excluded_raw.add((key[0], ref.start))
+    return Closure(ledger, nodes, budget, coverage, excluded, excluded_raw)
+
+
+def item_state(node: rc.Node, excluded: Set[Tuple[str, int]], max_depth: int) -> str:
+    if not node.in_cap:
+        return "not covered: over budget (%d lines)" % node.size
+    if node.key in excluded:
+        return "excluded"
+    if node.container and (node.entry is not None or node.depth >= max_depth):
+        return "container: its members are the items (Coverage: read or excluded)"
+    if node.container:
+        return "CONTAINER WITHOUT ENTRY"
+    if node.entry is not None:
+        return "read in ledger"
+    if node.depth >= max_depth:
+        return "leaf (depth %d): coverage row only" % max_depth
+    return "NOT READ"
+
+
+def item_line(node: rc.Node, state: str) -> str:
+    role = "container" if node.container else node.role
+    return "D%d `%s` %s:%d [%s] — %s" % (node.depth, node.symbol, node.rel, node.line, role, state)
+
+
+def run(report_path: str, ledger_path: str, root: str, max_depth: int, share: float, index_mode: str,
+        index: Optional[rc.Index] = None) -> Tuple[str, int]:
+    """(output text, blocking count). Raises OSError for an unreadable ledger or a failed forced index. `index`: a
+    definition index already built (research_check.py shares one); else built from index_mode."""
     text = _read(ledger_path)
     if text is None:
         raise OSError("cannot read the ledger %s" % ledger_path)
@@ -155,36 +219,36 @@ def run(report_path: str, ledger_path: str, root: str, max_depth: int, cap: int,
         blocking.append("ledger_no_seeds L0 -")
     report = _read(report_path)
     if report is None:
-        notes.append("note no report at %s yet: no exclusions read" % os.path.relpath(report_path, root))
-        coverage: Dict[Tuple[str, int], rc.CoverageRow] = {}
-    else:
-        coverage = rc.coverage_by_key(rc.parse_coverage(report) or [], res, ledger.entries)
-    excluded_keys = {k for k, row in coverage.items() if row.status == "excluded"}
-    excluded_raw = {(res.file(row.ref.path)[0], row.ref.start) for row in coverage.values()
-                    if row.status == "excluded" and res.file(row.ref.path)[0]}
-    nodes = rc.compute_closure(ledger, res, max_depth, cap)
+        notes.append("note no report at %s yet: exclusions only from the ledger's `## Excluded`" %
+                     os.path.relpath(report_path, root))
+    if index is None:
+        index = rc.build_index(root, index_mode)
+    state = closure_state(ledger, report, res, index, max_depth, share)
     items: List[str] = []
-    for node in nodes:
-        if not node.in_cap:
-            state = "not covered: over cap"
-        elif node.key in excluded_keys:
-            state = "excluded"
-        elif node.entry is not None:
-            state = "read in ledger"
-        elif node.depth >= max_depth:
-            state = "leaf (depth %d): coverage row only" % max_depth
-        else:
-            state = "NOT READ"
+    for node in state.nodes:
+        st = item_state(node, state.excluded, max_depth)
+        if st == "NOT READ":
             blocking.append("not_read D%d `%s` %s:%d — no ledger entry and not excluded" % (
                 node.depth, node.symbol, node.rel, node.line))
-        items.append("D%d `%s` %s:%d — %s" % (node.depth, node.symbol, node.rel, node.line, state))
-    index = rc.build_index(root, index_mode)
-    found = missed_refs(nodes, index, res, excluded_raw, max_depth)
+        elif st == "CONTAINER WITHOUT ENTRY":
+            blocking.append("container_no_entry D%d `%s` %s:%d — write its `[container]` entry with the members that "
+                            "matter as edges, or exclude it" % (node.depth, node.symbol, node.rel, node.line))
+        items.append(item_line(node, st))
+    keys = {n.key for n in state.nodes}
+    for ref, _reason in ledger.excluded:
+        key = rc._key(ref, res, ledger.entries, index.containers)
+        if key is not None and key not in keys:
+            advisory.append("advisory excluded_not_in_closure L%d `%s:%d` — no closure item at this line; use the "
+                            "line the item list prints" % (ref.line, ref.path, ref.start))
+    found = missed_refs(state.nodes, index, res, state.excluded_raw, max_depth)
     for line in found:
         (advisory if line.startswith("advisory ") else blocking).append(line)
-    in_cap = sum(1 for n in nodes if n.in_cap)
-    head = ["closure: depth %d, cap %d; seeds %d; items %d (%d in cap, %d over cap)" % (
-        max_depth, cap, len(ledger.seeds), len(nodes), in_cap, len(nodes) - in_cap), "index: " + index.note]
+    b = state.budget
+    head = ["closure: depth %d; seeds %d; items %d (%d over budget)" % (
+        max_depth, len(ledger.seeds), len(state.nodes), b.over),
+        "budget: depth-%d `other` items get %d lines (%.2f × %d depth<%d entry lines); used %d" % (
+            max_depth, b.limit, b.share, b.base, max_depth, b.used),
+        "index: " + index.note]
     body = head + items + blocking + advisory + notes
     body.append("closure-check: %d blocking, %d advisory" % (len(blocking), len(advisory)))
     return "\n".join(body) + "\n", len(blocking)
@@ -195,15 +259,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("report", help="research/<report>.md")
     parser.add_argument("--ledger")
     parser.add_argument("--depth", type=int, default=rc.DEFAULT_DEPTH)
-    parser.add_argument("--cap", type=int, default=rc.DEFAULT_CAP)
+    parser.add_argument("--budget-share", type=float, default=rc.DEFAULT_BUDGET_SHARE)
     parser.add_argument("--index", choices=("auto", "ctags", "regex", "none"), default="auto")
     parser.add_argument("--root", default=os.getcwd())
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
-    if args.depth < 0 or args.cap < 1:
-        print("error: --depth must be >= 0 and --cap >= 1", file=sys.stderr)
+    if args.depth < 0 or not 0 <= args.budget_share <= 100:
+        print("error: --depth must be >= 0 and --budget-share between 0 and 100", file=sys.stderr)
         return 2
     root = os.path.abspath(args.root)
     if not os.path.isdir(root):
@@ -211,7 +275,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     report, ledger, out_path = report_paths(args.report, args.ledger)
     try:
-        output, n_blocking = run(report, ledger, root, args.depth, args.cap, args.index)
+        output, n_blocking = run(report, ledger, root, args.depth, args.budget_share, args.index)
     except Exception as exc:  # noqa: BLE001  any failure is exit 2, never a false "findings" exit 1
         print("error: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return 2

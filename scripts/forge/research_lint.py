@@ -2,17 +2,22 @@
 """Lint a /research report: coverage of the closure, verified quotes, the ten facets, the two search routes.
 
 Language-neutral: quotes are verified as text (spec_refs / verify_citations), the closure comes from the ledger
-(research_closure.py). Run after closure_check.py, with the same --depth and --cap.
+(research_closure.py, closure_check.closure_state). research_check.py runs this and closure_check.py as one command
+with one definition index; standalone, pass the same --depth and --budget-share as closure_check.py.
 
 Usage:
-  python3 scripts/forge/research_lint.py <research/<report>.md> [--ledger <path>] [--depth N] [--cap N] [--root <dir>]
+  python3 scripts/forge/research_lint.py <research/<report>.md> [--ledger <path>] [--depth N] [--budget-share F]
+                                        [--index auto|ctags|regex|none] [--root <dir>]
 
 Findings (`L<n>` is the report line):
   no_ledger                 blocking  the ledger cannot be read, so the closure is unknown
   no_coverage_section       blocking  no `## Coverage` section
-  no_coverage_row           blocking  a closure item (in or over the cap) without a Coverage bullet
-  coverage_bad_status       blocking  a Coverage bullet that is not `— read`, `— excluded` or `— not covered: over cap`
-  over_cap_in_cap           blocking  `not covered: over cap` on an item within the cap
+  no_coverage_row           blocking  a closure item (in or over budget) without a Coverage bullet
+  coverage_bad_status       blocking  a Coverage bullet that is not `— read`, `— excluded` or
+                                      `— not covered: over budget` (`over cap` is read the same)
+  over_budget_in_budget     blocking  `not covered: over budget` on an item that is in budget
+  quoted_over_budget        blocking  an item over budget whose definition or body lines the report cites or quotes
+                                      anywhere outside its own Coverage row: read it instead
   excluded_without_reason   blocking  `— excluded` with no reason after it
   read_without_quote        blocking  a `read` row without a quoted `path:N[-M]` citation after the definition
   read_quote_not_on_item    blocking  a `read` row whose verified quotes all lie outside the item: another file,
@@ -22,6 +27,10 @@ Findings (`L<n>` is the report line):
   facet_missing             blocking  facet <n> (1..10) has no `- **<n>. …**` bullet under `## Facets`
   facet_unsupported         blocking  facet <n> has neither a verified quoted citation nor `none — searched: …`
   no_search_routes          blocking  no `## Search routes` section, or no top-down or bottom-up bullet in it
+  seed_kind_missing         blocking  a seed kind (duplicates, callers, siblings, test infrastructure) with no
+                                      `- <kind>:` bullet under `## Search routes`, or with neither a ledger seed of
+                                      that kind (`duplicate …`/`facet 9`, `caller of …`, `sibling of …`,
+                                      `test infra`/`facet 8`) nor `none — searched: …` on its bullet
   claim_without_quote       advisory  a line outside Coverage, Facets, Search routes, External Research, References
                                       and the quoted request (`>` lines), with a behaviour word (does not, never, always,
                                       strict, trim, normalise, validate, reject, throws, defaults, lowercase,
@@ -39,7 +48,8 @@ import sys
 from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import research_closure as rc  # noqa: E402  (sibling module; path set above)
+import closure_check  # noqa: E402  (sibling module; path set above)
+import research_closure as rc  # noqa: E402
 import spec_refs  # noqa: E402
 import verify_citations  # noqa: E402
 
@@ -58,6 +68,8 @@ _CLAIM_RE = re.compile(
     r"unchanged|testable|sanitis\w*|sanitiz\w*|escapes?)\b", re.IGNORECASE)
 _SKIP_SECTIONS = ("coverage", "facets", "search routes", "external research", "references")
 _SEARCH_ROUTES = ("top-down", "bottom-up")
+SEED_KIND_BULLETS = (("duplicate", r"duplicates?"), ("caller", r"callers?"), ("sibling", r"siblings?"),
+                     ("test infra", r"test[ -]infra(?:structure)?"))
 
 
 def _read(path: str) -> Optional[str]:
@@ -88,16 +100,15 @@ def _on_item(cit: spec_refs.Citation, candidates: List[str], def_real: Optional[
     return entry.body.start <= cit.start and last <= end
 
 
-def check_coverage(report: str, ledger_text: Optional[str], res: rc.Resolver, cites: verify_citations.Result,
-                   max_depth: int, cap: int) -> List[str]:
+def check_coverage(report: str, ledger: Optional[rc.Ledger], res: rc.Resolver, cites: verify_citations.Result,
+                   index: rc.Index, max_depth: int, share: float) -> List[str]:
     out: List[str] = []
     rows = rc.parse_coverage(report)
     if rows is None:
         out.append("no_coverage_section L0 -")
-    if ledger_text is None:
+    if ledger is None:
         out.append("no_ledger L0 -")
     rows = rows or []
-    ledger = rc.parse_ledger(ledger_text) if ledger_text is not None else None
     entries = ledger.entries if ledger is not None else []
     for row in rows:
         if row.status == "unknown":
@@ -112,7 +123,7 @@ def check_coverage(report: str, ledger_text: Optional[str], res: rc.Resolver, ci
                 out.append("read_without_quote L%d `%s`" % (row.line, row.symbol))
                 continue
             def_real = res.file(row.ref.path)[0]
-            entry = rc.entry_for((def_real, row.ref.start), entries, res) if def_real else None
+            entry = rc.entry_for((def_real, row.ref.start), entries, res, index.containers) if def_real else None
             verified, on_item = False, False
             for cit in quoted:
                 ok, candidates = cites.verify_full("L%d" % row.line, _with_lineno(cit, row.line))
@@ -123,15 +134,60 @@ def check_coverage(report: str, ledger_text: Optional[str], res: rc.Resolver, ci
                     row.line, row.symbol, row.ref.path, " inside its ledger body" if entry is not None else ""))
     if ledger is None:
         return out
-    nodes = rc.compute_closure(ledger, res, max_depth, cap)
-    by_key = rc.coverage_by_key(rows, res, entries)
-    for node in nodes:
-        row = by_key.get(node.key)
+    state = closure_check.closure_state(ledger, report, res, index, max_depth, share)
+    over: List[rc.Node] = []
+    for node in state.nodes:
+        row = state.coverage.get(node.key)
         if row is None:
             out.append("no_coverage_row D%d `%s` %s:%d%s" % (
-                node.depth, node.symbol, node.rel, node.line, "" if node.in_cap else " (over cap)"))
-        elif row.status == "over cap" and node.in_cap:
-            out.append("over_cap_in_cap L%d `%s`" % (row.line, row.symbol))
+                node.depth, node.symbol, node.rel, node.line, "" if node.in_cap else " (over budget)"))
+        elif row.status == "over budget" and node.in_cap:
+            out.append("over_budget_in_budget L%d `%s`" % (row.line, row.symbol))
+        if not node.in_cap:
+            over.append(node)
+    out += check_quoted_over_budget(report, over, state.coverage, res)
+    return out
+
+
+def check_quoted_over_budget(report: str, over: List[rc.Node], coverage: Dict[Tuple[str, int], rc.CoverageRow],
+                             res: rc.Resolver) -> List[str]:
+    """An over-budget item's lines (definition to body end) cited anywhere in the report, its own row aside."""
+    if not over:
+        return []
+    own = {coverage[n.key].line for n in over if n.key in coverage}
+    out: List[str] = []
+    seen = set()
+    for cit in spec_refs.iter_citations(report):
+        if cit.line in own:
+            continue
+        real = res.file(cit.path)[0]
+        if not real:
+            continue
+        last = cit.end if cit.end is not None else cit.start
+        for node in over:
+            n_end = node.key[1] + max(node.size, 1) - 1
+            if node.key[0] == real and cit.start <= n_end and last >= node.key[1] and (node.key, cit.line) not in seen:
+                seen.add((node.key, cit.line))
+                out.append("quoted_over_budget L%d `%s` %s:%d — the report cites %s:%d%s; read the item instead" % (
+                    cit.line, node.symbol, node.rel, node.line, cit.path, cit.start,
+                    "-%d" % cit.end if cit.end is not None else ""))
+    return out
+
+
+def check_seed_kinds(report: str, ledger: Optional[rc.Ledger]) -> List[str]:
+    lines = rc._section_lines(report, "Search routes")
+    if lines is None:
+        return []  # no_search_routes already says so
+    kinds = {s.kind for s in ledger.seeds} if ledger is not None else set()
+    out: List[str] = []
+    for kind, label in SEED_KIND_BULLETS:
+        bullet = [text for _l, text in lines if re.match(r"^\s*[-*+]\s+\**%s\**\s*:" % label, text, re.I)]
+        name = {"test infra": "test infrastructure"}.get(kind, kind + "s")
+        if not bullet:
+            out.append("seed_kind_missing L0 %s: no `- %s:` bullet under ## Search routes" % (name, name))
+        elif kind not in kinds and not any(_NONE_SEARCHED_RE.search(t) for t in bullet):
+            out.append("seed_kind_missing L0 %s: no `%s` seed in the ledger and no `none — searched:`" % (
+                name, kind))
     return out
 
 
@@ -205,15 +261,21 @@ def check_claims(report: str) -> List[str]:
     return out
 
 
-def run(report_path: str, ledger_path: str, root: str, max_depth: int, cap: int) -> Tuple[str, int]:
+def run(report_path: str, ledger_path: str, root: str, max_depth: int, share: float, index_mode: str = "auto",
+        index: Optional[rc.Index] = None) -> Tuple[str, int]:
     report = _read(report_path)
     if report is None:
         raise OSError("cannot read the report %s" % report_path)
     res = rc.Resolver(root)
     cites = verify_citations.Result(root)
-    blocking = check_coverage(report, _read(ledger_path), res, cites, max_depth, cap)
+    ledger_text = _read(ledger_path)
+    ledger = rc.parse_ledger(ledger_text) if ledger_text is not None else None
+    if index is None:
+        index = rc.build_index(root, index_mode)
+    blocking = check_coverage(report, ledger, res, cites, index, max_depth, share)
     blocking += check_facets(report, cites)
     blocking += check_search_routes(report)
+    blocking += check_seed_kinds(report, ledger)
     blocking += cites.failures
     advisory = check_claims(report)
     body = blocking + advisory + cites.notes
@@ -227,14 +289,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("report", help="research/<report>.md")
     parser.add_argument("--ledger")
     parser.add_argument("--depth", type=int, default=rc.DEFAULT_DEPTH)
-    parser.add_argument("--cap", type=int, default=rc.DEFAULT_CAP)
+    parser.add_argument("--budget-share", type=float, default=rc.DEFAULT_BUDGET_SHARE)
+    parser.add_argument("--index", choices=("auto", "ctags", "regex", "none"), default="auto")
     parser.add_argument("--root", default=os.getcwd())
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
-    if args.depth < 0 or args.cap < 1:
-        print("error: --depth must be >= 0 and --cap >= 1", file=sys.stderr)
+    if args.depth < 0 or not 0 <= args.budget_share <= 100:
+        print("error: --depth must be >= 0 and --budget-share between 0 and 100", file=sys.stderr)
         return 2
     root = os.path.abspath(args.root)
     if not os.path.isdir(root):
@@ -245,9 +308,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ledger = os.path.abspath(args.ledger) if args.ledger else stem + "-ledger.md"
     out_path = stem + "-research-lint.txt"
     try:
-        output, n_blocking = run(report, ledger, root, args.depth, args.cap)
-    except OSError as exc:
-        print("error: %s" % exc, file=sys.stderr)
+        output, n_blocking = run(report, ledger, root, args.depth, args.budget_share, args.index)
+    except Exception as exc:  # noqa: BLE001  any failure is exit 2, never a false "findings" exit 1
+        print("error: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return 2
     try:
         spec_refs.atomic_write(out_path, output)

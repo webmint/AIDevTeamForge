@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -56,8 +57,8 @@ class Base(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
 
-    def run_check(self, ledger_text, *extra, report=None):
-        self.write(self.ledger, ledger_text)
+    def run_check(self, ledger_text, *extra, report=None, tag=True):
+        self.write(self.ledger, fx.tagged(ledger_text) if tag else ledger_text)
         if report is not None:
             self.write(self.report, report)
         out, err = io.StringIO(), io.StringIO()
@@ -183,9 +184,10 @@ class ClosureTest(Base):
     def test_items_depths_and_output_file(self):
         code, out, _ = self.run_check(fx.LEDGERS["js"], "--index", "none")
         self.assertEqual(code, 0, out)
-        self.assertIn("D0 `getProfile` src/js/handler.js:4 — read in ledger", out)
-        self.assertIn("D1 `buildUserPath` src/js/paths.js:7 — read in ledger", out)
-        self.assertIn("D2 `normalizeSegment` src/js/paths.js:3 — leaf (depth 2)", out)
+        self.assertIn("D0 `getProfile` src/js/handler.js:4 [other] — read in ledger", out)
+        self.assertIn("D1 `buildUserPath` src/js/paths.js:7 [data] — read in ledger", out)
+        self.assertIn("D1 `checkAccess` src/js/auth.js:1 [access] — read in ledger", out)
+        self.assertIn("D2 `normalizeSegment` src/js/paths.js:3 [data] — leaf (depth 2)", out)
         with open(self.out, encoding="utf-8") as handle:
             self.assertEqual(handle.read(), out)
 
@@ -205,10 +207,14 @@ class ClosureTest(Base):
         self.assertEqual(code, 0, out)
         self.assertNotIn("normalizeSegment", out)
 
-    def test_cap_lists_over_cap_items(self):
-        code, out, _ = self.run_check(fx.LEDGERS["js"], "--index", "none", "--cap", "2")
-        self.assertIn("items 4 (2 in cap, 2 over cap)", out)
-        self.assertIn("— not covered: over cap", out)
+    def test_data_leaf_stays_in_with_no_budget(self):
+        code, out, _ = self.run_check(fx.LEDGERS["js"], "--index", "none", "--budget-share", "0")
+        self.assertEqual(code, 0, out)
+        self.assertIn("items 4 (0 over budget)", out)
+        self.assertIn("D2 `normalizeSegment` src/js/paths.js:3 [data] — leaf", out)
+        other = fx.LEDGERS["js"].replace("`src/js/paths.js:3` [data]", "`src/js/paths.js:3`")
+        code, out, _ = self.run_check(other, "--index", "none", "--budget-share", "0")
+        self.assertIn("D2 `normalizeSegment` src/js/paths.js:3 [other] — not covered: over budget (3 lines)", out)
 
     def test_seed_reached_twice_counts_once_at_its_nearest_depth(self):
         ledger = fx.LEDGERS["js"].replace(
@@ -224,7 +230,238 @@ class ClosureTest(Base):
         ledger = fx.LEDGERS["py"].replace("`src/py/store.py:8`", "`src/py/store.py:9`")
         code, out, _ = self.run_check(ledger, "--index", "none")
         self.assertEqual(code, 0, out)
-        self.assertIn("D1 `object_path` src/py/store.py:9 — read in ledger", out)
+        self.assertIn("D1 `object_path` src/py/store.py:9 [data] — read in ledger", out)
+
+
+SVC = "\n".join([
+    "def entry(x):",                    # 1
+    "    y = helper(x)",                # 2
+    "    return y",                     # 3
+    "",                                 # 4
+    "def helper(x):",                   # 5
+    "    a = tiny(x)",                  # 6
+    "    b = large(x)",                 # 7
+    "    c = key_path(x)",              # 8
+    "    d = 1",                        # 9
+    "    return a + b + c + d",         # 10
+    "",                                 # 11
+    "def tiny(x):",                     # 12
+    "    return x",                     # 13
+    "",                                 # 14
+    "def large(x):",                    # 15
+    "    x = x + 1",                    # 16
+    "    x = x + 2",                    # 17
+    "    x = x + 3",                    # 18
+    "    x = x + 4",                    # 19
+    "    return x",                     # 20
+    "",                                 # 21
+    "def key_path(x):",                 # 22
+    '    p = "users/" + x',             # 23
+    "    p = p.strip()",                # 24
+    "    p = p.lower()",                # 25
+    '    p = p.replace(" ", "")',       # 26
+    '    p = p.replace("/", "_")',      # 27
+    '    p = p + "!"',                  # 28
+    "    q = p",                        # 29
+    "    return q",                     # 30
+]) + "\n"
+
+SVC_LEDGER = """## Seeds
+- `entry` `src/py/svc.py:1` — pass 1 — top-down [other]
+
+## Read
+### `entry` `src/py/svc.py:1-3` [other]
+- `helper` → `src/py/svc.py:5`
+### `helper` `src/py/svc.py:5-10` [other]
+- `tiny` → `src/py/svc.py:12`
+- `large` → `src/py/svc.py:15`
+- `key_path` → `src/py/svc.py:22` [data]
+"""
+
+
+class BudgetTest(Base):
+    def setUp(self):
+        super().setUp()
+        self.write(os.path.join(self.root, "src", "py", "svc.py"), SVC)
+
+    def test_smallest_other_first_and_data_always_in(self):
+        code, out, _ = self.run_check(SVC_LEDGER, "--index", "none")
+        self.assertEqual(code, 0, out)
+        self.assertIn("budget: depth-2 `other` items get 4 lines (0.50 × 9 depth<2 entry lines); used 2", out)
+        self.assertIn("D2 `tiny` src/py/svc.py:12 [other] — leaf", out)
+        self.assertIn("D2 `large` src/py/svc.py:15 [other] — not covered: over budget (6 lines)", out)
+        self.assertIn("D2 `key_path` src/py/svc.py:22 [data] — leaf", out)
+        code, out, _ = self.run_check(SVC_LEDGER, "--index", "none", "--budget-share", "2")
+        self.assertIn("items 5 (0 over budget)", out)
+
+    def test_access_tag_on_a_seed_wins_over_other(self):
+        ledger = SVC_LEDGER.replace("- `entry` `src/py/svc.py:1` — pass 1 — top-down [other]",
+                                    "- `entry` `src/py/svc.py:1` — pass 1 — top-down [other]\n"
+                                    "- `large` `src/py/svc.py:15` — pass 1 — bottom-up [access]")
+        ledger += "### `large` `src/py/svc.py:15-20` [access]\n"
+        code, out, _ = self.run_check(ledger, "--index", "none")
+        self.assertEqual(code, 0, out)
+        self.assertIn("D0 `large` src/py/svc.py:15 [access] — read in ledger", out)
+
+    def test_budget_sizes_come_from_ctags_ends(self):
+        self.fake_ctags(fx.TAGS + [("entry", "src/py/svc.py", 1, "function", "(x)", 3),
+                                   ("helper", "src/py/svc.py", 5, "function", "(x)", 10),
+                                   ("tiny", "src/py/svc.py", 12, "function", "(x)", 20),
+                                   ("large", "src/py/svc.py", 15, "function", "(x)", 16),
+                                   ("key_path", "src/py/svc.py", 22, "function", "(x)", 30)])
+        code, out, _ = self.run_check(SVC_LEDGER, "--index", "ctags")
+        self.assertIn("D2 `tiny` src/py/svc.py:12 [other] — not covered: over budget (9 lines)", out)
+        self.assertIn("D2 `large` src/py/svc.py:15 [other] — leaf", out)
+
+    def test_role_is_required_on_seeds_and_entries(self):
+        code, out, _ = self.run_check(SVC_LEDGER.replace(" [other]", ""), "--index", "none", tag=False)
+        self.assertEqual(code, 1)
+        self.assertEqual(out.count("ledger_no_role"), 3, out)
+
+
+class ContainerTest(Base):
+    LEDGER = """## Seeds
+- `Store` `src/py/store.py:13` — pass 1 — bottom-up [container]
+
+## Read
+### `Store` `src/py/store.py:13-16` [container]
+- `get` → `src/py/store.py:14` [data]
+"""
+
+    def test_container_members_are_items_of_their_own(self):
+        code, out, _ = self.run_check(self.LEDGER, "--index", "none")
+        self.assertEqual(code, 1, out)
+        self.assertIn("D0 `Store` src/py/store.py:13 [container] — container: its members are the items", out)
+        self.assertIn("not_read D0 `get` src/py/store.py:14", out)  # a member stands at its container's depth
+        ledger = self.LEDGER + ("### `Store.get` `src/py/store.py:14-16` [data]\n"
+                                "- `object_path` → `src/py/store.py:8`\n")
+        code, out, _ = self.run_check(ledger, "--index", "none")
+        self.assertIn("D0 `get` src/py/store.py:14 [data] — read in ledger", out)
+        self.assertIn("not_read D1 `object_path` src/py/store.py:8", out)
+        self.assertIn("(0.50 × 3 depth<2 entry lines)", out)  # the container's 4 lines are not counted
+
+    def test_untagged_container_from_the_index(self):
+        self.fake_ctags()
+        ledger = self.LEDGER.replace("[container]", "[other]")
+        code, out, _ = self.run_check(ledger, "--index", "ctags")
+        self.assertIn("D0 `Store` src/py/store.py:13 [container]", out)
+        self.assertIn("not_read D0 `get` src/py/store.py:14", out)
+        code, out, _ = self.run_check(ledger, "--index", "none")  # no index, no tag: the old whole-body entry
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("`get`", out.split("closure-check")[0].split("index:")[1])
+
+    def test_container_without_entry_blocks_until_excluded(self):
+        ledger = "## Seeds\n- `Store` `src/py/store.py:13` — pass 1 — bottom-up [container]\n\n## Read\n"
+        code, out, _ = self.run_check(ledger, "--index", "none")
+        self.assertEqual(code, 1, out)
+        self.assertIn("container_no_entry D0 `Store` src/py/store.py:13", out)
+        report = "## Coverage\n- `Store` `src/py/store.py:13` — excluded — a plain record, no behaviour\n"
+        code, out, _ = self.run_check(ledger, "--index", "none", report=report)
+        self.assertEqual(code, 0, out)
+
+    def test_container_at_the_last_depth_still_reaches_its_members(self):
+        ledger = ("## Seeds\n- `Store.get` `src/py/store.py:14` — pass 1 — top-down [data]\n\n## Read\n"
+                  "### `Store.get` `src/py/store.py:14-16` [data]\n- `object_path` → `src/py/store.py:8` [data]\n"
+                  "### `object_path` `src/py/store.py:8-10` [data]\n- `Store` → `src/py/store.py:13` [container]\n"
+                  "### `Store` `src/py/store.py:13-16` [container]\n- `normalize_key` → `src/py/store.py:4` [data]\n")
+        code, out, _ = self.run_check(ledger, "--index", "none")
+        self.assertEqual(code, 0, out)
+        self.assertIn("D2 `Store` src/py/store.py:13 [container]", out)
+        self.assertIn("D2 `normalize_key` src/py/store.py:4 [data] — leaf", out)
+
+
+class ClosureOrderTest(Base):
+    def test_container_member_depth_does_not_depend_on_edge_order(self):
+        self.write(os.path.join(self.root, "src", "py", "c.py"),
+                   "def x():\n    return C().m()\n\nclass C:\n    def m(self):\n        return 1\n\n"
+                   "def s():\n    x()\n    return C()\n")
+        base = ("## Seeds\n- `s` `src/py/c.py:8` — pass 1 — top-down [other]\n\n## Read\n"
+                "### `s` `src/py/c.py:8-10` [other]\n%s\n"
+                "### `x` `src/py/c.py:1-2` [other]\n- `C.m` → `src/py/c.py:5`\n"
+                "### `C` `src/py/c.py:4-6` [container]\n- `m` → `src/py/c.py:5`\n")
+        edges = ["- `x` → `src/py/c.py:1`", "- `C` → `src/py/c.py:4` [container]"]
+        outs = []
+        for order in (edges, edges[::-1]):
+            code, out, _ = self.run_check(base % "\n".join(order), "--index", "none")
+            lines = [re.sub(r"`[^`]+` ", "", l) for l in out.splitlines() if l.startswith(("D", "not_read"))]
+            outs.append((code, sorted(lines)))  # the symbol is the name of the edge seen first
+        self.assertEqual(outs[0], outs[1])
+        self.assertIn("not_read D1 src/py/c.py:5 — no ledger entry and not excluded", outs[0][1])
+
+    def test_planned_exclusions_in_the_ledger(self):
+        head, tail = fx.LEDGERS["js"].split("### `buildUserPath`")
+        ledger = head + "### `checkAccess`" + tail.split("### `checkAccess`")[1]
+        ledger += "\n## Excluded\n- `buildUserPath` `src/js/paths.js:7` — generated code\n"
+        code, out, _ = self.run_check(ledger, "--index", "none")
+        self.assertEqual(code, 0, out)
+        self.assertIn("D1 `buildUserPath` src/js/paths.js:7 [data] — excluded", out)
+        code, out, _ = self.run_check(ledger + "- `x` no reference\n", "--index", "none")
+        self.assertIn("ledger_bad_exclusion", out)
+        code, out, _ = self.run_check(ledger.replace("— generated code", "- generated code") +
+                                      "- `y` `src/js/paths.js:6` – a blank line\n", "--index", "none")
+        self.assertNotIn("ledger_bad_exclusion", out)
+        self.assertIn("advisory excluded_not_in_closure", out)
+
+
+class SeedKindTest(unittest.TestCase):
+    def test_seed_kinds_and_reasons(self):
+        ledger = rc.parse_ledger("""## Seeds
+- `a` `x.py:1` — pass 1 — duplicate of the key rule [data]
+- `b` `x.py:2` — pass 2 — caller of `save` — behaviour changes [other]
+- `c` `x.py:3` — pass 1 — sibling of `load` [data]
+- `d` `x.py:4` — pass 1 — test infra [other]
+- `e` `x.py:5` — pass 1 — facet 9 [other]
+- `f` `x.py:6` — pass 1 — facet 8 [other]
+- `g` `x.py:7` — pass 1 — top-down [access]
+
+## Read
+""")
+        self.assertEqual([s.kind for s in ledger.seeds],
+                         ["duplicate", "caller", "sibling", "test infra", "duplicate", "test infra", ""])
+        self.assertEqual(ledger.seeds[1].source, "caller of `save` — behaviour changes")
+        self.assertEqual(ledger.seeds[6].role, "access")
+        self.assertEqual(ledger.problems, [])
+
+    def test_role_inside_a_code_span_is_not_a_tag(self):
+        self.assertEqual(rc.role_tag("### `arr[data]` `x.py:1-2`"), "")
+        self.assertEqual(rc.role_tag("### `arr[data]` `x.py:1-2` [Data]"), "data")
+
+
+class BodyEndTest(unittest.TestCase):
+    def test_language_neutral_end_rule(self):
+        cases = [
+            (["function f(a) {", "  if (a) { return 1; }", '  return "}";', "}", "x"], (4, "brace")),
+            (["function f({a, b}) {", "  return a;", "}"], (3, "brace")),
+            (["def f(x={}) -> dict:", "    y = {1: 2}", "    return y", "", "def g():"], (3, "indent")),
+            (["def foo(a)", "  a + 1", "end", "def bar; end"], (3, "indent")),
+            (["type Loader struct{ Root string }", "func x() {"], (1, "brace")),
+            (["const f = (x) => x.trim();", "const g = 1;"], (1, "line")),
+            (["fun f(x: Int) = x + 1", "fun g() {}"], (1, "line")),
+            (["public static String userPath(", "    String root,", "    String id) {", "  return root;", "}"],
+             (5, "brace")),
+            (["function f() {", "  const s = `}`; // }", "  /* } */", "  return 1;", "}"], (5, "brace")),
+            (["function f() {", "  return 1;"], (2, "uncertain")),
+            (["public int Get(int a)", "{", "    return a;", "}", "x"], (4, "brace")),            # Allman, C, C#
+            (["    public function x()", "    {", "        return 1;", "    }"], (4, "brace")),  # PHP PSR-12
+            (["fn f<T>(a: T) -> T", "where", "    T: Clone,", "{", "    a", "}"], (6, "brace")),
+            (["def c():", '    q = """', "SELECT *", "FROM t", '"""', "# note", "    return q", "", "def d():"],
+             (7, "indent")),
+            (["def f(x)", "# only a comment", "y = 1"], (1, "line")),
+            (["def run(x) do", "  {a, b} = split(x)", "  combine(a, b)", "end"], (4, "indent")),  # a body `{`
+            (["def config", "  { a: 1,", "  }.merge(other_call)", "  more_call", "end"], (5, "indent")),
+            (["abstract fun foo(): Int", "fun bar(): Int", "{", "  1", "}"], (1, "line")),
+            (["def f(self):", '    """Doc', '    more."""'], (3, "indent")),
+            (["def f():", '    return """', "text", '"""'], (4, "indent")),
+            (["Foo::Foo(int a)", "    : a_{a}, b_{0}", "{", "  x();", "}"], (5, "brace")),
+            (["type ID string", "// Foo does x", "func Foo() {}"], (1, "line")),
+        ]
+        for lines, want in cases:
+            with self.subTest(head=lines[0]):
+                self.assertEqual(rc.body_end(lines, 1), want)
+
+    def test_item_end_prefers_the_index(self):
+        idx = rc.Index("ctags", {}, "", {("/x", 1): 9})
+        self.assertEqual(rc.item_end("/x", 1, idx), (9, "ctags"))
 
 
 class ReviewCasesTest(Base):
@@ -244,13 +481,8 @@ class ReviewCasesTest(Base):
                                           "- `buildUserPath` → `src/js/paths.js:9`")
         code, out, _ = self.run_check(ledger, "--index", "none")
         self.assertEqual(code, 0, out)
-        self.assertIn("items 4 (4 in cap", out)
-        self.assertIn("D1 `buildUserPath` src/js/paths.js:8 — read in ledger", out)
-
-    def test_over_cap_entries_are_not_checked(self):
-        self.fake_ctags()
-        code, out, _ = self.run_check(fx.MISSING["js"], "--index", "ctags", "--cap", "2")
-        self.assertNotIn("missed_ref", out)
+        self.assertIn("items 4 (0 over budget)", out)
+        self.assertIn("D1 `buildUserPath` src/js/paths.js:8 [data] — read in ledger", out)
 
     def test_member_access_to_another_file_is_advisory_with_ctags(self):
         self.fake_ctags()

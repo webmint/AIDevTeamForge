@@ -6,25 +6,38 @@ and parses the report's `## Coverage` section.
 
 Ledger (`research/<report>-ledger.md`):
   ## Seeds
-  - `<symbol>` `<path:N>` — pass <1|2> — <route or reason>
+  - `<symbol>` `<path:N>` — pass <1|2> — <reason> [<role>]
   ## Read
-  ### `<symbol>` `<path:N-M>`            the body the runner read (N = the definition line)
-  - `<callee>` → `<path:N>`               a repository definition the body calls or references
+  ### `<symbol>` `<path:N-M>` [<role>]   the body the runner read (N = the definition line)
+  - `<callee>` → `<path:N>` [<role>]      a repository definition the body calls or references (role optional)
   - `<callee>` → external                 a library or framework symbol
   - `<token>` → ignored — <reason>        a token in the body that is not a reference
-`->` is accepted for `→`. A `### ` entry with a single `path:N` covers that line only.
+  ## Excluded                             optional: items the runner will exclude, before the report exists
+  - `<symbol>` `<path:N>` — <reason>      (the report's Coverage repeats them as `excluded` rows)
+`->` is accepted for `→`. A `### ` entry with a single `path:N` covers that line only. Roles (outside code spans):
+`[access]` (authorisation or scope path), `[data]` (read/write path: queries, keys, path builders, normalisers),
+`[other]`, `[container]` (a class or module body); required on seeds and entries. Seed reasons that name a seed kind:
+`duplicate …` / `facet 9`, `caller of …`, `sibling of …`, `test infra` / `facet 8`.
 
 Closure: breadth-first from every seed over the edges whose target is a `path:N`. An edge target (or a seed) is a
-node keyed by (resolved file, line); its ledger entry is the `### ` entry in the same file whose range contains the
-line (the narrowest when several do). Depth = distance to the nearest seed. Nodes at depth < max_depth are expanded
-through their entry; the closure lists every node up to max_depth, ordered by depth then discovery; past `cap` nodes
-are `over cap`.
+node keyed by (resolved file, line); its ledger entry is the narrowest non-container `### ` entry in the same file
+whose range contains the line (a container entry keys only its own head line, so its members stay items of their
+own). Depth = distance to the nearest seed; nodes at depth < max_depth are expanded through their entry. A
+container's entry is expanded at any depth up to max_depth, and its members stand at the container's own depth.
+An item's role is the strongest of its tags (access > data > other);
+`container` (a tag, or a container kind in the index) marks a container. Budget (`apply_budget`): items at depth <
+max_depth and `access`/`data` items are always in; depth-max_depth `other` items share a line budget of `share` ×
+the depth < max_depth entry lines (containers left out), filled smallest body first; the rest are `over budget`.
+Containers cost no budget; below max_depth one needs an entry (its members as edges) or an exclusion.
 
 Coverage (`## Coverage` in the report), one bullet per closure item:
   - `<symbol>` `<path:N>` — read — `<path:N-M>` `<verbatim quote>` [<found by>]
   - `<symbol>` `<path:N>` — excluded — <reason>
-  - `<symbol>` `<path:N>` — not covered: over cap
+  - `<symbol>` `<path:N>` — not covered: over budget        (`over cap`, from 1.37.1-step3, is read the same)
 A row is matched to a closure item by its first `path:N` span (the definition), resolved like the ledger's.
+
+Body ends (`item_end`): the ctags `end` field when the index has it, else `body_end`'s language-neutral rule: brace
+balance from the head, else indentation, else the head line alone; `uncertain` when none applies.
 
 Definition index (`build_index`): a ctags tag counts when its kind is a callable or type kind (CTAGS_KINDS) or it
 has a signature (a method that ctags calls `member`); fields and variables do not. `auto` uses the first `ctags`,
@@ -40,15 +53,20 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple
+from collections import deque
+from typing import Deque, Dict, List, NamedTuple, Optional, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_profile  # noqa: E402  (sibling module; path set above)
 import spec_refs  # noqa: E402
 
 DEFAULT_DEPTH = 2
-DEFAULT_CAP = 60
+DEFAULT_BUDGET_SHARE = 0.5
 CTAGS_TIMEOUT = 300
+ROLES = ("access", "data", "other", "container")
+_ROLE_RANK = {"access": 3, "data": 2, "other": 1}
+SEED_KINDS = ("duplicate", "caller", "sibling", "test infra")
+UNCERTAIN_LINES = 30  # an `uncertain` body end shows at most this many lines
 MAX_INDEX_FILE_BYTES = 1_000_000
 MAX_INDEX_LINE_CHARS = 2000  # minified or generated lines: skipped (the method-head pattern is slow on them)
 
@@ -58,6 +76,8 @@ _BULLET_RE = re.compile(r"^\s*[-*+]\s+")
 _H3_RE = re.compile(r"^ {0,3}###\s+(.*)$")
 _IDENT_RE = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _NAME_SPLIT_RE = re.compile(r"::|->|[.#\\/]")
+_ROLE_RE = re.compile(r"\[(access|data|other|container)\]", re.IGNORECASE)
+_SEED_REASON_RE = re.compile(r"\bpass\s*[12]\s*[—–-]+\s*(.*)$", re.IGNORECASE)
 
 
 class Ref(NamedTuple):
@@ -74,6 +94,7 @@ class Edge(NamedTuple):
     target: Optional[Ref]
     reason: str
     line: int
+    role: str = ""  # "" when the edge carries no role tag
 
 
 class Entry(NamedTuple):
@@ -81,20 +102,24 @@ class Entry(NamedTuple):
     body: Ref
     edges: List[Edge]
     line: int
+    role: str = ""
 
 
 class Seed(NamedTuple):
     symbol: str
     ref: Ref
     pass_no: int
-    source: str
+    source: str  # the reason after `pass N —`, role tag removed
     line: int
+    role: str = ""
+    kind: str = ""  # one of SEED_KINDS, or ""
 
 
 class Ledger(NamedTuple):
     seeds: List[Seed]
     entries: List[Entry]
     problems: List[str]  # "<code> L<line> <detail>"
+    excluded: List[Tuple[Ref, str]] = []  # `## Excluded`: (definition, reason), planned before the report exists
 
 
 class Node(NamedTuple):
@@ -103,14 +128,25 @@ class Node(NamedTuple):
     rel: str  # path as first written
     line: int
     depth: int
-    in_cap: bool
+    in_cap: bool  # in budget (apply_budget); True straight out of compute_closure
     entry: Optional[Entry]
+    role: str = "other"  # access | data | other (the strongest tag)
+    container: bool = False
+    size: int = 0  # body lines, set by apply_budget for the items it sizes
+
+
+class Budget(NamedTuple):
+    share: float
+    base: int  # body lines of the depth < max_depth entries, containers left out
+    limit: int  # int(share * base)
+    used: int  # lines of the depth-max_depth `other` items kept in
+    over: int  # items over budget
 
 
 class CoverageRow(NamedTuple):
     symbol: str
     ref: Ref
-    status: str  # "read" | "excluded" | "over cap" | "unknown"
+    status: str  # "read" | "excluded" | "over budget" | "unknown"
     text: str  # the whole bullet line
     line: int
 
@@ -181,8 +217,18 @@ def parse_ledger(text: str) -> Ledger:
             problems.append("ledger_bad_seed L%d %s" % (lineno, line.strip()))
             continue
         pm = _PASS_RE.search(line)
-        source = line.rsplit("—", 1)[-1].strip() if "—" in line else ""
-        seeds.append(Seed(spans[0], ref, int(pm.group(1)) if pm else 1, source, lineno))
+        role = role_tag(line)
+        rm = _SEED_REASON_RE.search(_masked(line))
+        if rm:
+            source = _ROLE_RE.sub("", line[rm.start(1):]).strip()
+        else:  # no `pass N —`: the text after the first dash past the path span
+            cspans = spec_refs.code_spans(line)
+            tail = line[cspans[1][1]:] if len(cspans) > 1 else ""
+            dash = re.search(r"[—–]", tail)
+            source = _ROLE_RE.sub("", tail[dash.end():]).strip() if dash else ""
+        if not role:
+            problems.append("ledger_no_role L%d %s" % (lineno, line.strip()))
+        seeds.append(Seed(spans[0], ref, int(pm.group(1)) if pm else 1, source, lineno, role, seed_kind(source)))
     current: Optional[Entry] = None
     for lineno, line in read_lines or []:
         h = _H3_RE.match(line)
@@ -193,7 +239,10 @@ def parse_ledger(text: str) -> Ledger:
                 problems.append("ledger_bad_entry L%d %s" % (lineno, line.strip()))
                 current = None
                 continue
-            current = Entry(spans[0], ref, [], lineno)
+            role = role_tag(line)
+            if not role:
+                problems.append("ledger_no_role L%d %s" % (lineno, line.strip()))
+            current = Entry(spans[0], ref, [], lineno, role)
             entries.append(current)
             continue
         if not _BULLET_RE.match(line) or not line.strip():
@@ -206,15 +255,51 @@ def parse_ledger(text: str) -> Ledger:
         for edge in entry.edges:
             if edge.kind == "bad":
                 problems.append("ledger_bad_edge L%d %s" % (edge.line, edge.reason))
-    return Ledger(seeds, entries, problems)
+    excluded: List[Tuple[Ref, str]] = []
+    for lineno, line in _section_lines(text, "Excluded") or []:
+        if not _BULLET_RE.match(line):
+            continue
+        ref = _first_ref(_spans(line), lineno, 1)
+        dash = list(re.finditer(r"[—–]|\s-\s", _masked(line)))
+        reason = line[dash[-1].end():].strip() if dash else ""
+        if ref is None or not reason:
+            problems.append("ledger_bad_exclusion L%d %s" % (lineno, line.strip()))
+            continue
+        excluded.append((ref, reason))
+    return Ledger(seeds, entries, problems, excluded)
+
+
+def _masked(text: str) -> str:
+    """`text` with every code span replaced by `x`s of the same length (positions kept)."""
+    masked = list(text)
+    for s, e, _c in spec_refs.code_spans(text):
+        masked[s:e] = ["x"] * (e - s)
+    return "".join(masked)
+
+
+def role_tag(line: str) -> str:
+    """The first `[access|data|other|container]` tag outside code spans, lowercased; "" when none."""
+    m = _ROLE_RE.search(_masked(line))
+    return m.group(1).lower() if m else ""
+
+
+def seed_kind(source: str) -> str:
+    """The SEED_KINDS member a seed reason names (`facet 9` is a duplicate, `facet 8` test infra), else ""."""
+    low = source.strip().lower()
+    if low.startswith("duplicate") or re.match(r"facet\s*9\b", low):
+        return "duplicate"
+    if low.startswith("caller"):
+        return "caller"
+    if low.startswith("sibling"):
+        return "sibling"
+    if low.startswith(("test infra", "test-infra")) or re.match(r"facet\s*8\b", low):
+        return "test infra"
+    return ""
 
 
 def _split_arrow(body: str) -> Optional[Tuple[str, str]]:
     """(left, right) around the first `→`/`->` outside code spans (`$this->save` is a name, not an arrow)."""
-    masked = list(body)
-    for s, e, _c in spec_refs.code_spans(body):
-        masked[s:e] = ["x"] * (e - s)
-    m = _ARROW_RE.search("".join(masked))
+    m = _ARROW_RE.search(_masked(body))
     return (body[:m.start()], body[m.end():]) if m else None
 
 
@@ -231,7 +316,7 @@ def _parse_edge(line: str, lineno: int) -> Edge:
     rspans = _spans(right)
     ref = _first_ref(rspans, lineno)
     if ref is not None:
-        return Edge(name, "def", ref, "", lineno)
+        return Edge(name, "def", ref, "", lineno, role_tag(right))
     word = right.strip().strip("`*").lower()
     if word.startswith("external"):
         return Edge(name, "external", None, "", lineno)
@@ -279,6 +364,7 @@ def ledger_ref_problems(ledger: Ledger, res: Resolver) -> List[str]:
     out: List[str] = []
     refs: List[Ref] = [s.ref for s in ledger.seeds] + [e.body for e in ledger.entries]
     refs += [ed.target for e in ledger.entries for ed in e.edges if ed.target is not None]
+    refs += [ref for ref, _reason in ledger.excluded]
     for ref in refs:
         reason = res.check(ref)
         if reason:
@@ -296,76 +382,163 @@ def _ref_text(ref: Ref) -> str:
 # Closure
 # ---------------------------------------------------------------------------
 
-def _key(ref: Ref, res: Resolver, entries: Optional[List[Entry]] = None) -> Optional[Tuple[str, int]]:
+Key = Tuple[str, int]
+
+
+def is_container_entry(entry: Entry, res: Resolver, containers: Set[Key] = frozenset()) -> bool:
+    real = res.file(entry.body.path)[0]
+    return entry.role == "container" or (real, entry.body.start) in containers
+
+
+def _key(ref: Ref, res: Resolver, entries: Optional[List[Entry]] = None,
+         containers: Set[Key] = frozenset()) -> Optional[Key]:
     """(realpath, line); with `entries`, a line inside an entry's body is keyed by the entry's first line, so an edge
     to a decorator or a body line and a Coverage row at the definition line name the same item."""
     real = res.file(ref.path)[0]
     if not real:
         return None
     if entries:
-        entry = entry_for((real, ref.start), entries, res)
+        entry = entry_for((real, ref.start), entries, res, containers)
         if entry is not None:
             return (real, entry.body.start)
     return (real, ref.start)
 
 
-def entry_for(key: Tuple[str, int], entries: List[Entry], res: Resolver) -> Optional[Entry]:
+def entry_for(key: Key, entries: List[Entry], res: Resolver, containers: Set[Key] = frozenset()) -> Optional[Entry]:
+    """The narrowest entry whose range holds the line; a container entry only for its own head line."""
     best: Optional[Entry] = None
     best_span = 0
     for entry in entries:
         real = res.file(entry.body.path)[0]
         end = entry.body.end if entry.body.end is not None else entry.body.start
-        if real == key[0] and entry.body.start <= key[1] <= end:
-            span = end - entry.body.start
-            if best is None or span < best_span:
-                best, best_span = entry, span
+        if real != key[0] or not entry.body.start <= key[1] <= end:
+            continue
+        if key[1] != entry.body.start and is_container_entry(entry, res, containers):
+            continue
+        span = end - entry.body.start
+        if best is None or span < best_span:
+            best, best_span = entry, span
     return best
 
 
+def _stronger(a: str, b: str) -> str:
+    return a if _ROLE_RANK.get(a, 0) >= _ROLE_RANK.get(b, 0) else b
+
+
 def compute_closure(ledger: Ledger, res: Resolver, max_depth: int = DEFAULT_DEPTH,
-                    cap: int = DEFAULT_CAP) -> List[Node]:
-    # key, symbol, rel path, line, depth, entry (found from the line as written: two entries may share a start)
-    order: List[Tuple[Tuple[str, int], str, str, int, int, Optional[Entry]]] = []
-    seen: Set[Tuple[str, int]] = set()
-    queue: List[int] = []
+                    containers: Set[Key] = frozenset()) -> List[Node]:
+    """Closure items in depth then discovery order, all `in_cap` (apply_budget sets it). `containers`: definition
+    keys the index knows as container kinds."""
+    # key -> [symbol, rel path, line, depth, entry, discovery index]; entry is found from the line as written (two
+    # entries may share a start). 0-1 breadth-first: a container's members stand at its own depth, so they go to the
+    # front of the queue; a node reached again at a smaller depth is lowered and expanded again.
+    info: Dict[Key, list] = {}
+    queue: Deque[Tuple[Key, int]] = deque()
+    tags: Dict[Key, Set[str]] = {}
 
     def entry_at(ref: Ref) -> Optional[Entry]:
         real = res.file(ref.path)[0]
-        return entry_for((real, ref.start), ledger.entries, res) if real else None
+        return entry_for((real, ref.start), ledger.entries, res, containers) if real else None
+
+    def tag(key: Key, role: str) -> None:
+        if role:
+            tags.setdefault(key, set()).add(role)
+
+    def is_container(key: Key, entry: Optional[Entry]) -> bool:
+        return key in containers or "container" in tags.get(key, ()) or (
+            entry is not None and entry.body.start == key[1] and is_container_entry(entry, res, containers))
 
     for seed in ledger.seeds:
-        key = _key(seed.ref, res, ledger.entries)
-        if key is None or key in seen:
+        key = _key(seed.ref, res, ledger.entries, containers)
+        if key is None:
             continue
-        seen.add(key)
-        order.append((key, seed.symbol, seed.ref.path, seed.ref.start, 0, entry_at(seed.ref)))
-        queue.append(len(order) - 1)
-    head = 0
-    while head < len(queue):
-        key, _sym, _rel, _line, depth, entry = order[queue[head]]
-        head += 1
-        if depth >= max_depth or entry is None:
+        tag(key, seed.role)
+        if key not in info:
+            info[key] = [seed.symbol, seed.ref.path, seed.ref.start, 0, entry_at(seed.ref), len(info)]
+            queue.append((key, 0))
+    while queue:
+        key, depth = queue.popleft()
+        if info[key][3] != depth:
+            continue  # lowered since it was queued
+        entry = info[key][4]
+        container = is_container(key, entry)
+        if entry is None or (depth >= max_depth and not container):
             continue
+        child_depth = depth if container else depth + 1
         for edge in entry.edges:
             if edge.kind != "def" or edge.target is None:
                 continue
-            ckey = _key(edge.target, res, ledger.entries)
-            if ckey is None or ckey in seen:
+            ckey = _key(edge.target, res, ledger.entries, containers)
+            if ckey is None:
                 continue
-            seen.add(ckey)
-            order.append((ckey, edge.name, edge.target.path, edge.target.start, depth + 1, entry_at(edge.target)))
-            queue.append(len(order) - 1)
+            tag(ckey, edge.role)
+            if ckey not in info:
+                info[ckey] = [edge.name, edge.target.path, edge.target.start, child_depth, entry_at(edge.target),
+                              len(info)]
+            elif child_depth < info[ckey][3]:
+                info[ckey][3] = child_depth
+            else:
+                continue
+            if child_depth == depth:
+                queue.appendleft((ckey, child_depth))
+            else:
+                queue.append((ckey, child_depth))
+    order = sorted(((k, v[0], v[1], v[2], v[3], v[4], v[5]) for k, v in info.items()), key=lambda o: (o[4], o[6]))
     nodes: List[Node] = []
-    for i, (key, sym, rel, line, depth, entry) in enumerate(order):
-        nodes.append(Node(key, sym, rel, line, depth, i < cap, entry))
+    for key, sym, rel, line, depth, entry, _i in order:
+        roles = set(tags.get(key, set()))
+        if entry is not None:
+            roles.add(entry.role)
+        container = "container" in roles or key in containers or (
+            entry is not None and is_container_entry(entry, res, containers) and entry.body.start == key[1])
+        role = "other"
+        for r in roles:
+            if r in _ROLE_RANK:
+                role = _stronger(r, role)
+        nodes.append(Node(key, sym, rel, line, depth, True, entry, role, container))
     return nodes
+
+
+def _entry_lines(entry: Entry) -> int:
+    return (entry.body.end if entry.body.end is not None else entry.body.start) - entry.body.start + 1
+
+
+def apply_budget(nodes: List[Node], res: Resolver, index: "Index", max_depth: int = DEFAULT_DEPTH,
+                 share: float = DEFAULT_BUDGET_SHARE) -> Tuple[List[Node], Budget]:
+    """Sets `in_cap` and `size`: depth < max_depth items, `access`/`data` items and containers are in; depth-max_depth
+    `other` items are kept smallest first while their lines fit share × the depth < max_depth entry lines."""
+    base = 0
+    counted: Set[int] = set()
+    for node in nodes:
+        if node.depth < max_depth and node.entry is not None and not node.container and id(node.entry) not in counted:
+            counted.add(id(node.entry))
+            base += _entry_lines(node.entry)
+    limit = int(share * base)
+    sized: List[Tuple[int, int]] = []  # (size, position) of the budgeted items
+    out = list(nodes)
+    for i, node in enumerate(nodes):
+        if node.depth >= max_depth and node.role == "other" and not node.container:
+            if node.entry is not None:
+                size = _entry_lines(node.entry)
+            else:
+                size = item_end(node.key[0], node.key[1], index)[0] - node.key[1] + 1
+            out[i] = node._replace(size=size)
+            sized.append((size, i))
+    used, over = 0, 0
+    for size, i in sorted(sized):
+        if used + size <= limit:
+            used += size
+        else:
+            out[i] = out[i]._replace(in_cap=False)
+            over += 1
+    return out, Budget(share, base, limit, used, over)
 
 
 # ---------------------------------------------------------------------------
 # Coverage
 # ---------------------------------------------------------------------------
 
-_STATUS_RE = re.compile(r"[—–-]\s*(read|excluded|not covered:\s*over cap)\b", re.IGNORECASE)
+_STATUS_RE = re.compile(r"[—–-]\s*(read|excluded|not covered:\s*over (?:budget|cap))\b", re.IGNORECASE)
 
 
 def parse_coverage(report: str) -> Optional[List[CoverageRow]]:
@@ -391,16 +564,16 @@ def parse_coverage(report: str) -> Optional[List[CoverageRow]]:
             continue
         m = _STATUS_RE.search(line, ref_end)
         word = m.group(1).lower() if m else "unknown"
-        status = "over cap" if word.startswith("not covered") else word
+        status = "over budget" if word.startswith("not covered") else word
         rows.append(CoverageRow(spans[0][2], ref, status, line, lineno))
     return rows
 
 
-def coverage_by_key(rows: List[CoverageRow], res: Resolver,
-                    entries: Optional[List[Entry]] = None) -> Dict[Tuple[str, int], CoverageRow]:
-    out: Dict[Tuple[str, int], CoverageRow] = {}
+def coverage_by_key(rows: List[CoverageRow], res: Resolver, entries: Optional[List[Entry]] = None,
+                    containers: Set[Key] = frozenset()) -> Dict[Key, CoverageRow]:
+    out: Dict[Key, CoverageRow] = {}
     for row in rows:
-        key = _key(row.ref, res, entries)
+        key = _key(row.ref, res, entries, containers)
         if key is not None and key not in out:
             out[key] = row
     return out
@@ -415,6 +588,11 @@ CTAGS_KINDS = frozenset({
     "procedure", "singletonMethod", "constructor", "generator", "type", "typedef", "module", "object",
     "record", "protocol", "fn", "implementation",
 })
+CONTAINER_KINDS = frozenset({
+    "class", "struct", "interface", "trait", "enum", "module", "namespace", "package", "object", "record",
+    "protocol", "implementation", "union",
+})
+_TYPE_PATTERN = 2  # DEF_PATTERNS index of the type forms: its matches are containers
 
 NON_SOURCE_EXT = frozenset({
     ".md", ".markdown", ".txt", ".rst", ".adoc", ".json", ".lock", ".yaml", ".yml", ".toml", ".ini", ".cfg",
@@ -452,6 +630,15 @@ class Index(NamedTuple):
     defs: Dict[str, List[Tuple[str, int]]]  # name -> [(realpath, line)]
     note: str
     ends: Dict[Tuple[str, int], int] = {}  # (realpath, line) -> last line, when the index knows it (ctags `end`)
+    containers: Set[Tuple[str, int]] = frozenset()  # definitions of a container kind (class, module, …)
+
+    def names_at(self) -> Dict[Tuple[str, int], str]:
+        """(realpath, line) -> the first name defined there."""
+        out: Dict[Tuple[str, int], str] = {}
+        for name, locs in self.defs.items():
+            for loc in locs:
+                out.setdefault(loc, name)
+        return out
 
 
 def _scopes(root: str) -> Tuple[List[str], List[str]]:
@@ -499,6 +686,7 @@ def _is_text(path: str) -> bool:
 
 def regex_index(root: str) -> Index:
     defs: Dict[str, List[Tuple[str, int]]] = {}
+    containers: Set[Tuple[str, int]] = set()
     files = 0
     for path in _source_files(root):
         if not _is_text(path):
@@ -511,14 +699,17 @@ def regex_index(root: str) -> Index:
         for lineno, line in enumerate(lines, 1):
             if len(line) > MAX_INDEX_LINE_CHARS or _comment_line(line):
                 continue
-            for pat in DEF_PATTERNS:
+            for i, pat in enumerate(DEF_PATTERNS):
                 m = pat.match(line)
                 if m:
                     name = m.group("n").rstrip("!?")
                     if name not in _CONTROL:
                         defs.setdefault(name, []).append((real, lineno))
+                        if i == _TYPE_PATTERN:
+                            containers.add((real, lineno))
                     break
-    return Index("regex", defs, "regex index: %d files, %d names (missed references are advisory)" % (files, len(defs)))
+    return Index("regex", defs, "regex index: %d files, %d names (missed references are advisory)" % (files, len(defs)),
+                 {}, containers)
 
 
 CTAGS_NAMES = ("ctags", "uctags", "universal-ctags")
@@ -573,6 +764,7 @@ def ctags_index(root: str, exe: str) -> Index:
         raise OSError("ctags failed (%d): %s" % (proc.returncode, proc.stderr.strip()[:300]))
     defs: Dict[str, List[Tuple[str, int]]] = {}
     ends: Dict[Tuple[str, int], int] = {}
+    containers: Set[Tuple[str, int]] = set()
     for raw in proc.stdout.splitlines():
         try:
             tag = json.loads(raw)
@@ -585,12 +777,15 @@ def ctags_index(root: str, exe: str) -> Index:
             continue
         loc = (os.path.realpath(os.path.join(root, path)), line)
         defs.setdefault(name.rstrip("!?"), []).append(loc)
+        if tag.get("kind") in CONTAINER_KINDS:
+            containers.add(loc)
         end = tag.get("end")
         if isinstance(end, int) and end >= line:
             ends[loc] = max(end, ends.get(loc, end))
     if not defs:
-        return Index("none", {}, "ctags found no definitions: missed-reference check skipped")
-    return Index("ctags", defs, "ctags index: %d names (missed references are blocking); %s" % (len(defs), exe), ends)
+        return Index("none", {}, "ctags found no definitions: missed-reference check skipped; %s" % exe)
+    return Index("ctags", defs, "ctags index: %d names (missed references are blocking); %s" % (len(defs), exe),
+                 ends, containers)
 
 
 def build_index(root: str, mode: str = "auto") -> Index:
@@ -617,7 +812,7 @@ def build_index(root: str, mode: str = "auto") -> Index:
     idx = regex_index(root)
     if not idx.defs:
         return Index("none", {}, "no definitions found by the regex index: missed-reference check skipped" + fallback)
-    return Index(idx.kind, idx.defs, idx.note + fallback)
+    return idx._replace(note=idx.note + fallback)
 
 
 # ---------------------------------------------------------------------------
@@ -701,3 +896,167 @@ def body_tokens(lines: List[str], start: int, end: int, own_name: str = "") -> L
             if not member:
                 bare.add(tok)
     return [Token(t, first[t], t not in bare) for t in order]
+
+
+# ---------------------------------------------------------------------------
+# Body ends
+# ---------------------------------------------------------------------------
+
+HEAD_LINES = 8  # a signature may run over this many more lines before its body opens
+_CLOSER_RE = re.compile(r"^\s*(?:end\b|[}\])]|fi\b|done\b|esac\b)")
+
+
+def _indent(line: str) -> int:
+    return len(line.expandtabs(4)) - len(line.expandtabs(4).lstrip())
+
+
+def _code_part(line: str, in_block: bool) -> Tuple[str, bool]:
+    """The code of a line for brace counting: comments and string literals dropped; (code, still in a block)."""
+    if in_block:
+        close = line.find("*/")
+        if close < 0:
+            return "", True
+        line = line[close + 2:]
+    if _comment_line(line):
+        return "", False
+    line = _INLINE_BLOCK_RE.sub(" ", line)
+    line = _STRING_RE.sub(" ", line)
+    line = _TRAILING_RE.sub(" ", line)
+    opened = line.find("/*")
+    if opened >= 0:
+        return line[:opened], True
+    return line, False
+
+
+def _next_code_line(lines: List[str], after: int) -> int:
+    """The first line after `after` (1-based) that is neither blank nor a comment line, or 0."""
+    for j in range(after + 1, len(lines) + 1):
+        if lines[j - 1].strip() and not _comment_line(lines[j - 1]):
+            return j
+    return 0
+
+
+def body_end(lines: List[str], start: int) -> Tuple[int, str]:
+    """(last line, how) of the definition whose head is line `start`, without knowing the language:
+    `brace` — the first `{` outside parentheses in the head (or its continuation lines) and its matching `}`;
+    `indent` — a head ending in `:`, or a head followed by more-indented lines: the lines indented deeper than the
+    head, plus a closer (`end`, `}`, `)`) at the head's indentation; `line` — the head alone (`;`-terminated or not
+    followed by a deeper line); `uncertain` — the braces never balance (at most UNCERTAIN_LINES are given)."""
+    total = len(lines)
+    if start < 1 or start > total:
+        return start, "uncertain"
+    base = _indent(lines[start - 1])
+    paren = 0
+    in_block = False
+    for i in range(start, min(total, start + HEAD_LINES) + 1):
+        code, in_block = _code_part(lines[i - 1], in_block)
+        for pos, ch in enumerate(code):
+            if ch in "([":
+                paren += 1
+            elif ch in ")]":
+                paren -= 1
+            elif ch == "{" and paren <= 0:
+                return _brace_end(lines, i, code[pos:], in_block, start)
+        tail = code.rstrip()
+        if paren > 0 or (not tail and i == start):
+            continue
+        if tail.endswith(":"):
+            return _indent_end(lines, i, base)
+        if tail.endswith(";"):
+            return i, "line"
+        opener = _later_opener(lines, i, in_block, base)
+        if opener:
+            return _brace_end(lines, opener[0], opener[1], opener[2], start)
+        nxt = _next_code_line(lines, i)
+        if nxt and _indent(lines[nxt - 1]) > base:
+            return _indent_end(lines, i, base)
+        return i, "line"
+    return start, "uncertain"
+
+
+def _later_opener(lines: List[str], head_end: int, in_block: bool, base: int) -> Optional[Tuple[int, str, bool]]:
+    """A body brace on a later line: the first code line within HEAD_LINES that starts with `{` at the head's
+    indentation or less (Allman, PHP PSR-12, a C function, a Rust `where` clause before it). It stops at a `;`-ended
+    line, a line that closes more braces than it opens, or the head of another definition. (line, code from the
+    brace, block state)."""
+    for j in range(head_end + 1, min(len(lines), head_end + HEAD_LINES) + 1):
+        code, in_block = _code_part(lines[j - 1], in_block)
+        stripped = code.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("{"):
+            return (j, stripped, in_block) if _indent(lines[j - 1]) <= base else None
+        if stripped.endswith(";") or stripped.count("}") > stripped.count("{") or _is_def_head(code):
+            return None
+    return None
+
+
+def _is_def_head(code: str) -> bool:
+    for pat in DEF_PATTERNS:
+        m = pat.match(code)
+        if m and m.group("n").rstrip("!?") not in _CONTROL:
+            return True
+    return False
+
+
+def _brace_end(lines: List[str], line_no: int, rest: str, in_block: bool, start: int) -> Tuple[int, str]:
+    depth = rest.count("{") - rest.count("}")
+    if depth <= 0:
+        return line_no, "brace"
+    for j in range(line_no + 1, len(lines) + 1):
+        code, in_block = _code_part(lines[j - 1], in_block)
+        depth += code.count("{") - code.count("}")
+        if depth <= 0:
+            return j, "brace"
+    return min(len(lines), start + UNCERTAIN_LINES - 1), "uncertain"
+
+
+def _indent_end(lines: List[str], head_end: int, base: int) -> Tuple[int, str]:
+    """Lines deeper than `base` after the head; a comment line and the lines of a triple-quoted block count as body
+    whatever their indentation, when deeper lines follow them."""
+    end = head_end
+    in_triple = False
+    deep_triple = False  # the open triple-quoted block started on a body line
+    for j in range(head_end + 1, len(lines) + 1):
+        line = lines[j - 1]
+        marks = len(_TRIPLE_RE.findall(line))
+        if in_triple:
+            in_triple = marks % 2 == 0
+            if deep_triple:
+                end = j
+            continue
+        if marks % 2 == 1:
+            if _indent(line) <= base:
+                break  # a block opened at the head's indentation is after the body
+            in_triple = deep_triple = True
+            end = j
+            continue
+        if not line.strip() or (_comment_line(line) and _indent(line) <= base):
+            continue
+        if _indent(line) > base:
+            end = j
+            continue
+        if _indent(line) == base and _CLOSER_RE.match(line):
+            end = j
+        break
+    return end, "indent" if end > head_end else "line"
+
+
+_LINES_CACHE: Dict[str, Optional[List[str]]] = {}
+
+
+def file_lines(real: str) -> Optional[List[str]]:
+    if real not in _LINES_CACHE:
+        _LINES_CACHE[real] = spec_refs.read_lines(real)
+    return _LINES_CACHE[real]
+
+
+def item_end(real: str, line: int, index: Index) -> Tuple[int, str]:
+    """(last line, how) of the definition at (real, line): the index's end (`ctags`) or body_end's rule."""
+    end = index.ends.get((real, line))
+    if end is not None:
+        return end, "ctags"
+    lines = file_lines(real)
+    if lines is None:
+        return line, "uncertain"
+    return body_end(lines, line)

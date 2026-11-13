@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import sys
 
@@ -119,64 +120,76 @@ LEDGERS = {
     "js": """# Call ledger
 
 ## Seeds
-- `getProfile` `src/js/handler.js:4` — pass 1 — top-down
+- `getProfile` `src/js/handler.js:4` — pass 1 — top-down [other]
 
 ## Read
-### `getProfile` `src/js/handler.js:4-7`
-- `checkAccess` → `src/js/auth.js:1`
-- `buildUserPath` → `src/js/paths.js:7`
+### `getProfile` `src/js/handler.js:4-7` [other]
+- `checkAccess` → `src/js/auth.js:1` [access]
+- `buildUserPath` → `src/js/paths.js:7` [data]
 - `readFile` → external
-### `buildUserPath` `src/js/paths.js:7-10`
-- `normalizeSegment` → `src/js/paths.js:3`
+### `buildUserPath` `src/js/paths.js:7-10` [data]
+- `normalizeSegment` → `src/js/paths.js:3` [data]
 - `join` → external
-### `checkAccess` `src/js/auth.js:1-3`
+### `checkAccess` `src/js/auth.js:1-3` [access]
 """,
     "py": """# Call ledger
 
 ## Seeds
-- `Store.get` `src/py/store.py:14` — pass 1 — bottom-up
+- `Store.get` `src/py/store.py:14` — pass 1 — bottom-up [data]
 
 ## Read
-### `Store.get` `src/py/store.py:14-16`
+### `Store.get` `src/py/store.py:14-16` [data]
 - `object_path` → `src/py/store.py:8`
 - `open` → external
-### `object_path` `src/py/store.py:8-10`
-- `normalize_key` → `src/py/store.py:4`
+### `object_path` `src/py/store.py:8-10` [data]
+- `normalize_key` → `src/py/store.py:4` [data]
 - `os.path.join` → external
 """,
     "go": """# Call ledger
 
 ## Seeds
-- `Loader.Load` `src/go/paths.go:16` — pass 1 — top-down
+- `Loader.Load` `src/go/paths.go:16` — pass 1 — top-down [data]
 
 ## Read
-### `Loader.Load` `src/go/paths.go:16-18`
+### `Loader.Load` `src/go/paths.go:16-18` [data]
 - `Loader` → `src/go/paths.go:14`
 - `UserPath` → `src/go/paths.go:10`
-### `UserPath` `src/go/paths.go:10-12`
-- `normalizeID` → `src/go/paths.go:5`
-### `Loader` `src/go/paths.go:14`
+### `UserPath` `src/go/paths.go:10-12` [data]
+- `normalizeID` → `src/go/paths.go:5` [data]
+### `Loader` `src/go/paths.go:14` [container]
 """,
     "java": """# Call ledger
 
 ## Seeds
-- `UserPaths.userPath` `src/java/UserPaths.java:8` — pass 2 — approach
+- `UserPaths.userPath` `src/java/UserPaths.java:8` — pass 2 — approach [data]
 
 ## Read
-### `UserPaths.userPath` `src/java/UserPaths.java:8-10`
-- `normalize` → `src/java/UserPaths.java:4`
-### `normalize` `src/java/UserPaths.java:4-6`
+### `UserPaths.userPath` `src/java/UserPaths.java:8-10` [data]
+- `normalize` → `src/java/UserPaths.java:4` [data]
+### `normalize` `src/java/UserPaths.java:4-6` [data]
 """,
 }
 
 # the callee each MISSING ledger omits, with the body that calls it
 OMITTED = {
-    "js": ("normalizeSegment", "- `normalizeSegment` → `src/js/paths.js:3`\n"),
-    "py": ("normalize_key", "- `normalize_key` → `src/py/store.py:4`\n"),
-    "go": ("normalizeID", "- `normalizeID` → `src/go/paths.go:5`\n"),
-    "java": ("normalize", "- `normalize` → `src/java/UserPaths.java:4`\n"),
+    "js": ("normalizeSegment", "- `normalizeSegment` → `src/js/paths.js:3` [data]\n"),
+    "py": ("normalize_key", "- `normalize_key` → `src/py/store.py:4` [data]\n"),
+    "go": ("normalizeID", "- `normalizeID` → `src/go/paths.go:5` [data]\n"),
+    "java": ("normalize", "- `normalize` → `src/java/UserPaths.java:4` [data]\n"),
 }
 MISSING = {lang: LEDGERS[lang].replace(line, "") for lang, (_n, line) in OMITTED.items()}
+
+_UNTAGGED_RE = re.compile(r"^((?:- `[^`]+` `[^`]+` — pass .*)|(?:### `[^`]+` `[^`]+`))$")
+
+
+def tagged(ledger: str, role: str = "other") -> str:
+    """The ledger with `[role]` added to every seed and entry line that has no role tag (inline test ledgers)."""
+    out = []
+    for line in ledger.split("\n"):
+        if _UNTAGGED_RE.match(line) and not re.search(r"\[(access|data|other|container)\]", line):
+            line += " [%s]" % role
+        out.append(line)
+    return "\n".join(out)
 
 
 def write_project(root: str) -> None:

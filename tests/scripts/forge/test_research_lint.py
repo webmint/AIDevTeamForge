@@ -43,6 +43,10 @@ FACETS = """## Facets
 ROUTES = """## Search routes
 - top-down: from `getProfile`; reached checkAccess, buildUserPath
 - bottom-up: from `users`; reached buildUserPath; only this route: none
+- duplicates: none — searched: trim, toLowerCase in src/
+- callers: none — searched: callers of buildUserPath in src/
+- siblings: none — searched: src/js/paths.js
+- test infrastructure: none — searched: test/, fake, mock
 """
 
 SUMMARY = """# Research: profile path
@@ -78,7 +82,7 @@ class Base(unittest.TestCase):
                 handle.write(ledger)
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
-            code = research_lint.main([self.report, "--root", self.root] + list(extra))
+            code = research_lint.main([self.report, "--root", self.root, "--index", "regex"] + list(extra))
         return code, out.getvalue(), err.getvalue()
 
 
@@ -130,14 +134,29 @@ class CoverageTest(Base):
         self.assertIn("excluded_without_reason", out)
         self.assertIn("coverage_bad_status", out)
 
-    def test_over_cap_rows(self):
-        cov = COVERAGE.replace("— read — `src/js/paths.js:4` `return seg.trim().toLowerCase();` [closure]",
-                               "— not covered: over cap")
-        code, out, _ = self.lint(report(coverage=cov), fx.LEDGERS["js"], "--cap", "3")
-        self.assertEqual(code, 0, out)
-        code, out, _ = self.lint(report(coverage=cov))
+    def test_over_budget_rows(self):
+        other = fx.LEDGERS["js"].replace("`src/js/paths.js:3` [data]", "`src/js/paths.js:3` [other]")
+        summary = SUMMARY.replace("`normalizeSegment` lowers it", "the segment is lowered")
+        for word in ("budget", "cap"):  # `over cap` from 1.37.1-step3 reads the same
+            cov = COVERAGE.replace("— read — `src/js/paths.js:4` `return seg.trim().toLowerCase();` [closure]",
+                                   "— not covered: over %s" % word)
+            facets = FACETS.replace("`src/js/paths.js:4` `return seg.trim().toLowerCase();`",
+                                    "none — searched: normalise in src/")
+            code, out, _ = self.lint(report(summary, cov, facets), other, "--budget-share", "0")
+            self.assertEqual(code, 0, out)
+        code, out, _ = self.lint(report(summary, cov, facets))
         self.assertEqual(code, 1)
-        self.assertIn("over_cap_in_cap", out)
+        self.assertIn("over_budget_in_budget", out)
+
+    def test_quoted_over_budget(self):
+        other = fx.LEDGERS["js"].replace("`src/js/paths.js:3` [data]", "`src/js/paths.js:3` [other]")
+        cov = COVERAGE.replace("— read — `src/js/paths.js:4` `return seg.trim().toLowerCase();` [closure]",
+                               "— not covered: over budget")
+        code, out, _ = self.lint(report(coverage=cov), other, "--budget-share", "0")
+        self.assertEqual(code, 1, out)
+        lines = [l for l in out.splitlines() if l.startswith("quoted_over_budget")]
+        self.assertEqual(len(lines), 1, out)  # the facet 5 quote of paths.js:4; its own Coverage row is not one
+        self.assertIn("`normalizeSegment` src/js/paths.js:3 — the report cites src/js/paths.js:4", lines[0])
 
     def test_no_coverage_and_no_ledger(self):
         code, out, _ = self.lint(report(coverage=""), None)
@@ -170,6 +189,26 @@ class FacetsRoutesClaimsTest(Base):
         code, out, _ = self.lint(report(routes="## Search routes\n- top-down: from the handler\n"))
         self.assertEqual(code, 1)
         self.assertIn("no_search_routes L0 no bottom-up bullet", out)
+
+    def test_seed_kinds(self):
+        routes = ROUTES.replace("- siblings: none — searched: src/js/paths.js\n", "")
+        routes = routes.replace("- callers: none — searched: callers of buildUserPath in src/",
+                                "- callers: `handler.js` calls it")
+        code, out, _ = self.lint(report(routes=routes))
+        self.assertEqual(code, 1)
+        self.assertIn("seed_kind_missing L0 siblings: no `- siblings:` bullet", out)
+        self.assertIn("seed_kind_missing L0 callers: no `caller` seed in the ledger", out)
+        ledger = fx.LEDGERS["js"].replace(
+            "- `getProfile` `src/js/handler.js:4` — pass 1 — top-down [other]",
+            "- `getProfile` `src/js/handler.js:4` — pass 1 — top-down [other]\n"
+            "- `getProfile` `src/js/handler.js:4` — pass 2 — caller of `buildUserPath` — unchanged [other]")
+        code, out, _ = self.lint(report(routes=routes), ledger)
+        self.assertNotIn("seed_kind_missing L0 callers", out)
+
+    def test_seed_kind_label_forms(self):
+        routes = ROUTES.replace("- duplicates:", "- duplicate:").replace("- test infrastructure:", "- test infra:")
+        code, out, _ = self.lint(report(routes=routes))
+        self.assertEqual(code, 0, out)
 
     def test_claims_are_advisory(self):
         summary = SUMMARY + "\nThe id is never trimmed before the access check.\n" \
