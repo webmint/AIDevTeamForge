@@ -355,7 +355,7 @@ Options:
 3. **Stop** — halt execution, keep WIP state for manual handling
 ```
 
-**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" for a Critical; a Warning is fixed when cheap, otherwise "Continue" with it recorded in the fix report.
+**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" always; a Warning fix failing Phase 5 checks is reverted and recorded in the fix report, not a STOP.
 
 Wait for user response:
 - **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:

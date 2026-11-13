@@ -16,12 +16,12 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 /research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
 ```
 
-`/plan` runs AFTER the spec is approved, BEFORE task breakdown. It answers technical questions the spec intentionally left open (specs describe WHAT, plans describe HOW).
+`/plan` answers the technical questions the spec intentionally left open.
 
 ## Prerequisites
 
-1. A spec must exist with **Status: Approved**
-2. If status is still "Draft", stop and inform the user
+1. A spec must exist with **Status: Approved**; if it is still "Draft", stop and inform the user
+2. Run `python3 scripts/forge/spec_lint.py hash specs/[feature-name] --check`. Its line (whether the spec changed after its last spec-gate review, and any unreviewed changes) goes into the HARD GATE summary; exit 2 (no gate report or no hash, e.g. gate off or a spec gated before 1.37.1) is noted there, not a stop
 
 ## PHASE 0: Research Evaluation
 
@@ -37,11 +37,11 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 - Check how similar features are implemented
 - Identify reusable code and patterns
 - For greenfield projects: check the constitution's scaffolding guide for pattern references
-- The spec already incorporates relevant documentation context from `docs/`. Do not re-read docs — use the spec's "Current State" and "Affected Areas" sections as your primary source
+- Do not re-read `docs/`; the spec's "Current State" and "Affected Areas" carry their context (rule 8)
 
 ### Step 2: Signal Scan
 
-Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack.** If the spec references a library/technology that's already in the project's dependencies (check `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.), that is NOT a signal — the team has already made that choice.
+Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack.** If the spec references a library/technology that's already in the project's dependencies (check `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.), that is NOT a signal.
 
 | Signal | Example | NOT a signal when... |
 |--------|---------|---------------------|
@@ -61,7 +61,7 @@ Read the spec and check for these signals. **Only flag signals for things NOT al
 For each signal, choose the appropriate research tool:
 
 **For specific libraries named in the spec:**
-- Try Context7 first (`resolve-library-id` → `query-docs`) to get current documentation and API details
+- Try Context7 first (`resolve-library-id` → `query-docs`)
 - If Context7 has no docs for the library, fall back to WebSearch
 
 **For comparing alternatives or architectural decisions:**
@@ -102,7 +102,7 @@ Save to `specs/[feature-name]/research.md`:
 - [links to docs, examples, or source files consulted]
 ```
 
-If no deep research was needed (no signals), skip the research.md file.
+With no signals, skip research.md.
 
 ## PHASE 1: Technical Design
 
@@ -341,6 +341,7 @@ Present a summary:
 **Key decisions**: [list the most important ones]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]
+**Spec hash**: [Prerequisites step 2]
 [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and approve. Once approved, run `/breakdown` to generate tasks."
@@ -354,5 +355,5 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 5. **Minimal supporting docs** — only create research.md, data-model.md, contracts.md if they're actually needed. Don't create empty files
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions
-8. **Docs context comes from the spec** — the spec already incorporates `docs/` knowledge. Do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk
+8. **Docs context comes from the spec** — do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk
 9. **Reuse map is mandatory** — no new operation, figure, helper, closed-set member or seam without its search and decision (1.5); no touched open theme without a fix or a recorded deferral (1.6)

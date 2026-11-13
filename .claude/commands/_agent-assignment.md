@@ -12,7 +12,7 @@ Each command reads this table and selects the agent whose row best matches the f
 
 | Files in... | Agent |
 |-------------|-------|
-| Domain models, interfaces, contracts, type definitions, architectural decisions | architect |
+| Domain models, interfaces, contracts, architectural decisions | architect |
 | State management with orchestration logic (BLoC, Redux reducers with business rules, Pinia stores with computed logic) | architect |
 | API endpoints, controllers, middleware, services, server-side logic | backend-engineer |
 | UI components, styles, routes, composables, stores | frontend-engineer |
@@ -26,8 +26,8 @@ Each command reads this table and selects the agent whose row best matches the f
 | CI/CD, Docker, deployment config, infrastructure | devops-engineer |
 | Data migration scripts, backward compatibility layers | migration-engineer |
 | Accessibility, design system compliance, UI audit | design-auditor |
-| Shared utilities, type definitions, cross-cutting concerns | architect |
-| Unclear or mixed | architect (safe default) |
+| Shared utilities, type definitions, cross-cutting concerns | the Do-tier specialist of the layer the files sit in (backend-engineer, frontend-engineer, mobile-engineer, …; architect when the project has none) |
+| Unclear or mixed | the Do-tier specialist of the layer that holds most of the files (architect when the project has none) |
 
 **Tests follow the code under test**: tests for a change are written by the agent and in the task that changes that code; a dedicated end-to-end test task is the exception and goes to `qa-engineer`.
 

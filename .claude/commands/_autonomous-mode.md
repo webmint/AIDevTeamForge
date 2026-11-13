@@ -27,7 +27,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `specify` | `/specify` Phase 5 HARD GATE | Self-approval (below) |
 | `plan` | `/plan` Phase 3 HARD GATE | Self-approval |
 | `breakdown` | `/breakdown` Phase 5 HARD GATE | Self-approval |
-| `task-review` | `/execute-task` and `/fix` code review options | Critical: "Address now", then one re-review; still BLOCK = STOP 6. Warning: fix it when cheap, otherwise "Continue" and record it in the task's Completion Notes (the fix report for `/fix`). Suggestion and Info: record only |
+| `task-review` | `/execute-task` and `/fix` code review options | Critical: "Address now", then one re-review; still BLOCK = STOP 6. Warning: "Address now"; one repair run covers all of the task's Warnings and starts only after any Critical repair has passed its re-review (never folded into it). Before it starts, commit that Critical repair and any uncommitted work (explicit paths, `[WIP]` like the command's other repair commits). When the checks that confirm it fail (`/execute-task` Phase 3.2, `/fix` Phase 5), return to the commit the Warning repair run started from (`git revert` the commits it made, restore its uncommitted changes and delete the files it created; wrapper mode: in the Source Root repository) and record every one of those Warnings in the task's Completion Notes (`/fix`: the fix report); not a STOP. Suggestion and Info: record only |
 | `checkpoint` | `_multi-task-continuation.md` review checkpoint | "Continue" |
 | `context` | `_multi-task-continuation.md` context health | Ignore the task count. On a context guard message: finish the current task, run the Batch Gate over the completed tasks (unless the stop message forbids it), and return `status: paused (context)` with `next` naming the remaining tasks; never show the compaction prompt |
 | `recovery` | `_recovery.md` 0.3, a crash marker `.claude/wip.md` exists | "Resume" when the marker names the same command, task and feature as this runner's prompt; otherwise return `blocked (crash marker: <its summary>)` without touching it |
@@ -42,10 +42,10 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 
 ## Self-Approval at a HARD GATE
 
-A HARD GATE self-approves only after its independent gate (`_independent-gate.md`):
+A HARD GATE self-approves only after its independent gate (`_independent-gate.md`); for the spec and the plan, the `spec-gate` / `plan-gate` phase runner self-approves, not the authoring runner (`_independent-gate.md` → "When It Runs"):
 - The gate must run. When its checklist says `**Gate**: off` (or the file is missing), the point is interactive: stop as at a point kept interactive. A breakdown-gate that `_independent-gate.md` skips for a structural spec is not off: the runner checks itself that every copy the plan lists and every Reuse Map row lands in a task, records that in its run report, and self-approves.
-- The gate's loop ends with no open Critical. In autonomous mode a Critical the author `rejected` stays open unless the same reviewer's re-check accepts the rejection. A Critical still open after the loop is STOP 6 (the conductor parks the spec).
-- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> S<n> I<n>, open Critical: none` under the header, and continue.
+- The gate's loop ends with no open Critical. In autonomous mode a Critical the author `rejected` stays open unless the fresh re-check reviewer (`_independent-gate.md` → "Loop" step 1) accepts the rejection. A Critical still open after the loop, or a finding that Loop step 2 or 5 or "Spec-gate checks" step 3 (an `unverified` Critical) or step 5 (a security-floor disposition that fails the script) sends to the HARD GATE as open, is STOP 6 (the conductor parks the spec).
+- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> S<n>, open Critical: none` under the header, and continue.
 
 An artifact that the user never saw is approved on evidence, not on trust: the gate is what makes self-approval acceptable.
 
@@ -73,7 +73,7 @@ Stop, report, and wait for the user:
 4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` are routine.
 5. A destructive or irreversible operation outside the spec branch (rewriting the default branch's history, deleting user files).
 6. The same blocker after 3 attempts (failing tests, flaky infrastructure, a review BLOCK after repair, a gate Critical after its loop).
-7. The context guard's stop message in the conductor session.
+7. The context guard's stop message in the conductor session, or its phase-boundary `--report` above ~250k tokens (`/conduct` → "Context Limit").
 8. The audit gate is closed (an audit is due, or its blocking themes are unfixed): an audit and its triage need the user.
 
 STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run (`/conduct` → "Park and Continue"). Every STOP report gives what is blocked, the options with a recommendation, and the exact resume command.
@@ -84,12 +84,14 @@ STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run 
 - **Wait for nested agents**: return only after the completion notification of every agent you launched, and after every background shell command you started has ended or been stopped. Never hand back while one runs: ending your turn without a hand-back is how you wait, and the notification wakes you; never sleep-poll. A busy nested agent is never a reason to return `blocked`: wait for its completion notification. In autonomous mode `.claude/hooks/forge/nested-wait-guard.py` refuses a hand-back while work you launched is pending.
 - **No sleep polling**: never wait with sleep loops, background `sleep` timers or `until` polls; the completion notification arrives on its own. A wait on an external condition is one foreground command with a bounded timeout. Stop every background shell you started before you return.
 - **Check output stays out of context**: run every check (type check, lint, tests, build) through `scripts/forge/gate.sh <name> -- <command>`; read the log only with a targeted search, to diagnose a failure.
+- **Searches on Haiku**: launch read-only codebase searches as `subagent_type: Explore` with the Agent tool's `model: haiku`. For a long file, read the Explore digest instead of the whole file.
+- **Reading budget**: read each file once per run, and only the part you need (`offset`/`limit`, a heading, `grep`) unless you need all of it; re-read it only when it changed since. A Bash command whose output may run past ~50 lines (other than the checks, which go through `gate.sh`) writes to a file that you read with `tail` or `grep`.
 - **Review effort follows severity**, as in the `task-review` row. A repair of the same failed item relaunches the specialist one `effort` level above its definition (`medium` → `high` → `xhigh`; never `max`).
 - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md`, `.claude/commands/*.md` or `.claude/project-config.json` beyond an acceptance criterion is recorded for the user, not fixed.
 - **Session state**: a runner skips the commands' steps that write or reset `.claude/session-state.md` (reading it is fine): parallel runners would overwrite each other's snapshot. The conductor's ledger is the resume source.
-- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. A research runner commits nothing: its report stays untracked until the `/specify` runner commits it on the spec branch.
+- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. Commit every `specs/NNN-*/gates/*` file you wrote (the `scripts/forge/` checks write them too) with your phase's commit. A research runner commits nothing: its report stays untracked until the `/specify` runner commits it on the spec branch.
 - **Write refused**: when the harness refuses a runner's Write of `summary.md` (or another report), return its full content with `status: blocked (write refused: <path>)`; the conductor saves it verbatim, commits it, and resumes the runner.
-- **Open items**: a finding the unit does not fix (deferred Warning, recorded-only finding, follow-up) goes under `## For the register` in the run report, one line each with its severity. The conductor decides where it goes (an issue, the next spec, the user).
+- **Open items**: a finding the unit does not fix (deferred Warning or one whose fix was reverted, recorded-only finding, follow-up) goes under `## For the register` in the run report, one line each with its severity. The conductor decides where it goes (an issue, the next spec, the user).
 
 **Run report**: `specs/NNN-*/runs/<phase>[-task-NNN | -W<n>].md` (a research runner: the research report itself). It covers what was done, the gate details, the review findings with their dispositions, the self-approval notes, and one line `binding: <keys of .claude/quality-profile.json the phase read; "(unset)" after a key that fell back> | none`.
 
@@ -108,7 +110,7 @@ next: <exact next command>
 ```
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
 - `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
-- The independent gates run inside the authoring command (`_independent-gate.md`); their reviewers return the gate's own lines, and the authoring runner puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n> I<n>` in `gates:`.
+- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers return the gate's own lines, and the runner that ran the gate puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n>` in `gates:`.
 
 ## Pull Requests
 

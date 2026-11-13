@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /conduct — Autonomous Delivery (Conductor)
 
-Runs the whole spec cycle (`/research` → `/specify` → `/plan` → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
+Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → `/summarize` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
 
 ## Usage
 ```
@@ -18,12 +18,13 @@ Runs the whole spec cycle (`/research` → `/specify` → `/plan` → `/breakdow
 
 ## PHASE 0: Preconditions
 
-1. Read `.claude/project-config.json`. When `DELIVERY_MODE` is not `autonomous`, stop: "⛔ /conduct needs `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (re-run `/setup-wizard` or edit the file). Interactive mode: run the commands one by one." Note `DEFAULT_BRANCH`, `DELIVERY_GATES`, `ROADMAP_FILE`, `MERGE_MODE` (missing = `local`), `PUSH_REMOTE` (missing = `origin`), `MODEL_THINK`, `MODEL_DO`.
+1. Read `.claude/project-config.json`. When `DELIVERY_MODE` is not `autonomous`, stop: "⛔ /conduct needs `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (re-run `/setup-wizard` or edit the file). Interactive mode: run the commands one by one." Note `DEFAULT_BRANCH`, `DELIVERY_GATES`, `ROADMAP_FILE`, `MERGE_MODE` (missing = `local`), `PUSH_REMOTE` (missing = `origin`), `MODEL_THINK`, `MODEL_DO`, `MODEL_LIGHT` (missing = `haiku`).
 2. `constitution.md` must be populated (no `_Run /constitute to populate_`), and the five gate checklists should exist with `**Gate**: on`: a gate that is off makes its HARD GATE interactive (`_autonomous-mode.md` → "Self-Approval").
 3. `MERGE_MODE` `pr`: `gh auth status` must succeed; otherwise STOP 3.
 4. The push guard and the hand-back guard are active in autonomous mode: confirm `.claude/settings.json` lists `.claude/hooks/forge/push-guard.py` and `.claude/hooks/forge/nested-wait-guard.py` under `PreToolUse`; when either is missing, say so in one line (an older install: run `update.sh`) and continue only after the user confirms.
 5. Read the ledger `.claude/delivery-status.md` (create it from the template under "Status Ledger" when missing). It is local state of this working tree, never committed: add its path once to `$(git rev-parse --git-path info/exclude)` (a local ignore, no tracked change), so it survives branch switches, stays out of squashes and pull requests, and never makes the tree dirty.
 6. Record the context size: `python3 .claude/hooks/forge/context-guard.py --report`, and `date -u` as the spec's start.
+7. Recommended: run this session on Sonnet (`/model sonnet`); the conductor only launches runners and reads result blocks.
 
 ## The Conductor's Role
 
@@ -35,6 +36,7 @@ This session runs only the loop:
 
 - It never reads sources, specs, plans or task files, never loads other commands, and never writes spec, plan, task, review or QA artifacts. Its writes are the ledger, content a runner returned because its write was refused (committed on the spec branch, before the closing), the rebases under "Rebase Points" and the local fast-forward under "Merge".
 - Its messages to the user stay short: one line per phase result.
+- It does only conducting: side work (tracker edits, messages to other sessions, ad-hoc investigation) goes to a separate session.
 - Target: the conductor's own context grows by at most ~40k tokens per spec; when a spec exceeds it, name the cause in its ledger row.
 
 ## Phases
@@ -42,21 +44,25 @@ This session runs only the loop:
 | Phase | Command run by the runner | Model | Effort |
 |-------|---------------------------|-------|--------|
 | research | `research "<topic>"` (the topic: the roadmap row or the description, as given; saved without asking) | `MODEL_THINK` | high |
-| specify | `specify "<topic>"` (the same topic, as given), with the research report path; runs the spec-gate itself | `MODEL_THINK` | xhigh |
-| plan | `plan specs/NNN-*`; runs the plan-gate lenses itself | `MODEL_THINK` | xhigh |
+| specify | `specify "<topic>"` (the same topic, as given), with the research report path; stops before its gate when the gate is on | `MODEL_THINK` | xhigh |
+| spec-gate | no command: `_independent-gate.md` (spec-gate) on the spec, then `/specify` from its gate step (inputs: the specify run report's `## Sources read` and `## HARD GATE notes`) | `MODEL_THINK` | high |
+| plan | `plan specs/NNN-*`; stops before its gate when the gate is on | `MODEL_THINK` | xhigh |
+| plan-gate | the same for the plan (`/plan` from its gate step) | `MODEL_THINK` | high |
 | breakdown | `breakdown specs/NNN-*`; runs the breakdown-gate itself | `MODEL_DO` | medium |
-| wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_DO` | medium |
+| wave | `execute-task W<n>` (one runner per wave, in order; `next` names the wave) | `MODEL_LIGHT` | medium |
 | review | `review specs/NNN-*` | `MODEL_DO` | medium |
 | verify | `verify specs/NNN-*` | `MODEL_THINK` | high |
 | fix | `fix bugs/NNN-*.md` (one runner per bug) | `MODEL_DO` when the bug names its root cause, else `MODEL_THINK` | medium / high |
-| closing | `summarize specs/NNN-*`, then `finalize specs/NNN-*` (the escape analysis is its Phase 1.5), then the pull request when `MERGE_MODE` is `pr` | `MODEL_DO` | medium |
+| summarize | `summarize specs/NNN-*` | `haiku` | low |
+| closing | `finalize specs/NNN-*` (the escape analysis is its Phase 1.5), then the pull request when `MERGE_MODE` is `pr` | `MODEL_DO` | medium |
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
-- The independent gates run inside `/specify`, `/plan` and `/breakdown`, so their reviewers are fresh agents launched by the runner; `_independent-gate.md` gives them a different model from the author.
+- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers are fresh agents launched by the runner, on the models `_independent-gate.md` → "Model" sets.
 - A structural spec (`**Type**: structural`) skips the breakdown-gate, as `_independent-gate.md` says; the phases are the same.
-- `/plan` always runs in a fresh runner after the spec-gate; it never resumes the `/specify` runner.
-- **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher; the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.
+- A gate phase launches only when the authoring runner returned `done` with `next: <gate> specs/NNN-*`. When the gate is off, the user gate is answered by resuming the authoring runner, and the gate phase is skipped.
+- `/plan` always runs in a fresh runner after the spec-gate, or after `/specify` when its gate is off; it never resumes the `/specify` runner.
+- **Effort escalation**: a relaunch of the same phase after a failure passes `effort` one level higher (a wave after `failed` or `blocked`: on `MODEL_DO` too); the last attempt before STOP 6 runs at `xhigh`. A resume via `SendMessage` keeps the runner's level.
 
 ## Reference Prompts
 
@@ -64,19 +70,20 @@ Phase runner (fill `<…>`; add only the listed inputs; the first line is parsed
 ```
 Forge conductor mode, phase runner. Phase: <phase>[ task <NNN> | wave W<n>]. Feature: <specs/NNN-* or "new: <topic>">. Branch: <branch>.
 Follow .claude/commands/_autonomous-mode.md at every interactive point and in "What Every Runner Follows". Invoke Skill "<command>" with args "<args>" and run it to completion.
-Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
+Inputs: <the roadmap row or description; the previous phase's result block; the research report path for /specify; the feature directory and the authoring run report path for a gate phase; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
 Wait for your nested agents by their completion notifications: never with sleep loops, background timers or `until` polls; stop every background shell you started before you return.
 Write the full report to specs/<NNN-*>/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (≤ 10 lines).
 ```
 
 - **Branch**: the spec branch the runner works on; the default branch for `research` and for a `/specify` that creates the spec branch (`spec-cost.py` then counts those calls under the branch each was made on).
 - **research**: runs on the default branch; no spec directory exists yet, so the report itself is the run report (its result block names the path). It stays untracked: the `/specify` runner's Inputs add "commit the research report <path> with the spec's first commit".
+- **spec-gate**, **plan-gate**: the `Invoke Skill` sentence reads "Read .claude/commands/_independent-gate.md, run the <gate> on <the spec or the plan>, then follow .claude/commands/<specify|plan>.md from its gate step to its end."
 - **closing** adds to its prompt, when `MERGE_MODE` is `pr`: "After /finalize, open the pull request as `_autonomous-mode.md` → "Pull Requests" says, and put its URL in `artifacts:`."
 - **fix** adds: "The /fix skill's code-review step and its test-assessment step are mandatory, not replaceable by self-review." The conductor checks both verdicts in the run report before it continues.
 
 ## Pre-Wave Check
 
-Before any runner that writes (a wave, a `/fix`, `/review`, closing) starts in a tree that a previous runner used:
+Before any runner that writes (a wave, a `/fix`, `/review`, `/summarize`, closing) starts in a tree that a previous runner used:
 1. The previous runner returned its result block with `nested: all completed (<n>)` or `none` (a STOP's `nested: pending <ids>` parks the spec instead), and no agent of it is still running (the harness's agent list, `ListAgents` where the tool exists; a pending completion notification counts as running). The mechanical check: `--runner <agent-id>` in step 2 (or `python3 scripts/forge/nested-pending.py <agent-id>` alone) replays that runner's transcript and reports its pending nested work, recursively.
 2. `scripts/forge/gate.sh wave-preflight -- python3 scripts/forge/wave-preflight.py . <expected> --runner <agent-id>` prints `ok`: the tree is clean, there is no `.claude/wip.md`, no git operation is in progress, and HEAD is `<expected>`: the last commit the previous runner reported, or the conductor's own last commit when it committed since (a saved refused write, a rebase). A `warning: stale wait` line is a leftover `sleep` or `until` loop: confirm no running runner owns it, then stop it.
 3. When it fails: wait for the straggler's notification, or resume the previous runner with `SendMessage` ("finish your nested agents, then commit or report"), or stop the straggler explicitly. Never start a second writer in the tree. A pending item the conductor knows is gone (a shell killed outside the runner, the shells of a stopped agent; confirmed with `ps` or the task's output file) does not block: first run `python3 scripts/forge/nested-pending.py <runner>` and confirm the waived ids are its only `pending:` lines, then rerun step 2 without that `--runner`, and record the ids and the evidence in the ledger. A `.claude/wip.md` left by a runner that cannot be resumed is handled by the fresh runner of the same phase (point `recovery` of `_autonomous-mode.md`); launch it and skip only the marker line of this check.
@@ -111,7 +118,7 @@ When two specs in flight (parallel sessions, git worktrees) overlap in files, se
 - The later spec's waves start only after the earlier spec merges; its branch rebases onto the default branch as its first task.
 - Research, specify, plan, the gates and breakdown may still run in parallel: they edit no code.
 - An overlap only in prose (`docs/`, `specs/`) does not sequence the waves: the later spec makes those edits at its closing, after its rebase.
-- Bug numbers are shared across worktrees (`/verify` 9.4 already counts every worktree).
+- Bug numbers are shared across worktrees (`/verify` 9.4 counts every worktree).
 - Only one conductor drives a given working tree.
 
 ## Park and Continue
@@ -135,6 +142,8 @@ STOP the run only when no eligible item remains, or for a STOP that is not confi
 The context guard (`.claude/hooks/forge/context-guard.py`) reports the main-session size:
 - **Wind-down message**: finish the current phase, start nothing new.
 - **Stop message**: hard stop at the nearest safe point (no half-applied edit; the last runner returned and its output is committed). Update the ledger's **Current** line (spec, phase, exact next command), then tell the user: "Context limit reached — clear the context, then resume with: /conduct".
+- **Phase boundary**: run `python3 .claude/hooks/forge/context-guard.py --report`; above ~250k tokens, act as on the stop message, even below the guard's own threshold.
+- After a compaction of this session, re-read "Phases" before launching the next runner.
 
 ## Status Ledger
 

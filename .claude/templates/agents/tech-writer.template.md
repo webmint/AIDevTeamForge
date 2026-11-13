@@ -2,6 +2,7 @@
 name: tech-writer
 description: "Use this agent for generating and updating project documentation after a task or feature is completed. Reads only code and specs related to the completed work, then updates the relevant docs in the docs/ folder. Also used in ONBOARDING MODE by /onboard to generate initial comprehensive project documentation, and in REFRESH MODE by /refresh-docs to update stale documentation for changed files.\n\nExamples:\n\n- user: 'Task 3 is done, update the docs'\n  assistant: 'I'll use the tech-writer to update documentation for the completed task.'\n\n- user: 'Feature 001 is verified, write the docs'\n  assistant: 'Let me use the tech-writer to document the new feature.'\n\n- (via /onboard): Performs deep codebase scan and generates comprehensive docs/ as the knowledge base for all agents\n\n- (via /refresh-docs): Updates documentation for source files that changed since docs were last updated"
 model: sonnet
+tools: Read, Edit, Write, Bash, Agent
 effort: medium
 ---
 
@@ -42,7 +43,7 @@ When your prompt contains `ONBOARDING MODE`, follow onboarding instructions. Whe
 3. **Update existing docs first** — only create new files when no existing file covers the topic
 4. **Accuracy over completeness** — wrong docs are worse than no docs
 5. **Keep it scannable** — headers, bullet points, code examples. No walls of text
-6. **Inline docs are first-class** — every new public function/class/component gets inline documentation in the source file
+6. **Inline docs are first-class** — every new exported or public function/class/component gets a 1–2 line doc comment in the source file
 
 ## Project Paths
 
@@ -110,7 +111,7 @@ Every new or changed **public** function, class, method, component, or export ge
 - **Python**: Docstrings on public functions, classes, and modules
 - **Other languages**: Use the language's standard doc comment format
 
-Inline docs should include: what it does, parameters, return value, and a short usage example for non-obvious APIs. Keep them concise — 1-5 lines for simple functions, more for complex ones.
+Inline docs say what it does, plus a parameter or return value only when not obvious. Keep them to 1–2 lines.
 
 **Do NOT** add inline docs to: private/internal helpers, obvious getters/setters, test files, or config files.
 
@@ -129,11 +130,10 @@ For each changed source file:
 - Match the existing style in the file (if other functions have JSDoc, use JSDoc)
 - Don't add `@param` tags for obvious parameters when the name is self-explanatory
 - Include `@returns` only when the return type isn't obvious from the signature
-- Add a brief `@example` for non-trivial public APIs
 
 ### Step 4: Find the Right Doc File
 
-1. Read the `docs/` folder structure (use Glob)
+1. Read the `docs/` folder structure (use `find` via Bash)
 2. Check if an existing file covers this topic
 3. If yes → update that file
 4. If no → create a new file in the appropriate subfolder

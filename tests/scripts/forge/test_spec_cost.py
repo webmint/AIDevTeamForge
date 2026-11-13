@@ -127,6 +127,34 @@ class PricesTests(SpecCostCase):
         self.assertTrue(prices["verified"])
         self.assertTrue(prices["source"].startswith("https://"))
 
+    def test_shipped_rates_of_the_models_forge_runs(self) -> None:
+        # Pinned from the claude-api skill (2026-11-13). Regression: Sonnet 5.5 cache reads were priced at $0.20.
+        with open(sc.DEFAULT_PRICES, encoding="utf-8") as handle:
+            models = json.load(handle)["models"]
+        rates = ("input", "output", "cache_write_5m", "cache_write_1h", "cache_read")
+        expected = {
+            "claude-sonnet-5-5": (2.0, 10.0, 2.5, 4.0, 0.1),
+            "claude-opus-5-5": (4.0, 20.0, 5.0, 8.0, 0.2),
+            "claude-haiku-5-5": (0.1, 0.5, 0.125, 0.2, 0.01),
+            "claude-fable-5-2": (8.0, 40.0, 10.0, 16.0, 0.2),
+        }
+        for model, values in expected.items():
+            with self.subTest(model=model):
+                self.assertEqual(tuple(models[model][r] for r in rates), values)
+
+    def test_shipped_cache_write_rates_follow_the_input_rate(self) -> None:
+        # Every row: 5-minute writes 1.25x input, 1-hour writes 2x input, reads below input.
+        with open(sc.DEFAULT_PRICES, encoding="utf-8") as handle:
+            models = json.load(handle)["models"]
+        for model, entry in models.items():
+            for card in (entry, entry.get("long_context")):
+                if card is None:
+                    continue
+                with self.subTest(model=model, long_context=card is not entry):
+                    self.assertAlmostEqual(card["cache_write_5m"], card["input"] * 1.25)
+                    self.assertAlmostEqual(card["cache_write_1h"], card["input"] * 2)
+                    self.assertLess(card["cache_read"], card["input"])
+
     def test_cost_is_input_plus_output_rate_per_million(self) -> None:
         prices = sc.load_prices(self.prices)
         tokens = {"in": 1_000_000, "cw5m": 0, "cw1h": 0, "cr": 0, "out": 1_000_000}

@@ -27,7 +27,7 @@ The wizard will:
    - Detect your project structure (or interview you for greenfield projects)
    - Ask clarifying questions about your stack
    - Ask whether commits should include AI co-author attribution (default: no)
-   - Ask which model each agent tier should use — Think tier (opus), Do tier (sonnet), Verify tier (sonnet); tech-writer is always sonnet
+   - Ask which model each agent tier should use — Think tier (opus), Do tier (sonnet), Verify tier (sonnet); tech-writer is sonnet (`/finalize` runs it on haiku unless the feature changes an ADR, a contract document or `docs/architecture.md`)
    - Ask how acceptance criteria should be verified — Auto (browser + API with fallback), Browser only, API only, or Off. Auto-detects dev server URL
    - Generate `CLAUDE.md`, `constitution.md`, agents, hooks, and memory
    - Remove the templates directory when done
@@ -123,7 +123,7 @@ Run these once when you first install the template:
 /conduct                         ← resume, or the next item of ROADMAP_FILE
 ```
 
-With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive (or `all`). A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive.
+With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 of `/setup-wizard`), `/conduct` runs the same commands as subagents, one per phase, and keeps the main session small. Each runner decides where a command would ask, as `.claude/commands/_autonomous-mode.md` says: a spec, plan or breakdown self-approves only after its independent gate ran with no open Critical, decisions are recorded, and the user is asked only at STOP conditions (product decisions the sources do not answer, credentials and external services, system installs, the same blocker three times, an audit that is due). `DELIVERY_GATES` keeps chosen points interactive (or `all`). A blocked spec is parked and the next roadmap item starts; `MERGE_MODE` `pr` pushes the spec branch and opens a pull request. Only the user merges. Commands run by hand stay interactive. The spec-gate and the plan-gate run in their own runner; the wave runner runs on `MODEL_LIGHT` (missing = `haiku`; the `MODEL_DO` value turns it off) and the plan-gate architect lens on `MODEL_ARCHITECT_LENS` (missing = the `MODEL_DO` value; the `MODEL_THINK` value turns it off), both optional keys. Run the main session on Sonnet; it stops at a phase boundary above ~250k tokens.
 
 ### Standalone Commands (use anytime)
 
@@ -196,7 +196,7 @@ bugs/
 
 In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become self-approval after a clean independent gate; a gate that is off keeps its approval with the user.
 
-**Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent on a different model where possible reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/NNN-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
+**Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent (a different model where possible; the breakdown-gate on sonnet, the plan-gate architect lens on `MODEL_ARCHITECT_LENS`) reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/NNN-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
 
 ## Automated Guardrails
 
