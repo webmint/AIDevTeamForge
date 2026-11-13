@@ -5,6 +5,14 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1-step3.1] - 2026-11-13
+
+Test release on `test/v-1.37.1-step3`: Universal Ctags detection only. Everything else is as in 1.37.1-step3.
+
+### Fixed
+- **Universal Ctags not first on PATH** — the definition index used only the first `ctags` on PATH. A BSD or Xcode `ctags` before a Universal Ctags (macOS `/usr/bin` before the Homebrew directory) made the missed-reference check fall back to the advisory regex index without saying why. `closure_check.py` now tries every `ctags`, `uctags` and `universal-ctags` on PATH, in PATH order, and uses the first whose `--version` names Universal Ctags. The index line names the executable, and a regex fallback lists the `ctags` it checked
+- Template version: 1.37.1-step3 → 1.37.1-step3.1
+
 ## [1.37.1-step3] - 2026-11-13
 
 Test release on `test/v-1.37.1-step3`, built on 1.37.1-step1 (step 2 is not included): `/research` completeness by coverage. Every mechanism is language-neutral: the research runner reads the code and records what it calls; the scripts only check ledgers, coverage, quotes and identifiers. Step 1's spec-gate checks, models, waves, the other gates and Explore settings are as in 1.37.1-step1.

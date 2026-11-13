@@ -136,6 +136,40 @@ class MissedCalleeTest(Base):
         self.assertEqual(code, 2)
         self.assertIn("Universal Ctags not found", err)
 
+    def test_universal_ctags_later_on_path_is_found(self):
+        first, second = os.path.join(self.tmp, "bin1"), os.path.join(self.tmp, "bin2")
+        other = fx.write_fake_other_ctags(first)
+        uni = fx.write_fake_ctags(second)
+        os.environ["PATH"] = first + os.pathsep + second
+        self.assertEqual(rc.ctags_candidates(), [other, uni])
+        self.assertEqual(rc.universal_ctags(), uni)
+        code, out, _ = self.run_check(fx.MISSING["go"], "--index", "auto")
+        self.assertEqual(code, 1, out)
+        self.assertIn("index: ctags index", out)
+        self.assertIn(uni, out)
+        self.assertIn("missed_ref `UserPath`", out)
+
+    def test_other_ctags_names_are_tried(self):
+        fx.write_fake_other_ctags(self.bin)
+        uni = fx.write_fake_ctags(self.bin, name="uctags")
+        os.environ["PATH"] = self.bin
+        self.assertEqual(rc.universal_ctags(), uni)
+        os.remove(uni)
+        uni = fx.write_fake_ctags(self.bin, name="universal-ctags")
+        self.assertEqual(rc.universal_ctags(), uni)
+
+    def test_only_a_non_universal_ctags_falls_back_and_says_so(self):
+        other = fx.write_fake_other_ctags(self.bin)
+        os.environ["PATH"] = self.bin
+        self.assertIsNone(rc.universal_ctags())
+        code, out, _ = self.run_check(fx.MISSING["js"], "--index", "auto")
+        self.assertEqual(code, 0, out)
+        self.assertIn("index: regex index", out)
+        self.assertIn("no Universal Ctags on PATH (checked: %s)" % other, out)
+        code, _, err = self.run_check(fx.MISSING["js"], "--index", "ctags")
+        self.assertEqual(code, 2)
+        self.assertIn("Universal Ctags not found on PATH (checked: %s)" % other, err)
+
     @unittest.skipUnless(rc.universal_ctags(), "Universal Ctags is not installed")
     def test_real_universal_ctags(self):
         for lang in LANGS:

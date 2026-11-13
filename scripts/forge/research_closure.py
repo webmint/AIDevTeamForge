@@ -27,9 +27,10 @@ Coverage (`## Coverage` in the report), one bullet per closure item:
 A row is matched to a closure item by its first `path:N` span (the definition), resolved like the ledger's.
 
 Definition index (`build_index`): a ctags tag counts when its kind is a callable or type kind (CTAGS_KINDS) or it
-has a signature (a method that ctags calls `member`); fields and variables do not. `auto` uses Universal Ctags when
-`ctags --version` names it, else the regex set; `ctags`, `regex` and `none` force one. Indexed: the search scopes of `.claude/quality-profile.json` (`searchScopes`
-minus `generatedDirs`) when set, else the root; spec_refs.PRUNED_DIRS are skipped.
+has a signature (a method that ctags calls `member`); fields and variables do not. `auto` uses the first `ctags`,
+`uctags` or `universal-ctags` on PATH whose `--version` names Universal Ctags, else the regex set; `ctags`, `regex`
+and `none` force one. Indexed: the search scopes of `.claude/quality-profile.json` (`searchScopes` minus
+`generatedDirs`) when set, else the root; spec_refs.PRUNED_DIRS are skipped.
 """
 from __future__ import annotations
 
@@ -520,16 +521,41 @@ def regex_index(root: str) -> Index:
     return Index("regex", defs, "regex index: %d files, %d names (missed references are advisory)" % (files, len(defs)))
 
 
-def universal_ctags() -> Optional[str]:
-    exe = shutil.which("ctags")
-    if not exe:
-        return None
+CTAGS_NAMES = ("ctags", "uctags", "universal-ctags")
+
+
+def ctags_candidates() -> List[str]:
+    """Every executable named in CTAGS_NAMES on PATH: PATH order, then name order within a directory; one per real
+    file. Another ctags (Exuberant, BSD/Xcode) may come first on PATH."""
+    out: List[str] = []
+    seen: Set[str] = set()
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if not folder:
+            continue
+        for name in CTAGS_NAMES:
+            exe = shutil.which(name, path=folder)
+            exe = os.path.abspath(exe) if exe else None  # ctags_index runs it with cwd=root
+            if exe and os.path.realpath(exe) not in seen:
+                seen.add(os.path.realpath(exe))
+                out.append(exe)
+    return out
+
+
+def _is_universal(exe: str) -> bool:
     try:
         out = subprocess.run([exe, "--version"], capture_output=True, encoding="utf-8", errors="replace",
                              timeout=20).stdout
     except (OSError, subprocess.SubprocessError):
-        return None
-    return exe if "universal ctags" in out.lower() else None
+        return False
+    return "universal ctags" in out.lower()
+
+
+def universal_ctags() -> Optional[str]:
+    """The first of ctags_candidates() whose `--version` names Universal Ctags, or None."""
+    for exe in ctags_candidates():
+        if _is_universal(exe):
+            return exe
+    return None
 
 
 def ctags_index(root: str, exe: str) -> Index:
@@ -564,7 +590,7 @@ def ctags_index(root: str, exe: str) -> Index:
             ends[loc] = max(end, ends.get(loc, end))
     if not defs:
         return Index("none", {}, "ctags found no definitions: missed-reference check skipped")
-    return Index("ctags", defs, "ctags index: %d names (missed references are blocking)" % len(defs), ends)
+    return Index("ctags", defs, "ctags index: %d names (missed references are blocking); %s" % (len(defs), exe), ends)
 
 
 def build_index(root: str, mode: str = "auto") -> Index:
@@ -581,13 +607,17 @@ def build_index(root: str, mode: str = "auto") -> Index:
             except OSError as exc:
                 if mode == "ctags":
                     raise
-                fallback = "%s; " % exc
-        elif mode == "ctags":
-            raise OSError("Universal Ctags not found (`ctags --version` must name it)")
+                fallback = "; fallback: %s" % exc
+        else:
+            others = ctags_candidates()
+            checked = " (checked: %s)" % ", ".join(others) if others else ""
+            if mode == "ctags":
+                raise OSError("Universal Ctags not found on PATH%s (`--version` must name it)" % checked)
+            fallback = "; no Universal Ctags on PATH%s" % checked
     idx = regex_index(root)
     if not idx.defs:
-        return Index("none", {}, fallback + "no definitions found by the regex index: missed-reference check skipped")
-    return Index(idx.kind, idx.defs, fallback + idx.note)
+        return Index("none", {}, "no definitions found by the regex index: missed-reference check skipped" + fallback)
+    return Index(idx.kind, idx.defs, idx.note + fallback)
 
 
 # ---------------------------------------------------------------------------

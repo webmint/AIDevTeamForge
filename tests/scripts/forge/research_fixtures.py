@@ -187,8 +187,19 @@ def write_project(root: str) -> None:
             handle.write(text + "\n")
 
 
-def write_fake_ctags(bin_dir: str, tags=None) -> str:
-    """An executable `ctags` that says it is Universal Ctags and prints TAGS as its JSON output."""
+def write_fake_other_ctags(bin_dir: str, name: str = "ctags") -> str:
+    """An executable that is not Universal Ctags (BSD/Xcode style): `--version` fails, any other run prints nothing."""
+    os.makedirs(bin_dir, exist_ok=True)
+    exe = os.path.join(bin_dir, name)
+    with open(exe, "w", encoding="utf-8") as handle:
+        handle.write("#!%s\nimport sys\n" % sys.executable)
+        handle.write("if '--version' in sys.argv:\n    sys.stderr.write('ctags: illegal option -- -\\n')\n    sys.exit(1)\n")
+    os.chmod(exe, os.stat(exe).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return exe
+
+
+def write_fake_ctags(bin_dir: str, tags=None, name: str = "ctags") -> str:
+    """An executable `ctags` (or `name`) that says it is Universal Ctags and prints TAGS as its JSON output."""
     os.makedirs(bin_dir, exist_ok=True)
     data = os.path.join(bin_dir, "tags.jsonl")
     with open(data, "w", encoding="utf-8") as handle:
@@ -199,7 +210,7 @@ def write_fake_ctags(bin_dir: str, tags=None) -> str:
             if len(tag) > 5:
                 row["end"] = tag[5]
             handle.write(json.dumps(row) + "\n")
-    exe = os.path.join(bin_dir, "ctags")
+    exe = os.path.join(bin_dir, name)
     with open(exe, "w", encoding="utf-8") as handle:
         handle.write("#!%s\nimport sys\n" % sys.executable)
         handle.write("if '--version' in sys.argv:\n    print('Universal Ctags 6.1.0 (fake)')\n    sys.exit(0)\n")
