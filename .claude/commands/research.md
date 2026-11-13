@@ -68,7 +68,7 @@ For each keyword:
 - Use Grep to find occurrences in source files and documentation (`docs/`) — docs may already describe existing functionality related to the topic
 - Use Glob to find files with related names (in both source and docs)
 
-Then run `_research-coverage.md` Steps A–C: the two searches (the keywords seed both), the ten facets, and the ledger with its closure. The closure decides what you read; there is no file limit.
+Then run `_research-coverage.md` Steps A–C and Step D's pass-1 directions: the two searches (the keywords seed both), the ten facets, the ledger, and the duplicates, siblings and test infrastructure. The closure decides what you read; there is no file limit. Read bodies in batches (`research_query.py`), never one function per call.
 
 Map what you find:
 - **Existing infrastructure**: What code already relates to this idea?
@@ -122,7 +122,7 @@ Keep it concise — this is a feasibility check, not a full evaluation
 
 ## PHASE 4: Generate Research Report
 
-Choose the recommended approach, then run `_research-coverage.md` Step D (pass 2). Write the full report to its path, run Step E's checks and fix their blocking findings, then **render it in the console** so the user can read it immediately. Phase 5 asks whether to keep it.
+Choose the recommended approach, then run `_research-coverage.md` Step D's pass 2 (callers and `approach` seeds) and its check. Write the full report to its path, run Step E's checks and fix their blocking findings, fill the `**Runner trace**` line, then **render it in the console** so the user can read it immediately. Phase 5 asks whether to keep it.
 
 ### Report Format
 
@@ -136,6 +136,7 @@ Choose the recommended approach, then run `_research-coverage.md` Step D (pass 2
 **Issue**: [KEY — summary; `KEY — not read (<reason>)`; omit this line when the topic names no issue]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
 **Checks**: [closure-check <n> blocking, <n> advisory (<index>); research-lint <n> blocking, <n> advisory; or the exit-2 message]
+**Runner trace**: [`research_query.py trace`: <n> turns, peak context <k>k tokens; or `unavailable (<reason>)`]
 **Request (verbatim)**:
 > [the request kept in Phase 1 step 6, word for word; every line prefixed `> `, a blank line as `>`]
 >
@@ -168,7 +169,7 @@ Choose the recommended approach, then run `_research-coverage.md` Step D (pass 2
 
 ## Search routes
 
-[`_research-coverage.md` Step E]
+[`_research-coverage.md` Step E: the two routes and the four directions]
 
 ## Facets
 
@@ -262,7 +263,7 @@ When the report was not saved, the proceed line is `/specify "[the request, verb
 
 ## IMPORTANT RULES
 
-1. **Short report, complete coverage** — the prose is a quick read; the coverage is not cut short: every closure item is read with a verified quote or excluded with a reason (`_research-coverage.md`).
+1. **Short report, complete coverage** — the prose is a quick read; the coverage is not cut short: every closure item is read with a verified quote, excluded with a reason, or `not covered: over budget` as the closure check says (`_research-coverage.md`).
 2. **Signal-based external research** — do not web search unless signals justify it. Simple ideas that only touch existing codebase patterns need no external research.
 3. **No code modifications** — this command only reads and reports. It writes only its report, ledger and check outputs under `research/`: no other file edits, no branches, no commits.
 4. **Constitution awareness** — all feasibility assessments must account for architecture rules and NON-NEGOTIABLE constraints.
