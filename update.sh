@@ -827,14 +827,18 @@ merge_json_union_keys() {
 
 # Merge files using union_lines strategy:
 # Add lines from template that are not already present in target.
+# A target that does not end in a newline gets one first, or its last line and the first added line would join.
 merge_union_lines() {
   local template_file="$1"
   local target_file="$2"
 
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
-    if ! grep -qxF "$line" "$target_file" 2>/dev/null; then
-      echo "$line" >> "$target_file"
+    if ! grep -qxF -- "$line" "$target_file" 2>/dev/null; then
+      if [ -s "$target_file" ] && [ -n "$(tail -c 1 "$target_file")" ]; then
+        printf '\n' >> "$target_file"
+      fi
+      printf '%s\n' "$line" >> "$target_file"
     fi
   done < "$template_file"
 }

@@ -99,7 +99,7 @@ Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[NNN
 
 Launch the **tech-writer** agent to generate or update feature-level documentation in `docs/`.
 
-Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone.
+Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone. Launch it with the Agent tool's `model: haiku`, unless the feature adds or changes an ADR, a contract document or `docs/architecture.md`; then launch it with `model: sonnet`.
 
 Provide the agent with:
 1. The feature spec (what was built and why)

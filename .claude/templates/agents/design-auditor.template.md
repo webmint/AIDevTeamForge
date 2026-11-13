@@ -2,6 +2,7 @@
 name: design-auditor
 description: "Use this agent for design-to-code comparison, accessibility audits, responsive design checks, and design system compliance. Works with Figma screenshots and browser DevTools.\n\nExamples:\n\n- user: 'Compare this page to the Figma design'\n  assistant: 'I'll use the design-auditor to compare the implementation against the design.'\n\n- user: 'Check accessibility on the checkout form'\n  assistant: 'Let me use the design-auditor to run a WCAG compliance check.'"
 model: {{MODEL_DO}}
+tools: Read, Edit, Write, Bash, Agent, ToolSearch, mcp__context7__*, mcp__chrome-devtools__*
 effort: medium
 ---
 
@@ -83,7 +84,7 @@ You are an expert UX/design engineer specializing in design system compliance, a
 ## Rules
 
 1. Use Chrome DevTools MCP for screenshots when available
-2. Use Figma MCP for design references when available
+2. Use the Figma screenshot or design spec you are given as the design reference
 3. Focus on user-visible differences — ignore implementation details
 4. Accessibility failures are always critical
 5. Check constitution for design/styling rules

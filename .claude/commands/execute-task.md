@@ -194,7 +194,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 ### 3.1: Launch Agent
 
-**MANDATORY**: You MUST use the Agent tool to launch the assigned agent for every task, regardless of task size or complexity. You are the orchestrator — your role is to delegate, verify, and coordinate, never to write implementation code yourself. Even if the task is a single line change, a boilerplate file, or "trivial" — launch the agent. Skipping the agent launch violates the team's division of responsibilities: you manage the process, agents write the code.
+**MANDATORY**: You MUST use the Agent tool to launch the assigned agent for every task, even a single line change, a boilerplate file, or "trivial" work. You are the orchestrator: you delegate, verify, and coordinate; agents write the code.
 
 Use the Agent tool to launch the agent specified in the task's "Agent" field.
 
@@ -226,7 +226,7 @@ You are executing Task [N] from an approved task breakdown.
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
-6. Add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface you create. This is part of writing the code, not a separate step
+6. Comments: a doc comment of 1–2 lines on exported or public API only; inline comments only for why, an invariant, a non-obvious decision, or a file that must stay in step. No spec, AC, task or phase ids in source comments (test titles keep theirs), no restating the code, no banners, no doc comments on private helpers
 7. Reuse check before every new exported symbol: search the scopes under `## Reuse` by name, signature and meaning; consult the registry by concept, never whole; a symbol the `Reuse` field decides keeps that decision. Report one line per new exported symbol: `Reuse check: <symbol> — searched <query / scope>, found <X | nothing> → reused X | extended X | new because <reason>`. Before you copy a neighbour's pattern (a function, a block, a test setup), ask whether it is already the second copy: `python3 scripts/forge/ratchet.py copies --files <the neighbour file> --min-copies 2` lists the groups it belongs to; when your code would be the third copy, use or create the seam instead (rule 1)
 
 ## Reuse
@@ -314,7 +314,7 @@ Provide the agent with:
 6. **New exports** (the reviewer's independent reuse check): the output of `python3 scripts/forge/new-exports.py --base <checkpoint commit>`, which reads `.claude/quality-profile.json` → `newExports` (when unset, list the new exported symbols of the diff by hand), together with the implementer's `Reuse check:` lines and the `## Reuse` section of the implementer's prompt (search scopes, registry lookup). Instruction: "Do not trust the Reuse check lines. For each new export, search the scopes yourself by name, signature and meaning. A semantic duplicate of existing code, or another derivation of a registered concept, is Critical. A new shared export without a registry row, or without a Reuse check line saying why it is new, is a Warning. Report the count of new exports and of duplicates found."
 7. **Copies** (the third-copy trigger): the output of `python3 scripts/forge/ratchet.py copies --files <changed files> --min-copies 3 --added-since <checkpoint commit>` (the clone ratchets' `groupsCommand` in `.claude/quality-profile.json` → `ratchets`; when unset, skip this item and rely on the search of item 6). Instruction: "Each listed group is logic with three or more copies that this task added to or changed. It is Critical unless the task file or the plan's 'Copies and Hubs' decides it (a seam task, or `not a copy: <reason>` that the code bears out)."
 
-The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), reuse of existing code (the new exports and copies), memory pitfalls, and the checklist items.
+The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including the comment rule), reuse of existing code (the new exports and copies), memory pitfalls, and the checklist items.
 
 **If verdict is APPROVE or warnings only** → proceed to Phase 4. Include warnings in the task report.
 
@@ -335,7 +335,7 @@ Options:
 3. **Stop** — halt execution, keep WIP state for manual handling
 ```
 
-**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" for a Critical; a Warning is fixed when cheap, otherwise "Continue" with it recorded in the Completion Notes.
+**Autonomous mode** (`_autonomous-mode.md`, point `task-review`): "Address now" for every Critical and every Warning. When the Phase 3.2 checks that confirm a Warning fix fail, revert that fix and record the Warning in the Completion Notes; this is not a STOP, and neither the 3-attempt self-repair loop nor RULES 4 applies.
 
 Wait for user response:
 - **Address now**: Launch a repair agent to fix the review issues. Review effort follows severity:
@@ -344,7 +344,7 @@ Wait for user response:
   - **Suggestion / Info**: record in the report; do not fix.
   - **Repair effort**: launch the repair agent with the Agent tool's `effort` one level above the agent's own (`medium` → `high` → `xhigh`; never `max`).
   - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md` or `.claude/project-config.json` is reported to the user, not fixed.
-- **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 4 with warnings noted.
+- **Continue**: Only allowed with no Critical issues. Proceed to Phase 4 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report completed state for manual handling.
 
 ## PHASE 4: Complete & Report
@@ -429,11 +429,11 @@ Context: the remaining task queue, the current feature directory.
 
 ## RULES
 
-1. **Always delegate** — NEVER write implementation code yourself. Every task MUST be executed by launching the assigned agent via the Agent tool, no matter how small or trivial the task appears. You are the orchestrator: you load context, launch agents, verify results, and coordinate. If you catch yourself about to edit a source file directly instead of delegating to an agent, stop — that is a rule violation.
+1. **Always delegate** — NEVER write implementation code yourself. Every task MUST be executed by launching the assigned agent via the Agent tool, no matter how small or trivial the task appears. If you catch yourself about to edit a source file directly instead of delegating to an agent, stop — that is a rule violation.
 2. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
 3. **Self-repair before escalation** — when automated verification fails (type checker, linter, build), attempt automatic repair (up to 3 times) before stopping. Code review findings are reported to the user, not auto-repaired.
 4. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
-5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/finalize` time.
+5. **Comments are the agent's job** — the implementing agent follows prompt rule 6 (Phase 3.1); the code-reviewer checks it. Feature-level docs in `docs/` are handled by the tech-writer at `/finalize` time.
 6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow. `.claude/wip.md` is gitignored: never stage it and never force-add it (`git add -f`); it stays a local file.
 7. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.
 8. **No per-task squash** — WIP commits accumulate and are squashed by `/finalize`. Do not run `git reset --soft` during execute-task.

@@ -5,6 +5,55 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1] - 2026-11-13
+
+Mechanical checks in the spec-gate, on top of 1.37.0. The plan-gate, the breakdown-gate, models, waves and Explore settings (read-only searches as Explore on Haiku) are as in 1.37.0. Chosen over two candidates after field trials on two tickets of one client, each spec phase run up to the HARD GATE by `/conduct` in fresh copies of the project:
+- **AP-1305** (spec scored out of 45, mean of two blind scorers): this release 42.0, 1.36.0 41.5; spec-phase cost $12.55 against $15.85.
+- **AP-1308** (another repository and stack): this release 42.5, the 1.36.0 control pair 43.0 (the gap is within scorer noise); cost $10.84 against $14.47 and $21.16.
+- Not taken: a research coverage procedure (call ledger and closure check) doubled research recall on AP-1305 and showed no gain on AP-1308, gave no better spec on either, and cost more; running research on Sonnet gave no gain.
+
+### Added
+- **SG-27 identifier identity** (`spec-gate.md`) — an identifier from the request or a token that drives both an access or scope decision and a data address (path, key, query) must be the same value on both uses, traced through every validator, normaliser, path builder and DAO including callees; a normalisation on one side only is Critical. The spec-gate reviewer reads validation, normalisation and path-building code whole, not by line window
+- **`scripts/forge/verify_citations.py`** — every spec-gate finding carries a `path:line` citation with the verbatim quote; the script checks that the file exists inside the project, the lines are in range and the quote is a whitespace-normalised substring of them (`report` mode on the gate report, `spec` mode on the spec's own citations). A failure goes back once to the reviewer; one that still fails is `unverified` and not acted on. Writes `gates/spec-gate.citations.txt` and `gates/spec.citations.txt`
+- **Severity floor** — a finding about authorisation, access scope, path or key construction, or personal data is at least Warning (`[security-floor]`); it may be recorded, deferred or rejected only with a disposition that quotes the cited code, checked by the same script
+- **`scripts/forge/spec_lint.py`** — `lint`: blocking duplicate or gapped AC ids, AC definitions off the template, dangling AC and § references, an unclosed code fence; advisory one noun with two numbers, vague non-functional words without a number and unit or a named standard, `file:line` evidence shape (ported from 2.0's spec checks). Runs before the reviewer and after every fix round; the blocking findings are fixed, the rest go to the HARD GATE (`gates/spec-lint.txt`). A § reference to another document names it (`contract §13`)
+- **Spec hash** — `spec_lint.py hash` records the SHA-256 of the spec as last reviewed in the gate report (`**Spec hash**:`, the `**Status**:` and self-approval lines excluded), lists fixes made after it (`**Unreviewed changes**:`), and `--check` states at the HARD GATE and in `/plan`'s prerequisites whether the spec changed after its last review (`gates/spec-hash.txt`)
+- **`scripts/forge/spec_paths.py`** — the reviewer's "files to verify": every repository path the spec cites plus the `/specify` run report's `## Sources read`, the author's notes on validation and normalisation, and a security focus paragraph (`gates/reviewer-inputs.txt`)
+- Every spec-gate disposition ends with the mechanism that produced or blocked it (`[reviewer]`, `[re-check]`, `[spec-lint]`, `[verify-citations]`); a conductor runner commits every `gates/*` file it wrote
+
+### Changed
+- `_independent-gate.md` → new section "Spec-gate checks"; spec-gate reviewer prompt: findings as `### <id>` headings, the citation syntax, `Correct citations only`
+- **Existing projects**: checklists are copy-if-missing — copy by hand into `.claude/checklists/spec-gate.md` SG-27, the new "How to use" bullet (severity floor and citations) and the new `**Inputs**:` line
+- **An `unverified` Critical stays open** (`_independent-gate.md` → "Spec-gate checks" step 3, `_autonomous-mode.md`) — a Critical whose citation still fails after the correction round keeps its severity and goes to the HARD GATE as an open Critical; autonomous mode no longer self-approves over it (STOP 6). Unverified Warnings and Suggestions are not open, as before
+- Template version: 1.37.0 → 1.37.1
+
+### Fixed
+- **`update.sh` joined two `.gitignore` lines** — the `union_lines` merge appended template lines to a project `.gitignore` without a final newline, so its last line and the first added line became one pattern (`*.tmp.claude/session-state.md`) and neither worked; the next update added the line again. The merge now adds the missing newline first. **Existing projects** updated by an earlier version: look for a joined line at the end of `.gitignore` and split it
+- **`model-prices.json`** — Sonnet 5.5 cache reads were priced at $0.20/M instead of $0.10/M, so `spec-cost.py` overstated every Sonnet 5.5 phase; Fable 5.2 ($8/$40) and the Mythos ids had no row and showed `cost unknown`. All rows checked on 2026-11-13; Opus 4.7 and 4.6 keep their 2026-11-08 rates
+
+## [1.37.0] - 2026-11-12
+
+### Added
+- **Spec-gate and plan-gate in their own `/conduct` runner** — the `/specify` and `/plan` runners stop at their gate step and leave `## Sources read` and `## HARD GATE notes` in their run report; a fresh `spec-gate` / `plan-gate` runner runs the gate, applies the fixes and self-approves. The large authoring context no longer waits idle on the reviewers while its 5-minute cache expires. A gate that is off skips the phase (the HARD GATE stays interactive). Interactive `/specify` and `/plan` are unchanged; the breakdown-gate stays inside `/breakdown`
+- **Two model switches, on by default** — optional keys in `.claude/project-config.json`; a missing key means the default
+  - `MODEL_LIGHT` (missing = `haiku`) runs the `/conduct` wave runner, which only orchestrates; a relaunch after `failed` or `blocked` runs on `MODEL_DO`. Implementing agents and reviewers keep their models. Off: set it to the `MODEL_DO` value
+  - `MODEL_ARCHITECT_LENS` (missing = the `MODEL_DO` value) runs the plan-gate architect lens; the security and QA lenses keep their models. Off: set it to the `MODEL_THINK` value
+- **Reading budget and a smaller conductor** — runners read each file once and only the part they need, and send long Bash output to a file read with `tail` or `grep`. The conductor only conducts, is best run on Sonnet (recommended in PHASE 0), and stops at a phase boundary above ~250k tokens, so a 1M-token window no longer grows to the guard's 85 % stop
+- **Agent `tools:` lists** — every agent template has one; measured: a haiku probe's first-call prompt fell from 16.5k to 7.6k tokens. Each list has Read, Edit, Write, Bash, Agent and context7, except the code-reviewer (no Edit) and the tech-writer (no context7); the four browser agents add ToolSearch and chrome-devtools. The lists leave out Glob, Grep, WebFetch, WebSearch and MCP servers other than context7 and chrome-devtools (a Figma server, for example): a project that needs one adds it to the agent's `tools:` line. Body lines that named Grep, Glob or TaskCreate now use Bash, and the design-auditor works from the screenshot or spec it is given. A list applies only when the agent is launched by its type (`/execute-task` implementing agents and the per-task code-reviewer, the plan-gate lenses, `/verify`'s ac-verifier); a command that reads `.claude/agents/<name>.md` into a general-purpose prompt (`/review`, `/review-pr`, `/audit`, the tech-writer in `/finalize`, `/fix`, `/refactor` and `/refresh-docs`) keeps the full tool set
+- **Comment rule and TR-27** — a 1–2 line doc comment on exported or public API only; inline comments only for a why, an invariant, a non-obvious decision or a file that must stay in step; no spec, AC, task or phase ids in source (test titles keep theirs). Replaces the doc comment on every new public symbol in `/execute-task` and the agent templates. Task-review item TR-27 records a miss as a Suggestion
+
+### Changed
+- **Quieter gates** — reviewers report Critical, Warning and Suggestion only, nothing for an item that passes; the plan-gate merges the same finding from different lenses; a Critical re-check runs in a fresh reviewer that reads only the findings it re-checks; a re-run after HARD GATE changes reports Warning and above. PG-A08: a missed reuse is Critical only when it changes behaviour or duplicates a `canonicalSources` concept, otherwise a Warning
+- **Stricter AC rules**
+  - breakdown-gate: a task that omits or contradicts an AC's wording or a contract behaviour is fixed, never deferred
+  - A gate fix may not turn an AC into an untested exception (manual, Out of Scope, accepted without a test); a finding only such a fix would close goes to the HARD GATE as an open Critical
+  - TL-01: one mutant per count clause (exactly N, at most N, all, none). TR-21: the report names the search run per new export and its hits, or the item counts as not checked
+  - Intent check: work the request assigns to another ticket is BROADER, never DIRECT
+- **Cheaper models for mechanical work** — read-only searches run as Explore on haiku; `/summarize` is its own `/conduct` phase on haiku; `/finalize` runs the tech-writer on haiku, on sonnet when the feature changes an ADR, a contract document or `docs/architecture.md`; the breakdown-gate reviewer runs on sonnet; `_agent-assignment.md` sends shared utilities, type definitions and unclear files to the layer's specialist instead of the architect
+- **Autonomous task review fixes every Warning at its task** (`/execute-task`, `/fix`) — "Address now", not only when cheap, in one repair run after the Critical repair is re-reviewed and committed; a Warning repair whose checks fail is reverted and recorded, not a STOP
+- **Existing projects**: checklists (`.claude/checklists/*`) are copy-if-missing and project-owned — copy by hand TR-27 and TR-21 (`task-review.md`), TL-01 (`test-lens.md`), PG-A08 (`plan-gate.md`), the `**Runs**` line of `breakdown-gate.md`, and the severity line under "How to use" of the spec-, plan- and breakdown-gate checklists. Generated agents (`.claude/agents/*`) take the `tools:` lines and the other template changes, and `CLAUDE.md` the Independent Gates line of `CLAUDE.template.md`, through the three-way merge; a file without a baseline or with a merge conflict stays unchanged — copy an agent's `tools:` line from `.claude/templates/agents/<name>.template.md`, or that line from `.claude/templates/CLAUDE.template.md`, by hand
+- Template version: 1.36.0 → 1.37.0
+
 ## [1.36.0] - 2026-11-10
 
 ### Added

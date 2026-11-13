@@ -1,12 +1,12 @@
 # Checklist: breakdown-gate
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
-**Runs**: in `/breakdown`, after the task files are written and before its HARD GATE · **Reviewer**: `general-purpose`; a fresh context; a different model from the author where possible.
+**Runs**: in `/breakdown`, after the task files are written and before its HARD GATE · **Reviewer**: `general-purpose` on `sonnet` (`_independent-gate.md` → "Model"); a fresh context.
 **Inputs**: `specs/NNN-*/tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `.claude/commands/_agent-assignment.md`.
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
-- Severity follows the review scale (Critical / Warning / Suggestion / Info). Critical when an AC has no task, a dependency or wave order would break a build, or a task contradicts a contract.
+- Severity is Critical, Warning or Suggestion. Critical when an AC has no task, a dependency or wave order would break a build, or a task contradicts a contract. A task that omits or contradicts an AC's literal wording or a contract behaviour is at least a Warning and is fixed, never deferred (`_independent-gate.md` → "Loop").
 - Defects outside the list are reported too, as `new`.
 
 **Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape NNN/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
