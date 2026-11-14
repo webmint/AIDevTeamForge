@@ -131,8 +131,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 /execute-task → updates individual task file status + completion notes
 /review       → creates specs/NNN-name/review.md (security, performance, test findings)
 /verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
-/summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
-/finalize     → writes specs/NNN-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
+/finalize     → writes specs/NNN-name/summary.md (PR-ready feature summary, Phase 1.4) and specs/NNN-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)

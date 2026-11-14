@@ -35,7 +35,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Workflow Commands
 
-Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existing projects) → `/research` (optional) → `/specify` → `/plan` → `/breakdown` → `/execute-task` (per task) → `/review` → `/verify` → `/summarize` → `/finalize` (per feature). Standalone: `/fix` (small bugs, 1–5 files), `/refactor` (behavior-preserving, 1–5 files), `/security`, `/audit` (periodic; the audit gate makes it due), `/review-pr` (a pull request without a spec), `/refresh-docs`, `/report-bug`, `/setup-wizard` (re-run to regenerate the config files). Autonomous mode: `/conduct` drives the flow (see "Delivery Mode"). Each command is described in its own file under `.claude/commands/`.
+Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existing projects) → `/research` (optional) → `/specify` → `/plan` → `/breakdown` → `/execute-task` (per task) → `/review` → `/verify` → `/finalize` (per feature). Standalone: `/fix` (small bugs, 1–5 files), `/refactor` (behavior-preserving, 1–5 files), `/security`, `/audit` (periodic; the audit gate makes it due), `/review-pr` (a pull request without a spec), `/refresh-docs`, `/report-bug`, `/setup-wizard` (re-run to regenerate the config files). Autonomous mode: `/conduct` drives the flow (see "Delivery Mode"). Each command is described in its own file under `.claude/commands/`.
 
 ## Available Agents
 

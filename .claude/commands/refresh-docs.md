@@ -159,15 +159,15 @@ You are operating in **REFRESH MODE**. Update documentation for source files tha
 ## Instructions
 1. Read each changed file listed above
 2. For each file, identify:
-   - New public APIs (exported functions, classes, types) that need inline docs
-   - Changed public APIs whose existing inline docs are now outdated
+   - New public APIs (exported functions, classes, types) that `docs/` should cover
+   - Changed public APIs whose existing doc comments the change made wrong
    - Removed public APIs whose docs should be cleaned up
-3. Add or update **inline documentation** (JSDoc/docstrings) for new/changed public APIs in the source files
+3. Correct a doc comment in a source file only when the change made it wrong (a renamed or removed parameter, a changed return); add no doc comments
 4. For each affected module, check if a corresponding doc exists in `docs/features/` or `docs/api/`:
    - If it exists → update it with the new/changed APIs
    - If it doesn't exist but the module now has significant public APIs → create `docs/features/[module-name].md`
 5. If architecture or cross-module patterns changed, update `docs/architecture.md`
-6. If a public API was removed, remove it from both inline docs and `docs/` files
+6. If a public API was removed, remove it from the `docs/` files
 7. Report what you updated, what you created, and what you skipped (with reasons)
 ```
 
@@ -193,8 +193,8 @@ After the tech-writer completes:
 
 2. **Verify no logic changes**: Run `tsc --noEmit` (or project equivalent from CLAUDE.md) and lint on all changed source files. If either fails, the tech-writer accidentally modified logic — revert the source file changes and re-invoke the tech-writer with stricter instruction.
 
-3. **Verify inline docs**: For each source file that was changed by the tech-writer, verify that:
-   - New JSDoc/docstrings match actual function signatures
+3. **Verify doc comment corrections**: For each source file that was changed by the tech-writer, verify that:
+   - Every corrected doc comment matches the actual signature, and none was added
    - Only doc comments were changed (no logic modifications)
 
 4. **Verify `docs/` updates**: For each modified doc file, verify:
@@ -208,7 +208,7 @@ If changes were made, commit only documentation-related files:
 git add docs/ && git diff --name-only --cached --diff-filter=M | head -0
 ```
 
-For source files with inline doc updates, add them individually:
+For source files with corrected doc comments, add them individually:
 ```
 git add [each source file the tech-writer modified]
 git commit -m "docs: refresh documentation for [list affected modules]"
@@ -226,7 +226,7 @@ Do NOT use `git add -A` — only add files the tech-writer was supposed to modif
 **Base commit**: [hash] ([date])
 
 ### Updated:
-- [file]: [what changed — e.g., "Added JSDoc for new authenticate() function"]
+- [file]: [what changed — e.g., "Corrected the doc comment of authenticate(): the token parameter was renamed"]
 - [docs/features/auth.md]: [what changed — e.g., "Added Public API section for new guard middleware"]
 
 ### Created:
@@ -256,5 +256,5 @@ Keep entries concise (1-2 lines each). Only update if there's something genuinel
 1. **Delta only** — without `--all`, only read and document files in the git delta. Do not scan the broader codebase
 2. **User approval required** — always show the scope and wait for confirmation before making changes
 3. **Preserve existing docs** — update, don't replace. If existing docs cover a topic accurately, leave them alone
-4. **No logic changes** — the tech-writer may only add/update documentation (inline docs + docs/ files). Never modify code logic
+4. **No logic changes** — the tech-writer may only update `docs/` files and correct doc comments the change made wrong. Never modify code logic
 5. **Honest reporting** — if the tech-writer skipped files, report why. Don't hide "no docs needed" decisions

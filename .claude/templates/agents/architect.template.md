@@ -52,7 +52,7 @@ You are an expert software architect specializing in {{FRAMEWORK}} development w
 
 - **Type Safety**: {{TYPE_SAFETY_RULES}}
 - **Naming**: Descriptive, consistent with existing codebase patterns
-- **Documentation**: 1–2 line doc comments on public APIs only; inline comments only for why or non-obvious logic; no spec/AC/task ids, restating comments or banners
+- **Documentation**: a doc comment only on exported or public API whose name and types do not say it all, 1–2 lines (about 6 for a contract or invariant); JS keeps typed `@param`/`@returns`, TS puts no types in JSDoc; none on private helpers, constants, fields or constructors; inline comments only for a why, an invariant, a non-obvious decision or a keep-in-step file; never ids (ticket, spec, AC, plan, decision, task, phase), `§`, history, dates, branches, runbooks or dependency internals in a comment; no restating comments or banners
 - **Testing**: Write tests for new logic when test infrastructure exists
 - **Minimal Changes**: Touch only what's necessary for the task
 

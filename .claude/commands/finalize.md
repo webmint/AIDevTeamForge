@@ -1,6 +1,6 @@
 # /finalize — Feature Finalization
 
-Generates feature documentation and squashes all WIP commits into a single clean commit. This is the last step before creating a PR.
+Writes the feature summary, generates feature documentation and squashes all WIP commits into a single clean commit. This is the last step before creating a PR.
 
 ## Usage
 ```
@@ -46,13 +46,36 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
    ```
    If no WIP or checkpoint commits found: "Nothing to finalize — no WIP commits found. Feature may have already been finalized."
 
-4. **Summary warning**: Check if `specs/[feature]/summary.md` exists.
-   If missing:
+## PHASE 1.4: Feature Summary
+
+Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the audit gate counts finished features by it, `auditGate.mergedSpecMarker`). It runs before the squash, which needs the `[WIP]` history. An existing `summary.md` is overwritten.
+
+1. **Change data**: `git diff --stat [DEFAULT_BRANCH]...HEAD` and `git log --oneline [DEFAULT_BRANCH]...HEAD`; in wrapper mode also `git -C $SOURCE_ROOT diff --stat [source squash base]` and `git -C $SOURCE_ROOT log --oneline [source squash base]..HEAD` (skip these when Phase 1 found no source `[WIP]` commit). The files of every task come from the Completion Notes read in Phase 1, deduplicated.
+2. **Write** in this format, each section 1–5 lines; omit a section that would be empty:
+   ```markdown
+   ## Feature Summary: [NNN — feature name]
+
+   ### What was built
+   [2-3 sentences from the spec overview and plan summary: what the user gets, not implementation details]
+
+   ### Changes
+   - Task 1: [title] — [1-line what it did]
+
+   ### Files changed
+   - `src/components/` — N files modified
+   [Total: X files changed, Y insertions, Z deletions]
+
+   ### Key decisions
+   - [Decision area]: [what was decided and why — the 2-4 most important from plan.md]
+
+   ### Deviations from plan
+   - Task [N]: [what deviated and why — only from Completion Notes]
+
+   ### Acceptance criteria
+   - [x] AC-1: [short description]
    ```
-   ⚠️ No summary.md found. Run `/summarize` first for a complete feature record.
-   Proceeding without summary.
-   ```
-   **Exception**: when `.claude/quality-profile.json` sets `auditGate`, stop instead: "⛔ No summary.md found. The audit gate counts finished features by their `summary.md` (`auditGate.mergedSpecMarker`). Run `/summarize` first."
+   Describe behaviour and outcomes in user-facing language ("Added email validation to signup", not "Created validateEmail in utils/validation.ts"), group files by area, and state only what the spec, plan, task files and git history say.
+3. **Commit** (follow the **Commit Convention** section in CLAUDE.md): `git add specs/[feature]/summary.md && git commit -m "[WIP] Feature summary: NNN-feature-name"`; skip the commit when `summary.md` is unchanged (a rerun)
 
 ## PHASE 1.5: Escape Analysis
 
@@ -106,7 +129,7 @@ Provide the agent with:
 2. The feature's `plan.md` (architecture decisions and data flow)
 3. All changed files across all tasks (from task completion notes gathered in Phase 1)
 4. Existing `docs/` content (output of Glob on `docs/`)
-5. Instruction: "Write or update feature-level documentation for `docs/`. Inline code docs already exist in the source files — focus on how the feature works as a whole, architecture decisions, and usage examples. Use the document-when/skip-when criteria from your workflow."
+5. Instruction: "Write or update feature-level documentation for `docs/`. Do not add doc comments to source files (correct one only if the feature made it wrong) — focus on how the feature works as a whole, architecture decisions, and usage examples. Use the document-when/skip-when criteria from your workflow."
 
 If the tech-writer determines no feature-level docs are needed (internal refactoring, no public-facing changes), accept the justification and skip.
 
@@ -203,7 +226,7 @@ Write only facts read in this run (the Phase 3 commit hashes, the follow-ups fro
 **Commit**: [short hash] [commit message]
 **Files**: [N] files changed, [insertions] insertions, [deletions] deletions
 **Docs**: [updated / skipped — reason]
-**Summary**: [included in squash / not found]
+**Summary**: [written by Phase 1.4, included in squash]
 **Quality**: [the `quality:` line from escapes.md, or "escape analysis skipped — no checklists"]
 **Checklists**: [items added / origins added per checklist, or "no escapes"]
 **Ratchets lowered**: [names, or "none"]
@@ -216,7 +239,7 @@ Feature is ready for PR.
 ## IMPORTANT RULES
 
 1. **Finalize does not verify code** — it assumes `/verify` has already approved. The gate check (spec Complete) enforces this
-2. **Squash is the last operation** — docs are generated and committed as `[WIP]` before squash so they're included in the clean commit
+2. **Squash is the last operation** — the summary and the docs are written and committed as `[WIP]` before squash so they're included in the clean commit
 3. **Idempotent safety** — if no WIP commits exist, finalize no-ops gracefully instead of failing
 4. **No auto-invoke** — finalize does not automatically run any other command. The user decides what's next
 5. **Wrapper mode squash** — both the wrapper repo and the source repo are squashed. Source repo follows the ticket-ID format from the branch name

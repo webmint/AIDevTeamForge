@@ -434,7 +434,7 @@ A refactoring changed these files. Evaluate whether documentation needs updating
 
 ## Instructions
 1. Read each changed file and determine if any public API signatures, import paths, or documented architecture changed
-2. If so: update inline docs (JSDoc/docstrings) and the relevant docs/ file
+2. If so: fix doc comments it made wrong (add none) and the docs/ file
 3. If the refactoring was purely internal with no public-facing changes: report "No doc update needed" with justification
 
 Use the document-when/skip-when criteria from the tech-writer workflow (Part 1). For refactoring specifically: also document import path changes and architecture restructuring (new modules, changed layer boundaries).

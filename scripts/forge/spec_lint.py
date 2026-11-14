@@ -34,7 +34,9 @@ Spec hash: SHA-256 of spec.md without two header lines, both only before the fir
 line and any line starting `Self-approved (autonomous mode` (the HARD GATE approval and the autonomous self-approval
 add or edit them). A `**Status**:` line in the body counts.
   --record            write or replace `**Spec hash**: sha256:<hex>` in `gates/spec-gate.md` (after its header lines)
-                      and drop any `**Unreviewed changes**:` line
+                      and drop any `**Unreviewed changes**:` line; keep a byte copy of the spec as reviewed,
+                      `gates/spec.reviewed-<first 12 hex of the hash>.md` (kept once per hash; a damaged one is rewritten), which
+                      `verify_citations.py report` checks finding citations of the spec against
   --unreviewed "<ids>"  write or replace `**Unreviewed changes**: <ids>` there
   --check             compare the spec with the recorded hash; print and write `gates/spec-hash.txt`:
                       `spec unchanged since its last review (sha256:...)` (exit 0: hash matches and no Unreviewed
@@ -56,6 +58,8 @@ import hashlib
 import os
 import re
 import sys
+import shutil
+import tempfile
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -448,12 +452,18 @@ def render_lint(blocking: List[Finding], advisory: List[Finding]) -> str:
 # Hash
 # ---------------------------------------------------------------------------
 
-def spec_hash(spec_path: str) -> str:
+def read_spec_bytes(spec_path: str) -> bytes:
     try:
         with open(spec_path, "rb") as handle:
-            raw = handle.read()
+            return handle.read()
     except OSError as err:
         raise SpecError("cannot read {}: {}".format(spec_path, err))
+
+
+def spec_hash(spec_path: str, raw: Optional[bytes] = None) -> str:
+    """The spec hash of the file, or of `raw` (its bytes, already read) when given."""
+    if raw is None:
+        raw = read_spec_bytes(spec_path)
     kept: List[bytes] = []
     in_header, dropped = True, False
     for line in raw.splitlines(keepends=True):
@@ -464,6 +474,39 @@ def spec_hash(spec_path: str) -> str:
             continue
         kept.append(line)
     return "sha256:" + hashlib.sha256(b"".join(kept)).hexdigest()
+
+
+def snapshot_path(spec_path: str, digest: str) -> str:
+    """`gates/spec.reviewed-<first 12 hex>.md` next to the spec-gate report."""
+    hex_part = digest.split(":", 1)[-1][:12]
+    return os.path.join(os.path.dirname(spec_path), "gates", "spec.reviewed-{}.md".format(hex_part))
+
+
+def write_snapshot(spec_path: str, digest: str, raw: bytes) -> str:
+    """Keep `raw` (the bytes that were hashed) as the spec as reviewed. A valid snapshot of the same hash (one whose own
+    bytes hash to it) is kept, so it stays the copy the first review of that version read; the HARD GATE's Status and
+    self-approval edits do not change the hash. A damaged or foreign file of that name is replaced."""
+    target = snapshot_path(spec_path, digest)
+    try:
+        if not os.path.islink(target) and os.path.isfile(target):
+            with open(target, "rb") as handle:
+                if spec_hash(target, handle.read()) == digest:
+                    return target
+        folder = os.path.dirname(target)
+        os.makedirs(folder, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".spec.reviewed-", suffix=".tmp", dir=folder)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(raw)
+            shutil.copymode(spec_path, tmp)
+            os.replace(tmp, target)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+    except OSError as err:
+        raise SpecError("cannot write {}: {}".format(target, err))
+    return target
 
 
 def _insertion_index(lines: List[str]) -> int:
@@ -571,10 +614,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             _atomic_write(os.path.join(feature, "gates", "spec-lint.txt"), report)
             sys.stdout.write(report)
             return 1 if blocking else 0
-        current = spec_hash(spec_path)
+        raw = read_spec_bytes(spec_path)
+        current = spec_hash(spec_path, raw)
         if args.record:
+            snapshot = write_snapshot(spec_path, current, raw)  # first: a recorded hash always has its snapshot
             edit_gate_report(gate_path, current, None, True)
-            print("recorded {}".format(current))
+            print("recorded {} (snapshot {})".format(current, os.path.relpath(snapshot, feature)))
         elif args.unreviewed is not None:
             if not args.unreviewed.strip():
                 raise SpecError("--unreviewed needs at least one id")

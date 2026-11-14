@@ -100,8 +100,9 @@ The gates above measure correctness, and a copied block looks clean in a per-tas
 2. **Third copies**: `python3 scripts/forge/ratchet.py copies --files <changed files> --min-copies 3 --added-since <base>`. Each listed group is a block of logic with three or more copies to which this spec added or changed lines. It is **Critical** unless the plan's "Copies and Hubs" decided it (`not a copy: <reason>` that the code bears out); a seam task that landed leaves no such group. This also covers logic that is not a new export (a copied body inside an existing function).
 3. **Hubs**: `python3 scripts/forge/hub-files.py check --base <base>`. Each `hub` or `new-hub` file the spec edited is checked against the plan's "Copies and Hubs" decision: an edit the plan did not decide is a **Warning**; a `new-hub` that no decision covers is a seam-first follow-up.
 4. **Placement and layers**: the layer and file-placement checks of the lint (the binding's `layers`) ran in the task gates; a suppression they added shows in step 1.
+5. **Comments**: `python3 scripts/forge/comment_lint.py --base <base>`. A `C` line is **Critical** (TR-27 in `.claude/checklists/task-review.md`), except a line a task's Completion Notes record as `false positive: <reason>`: list it with that reason. `A` lines are not reported.
 
-When a key is unset, run the step by hand (the clone detector on the changed files, `git log` on the hub candidates) and say so. Record the counts in the report: ratchets grown, third copies, hub edits decided / undecided.
+When a key is unset, run the step by hand (the clone detector on the changed files, `git log` on the hub candidates) and say so. Record the counts in the report: ratchets grown, third copies, hub edits decided / undecided, comment-lint `C` lines.
 
 ## PHASE 5: Write Review Report
 
