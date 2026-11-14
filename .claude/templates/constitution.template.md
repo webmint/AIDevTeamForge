@@ -197,8 +197,8 @@ Skipping this step is the #1 cause of wrong implementations.
 ### 6.4 Documentation [universal]
 - **Read docs before starting**: Before any task, read relevant docs in `docs/` for context about the area you're changing
 - **Write docs after completing**: After every task, the tech-writer agent updates `docs/` with changes. This is mandatory — not optional
-- All new public functions must have a brief inline description (JSDoc/docstring)
-- All new types/interfaces must have a brief inline description
+- Doc comments: 1–2 lines on an exported function, type or component, only when its name and types do not say everything (up to about 6 lines only for a contract or invariant a caller must know). In JavaScript without a compiler, `@param`/`@returns` with types stay; in TypeScript, JSDoc carries no types
+- No doc comment on private helpers, constants, fields or constructors; no ticket, spec, AC or plan ids, `§`, history, dates or branch names in any comment
 - Do NOT add documentation to code you didn't write or change
 - Update existing documentation when you change the behavior it describes
 - `docs/` is the source of truth for project documentation — organized by topic, not by task

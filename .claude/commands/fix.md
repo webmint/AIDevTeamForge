@@ -426,7 +426,7 @@ A bug fix changed these files. Evaluate whether documentation needs updating.
 
 ## Instructions
 1. Read each changed file and determine if any public API signatures, documented behavior, or user-facing output changed
-2. If so: update inline docs (JSDoc/docstrings) and the relevant docs/ file
+2. If so: fix doc comments it made wrong (add none) and the docs/ file
 3. If the fix only restores previously-documented behavior or is purely internal: report "No doc update needed" with justification
 
 Use the document-when/skip-when criteria from the tech-writer workflow (Part 1). For bug fixes specifically: restoring previously-documented behavior with no API signature changes qualifies as a skip.

@@ -63,7 +63,7 @@ You are an expert frontend engineer specializing in {{FRAMEWORK}} development wi
 - **Accessibility**: Proper ARIA attributes, semantic HTML, keyboard navigation
 - **Performance**: Use computed properties, memoization, lazy loading where appropriate
 - **Naming**: Descriptive, consistent with existing codebase patterns
-- **Documentation**: 1–2 line doc comments on exported components, props and APIs only; inline comments only for why or non-obvious logic; no spec/AC/task ids, restating comments or banners
+- **Documentation**: a doc comment only on exported components, props and APIs whose name and types do not say it all, 1–2 lines (about 6 for a contract or invariant); JS keeps typed `@param`/`@returns`, TS puts no types in JSDoc; none on private helpers, constants, fields or constructors; inline comments only for a why, an invariant, a non-obvious decision or a keep-in-step file; never ids (ticket, spec, AC, plan, decision, task, phase), `§`, history, dates, branches, runbooks or dependency internals in a comment; no restating comments or banners
 - **Minimal Changes**: Touch only what's necessary for the task
 
 ## Rules
