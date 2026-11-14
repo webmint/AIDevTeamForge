@@ -31,7 +31,7 @@ Report findings to the user. The option labels vary by command:
 
 **For execute-task:**
 ```
-⚠️ Interrupted task detected: Task [N] — [Title] (Feature: [NNN-name])
+⚠️ Interrupted task detected: Task [N] — [Title] (Feature: [<KEY|NNN>-name])
 Interrupted during: Phase [N] — [phase name]
 
 Git state:

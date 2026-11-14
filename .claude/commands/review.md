@@ -16,7 +16,7 @@ Launches specialist review agents (security, performance, test assessment) on co
 
 1. Read the spec file (from `$ARGUMENTS` or most recent feature directory in `specs/`)
 2. Read the feature's `plan.md` (for architecture decisions — needed by performance-analyst)
-3. Read all task files in `specs/NNN-feature/tasks/` — extract:
+3. Read all task files in `specs/<KEY|NNN>-feature/tasks/` — extract:
    - Task titles and completion status
    - Completion Notes (files changed, deviations)
 4. Read `constitution.md`
@@ -109,7 +109,7 @@ When a key is unset, run the step by hand (the clone detector on the changed fil
 Save the structured review report to `specs/[feature]/review.md`:
 
 ```markdown
-# Review Report: [NNN-feature-name]
+# Review Report: [<KEY|NNN>-feature-name]
 
 **Date**: [date]
 **Spec**: [spec file path]
