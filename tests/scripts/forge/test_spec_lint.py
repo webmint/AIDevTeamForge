@@ -466,7 +466,28 @@ class Hash(Base):
 
     def test_no_temp_files_left_behind(self):
         self.run_cli("hash", FEATURE, "--record")
-        self.assertEqual(sorted(os.listdir(os.path.join(self.feature, "gates"))), ["spec-gate.md"])
+        snap = "spec.reviewed-%s.md" % self.expected(GOOD_SPEC)[len("sha256:"):][:12]
+        self.assertEqual(sorted(os.listdir(os.path.join(self.feature, "gates"))), ["spec-gate.md", snap])
+
+    def test_record_keeps_one_snapshot_per_reviewed_spec(self):
+        code, out, _e = self.run_cli("hash", FEATURE, "--record")
+        self.assertEqual(code, 0)
+        snap = "spec.reviewed-%s.md" % self.expected(GOOD_SPEC)[len("sha256:"):][:12]
+        self.assertEqual(self.read("gates/" + snap), GOOD_SPEC)
+        self.assertIn(snap, out)
+        self.run_cli("hash", FEATURE, "--record")  # same spec: no second file
+        self.write("spec.md", GOOD_SPEC.replace("Draft", "Approved"))  # Status only: same hash
+        self.run_cli("hash", FEATURE, "--record")
+        snaps = [n for n in os.listdir(os.path.join(self.feature, "gates")) if n.startswith("spec.reviewed-")]
+        self.assertEqual(snaps, [snap])
+        self.assertEqual(self.read("gates/" + snap), GOOD_SPEC)  # the first copy of that version stays
+        self.write("gates/" + snap, "damaged")
+        self.run_cli("hash", FEATURE, "--record")
+        self.assertEqual(self.read("gates/" + snap), GOOD_SPEC.replace("Draft", "Approved"))  # a damaged copy is rewritten
+        self.write("spec.md", GOOD_SPEC.replace("The widget stops.", "The widget halts."))
+        self.run_cli("hash", FEATURE, "--record")
+        snaps = [n for n in os.listdir(os.path.join(self.feature, "gates")) if n.startswith("spec.reviewed-")]
+        self.assertEqual(len(snaps), 2)
 
     def test_check_unchanged(self):
         self.run_cli("hash", FEATURE, "--record")
