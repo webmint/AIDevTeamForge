@@ -38,6 +38,12 @@ Reasons (finding-level, the failure line ends with `-`):
 Spec mode: every `path:N[-M]` code span, outside the `## Request (verbatim)` section: file exists and lines in
 range; a quoted one also verifies its quote.
 A path with several suffix matches is ambiguous: the check passes when any candidate passes (a `note` line says so).
+Reviewed snapshots (report mode): a citation that resolves to the gate's own spec (`<gates dir>/../spec.md`) and to
+no other file, and fails against it, is checked against each `<gates dir>/spec.reviewed-*.md` (written by
+`spec_lint.py hash --record` after every review or re-check round; symlinks are skipped); it passes when one of them
+verifies it, with a line `note <id> <citation> verified against the reviewed spec <file>`. A fix round moves or rewrites
+spec lines the findings quoted; each snapshot is a version of the spec that a review round read, so a quote found in
+any of them is a quote of a spec a reviewer saw.
 
 Output: written to `<gates dir>/<gate>.citations.txt` (report) or `<spec dir>/gates/spec.citations.txt` (spec; `gates/`
 is created) and printed: one line per failure (`<id> <reason> <citation>`; the id is the finding id, or `L<line>` in
@@ -47,6 +53,7 @@ Exit codes: 0 clean; 1 at least one failure; 2 bad arguments or an unreadable in
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import re
 import sys
@@ -146,8 +153,11 @@ def _cite_text(cit: spec_refs.Citation) -> str:
 
 
 class Result:
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, spec: Optional[str] = None, snapshots: Optional[List[str]] = None) -> None:
         self.root = root
+        self.spec = os.path.realpath(spec) if spec else None
+        self.snapshots = [s for s in (snapshots or []) if not os.path.islink(s)]
+        self._snapshot_lines: Dict[str, Optional[List[str]]] = {}
         self.failures: List[str] = []
         self.notes: List[str] = []
         self.checked = 0
@@ -168,9 +178,31 @@ class Result:
             if ambiguous:
                 self.notes.append("note %s %s ambiguous: %d candidates, one passes" % (ident, _cite_text(cit), len(candidates)))
             return True, candidates
+        snapshot = self._snapshot_match(cit, candidates)
+        if snapshot is not None:
+            self.notes.append("note %s %s verified against the reviewed spec %s"
+                              % (ident, _cite_text(cit), os.path.basename(snapshot)))
+            return True, candidates
         suffix = " (ambiguous: %d candidates, none passes)" % len(candidates) if ambiguous else ""
         self.failures.append("%s %s %s%s" % (ident, reason, _cite_text(cit), suffix))
         return False, candidates
+
+    def _snapshot_match(self, cit: spec_refs.Citation, candidates: List[str]) -> Optional[str]:
+        """The first reviewed snapshot that verifies a citation of the gate's own spec, else None."""
+        if not self.spec or not self.snapshots or _real(candidates) != {self.spec}:
+            return None
+        for snap in self.snapshots:
+            if snap not in self._snapshot_lines:
+                self._snapshot_lines[snap] = spec_refs.read_lines(snap)
+            lines = self._snapshot_lines[snap]
+            if lines is None:
+                continue
+            reason = spec_refs.check_lines(len(lines), cit.start, cit.end)
+            if reason is None and cit.quote is not None:
+                reason = spec_refs.check_quote(lines, cit.start, cit.end, cit.quote)
+            if reason is None:
+                return snap
+        return None
 
     def verify(self, ident: str, cit: spec_refs.Citation) -> bool:
         return self.verify_full(ident, cit)[0]
@@ -188,8 +220,8 @@ def _real(paths: List[str]) -> set:
     return {os.path.realpath(p) for p in paths}
 
 
-def check_report(text: str, root: str) -> Result:
-    res = Result(root)
+def check_report(text: str, root: str, spec: Optional[str] = None, snapshots: Optional[List[str]] = None) -> Result:
+    res = Result(root, spec, snapshots)
     sections = spec_refs.split_sections(text)
     floor: Dict[str, bool] = {}
     files: Dict[str, set] = {}  # id -> real paths of the files the finding cites
@@ -324,8 +356,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("error: cannot read %s: %s" % (path, exc), file=sys.stderr)
         return 2
     if args.mode == "report":
-        res = check_report(text, root)
         out_dir = os.path.dirname(path)
+        spec = os.path.join(os.path.dirname(out_dir), "spec.md")
+        snapshots = sorted(glob.glob(os.path.join(out_dir, "spec.reviewed-*.md")))
+        res = check_report(text, root, spec if os.path.isfile(spec) else None, snapshots)
         out_path = os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".citations.txt")
     else:
         res = check_spec(text, root)
