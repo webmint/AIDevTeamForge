@@ -16,7 +16,7 @@ Verifies completed tasks against the original specification's acceptance criteri
 
 1. Read the spec file (from `$ARGUMENTS` or most recent feature directory in `specs/`)
 2. Read the feature's `plan.md`
-3. Read all task files in `specs/NNN-feature/tasks/`
+3. Read all task files in `specs/<KEY|NNN>-feature/tasks/`
 4. Read `constitution.md`
    - **Guard**: If `constitution.md` contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/verify`."
 5. Read `.claude/memory/MEMORY.md`
@@ -144,7 +144,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 ```markdown
 ## Verification Report
 
-**Feature**: [NNN-feature-name]
+**Feature**: [<KEY|NNN>-feature-name]
 **Spec**: [spec file path]
 **Tasks**: [task directory path]
 **Date**: [date/time]
@@ -200,7 +200,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 ## PHASE 6: Update Spec Status
 
 If all acceptance criteria pass, code quality checks pass and no included intent surface is open (Phase 3.5):
-1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/NNN-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
+1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/<KEY|NNN>-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
 2. Update the spec file status to "Complete"
    - In the spec's **Acceptance Criteria** section, change `- [ ]` to `- [x]` for every AC that passed verification
 3. Update the task index README.md with a completion summary

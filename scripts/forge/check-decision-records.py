@@ -11,9 +11,9 @@ parallel branches never append to the same lines of one shared log. The binding 
   fragmentName  a regular expression every fragment's base name (without `.md`) must match
 The integration ref is the binding's `integrationRef` (or `--base`).
 
-Example binding (the values are the project's own; units here are `specs/NNN-name/` directories and fixes):
+Example binding (the values are the project's own; units here are `specs/<KEY|NNN>-name/` directories and fixes):
   "decisionRecords": {"log": "docs/decision-log.md", "frozenOn": "2026-01-31", "fragments": "docs/decisions",
-                      "fragmentName": "^(\\d{3}-[a-z0-9-]+|fix-[a-z0-9-]+)$"}
+                      "fragmentName": "^(\\d{3}-[a-z0-9-]+|[A-Z][A-Z0-9]+-\\d+-[a-z0-9-]+|fix-[a-z0-9-]+)$"}
 
 The check fails when
   - the working tree adds a table row to the log, relative to the merge base of HEAD with the integration ref, and

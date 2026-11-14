@@ -87,15 +87,16 @@ class IdsAndMarkers(Case):
             "// Dates look like 2026-01-31 in the payload.",  # 5 nothing
             "// Copied from feature/AP-1194 on the backend.", # 6 C3
             "// Phase 2 of the merge keeps the order.",       # 7 nothing (phase is not a cue word)
+            "// Split out on spec/AP-1305-school-report.",    # 8 C3 (a ticket-named spec branch)
             "const x = 1;",
             "",
         ]))
         code, out, _e = self.run_lint()
         self.assertEqual(code, 1)
         blocking = [(n, c) for n, c in self.codes(out) if c.startswith("C")]
-        self.assertEqual(blocking, [(1, "C1"), (2, "C1"), (3, "C1"), (3, "C2"), (4, "C3"), (6, "C3")])
+        self.assertEqual(blocking, [(1, "C1"), (2, "C1"), (3, "C1"), (3, "C2"), (4, "C3"), (6, "C3"), (8, "C3")])
         self.assertIn((1, "A5"), self.codes(out))  # seven comment lines in a row
-        self.assertTrue(out[-1].startswith("comment-lint: C6 "))
+        self.assertTrue(out[-1].startswith("comment-lint: C7 "))
 
     def test_markers_inside_strings_and_test_titles_are_not_comments(self):
         self.write("test/a.test.js", "\n".join([

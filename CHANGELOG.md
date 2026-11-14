@@ -5,6 +5,34 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-11-14
+
+Spec folders are named by ticket and start at research. These are the maintainer's decisions of 2026-11-14.
+
+### Changed
+- **Feature directory names** (`.claude/storage-rules.md` → "Feature Directories").
+  - With a ticket, the name is `specs/<KEY>-<feature-name>/` (`AP-1305-school-attendance-report`); without one it is `specs/NNN-<feature-name>/` as before. The spec branch is always `spec/<directory>`.
+  - The ticket is the request's match of `ISSUE_KEY_PATTERN`. One feature has exactly one ticket: when a request holds several keys, the command asks which one. In autonomous mode the new point `ticket` returns `blocked (user gate ticket)` with the keys.
+  - An existing directory of the same ticket is that feature and is reused. Existing directories keep their names.
+- **`<KEY|NNN>`** replaces `NNN` wherever a command, checklist or template means the feature directory or the spec branch: paths, labels, escape ids (`escape <KEY|NNN>/E<n>`) and the memory entry format. Task and bug numbers stay `NNN`.
+- **`/research` starts the feature.** Saving the report (autonomous mode: always):
+  - creates the directory and the spec branch;
+  - writes `specs/<directory>/research-report.md`;
+  - commits it alone.
+
+  The next step is `/specify specs/<directory>`. A rerun overwrites the report of a directory that has no `spec.md` yet; in interactive mode it asks first.
+- **`/specify`** takes that directory, or its `research-report.md`, checks out its branch and writes `spec.md` there. Without a directory, it names one by the same rule. A `research/YYYY-MM-DD-*.md` report from before 1.39.0 is still accepted.
+- **`/conduct`**: the research runner creates the directory and the branch and commits its report. The later runners get that `Feature:` and `Branch:`, and the specify runner gets the directory.
+- **Scripts**:
+  - `spec_lint.py` B2/B3 take a ticket key before a reference (`AP-1301 AC-4`, `AP-1301 §3`) as naming another document. An AC id before another, and a standard name such as `UTF-8`, are not tickets.
+  - `comment_lint.py` C3 also blocks ticket-named spec branches.
+  - The example `fragmentName` in `check-decision-records.py` allows ticket-named directories.
+- **Size ceilings** (flagged): `specify.md` 20,147 and `execute-task.md` 30,107 bytes.
+- **Existing projects**: no migration is needed.
+  - Set `ISSUE_KEY_PATTERN`, for example `AP-[0-9]+`, so that ticket-named directories are created.
+  - Checklists are copy-if-missing. Their "Origin" line now reads `escape <KEY|NNN>/E<n>`; copying it is optional.
+- Template version: 1.38.0 → 1.39.0
+
 ## [1.38.0] - 2026-11-14
 
 Fewer and better code comments, `/summarize` folded into `/finalize`, and spec-gate citations that survive the fix round. Each follows a maintainer decision of 2026-11-13/14.

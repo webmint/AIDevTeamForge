@@ -9,14 +9,15 @@ bugs/
   NNN-short-description.md           # Bug reports (/report-bug or /verify triage)
 
 research/
-  YYYY-MM-DD-[topic-slug].md          # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-[topic-slug].md          # Research reports saved before Forge 1.39.0 (still accepted by /specify)
 
 audits/
   YYYY-MM-DD-audit.md                  # Adversarial codebase audits (/audit) — periodic, dated, not auto-committed
   .gitignore                           # Auto-created on first /audit run (excludes .tmp-* files)
 
 specs/
-  NNN-feature-name/                # One numbered directory per feature
+  <KEY|NNN>-feature-name/          # One directory per feature: AP-1305-feature-name or 001-feature-name
+    research-report.md             # Research report (/research), written when the directory is created
     spec.md                        # Feature specification (/specify)
     plan.md                        # Technical implementation plan (/plan)
     research.md                    # Research findings (/plan) — optional
@@ -45,9 +46,11 @@ docs/
 ## Naming Rules
 
 ### Feature Directories
-- **Format**: `NNN-feature-name` where NNN is a zero-padded sequential number
-- Scan existing `specs/` directories to determine the next number
-- Examples: `001-user-auth`, `002-cart-pricing`, `003-order-history`
+- **Format**: `<KEY|NNN>-feature-name`. `<KEY|NNN>` is the feature's ticket key when it has one, written as the tracker writes it (`AP-1305-school-attendance-report`); otherwise a zero-padded sequential number (`001-user-auth`). Every `<KEY|NNN>` in the commands means this.
+- **The ticket**: the key of the request (the arguments, or the roadmap row in autonomous mode), matched with `ISSUE_KEY_PATTERN` from `.claude/project-config.json` when it is set and `ISSUE_TRACKER` is not `none`. One feature has exactly one ticket: when the request holds several keys, ask which one names the feature (autonomous point `ticket`). No key: the number form.
+- **The spec branch** is `spec/<directory name>`.
+- **Created by** `/research` when it saves its report, or by `/specify` when no directory exists yet. An existing directory of the same ticket (its name starts with `<KEY>-`) is that feature: reuse it.
+- Existing directories keep their names; both forms are valid everywhere.
 - Feature name part: lowercase kebab-case, 2-4 words
 
 ### Task Files
@@ -56,14 +59,14 @@ docs/
 - Title part: lowercase kebab-case, concise description of the task
 - Examples: `001-define-types.md`, `002-create-repository.md`, `003-build-form-component.md`
 
-### How to Determine Next Feature Number
+### How to Determine Next Feature Number (features without a ticket)
 1. List all directories in `specs/`
-2. Extract the highest NNN prefix
+2. Extract the highest NNN prefix (ticket-named directories do not count)
 3. Next feature = highest + 1 (or 001 if empty)
 
 ## Task File Format
 
-Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
+Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 
 ```markdown
 # Task NNN: [Title]
@@ -124,18 +127,18 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 ## File Lifecycle
 
 ```
-/research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
-/specify      → creates specs/NNN-name/spec.md (+ gates/spec-gate.md)
-/plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed; gates/plan-gate-<lens>.md)
-/breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... (+ gates/breakdown-gate.md)
+/research     → displays report in console; when saved, creates specs/<KEY|NNN>-name/ and its spec branch and commits specs/<KEY|NNN>-name/research-report.md
+/specify      → creates specs/<KEY|NNN>-name/spec.md (+ gates/spec-gate.md)
+/plan         → creates specs/<KEY|NNN>-name/plan.md (+ research.md, data-model.md, contracts.md if needed; gates/plan-gate-<lens>.md)
+/breakdown    → creates specs/<KEY|NNN>-name/tasks/001-xxx.md, 002-xxx.md, ... (+ gates/breakdown-gate.md)
 /execute-task → updates individual task file status + completion notes
-/review       → creates specs/NNN-name/review.md (security, performance, test findings)
-/verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
-/finalize     → writes specs/NNN-name/summary.md (PR-ready feature summary, Phase 1.4) and specs/NNN-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
+/review       → creates specs/<KEY|NNN>-name/review.md (security, performance, test findings)
+/verify       → updates specs/<KEY|NNN>-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
+/finalize     → writes specs/<KEY|NNN>-name/summary.md (PR-ready feature summary, Phase 1.4) and specs/<KEY|NNN>-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
-/conduct      → autonomous mode only: runs the commands above as subagents; keeps the local ledger .claude/delivery-status.md (never committed); each runner writes specs/NNN-name/runs/<phase>.md
+/conduct      → autonomous mode only: runs the commands above as subagents; keeps the local ledger .claude/delivery-status.md (never committed); each runner writes specs/<KEY|NNN>-name/runs/<phase>.md
 ```
 
 ## Status Tracking
@@ -282,7 +285,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 `.claude/memory/MEMORY.md` is read by most commands and many agents, so every byte in it is paid on every read. Commands that append to it follow these rules.
 
-- **Format**: `- **[AREA]**: [observation] _(Feature NNN / Task N, YYYY-MM-DD)_`. Use `Bug NNN` or `Refactor` in place of `Feature NNN / Task N` when there is no feature.
+- **Format**: `- **[AREA]**: [observation] _(Feature <KEY|NNN> / Task N, YYYY-MM-DD)_`. Use `Bug NNN` or `Refactor` in place of `Feature <KEY|NNN> / Task N` when there is no feature.
 - **Tool-bound entries** start with the tool and the version they were observed on, e.g. `- **Forms**: Vue 3.5.13: ...`. After an upgrade, the version shows the entry may be stale.
 - **Search before appending**: look for an entry on the same area and subject.
   - If the new observation corrects or supersedes it, rewrite that entry in place, with a new date. Never append a separate "Correction:" entry next to the old one.
@@ -295,7 +298,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - **Location**: `.claude/checklists/{spec-gate,plan-gate,breakdown-gate,task-review,test-lens}.md`. Installed once, then project-owned: `update.sh` never overwrites them, and restores a missing one.
 - **Switch**: the header line `**Gate**: on | off`. `off` skips that gate (`.claude/commands/_independent-gate.md`) or that review input.
 - **Item format**: `- **<ID>** <check, worded as a check> — <origin>[; <origin>…]`. Ids are never reused.
-- **Origins**: `seed` / `field` (shipped with Forge), `escape NNN/E<n>` (`/finalize` learning step), `audit YYYY-MM-DD/<theme>` (`/audit`). A new escape that an existing item covers adds its origin to that item.
+- **Origins**: `seed` / `field` (shipped with Forge), `escape <KEY|NNN>/E<n>` (`/finalize` learning step), `audit YYYY-MM-DD/<theme>` (`/audit`). A new escape that an existing item covers adds its origin to that item.
 
 ## Cleanup Rules
 
