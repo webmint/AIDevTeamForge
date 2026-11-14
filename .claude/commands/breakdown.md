@@ -8,7 +8,7 @@ Takes an approved specification and breaks it into ordered, atomic tasks with de
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Optional. Any of: the feature directory (`specs/NNN-feature/`), its `spec.md`, or its `plan.md`; all three resolve to the same feature directory. If empty, use the most recently modified feature directory in `specs/`.
+- `$ARGUMENTS` — Optional. Any of: the feature directory (`specs/<KEY|NNN>-feature/`), its `spec.md`, or its `plan.md`; all three resolve to the same feature directory. If empty, use the most recently modified feature directory in `specs/`.
 - **Consumes**: `spec.md` and `plan.md` of that directory (both must be Approved). **Produces**: `tasks/README.md` and `tasks/NNN-*.md` in the same directory.
 
 ## Prerequisites
@@ -229,10 +229,10 @@ Create the `tasks/` directory inside the feature's spec directory and save each 
 
 ### Output Structure
 
-Create `specs/NNN-feature/tasks/` directory. For each task, create a separate file:
+Create `specs/<KEY|NNN>-feature/tasks/` directory. For each task, create a separate file:
 
 ```
-specs/NNN-feature/tasks/
+specs/<KEY|NNN>-feature/tasks/
   001-short-title.md
   002-short-title.md
   003-short-title.md
@@ -240,7 +240,7 @@ specs/NNN-feature/tasks/
 
 Each task file follows the format defined in `.claude/storage-rules.md`.
 
-Also create a `specs/NNN-feature/tasks/README.md` index file:
+Also create a `specs/<KEY|NNN>-feature/tasks/README.md` index file:
 
 ```markdown
 # Tasks: [Feature Name]
@@ -294,7 +294,7 @@ Run a wave with `/execute-task W1`. The batch gate (full build + full test suite
 
 ## PHASE 4.5: Independent Gate (breakdown-gate)
 
-Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `specs/[NNN-feature]/tasks/`. Apply its loop before presenting the breakdown.
+Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `specs/[<KEY|NNN>-feature]/tasks/`. Apply its loop before presenting the breakdown.
 
 ## PHASE 5: User Approval
 
@@ -304,7 +304,7 @@ Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `
 
 Present a summary:
 
-"I've broken down the spec into **[N] tasks** at `specs/[NNN-feature]/tasks/`:
+"I've broken down the spec into **[N] tasks** at `specs/[<KEY|NNN>-feature]/tasks/`:
 
 [List each task: number, title, agent, and dependency info — one line each]
 

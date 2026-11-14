@@ -2,7 +2,7 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: on every new or changed test, in `/execute-task`'s per-task code review (with `task-review.md`) and in `/review`'s qa assessment · **Reviewer**: `code-reviewer` in `/execute-task`, `qa-engineer` in `/review`; a fresh context; a different model from the author where possible.
-**Inputs**: the new and changed tests and the code they cover; the task file or the feature's `specs/NNN-*/spec.md` ACs they claim; `contracts.md` if present; `CLAUDE.md`; `constitution.md` if present.
+**Inputs**: the new and changed tests and the code they cover; the task file or the feature's `specs/<KEY|NNN>-*/spec.md` ACs they claim; `contracts.md` if present; `CLAUDE.md`; `constitution.md` if present.
 
 **The question for every test**: *would this test fail if the feature were broken?* Then check assertion specificity: scoped to the element or row, not page-wide; exact values, not mere presence.
 
@@ -11,7 +11,7 @@
 - Severity follows the review scale (Critical / Warning / Suggestion / Info). A test that cannot fail for a plausible break is a Warning; it is Critical when it is the only coverage of an AC.
 - Defects outside the list are reported too, as `new`.
 
-**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape NNN/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
+**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape <KEY|NNN>/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
 
 ## Items
 
