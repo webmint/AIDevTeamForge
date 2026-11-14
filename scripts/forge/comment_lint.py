@@ -26,7 +26,8 @@ Blocking (a TR-27 Critical, unless the reviewer marks the line `false positive: 
       generic Jira or `#<n>` pattern is not used)
   C2  `§` in a comment
   C3  a date next to a provenance word (verified, as of, since, checked, updated, on, until) within 3 words, or a
-      branch name (`feature/`, `bugfix/`, `hotfix/` or `release/` with a ticket-like or numbered name, `spec/NNN-`)
+      branch name (`feature/`, `bugfix/`, `hotfix/` or `release/` with a ticket-like or numbered name, `spec/NNN-`,
+      `spec/<KEY>-`)
   C4  a new doc comment of more than 6 description lines (tag lines such as `@param` and the lines after the first
       tag, and docstring sections such as `Args:`, do not count); in a TypeScript file, `@param {...}` with a type
 Advisory (the reviewer judges):
@@ -100,7 +101,7 @@ STANDARD_NAMES = frozenset("SHA UTF ISO RFC CVE ECMA ES TLS SSL HTTP IEEE ASCII 
                            "BCP AES RSA MD H W3C WCAG ANSI POSIX JIS GB EN DIN IEC".split())
 DATE = re.compile(r"\b20\d\d-\d\d-\d\d\b")
 PROVENANCE_WORDS = frozenset(("verified", "since", "checked", "updated", "on", "until"))
-BRANCH = re.compile(r"\b(?:feature|bugfix|hotfix|release)/[A-Za-z]*-?\d+|\bspec/\d{3}-")
+BRANCH = re.compile(r"\b(?:feature|bugfix|hotfix|release)/[A-Za-z]*-?\d+|\bspec/(?:\d{3}|[A-Z][A-Z0-9]+-\d+)-")
 HISTORY = re.compile(r"\b(?:previously|was changed|review round|no longer|refactored)\b", re.IGNORECASE)
 DEPENDENCY = re.compile(r"(?:node_modules|site-packages|vendor)/")
 LICENCE = re.compile(r"copyright|licen[cs]e|spdx", re.IGNORECASE)

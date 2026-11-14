@@ -2,14 +2,14 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: in `/plan`, after the plan is written and before its HARD GATE · **Reviewer**: three lenses in parallel, each a separate reviewer reading only its own section plus this header: `architect` (Architect lens, PG-A), `security-reviewer` (Security lens, PG-S), `qa-engineer` (QA lens, PG-Q); a fresh context each; a different model from the author where possible.
-**Inputs**: `specs/NNN-*/plan.md`; `research.md`, `data-model.md` and `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names.
+**Inputs**: `specs/<KEY|NNN>-*/plan.md`; `research.md`, `data-model.md` and `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names.
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
 - Severity is Critical, Warning or Suggestion. Critical when the design breaks a project rule or the spec, opens a data or secret exposure (one caller reaching another owner's data, a secret reaching a client or log), or leaves an AC unverifiable at the planned level.
 - Defects outside the list are reported too, as `new`.
 
-**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape NNN/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id in their lens; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
+**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape <KEY|NNN>/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id in their lens; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
 
 ## Architect lens
 

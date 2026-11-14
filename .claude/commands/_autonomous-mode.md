@@ -22,7 +22,8 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `branch` | `/specify` 0.3, on a branch that is neither the default nor `spec/*` | Option 2: switch to `DEFAULT_BRANCH`, then create the spec branch |
 | `default-branch` | `/specify` 0.2, no default branch found | Use `DEFAULT_BRANCH` from `.claude/project-config.json` |
 | `audit-gate` | `/specify` 0.4: exit 1 (an audit is due); exit 2 on a remediation request after the retry; spec type unsure | Exit 1 and the remediation exit 2: STOP 8, return `blocked (audit due)`; never "start anyway". Spec type: `structural` only when the request remediates audit themes or names no behaviour change; record the choice |
-| `existing-spec` | `/research` Phase 1, an existing spec covers the topic | Return `blocked (existing spec specs/NNN-*)`; the conductor resumes that spec |
+| `ticket` | `/research` Phase 5 and `/specify` Phase 4, the request holds several ticket keys (`.claude/storage-rules.md` → "Feature Directories") | Never chosen autonomously: return `blocked (user gate ticket)` with the keys found |
+| `existing-spec` | `/research` Phase 1, an existing spec covers the topic | Return `blocked (existing spec specs/<KEY|NNN>-*)`; the conductor resumes that spec |
 | `clarify` | `/specify` Phase 2, `/plan` questions, `/fix` questions | Answer from the sources of truth. When they do not answer, take the recommended option and record it as a decision. A question that falls under STOP 1 or 2 is a STOP |
 | `specify` | `/specify` Phase 5 HARD GATE | Self-approval (below) |
 | `plan` | `/plan` Phase 3 HARD GATE | Self-approval |
@@ -36,7 +37,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `fix-scope` | `/fix` Phase 1, "larger than expected" | STOP 1: return `blocked`; the conductor parks it and proposes a `/specify` |
 | `fix` | `/fix` Phase 2 diagnosis HARD GATE | Self-confirm the root cause once the evidence shows it (a reproduction, a failing test or a quoted code path), and record it. Without such evidence: STOP 6 after 3 attempts |
 | `commit` | `/finalize` and `/fix` source-repo squash message (wrapper mode) | Use the proposed message |
-| `research-save` | `/research` "Save this research to a file?" | Yes: save it and commit nothing; the result block names the path |
+| `research-save` | `/research` "Save this research as feature …?" | Yes: create the feature directory and its spec branch, commit the report; the result block names the directory |
 
 `/review` has no interactive point; its runner lists every Critical finding of `review.md` under `blockers:` (status `done`), and the conductor runs one `/fix` per Critical. `/refactor`, `/audit`, `/constitute`, `/onboard` and `/setup-wizard` are not conductor phases; they stay interactive.
 
@@ -89,16 +90,16 @@ STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run 
 - **Review effort follows severity**, as in the `task-review` row. A repair of the same failed item relaunches the specialist one `effort` level above its definition (`medium` → `high` → `xhigh`; never `max`).
 - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md`, `.claude/commands/*.md` or `.claude/project-config.json` beyond an acceptance criterion is recorded for the user, not fixed.
 - **Session state**: a runner skips the commands' steps that write or reset `.claude/session-state.md` (reading it is fine): parallel runners would overwrite each other's snapshot. The conductor's ledger is the resume source.
-- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. Commit every `specs/NNN-*/gates/*` file you wrote (the `scripts/forge/` checks write them too) with your phase's commit. A research runner commits nothing: its report stays untracked until the `/specify` runner commits it on the spec branch.
+- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. Commit every `specs/<KEY|NNN>-*/gates/*` file you wrote (the `scripts/forge/` checks write them too) with your phase's commit. A research runner commits only its `research-report.md`, alone, on the spec branch it created.
 - **Write refused**: when the harness refuses a runner's Write of `summary.md` (or another report), return its full content with `status: blocked (write refused: <path>)`; the conductor saves it verbatim, commits it, and resumes the runner.
 - **Open items**: a finding the unit does not fix (deferred Warning or one whose fix was reverted, recorded-only finding, follow-up) goes under `## For the register` in the run report, one line each with its severity. The conductor decides where it goes (an issue, the next spec, the user).
 
-**Run report**: `specs/NNN-*/runs/<phase>[-task-NNN | -W<n>].md` (a research runner: the research report itself). It covers what was done, the gate details, the review findings with their dispositions, the self-approval notes, and one line `binding: <keys of .claude/quality-profile.json the phase read; "(unset)" after a key that fell back> | none`.
+**Run report**: `specs/<KEY|NNN>-*/runs/<phase>[-task-NNN | -W<n>].md` (a research runner: the research report itself). It covers what was done, the gate details, the review findings with their dispositions, the self-approval notes, and one line `binding: <keys of .claude/quality-profile.json the phase read; "(unset)" after a key that fell back> | none`.
 
 **Result block** — the runner's entire final message, at most 10 lines:
 ```
 phase: <phase>[ task NNN | wave W<n>]
-spec: <specs/NNN-slug>
+spec: <specs/<KEY|NNN>-slug>
 status: done | paused (<reason>) | blocked (<reason>) | failed
 artifacts: <paths created or changed; the last commit's short sha>
 gates: <name=exit (counts)>, …
@@ -116,7 +117,7 @@ next: <exact next command>
 
 `MERGE_MODE` in `.claude/project-config.json` (missing = `local`):
 - `local`: the closing runner ends after `/finalize`; the user merges the spec branch.
-- `pr`: after `/finalize`, the closing runner pushes the spec branch by name, without force (`git push -u <PUSH_REMOTE> <branch>`, remote default `origin`), and opens a pull request into `DEFAULT_BRANCH` (`gh pr create --base <DEFAULT_BRANCH> --head <branch> --title "<the squashed commit's subject>" --body-file specs/NNN-*/summary.md`). The PR URL goes into `artifacts:`.
+- `pr`: after `/finalize`, the closing runner pushes the spec branch by name, without force (`git push -u <PUSH_REMOTE> <branch>`, remote default `origin`), and opens a pull request into `DEFAULT_BRANCH` (`gh pr create --base <DEFAULT_BRANCH> --head <branch> --title "<the squashed commit's subject>" --body-file specs/<KEY|NNN>-*/summary.md`). The PR URL goes into `artifacts:`.
 - Only the user merges. An open pull request is never force-pushed and gets no new commit.
 - **Update** (a rebase because the default branch moved, or a fix after red CI), run by a PR update runner after any `/fix` runner landed its commits on the spec branch:
   1. `git fetch <PUSH_REMOTE>`; `git switch -c <branch>-r<n>` (the next free `n`); `git rebase -q <PUSH_REMOTE>/<DEFAULT_BRANCH>` when it moved (a conflict that is not mechanical: `blocked`).

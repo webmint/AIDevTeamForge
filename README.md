@@ -105,7 +105,7 @@ Run these once when you first install the template:
   ↑ approve    ↑ approve    ↑ approve      per task       per feat   per feat   per feat    per feat
 ```
 
-- **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). **Requires approval.** Auto-creates `spec/NNN-short-desc` branch.
+- **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). **Requires approval.** Auto-creates `spec/<KEY|NNN>-short-desc` branch.
 - **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. **Requires approval.**
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
@@ -145,7 +145,7 @@ With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 o
 - **`/review-pr`** — Strict review of a pull request that never went through the spec cycle: code-reviewer (constitution, architecture, existing patterns across the repository), security-reviewer, performance-analyst and qa-engineer in parallel, with the linked issue as acceptance criteria; verdict APPROVE / APPROVE WITH WARNINGS / REQUEST CHANGES / BLOCK in chat. The code host and the tracker are set by the developer (Question 11 of `/setup-wizard`): PR commands with `<N>` / `<KEY>` placeholders (GitHub and GitLab presets offered), `ISSUE_TRACKER` `jira` (through an MCP server you name) / `github` / `none`. `/research` reads an issue its topic names through the same keys.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
-- **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console, optionally saves to `research/`.
+- **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console; saving it creates the feature directory `specs/<KEY|NNN>-name/` with `research-report.md` on its spec branch.
 
 ## Artifact Storage
 
@@ -154,7 +154,7 @@ research/
   YYYY-MM-DD-topic-slug.md         # Research reports (/research) — exploratory, pre-spec
 
 specs/
-  001-user-auth/                 # Numbered feature directories
+  001-user-auth/                 # Feature directories (ticket key or number)
     spec.md                      # /specify output
     plan.md                      # /plan output
     research.md                  # /plan research (optional)
@@ -173,7 +173,7 @@ bugs/
   002-missing-auth-check.md      # Status: Open → In Progress → Fixed
 ```
 
-- Feature dirs: `NNN-kebab-name` — sequential numbering (001, 002, ...)
+- Feature dirs: `<KEY>-kebab-name` when the feature has a ticket (`AP-1305-school-report`), otherwise `NNN-kebab-name` — sequential numbering (001, 002, ...)
 - Task files: `NNN-short-title.md` — sequential within feature
 - Bug files: `NNN-short-description.md` — sequential, standalone
 - Everything for a feature lives in one directory
@@ -195,7 +195,7 @@ bugs/
 
 In autonomous mode (`/conduct`) the spec, plan and breakdown approvals become self-approval after a clean independent gate; a gate that is off keeps its approval with the user.
 
-**Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent (a different model where possible; the breakdown-gate on sonnet, the plan-gate architect lens on `MODEL_ARCHITECT_LENS`) reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/NNN-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
+**Independent gates**: before each HARD GATE of `/specify`, `/plan` and `/breakdown`, a fresh agent (a different model where possible; the breakdown-gate on sonnet, the plan-gate architect lens on `MODEL_ARCHITECT_LENS`) reviews the artifact adversarially against `.claude/checklists/<gate>.md` and writes `specs/<KEY|NNN>-*/gates/<gate>.md`; Criticals get one fix loop, and what stays open is shown at the gate. The checklists are project-owned (`**Gate**: on | off`), and `/finalize`'s escape analysis adds one check per defect that slipped past its gate.
 
 ## Automated Guardrails
 

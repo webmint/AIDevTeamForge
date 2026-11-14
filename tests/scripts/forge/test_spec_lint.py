@@ -132,6 +132,18 @@ class LintBlocking(Base):
         text = GOOD_SPEC + "\nSee `AC-77`, ticket AC-8, brief AC-9, spec AC-10, 054 AC-11, 054's AC-12, contract AC-13.\n"
         self.assertEqual(self.lint(text), [])
 
+    def test_b2_and_b3_a_ticket_key_qualifies(self):
+        text = GOOD_SPEC + "\nAs in AP-1301 AC-4 and AP-1301's AC-5, see AP-1301 §3.\n"
+        self.assertEqual(self.lint(text), [])
+
+    def test_b2_and_b3_a_standard_name_is_not_a_ticket(self):
+        found = self.lint(GOOD_SPEC + "\nEncoded as UTF-8 §99 and as UTF-16 AC-77.\n")
+        self.assertEqual(sorted(c for c, _n, _m in found), ["B2", "B3"])
+
+    def test_b2_an_ac_id_before_another_is_not_a_qualifier(self):
+        found = self.lint(GOOD_SPEC + "\nBoth AC-1 AC-77 apply.\n")
+        self.assertEqual([c for c, _n, _m in found], ["B2"])
+
     def test_b2_unqualified_after_other_word_is_found(self):
         found = self.lint(GOOD_SPEC + "\nAlso the AC-77 rule.\n")
         self.assertEqual([c for c, _n, _m in found], ["B2"])

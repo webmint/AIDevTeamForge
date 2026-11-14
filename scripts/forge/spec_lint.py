@@ -8,7 +8,7 @@ header lines).
 Usage:
   python3 scripts/forge/spec_lint.py lint <feature-dir> [--root <dir>]
   python3 scripts/forge/spec_lint.py hash <feature-dir> [--root <dir>] [--record | --unreviewed "<ids>" | --check]
-      --root <dir>   project root; the feature dir (`specs/NNN-name`) is resolved against it (default: the current dir)
+      --root <dir>   project root; the feature dir (`specs/<KEY|NNN>-name`) is resolved against it (default: the current dir)
   `hash` takes at most one of its three flags; without one it prints `sha256:<hex>` and writes nothing.
 
 Blocking (B) and advisory (A) checks, all on `<feature-dir>/spec.md` (the `## Request (verbatim)` section, fenced code
@@ -17,10 +17,12 @@ blocks and, where noted, code spans and quoted text are skipped; heading lines a
       sit under bold sub-headings). A duplicated id, a gap in 1..max, no AC at all, or a line that looks like an AC
       definition (`**AC-3:**`, `**AC-3a**`, no checkbox) but not in the `- [ ] **AC-N**:` form.
   B2  an `AC-N` outside the AC definitions that names no AC of the spec. Not checked: a reference qualified by the
-      token right before it (a 3-digit spec number, `spec`, `ticket`, `brief`, `contract`).
+      token right before it (a 3-digit spec number, a ticket key such as `AP-1301`, `spec`, `ticket`, `brief`,
+      `contract`).
   B3  a `§N`, `§Na` or `§N.M` with no heading of that number (`## 2.`, `## 2a.`, `### 3.4 ...`). Not checked: a
       reference whose preceding word, separated from the `§` by whitespace alone, names another document (any word
-      but a short list of function words) or is a 3-digit spec number (`054 §9.9`). `(§9)`, `Source: §9`, `[§9]`
+      but a short list of function words) or is a 3-digit spec number (`054 §9.9`) or a ticket key
+      (`AP-1301 §3`; not a standard name such as `UTF-8`). `(§9)`, `Source: §9`, `[§9]`
       are the spec's own. A list of references (`§7.3, §8`, `§3 / §4`) takes the qualification of its first member.
   B4  a fenced code block that is never closed (the lines after its opening were not checked).
   A1  numerical consistency: one noun with two or more numbers (a heuristic: two quantities with the same unit are a
@@ -116,6 +118,10 @@ _AC_LOOSE_BARE_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\*\*AC-\w+")
 _AC_REF_RE = re.compile(r"\bAC-(\d+[a-z]?)\b")
 _SPEC_NUMBER_RE = re.compile(r"^\d{3}(?:'s)?$")
 _AC_QUALIFIERS = frozenset({"spec", "ticket", "brief", "contract"})
+# A ticket key (another spec or ticket) right before a reference qualifies it; an `AC-N` before another is a list.
+_TICKET_BEFORE_RE = re.compile(r"(?<![A-Za-z0-9-])(?!AC-)([A-Z][A-Z0-9]+)-\d+(?:['’]s)?[*_]*\s+[*_]*$")
+# Standard names with a number (`UTF-8`, `SHA-256`, `ISO-8601`) are not tickets.
+_STANDARD_PREFIXES = frozenset("UTF SHA ISO RFC CVE CWE ECMA ES TLS SSL HTTP IEEE PEP JSR AES RSA MD W3C WCAG IEC".split())
 _SECTION_REF_RE = re.compile(r"§(\d+[a-z]?(?:\.\d+)*)(?![A-Za-z0-9])")
 _H2_RE = re.compile(r"^ {0,3}##[ \t]+(.*)$")
 _HEADING_LINE_RE = re.compile(r"^ {0,3}#{1,6}[ \t]")
@@ -271,13 +277,19 @@ def _preceding_word(text: str, pos: int) -> str:
     return m.group(1) if m else ""
 
 
+def _ticket_before(text: str) -> bool:
+    """True when `text` ends with a ticket key (`AP-1301`, `AP-1301's`) and whitespace; not a standard name."""
+    m = _TICKET_BEFORE_RE.search(text)
+    return bool(m) and m.group(1) not in _STANDARD_PREFIXES
+
+
 def _qualifier(text: str, pos: int) -> bool:
     """True when the word before `pos`, separated from it by whitespace alone, names another document (B3)."""
     m = _QUALIFIER_RE.search(text[:pos])
     if not m:
         return False
     word = m.group(1)
-    if _SPEC_NUMBER_RE.match(word):
+    if _SPEC_NUMBER_RE.match(word) or _ticket_before(text[:pos]):
         return True
     return not word.isdigit() and word.lower() not in _FUNCTION_WORDS
 
@@ -294,7 +306,7 @@ def _check_ac_refs(lines: List[Line], defined: set) -> List[Finding]:
             if ref in defined:
                 continue
             word = _preceding_word(text, m.start()).lower()
-            if _SPEC_NUMBER_RE.match(word) or word in _AC_QUALIFIERS:
+            if _SPEC_NUMBER_RE.match(word) or word in _AC_QUALIFIERS or _ticket_before(text[:m.start()]):
                 continue
             found.append(("B2", line.number, "{} names no AC of this spec".format(ref)))
     return found

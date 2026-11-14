@@ -29,7 +29,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 1. Read the spec file (from `$ARGUMENTS` or most recent completed feature directory in `specs/`)
    - **Guard**: If the spec's status is not "Complete", stop: "⛔ Spec is not marked Complete. Run `/verify` first."
 2. Read the feature's `plan.md` (architecture context for tech-writer)
-3. Read all task files in `specs/NNN-feature/tasks/` — extract Completion Notes (files changed) to build the changed files list for tech-writer
+3. Read all task files in `specs/<KEY|NNN>-feature/tasks/` — extract Completion Notes (files changed) to build the changed files list for tech-writer
    - **Task cross-check**: Verify all task files (excluding README.md) have `Status: Complete`. If any task is not Complete, stop: "⛔ Not all tasks are complete. Task [N] is [status]. Run `/execute-task` to complete it first."
    - **Evidence check**: when `.claude/quality-profile.json` sets `integrationRef`, run `python3 scripts/forge/check-task-evidence.py`: a Complete task without filled Completion Notes or a task commit stops finalize with the script's lines. When the binding sets `decisionRecords` (the project keeps one decision file per unit of work), also run `python3 scripts/forge/check-decision-records.py` and stop on its problems.
 4. Read `.claude/project-config.json` for `DEFAULT_BRANCH` and `SOURCE_ROOT`. If `DEFAULT_BRANCH` is missing, fall back to `main`.
@@ -53,7 +53,7 @@ Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the aud
 1. **Change data**: `git diff --stat [DEFAULT_BRANCH]...HEAD` and `git log --oneline [DEFAULT_BRANCH]...HEAD`; in wrapper mode also `git -C $SOURCE_ROOT diff --stat [source squash base]` and `git -C $SOURCE_ROOT log --oneline [source squash base]..HEAD` (skip these when Phase 1 found no source `[WIP]` commit). The files of every task come from the Completion Notes read in Phase 1, deduplicated.
 2. **Write** in this format, each section 1–5 lines; omit a section that would be empty:
    ```markdown
-   ## Feature Summary: [NNN — feature name]
+   ## Feature Summary: [<KEY|NNN> — feature name]
 
    ### What was built
    [2-3 sentences from the spec overview and plan summary: what the user gets, not implementation details]
@@ -75,19 +75,19 @@ Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the aud
    - [x] AC-1: [short description]
    ```
    Describe behaviour and outcomes in user-facing language ("Added email validation to signup", not "Created validateEmail in utils/validation.ts"), group files by area, and state only what the spec, plan, task files and git history say.
-3. **Commit** (follow the **Commit Convention** section in CLAUDE.md): `git add specs/[feature]/summary.md && git commit -m "[WIP] Feature summary: NNN-feature-name"`; skip the commit when `summary.md` is unchanged (a rerun)
+3. **Commit** (follow the **Commit Convention** section in CLAUDE.md): `git add specs/[feature]/summary.md && git commit -m "[WIP] Feature summary: <KEY|NNN>-feature-name"`; skip the commit when `summary.md` is unchanged (a rerun)
 
 ## PHASE 1.5: Escape Analysis
 
 Records where each defect of this feature came from and which gate should have stopped it, and teaches that gate's checklist. Skip this phase when `.claude/checklists/` does not exist.
 
 1. **Collect** every defect found during this feature:
-   - gate findings that required a fix (`specs/NNN-*/gates/*.md`, Dispositions `fixed`);
+   - gate findings that required a fix (`specs/<KEY|NNN>-*/gates/*.md`, Dispositions `fixed`);
    - code-review Critical findings in the task Completion Notes;
    - `review.md` findings that required a fix;
    - bug files in `bugs/` whose `**Feature**:` points at this spec (the `/verify` triage);
    - any defect the user reported in this session.
-2. **Record** each one in `specs/NNN-*/escapes.md`:
+2. **Record** each one in `specs/<KEY|NNN>-*/escapes.md`:
 
    ```markdown
    # Escapes: [feature-name]
@@ -104,16 +104,16 @@ Records where each defect of this feature came from and which gate should have s
    - The `quality:` line counts each record once, at the gate or phase that detected it. With no defects, write the table header, `No defects recorded.` and the line with zeros.
 3. **Learning step**: for every record with Escaped `yes`, append ONE generic, reusable check to that gate's checklist (`.claude/checklists/<gate>.md`; the test-lens record goes to `test-lens.md`):
    - worded as a check, not as the specific bug;
-   - with the next free id and the origin `escape NNN/E<n>`;
+   - with the next free id and the origin `escape <KEY|NNN>/E<n>`;
    - deduplicated: when an existing item already covers the failure mode, add the origin to that item instead.
 4. Commit by path:
    ```
-   git add specs/[NNN-feature]/escapes.md .claude/checklists/ && git commit -m "[WIP] Escape analysis: [feature-name]"
+   git add specs/[<KEY|NNN>-feature]/escapes.md .claude/checklists/ && git commit -m "[WIP] Escape analysis: [feature-name]"
    ```
 
 ## PHASE 1.6: Structural Hand-off
 
-Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[NNN-feature]/review.md` has no "Structural Check" section.
+Skip when `.claude/quality-profile.json` does not set `ratchets` and `specs/[<KEY|NNN>-feature]/review.md` has no "Structural Check" section.
 
 1. **Baselines** (a catch-up: a structural spec lowers its baselines in its last task; any feature may lower one by accident): when the binding sets `ratchets`, run `python3 scripts/forge/ratchet.py check`; for each ratchet it reports `LOWER`, run `python3 scripts/forge/ratchet.py update <name>`. When any baseline changed, commit the baseline file (the binding's `baselineFile`) by path: `git add [baselineFile] && git commit -m "[WIP] Ratchet baselines: [feature-name]"`.
 2. **Follow-ups**: from `review.md` → "Structural Check" and "Follow-ups", list the undecided hub edits and third copies as seam-first follow-ups for a later spec, in the Phase 4 output.
@@ -195,10 +195,10 @@ After the squash, the snapshot of the feature's last task is stale for every lat
 ```
 <!-- This file is a fixed-size sliding window. Always fully overwritten, never appended. Max ~40 lines. -->
 # Session State
-Last updated after /finalize of [NNN-feature-name] ([YYYY-MM-DD])
+Last updated after /finalize of [<KEY|NNN>-feature-name] ([YYYY-MM-DD])
 
 ## Current Feature
-None active. Last finalized: [NNN-feature-name]
+None active. Last finalized: [<KEY|NNN>-feature-name]
 
 ## Session Stats
 Tasks completed this session: 0

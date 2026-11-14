@@ -2,14 +2,14 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: in `/execute-task`, the per-task code review of every task, together with `test-lens.md` · **Reviewer**: `code-reviewer`; a fresh context; a different model from the implementer where possible.
-**Inputs**: the task file `specs/NNN-*/tasks/NNN-*.md` and its diff; the spec sections, plan decisions and `contracts.md` entries it cites; `CLAUDE.md`; `constitution.md` if present; the design source when the task has UI.
+**Inputs**: the task file `specs/<KEY|NNN>-*/tasks/NNN-*.md` and its diff; the spec sections, plan decisions and `contracts.md` entries it cites; `CLAUDE.md`; `constitution.md` if present; the design source when the task has UI.
 
 **How to use**:
 - Check every item that applies to the diff against the artifact and its sources, on top of the reviewer's standard pass; report each failed item by id with evidence quoted from both sides.
 - Severity follows the review scale (Critical / Warning / Suggestion / Info). An item that names its Critical or Warning case uses it; otherwise the severity follows the effect of the defect.
 - Defects outside the list are reported too, as `new`.
 
-**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape NNN/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
+**Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape <KEY|NNN>/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.
 
 ## Items
 
