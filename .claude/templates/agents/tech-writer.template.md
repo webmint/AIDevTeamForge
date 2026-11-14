@@ -76,8 +76,8 @@ docs/
 ### Input You Receive
 
 You will be given:
-1. A completed task file (from `specs/NNN-feature/tasks/NNN-title.md`)
-2. The feature spec (from `specs/NNN-feature/spec.md`)
+1. A completed task file (from `specs/<KEY|NNN>-feature/tasks/NNN-title.md`)
+2. The feature spec (from `specs/<KEY|NNN>-feature/spec.md`)
 3. The list of files that were changed
 
 ### Step 1: Understand What Changed

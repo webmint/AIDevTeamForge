@@ -25,7 +25,7 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
 
 ## Prerequisites
 
-1. Task files must exist in `specs/NNN-feature/tasks/`
+1. Task files must exist in `specs/<KEY|NNN>-feature/tasks/`
 2. The specified task's dependencies must all be completed (status: Complete)
 3. If dependencies are not met, inform the user which tasks must be completed first
 
@@ -97,7 +97,7 @@ Then, build the **task queue** based on `$ARGUMENTS`:
 
 After building the task queue, validate every task number in it before proceeding:
 
-1. For each task number in the queue, check that a matching task file exists in `specs/NNN-feature/tasks/` (glob for `NNN-*.md` where NNN matches the task number, zero-padded).
+1. For each task number in the queue, check that a matching task file exists in `specs/<KEY|NNN>-feature/tasks/` (glob for `NNN-*.md` where NNN matches the task number, zero-padded).
 2. If any task number has no matching file, STOP with: "Task [N] does not exist in `specs/[feature]/tasks/`. Available tasks: [list available task numbers and titles]."
 3. If the task queue is empty after filtering (e.g., all tasks in a range are already Complete), inform the user: "No pending tasks match the requested range/selection."
 
@@ -113,8 +113,8 @@ For multi-task queues: the current task is always the first item. After it compl
      - **Feature matches** → use the session state as-is (context load count carries over).
      - **Feature does NOT match** → reset session-state.md to the empty placeholder. This is a new feature context — previous session tracking is stale.
    - If context load is "heavy", recommend /compact to the user before proceeding.
-1. Read the task index at `specs/NNN-feature/tasks/README.md`
-2. Read the specific task file (e.g., `specs/NNN-feature/tasks/001-title.md`)
+1. Read the task index at `specs/<KEY|NNN>-feature/tasks/README.md`
+2. Read the specific task file (e.g., `specs/<KEY|NNN>-feature/tasks/001-title.md`)
 3. Read the feature's `spec.md` and `plan.md`
 4. Read `constitution.md`
 5. Read `.claude/memory/MEMORY.md`
@@ -172,7 +172,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
    execute-task
 
    ## Task
-   Feature: [NNN-feature-name]
+   Feature: [<KEY|NNN>-feature-name]
    Task: [N] — [title]
    Task file: specs/[feature]/tasks/[NNN-title.md]
 
@@ -354,7 +354,7 @@ Update `.claude/wip.md` — change Phase to `4 (Complete)`.
 
 ### 4.1: Mark Task Complete
 
-1. In the task file (`specs/NNN-feature/tasks/NNN-title.md`):
+1. In the task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`):
    - Change **Status** to `Complete`
    - In the **Done When** section, change every `- [ ]` to `- [x]` for conditions that were verified as met
    - Fill in the Completion Notes section:
@@ -365,7 +365,7 @@ Update `.claude/wip.md` — change Phase to `4 (Complete)`.
      **Reuse checks**: [the agent's `Reuse check:` lines, one per new exported symbol, or "none"]
      **Notes**: [any deviations from plan or things to watch]
      ```
-2. Update the task index (`specs/NNN-feature/tasks/README.md`) — mark this task's status as Complete
+2. Update the task index (`specs/<KEY|NNN>-feature/tasks/README.md`) — mark this task's status as Complete
 
 ### 4.2: Commit & Cleanup
 

@@ -20,7 +20,7 @@ When writing session-state.md, the "Tasks completed this session" counter refers
 Last updated after Task [N]: [Title]
 
 ## Current Feature
-[NNN-feature-name]
+[<KEY|NNN>-feature-name]
 
 ## Session Stats
 Tasks completed this session: [N]
