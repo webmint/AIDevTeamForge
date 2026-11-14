@@ -5,6 +5,55 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-11-14
+
+Fewer and better code comments, `/summarize` folded into `/finalize`, and spec-gate citations that survive the fix round. Each follows a maintainer decision of 2026-11-13/14.
+
+### Added
+- **`scripts/forge/comment_lint.py`** — checks the comments a change adds, against its base (the merge base with `integrationRef` by default, `SOURCE_ROOT`-aware like `new-exports.py`). Only comment blocks that hold an added line are judged.
+  - **Blocking**:
+    - `C1`: an id (`AC-<n>`, a spec or task number, a plan, decision or finding id after its cue word, the project's `ISSUE_KEY_PATTERN`);
+    - `C2`: `§`;
+    - `C3`: a date next to a provenance word, or a branch name;
+    - `C4`: a new doc comment of more than 6 description lines, or a type in a TypeScript doc comment.
+  - **Advisory**:
+    - `A1`: a doc comment of 3–6 lines;
+    - `A2`: a file whose added lines are over 35% comments (provisional);
+    - `A3`: history words;
+    - `A4`: dependency paths;
+    - `A5`: plain blocks over 6 lines;
+    - `A6`: an edited old doc comment over the limit;
+    - `A7`: unknown ticket-like keys.
+  - **Coverage**: lexical and language-neutral, covering C-like, `#`, `--` and markup families, Python docstrings, Go doc blocks, and Vue and Svelte scripts.
+  - **`stats`**: prints the measures for validating the change.
+  - **Measured on a 1.36 delivery**: in AP-1302, 40% of the added source lines were comments; the script reported 82 blocking lines (62 ids, 17 `§`, 3 long docs).
+- **TR-28** (`task-review.md`): the judgement part of the comment rule (restating comments, doc comments on private code, 3–6-line docs that state no invariant, phase ids). It is a Suggestion.
+- **Reviewed spec snapshots**: `spec_lint.py hash --record` keeps `gates/spec.reviewed-<first 12 hex of the spec hash>.md`. `verify_citations.py report` checks a citation of the gate's own spec against them when it fails against the current spec. In 6 of 7 trial runs, the fix round had moved quoted spec lines and left 12–37 false citation failures; runners worked around them three different ways.
+
+### Changed
+- **One comment rule** in `/execute-task` rule 6, every implementing agent template, the code-reviewer, TR-27/TR-28 and `constitution.template.md` §6.4:
+  - a doc comment goes only on exported or public API whose name and types do not say it all, in 1–2 lines (about 6 for a contract or invariant);
+  - JavaScript keeps typed `@param`/`@returns`, and TypeScript JSDoc carries no types;
+  - there is none on private helpers, constants, fields or constructors;
+  - inline comments only for a why, an invariant, a non-obvious decision or a keep-in-step file;
+  - a comment never carries ids, `§`, history, dates, branches, runbooks or dependency internals.
+  - **Why**: in AP features delivered on 1.36 and older, 45% of added source lines were comments (14% in the existing code), and two PR reviews asked to cut them.
+- **TR-27 is blocking**: each `C` line of `comment_lint.py` is a Critical of the task review, which re-runs the reviewer after the repair.
+  - A line the reviewer finds a false positive is recorded in the task's Completion Notes as `false positive: <reason>`.
+  - The script is reviewer input 8 of `/execute-task`, and step 5 of `/review` PHASE 4.6 runs it over the whole feature.
+- **The tech-writer no longer writes source comments.** `/finalize`, `/refresh-docs`, `/fix` and `/refactor` only correct a doc comment the change made wrong. The implementer writes the comments, and the reviewer checks them.
+- **`/summarize` is Phase 1.4 of `/finalize`.** It writes `summary.md` in the same format before the squash, and a rerun skips an unchanged commit.
+  - `summarize.md` is now a stub pointing to `/finalize`, because `update.sh` cannot delete a template file.
+  - `/conduct` drops its `summarize` phase; the closing runner writes the summary on `MODEL_DO`.
+  - `/finalize` no longer warns about or stops on a missing `summary.md`.
+- **`execute-task.md` size ceiling** rises to 30,065 bytes (flagged): the implementer's comment rule is kept whole rather than cut.
+- **Existing projects**:
+  - Checklists are copy-if-missing. Copy by hand TR-27 (reworded) and the new TR-28 into `.claude/checklists/task-review.md`.
+  - Generated agents take the comment lines through the three-way merge.
+  - A project constitution is project-owned. Its "All new public functions must have a brief inline description" lines, and any JSDoc lines in `project-config.json` `TYPE_SAFETY_RULES`, keep forcing doc comments until the project rewords them.
+  - Set `ISSUE_KEY_PATTERN` (for example `AP-[0-9]+`) so that `C1` blocks ticket ids.
+- Template version: 1.37.1 → 1.38.0
+
 ## [1.37.1] - 2026-11-13
 
 Mechanical checks in the spec-gate, on top of 1.37.0. The plan-gate, the breakdown-gate, models, waves and Explore settings (read-only searches as Explore on Haiku) are as in 1.37.0. Chosen over two candidates after field trials on two tickets of one client, each spec phase run up to the HARD GATE by `/conduct` in fresh copies of the project:

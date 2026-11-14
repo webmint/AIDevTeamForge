@@ -47,7 +47,7 @@ You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, an
 ### 5. Code Quality
 - Naming is clear and consistent with codebase conventions
 - No dead code, debug logs, or commented-out blocks
-- Comments only for why, an invariant, a non-obvious decision or a keep-in-step link; no spec/AC/task ids, restating comments, banners or doc comments on private helpers (**suggestion**)
+- Comments: run `python3 scripts/forge/comment_lint.py --base <diff base>` unless its output was given; each `C` line is a **critical** (TR-27) unless you report it as `false positive: <reason>`; the script does not see phase ids, restating comments, doc comments on private helpers, constants or fields, or a 3–6-line doc comment that states no invariant: judge those yourself (TR-28, **suggestion**). The rule: a doc comment only on exported or public API whose name and types do not say it all, 1–2 lines (about 6 for a contract or invariant); JS keeps typed `@param`/`@returns`, TS puts no types in JSDoc; none on private helpers, constants, fields or constructors; inline comments only for a why, an invariant, a non-obvious decision or a keep-in-step file; never ids (ticket, spec, AC, plan, decision, task, phase), `§`, history, dates, branches, runbooks or dependency internals in a comment; no restating comments or banners
 - Functions have single responsibility
 - No scope creep — changes match the task/spec
 

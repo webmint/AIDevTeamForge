@@ -4,7 +4,7 @@
 The state is derived, never stored, so every developer and CI see the same thing and it cannot drift:
 - an audit is a commit on the integration ref that adds a file matching `auditGate.auditReports` (`/audit` writes
   `audits/YYYY-MM-DD-audit.md`);
-- a merged spec is a file matching `auditGate.mergedSpecMarker` added on the ref after the last audit (`/summarize`
+- a merged spec is a file matching `auditGate.mergedSpecMarker` added on the ref after the last audit (`/finalize`
   writes `specs/NNN-feature-name/summary.md`); a remediation spec (its spec file carries
   `Audit gate: remediation of <report> ...`) is not counted;
 - a blocking finding is an open issue returned by `auditGate.blockingIssues.command` that has every label in

@@ -194,7 +194,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 [APPROVED / NEEDS WORK / REJECTED]
 
 [If NEEDS WORK: specific tasks that need re-execution or new tasks needed]
-[If APPROVED: ready for summarize and finalize]
+[If APPROVED: ready for finalize]
 ```
 
 ## PHASE 6: Update Spec Status
@@ -227,7 +227,7 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 Show the user the verification report and recommend next action:
 
-- If APPROVED: "All acceptance criteria are met and integration checks pass. Next: ensure `/summarize` has been run for the feature summary, then run `/finalize` to squash and generate docs."
+- If APPROVED: "All acceptance criteria are met and integration checks pass. Next: run `/finalize` to write the feature summary, generate docs and squash."
 - If NEEDS WORK: "Found [N] issues. Details in the verification report above." Then proceed to Phase 9.
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]. To address: revise the spec with `/specify`, then re-run `/plan` and `/breakdown`. The current task breakdown should not be re-executed as-is."
 

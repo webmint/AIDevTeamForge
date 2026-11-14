@@ -16,7 +16,7 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
+/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /finalize
 ```
 
 `/research` is optional by default: skip it when you already know what you want to build. A project may make it mandatory before every `/specify` (its `CLAUDE.md` says so); then it runs even for a well-understood request, because its codebase investigation is what finds the code a new spec would otherwise duplicate. Use it when:

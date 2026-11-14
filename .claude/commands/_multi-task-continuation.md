@@ -82,5 +82,5 @@ When all queued tasks are complete (or execution stops due to failure/blocked de
 **Feature progress**: [X of Y tasks complete]
 **Next pending**: Task [N] — [title] (ready / blocked by [M])
 
-**Next steps**: Run `/review` → `/verify` → `/summarize` → `/finalize`
+**Next steps**: Run `/review` → `/verify` → `/finalize`
 ```

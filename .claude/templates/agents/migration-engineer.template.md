@@ -91,3 +91,4 @@ Never do step 3 before step 2 is fully complete.
 4. Test migrations on a copy of production data
 5. Document the migration path for other developers
 6. Keep the backwards compatibility layer as thin as possible
+7. **Comments**: a doc comment only on exported or public API whose name and types do not say it all, 1–2 lines (about 6 for a contract or invariant); JS keeps typed `@param`/`@returns`, TS puts no types in JSDoc; none on private helpers, constants, fields or constructors; inline comments only for a why, an invariant, a non-obvious decision or a keep-in-step file; never ids (ticket, spec, AC, plan, decision, task, phase), `§`, history, dates, branches, runbooks or dependency internals in a comment; no restating comments or banners

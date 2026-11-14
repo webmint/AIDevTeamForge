@@ -534,6 +534,77 @@ class ReportTests(Base):
         self.assertIn("note W-1 widget.py:3 ambiguous: 2 candidates, one passes", out)
 
 
+class SnapshotTests(Base):
+    """Finding citations of the gate's own spec verify against the spec as reviewed (gates/spec.reviewed-*.md)."""
+    REVIEWED = "# Spec\n\n## 3. Desired Behavior\n\nThe widget stops at the limit.\n"
+    FIXED = "# Spec\n\n## 1. Added\n\nNew text.\n\n## 3. Desired Behavior\n\nThe widget halts at the cap.\n"
+
+    def setUp(self):
+        super().setUp()
+        self.write("specs/f1/spec.md", self.FIXED)
+
+    def run_report(self, body):
+        code, out, _err = self.run_main("report", self.report(body))
+        return code, self.lines(out)
+
+    def test_moved_spec_line_verifies_against_the_snapshot(self):
+        self.write("specs/f1/gates/spec.reviewed-0123456789ab.md", self.REVIEWED)
+        code, out = self.run_report("## Warning\n### W-1 a\n- `specs/f1/spec.md:5` — `The widget stops at the limit.`\n")
+        self.assertEqual(code, 0)
+        self.assertEqual(out, [
+            "note W-1 specs/f1/spec.md:5 verified against the reviewed spec spec.reviewed-0123456789ab.md",
+            "citations: 1 checked, 0 failed"])
+
+    def test_current_spec_is_tried_first(self):
+        self.write("specs/f1/gates/spec.reviewed-0123456789ab.md", self.REVIEWED)
+        code, out = self.run_report("## Warning\n### W-1 a\n- `specs/f1/spec.md:9` — `The widget halts at the cap.`\n")
+        self.assertEqual((code, out), (0, ["citations: 1 checked, 0 failed"]))
+
+    def test_a_quote_in_no_version_still_fails(self):
+        self.write("specs/f1/gates/spec.reviewed-0123456789ab.md", self.REVIEWED)
+        code, out = self.run_report("## Warning\n### W-1 a\n- `specs/f1/spec.md:5` — `The widget never stops.`\n")
+        self.assertEqual((code, out), (1, ["W-1 quote_mismatch specs/f1/spec.md:5", "citations: 1 checked, 1 failed"]))
+
+    def test_no_snapshot_no_fallback(self):
+        code, out = self.run_report("## Warning\n### W-1 a\n- `specs/f1/spec.md:5` — `The widget stops at the limit.`\n")
+        self.assertEqual(code, 1)
+
+    def test_a_code_citation_never_uses_a_snapshot(self):
+        self.write("specs/f1/gates/spec.reviewed-0123456789ab.md", WIDGET)
+        code, out = self.run_report("## Warning\n### W-1 a\n- `src/widget.py:3` — `not in the code at all`\n")
+        self.assertEqual(out[0], "W-1 quote_mismatch src/widget.py:3")
+
+    def test_an_ambiguous_suffix_never_uses_a_snapshot(self):
+        self.write("specs/f2/spec.md", self.FIXED)
+        self.write("specs/f1/gates/spec.reviewed-0123456789ab.md", self.REVIEWED)
+        code, out = self.run_report("## Warning\n### W-1 a\n- `spec.md:5` — `The widget stops at the limit.`\n")
+        self.assertEqual(code, 1)
+
+    def test_a_symlinked_snapshot_is_skipped(self):
+        outside = os.path.join(self.tmp, "outside.md")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write(self.REVIEWED)
+        os.makedirs(os.path.join(self.root, "specs/f1/gates"), exist_ok=True)
+        os.symlink(outside, os.path.join(self.root, "specs/f1/gates/spec.reviewed-0123456789ab.md"))
+        code, out = self.run_report("## Warning\n### W-1 a\n- `specs/f1/spec.md:5` — `The widget stops at the limit.`\n")
+        self.assertEqual(code, 1)
+
+    def test_snapshot_end_to_end_with_spec_lint_record(self):
+        import importlib.util
+        spec_file = os.path.join(SCRIPTS, "spec_lint.py")
+        loader = importlib.util.spec_from_file_location("spec_lint_e2e", spec_file)
+        sl = importlib.util.module_from_spec(loader)
+        loader.loader.exec_module(sl)
+        self.write("specs/f1/spec.md", self.REVIEWED)
+        self.report("# Gate\n\n## Warning\n### W-1 a\n- `specs/f1/spec.md:5` — `The widget stops at the limit.`\n")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(sl.main(["hash", "specs/f1", "--record", "--root", self.root]), 0)
+        self.write("specs/f1/spec.md", self.FIXED)
+        code, out, _err = self.run_main("report", os.path.join(self.root, "specs/f1/gates/spec-gate.md"))
+        self.assertEqual(code, 0)
+        self.assertTrue(self.lines(out)[0].startswith("note W-1 specs/f1/spec.md:5 verified against the reviewed spec"))
+
+
 class SpecTests(Base):
     def spec(self, body):
         return self.write("specs/f1/spec.md", body)

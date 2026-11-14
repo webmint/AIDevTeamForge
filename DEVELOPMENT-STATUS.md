@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → specify → plan → breakdown → execute → review → verify → summarize → finalize) with enforced quality gates, specialized agents, and automated hooks.
+A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → specify → plan → breakdown → execute → review → verify → finalize) with enforced quality gates, specialized agents, and automated hooks.
 
 ## What's Built
 
@@ -17,7 +17,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /finalize
 - `review.md` — Expert code review: launches specialist agents (security-reviewer, performance-analyst, qa-engineer) on all changed files. Produces structured review report saved to `specs/[feature]/review.md`. No verdict — findings only
 - `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); incorporates `/review` findings if available; renders verdict (APPROVED/NEEDS WORK/REJECTED); Phase 9 presents issues with batch bug filing — does not invoke /fix; Phase 3.5 intent check (1.36.0, `_intent-check.md`): a fresh auditor sees only the verbatim request, the code diff and the code, never the spec, and each surface the request describes that the change leaves as before is a question to the user
-- `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; reads DEFAULT_BRANCH from config; wrapper mode source repo handling. Run after `/verify`, before `/finalize`
+- `summarize.md` — since 1.38.0 a stub pointing to `/finalize` Phase 1.4, which writes the PR-ready feature summary
 - `finalize.md` — Feature documentation via tech-writer + feature squash using `git merge-base`; closes `session-state.md` after the squash (1.34.0). Gate-checked: spec must be Complete. The last step before creating a PR
 - `fix.md` — Lightweight bug-fix workflow: diagnose → delegate to agent → verify → code review → test → doc update, with runtime-debugger, code-reviewer, qa-engineer, and tech-writer agents; accepts enriched bug file paths from `bugs/`; agent selection via shared `_agent-assignment.md`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
