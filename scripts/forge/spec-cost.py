@@ -134,6 +134,7 @@ NON_PROMPT_PREFIXES = (
 # Run labels (see "By-phase rule" in the module docstring).
 RUNNER_LABEL = re.compile(r"Forge conductor mode, phase runner\. Phase: ([^\n]*)")
 GATE_LABEL = re.compile(r"Independent gate reviewer\. Gate: ([a-z][a-z0-9-]*)(?:, lens ([a-z][a-z-]*))?")
+# `summarize` stays so that runs from before 1.38.0, when /summarize had its own runner, keep their phase.
 COMMAND_PHASES = ("research", "specify", "plan", "breakdown", "execute-task", "review", "verify", "fix",
                   "summarize", "finalize")
 # Phase names of the conductor's Phases table that run a Forge command under another name.

@@ -226,7 +226,7 @@ You are executing Task [N] from an approved task breakdown.
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
-6. Comments: a doc comment of 1–2 lines on exported or public API only; inline comments only for why, an invariant, a non-obvious decision, or a file that must stay in step. No spec, AC, task or phase ids in source comments (test titles keep theirs), no restating the code, no banners, no doc comments on private helpers
+6. Comments: a doc comment only on exported or public API whose name and types do not say it all, 1–2 lines (about 6 for a contract or invariant); JS keeps typed `@param`/`@returns`, TS puts no types in JSDoc; none on private helpers, constants, fields or constructors. Inline comments only for a why, an invariant, a non-obvious decision or a file that must stay in step. Never in a comment: ticket, spec, AC, plan, decision, task or phase ids, `§`, history, dates, branches, runbooks, dependency internals (test titles keep AC ids); no restating, no banners
 7. Reuse check before every new exported symbol: search the scopes under `## Reuse` by name, signature and meaning; consult the registry by concept, never whole; a symbol the `Reuse` field decides keeps that decision. Report one line per new exported symbol: `Reuse check: <symbol> — searched <query / scope>, found <X | nothing> → reused X | extended X | new because <reason>`. Before you copy a neighbour's pattern (a function, a block, a test setup), ask whether it is already the second copy: `python3 scripts/forge/ratchet.py copies --files <the neighbour file> --min-copies 2` lists the groups it belongs to; when your code would be the third copy, use or create the seam instead (rule 1)
 
 ## Reuse
@@ -313,6 +313,7 @@ Provide the agent with:
 5. The checklists `.claude/checklists/task-review.md` and `.claude/checklists/test-lens.md`, each when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id. The test lens asks of every new or changed test: would it fail if the feature were broken? Assertions are scoped (to the element or row, not page-wide) and exact (values, not mere presence).
 6. **New exports** (the reviewer's independent reuse check): the output of `python3 scripts/forge/new-exports.py --base <checkpoint commit>`, which reads `.claude/quality-profile.json` → `newExports` (when unset, list the new exported symbols of the diff by hand), together with the implementer's `Reuse check:` lines and the `## Reuse` section of the implementer's prompt (search scopes, registry lookup). Instruction: "Do not trust the Reuse check lines. For each new export, search the scopes yourself by name, signature and meaning. A semantic duplicate of existing code, or another derivation of a registered concept, is Critical. A new shared export without a registry row, or without a Reuse check line saying why it is new, is a Warning. Report the count of new exports and of duplicates found."
 7. **Copies** (the third-copy trigger): the output of `python3 scripts/forge/ratchet.py copies --files <changed files> --min-copies 3 --added-since <checkpoint commit>` (the clone ratchets' `groupsCommand` in `.claude/quality-profile.json` → `ratchets`; when unset, skip this item and rely on the search of item 6). Instruction: "Each listed group is logic with three or more copies that this task added to or changed. It is Critical unless the task file or the plan's 'Copies and Hubs' decides it (a seam task, or `not a copy: <reason>` that the code bears out)."
+8. **Comments**: the output of `python3 scripts/forge/comment_lint.py --base <checkpoint commit>`; each `C` line is a Critical (TR-27) unless the reviewer marks it `false positive: <reason>`; record each such line in the task's Completion Notes.
 
 The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including the comment rule), reuse of existing code (the new exports and copies), memory pitfalls, and the checklist items.
 
@@ -404,7 +405,7 @@ Provide a concise summary to the user:
 
 If this was the last pending task (all other tasks in the feature are Complete), replace the "Next task" line with:
 ```
-✅ All feature tasks complete. Next: run `/review` → `/verify` → `/summarize` → `/finalize`
+✅ All feature tasks complete. Next: run `/review` → `/verify` → `/finalize`
 ```
 
 ## PHASE 5: Bookkeeping

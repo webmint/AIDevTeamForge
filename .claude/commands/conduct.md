@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /conduct — Autonomous Delivery (Conductor)
 
-Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → `/summarize` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
+Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
 
 ## Usage
 ```
@@ -53,8 +53,7 @@ This session runs only the loop:
 | review | `review specs/NNN-*` | `MODEL_DO` | medium |
 | verify | `verify specs/NNN-*` | `MODEL_THINK` | high |
 | fix | `fix bugs/NNN-*.md` (one runner per bug) | `MODEL_DO` when the bug names its root cause, else `MODEL_THINK` | medium / high |
-| summarize | `summarize specs/NNN-*` | `haiku` | low |
-| closing | `finalize specs/NNN-*` (the escape analysis is its Phase 1.5), then the pull request when `MERGE_MODE` is `pr` | `MODEL_DO` | medium |
+| closing | `finalize specs/NNN-*` (the feature summary is its Phase 1.4, the escape analysis its Phase 1.5), then the pull request when `MERGE_MODE` is `pr` | `MODEL_DO` | medium |
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
@@ -83,7 +82,7 @@ Write the full report to specs/<NNN-*>/runs/<phase>[-task-NNN | -W<n>].md. Retur
 
 ## Pre-Wave Check
 
-Before any runner that writes (a wave, a `/fix`, `/review`, `/summarize`, closing) starts in a tree that a previous runner used:
+Before any runner that writes (a wave, a `/fix`, `/review`, closing) starts in a tree that a previous runner used:
 1. The previous runner returned its result block with `nested: all completed (<n>)` or `none` (a STOP's `nested: pending <ids>` parks the spec instead), and no agent of it is still running (the harness's agent list, `ListAgents` where the tool exists; a pending completion notification counts as running). The mechanical check: `--runner <agent-id>` in step 2 (or `python3 scripts/forge/nested-pending.py <agent-id>` alone) replays that runner's transcript and reports its pending nested work, recursively.
 2. `scripts/forge/gate.sh wave-preflight -- python3 scripts/forge/wave-preflight.py . <expected> --runner <agent-id>` prints `ok`: the tree is clean, there is no `.claude/wip.md`, no git operation is in progress, and HEAD is `<expected>`: the last commit the previous runner reported, or the conductor's own last commit when it committed since (a saved refused write, a rebase). A `warning: stale wait` line is a leftover `sleep` or `until` loop: confirm no running runner owns it, then stop it.
 3. When it fails: wait for the straggler's notification, or resume the previous runner with `SendMessage` ("finish your nested agents, then commit or report"), or stop the straggler explicitly. Never start a second writer in the tree. A pending item the conductor knows is gone (a shell killed outside the runner, the shells of a stopped agent; confirmed with `ps` or the task's output file) does not block: first run `python3 scripts/forge/nested-pending.py <runner>` and confirm the waived ids are its only `pending:` lines, then rerun step 2 without that `--runner`, and record the ids and the evidence in the ledger. A `.claude/wip.md` left by a runner that cannot be resumed is handled by the fresh runner of the same phase (point `recovery` of `_autonomous-mode.md`); launch it and skip only the marker line of this check.
