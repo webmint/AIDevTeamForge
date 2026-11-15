@@ -106,7 +106,7 @@ When a key is unset, run the step by hand (the clone detector on the changed fil
 
 ## PHASE 5: Write Review Report
 
-Save the structured review report to `specs/[feature]/review.md`:
+Read `.claude/commands/_writing.md` → "Reports", then save the structured review report to `specs/[feature]/review.md`:
 
 ```markdown
 # Review Report: [<KEY|NNN>-feature-name]
@@ -173,7 +173,7 @@ git add specs/[feature]/review.md && git diff --cached --quiet || git commit -m 
 
 ## PHASE 6: Present Summary
 
-Display a concise summary of findings:
+Display a concise summary of findings, in words (`CLAUDE.md` → "Talking to the User"):
 
 ```
 ## Review Complete

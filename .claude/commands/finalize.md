@@ -16,7 +16,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
 **Squash** (at Phase 3): Propose a commit message and ask user to confirm before committing:
 1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
-2. Generate description from spec overview (`## 1. Overview`, first 1-2 sentences)
+2. Generate description from the spec overview (Phase 1 step 1), first 1-2 sentences
 3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
    **Autonomous mode** (`_autonomous-mode.md`, point `commit`): use the proposed message.
 4. On confirmation: `git -C $SOURCE_ROOT reset --soft [squash-base] && git -C $SOURCE_ROOT commit -m "<confirmed message>"`
@@ -26,7 +26,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 
 ## PHASE 1: Gate Check
 
-1. Read the spec file (from `$ARGUMENTS` or most recent completed feature directory in `specs/`)
+1. Read the spec file (from `$ARGUMENTS` or most recent completed feature directory in `specs/`). Its overview (for Phase 1.4 and the squash messages) is `## 1. Overview`, or `## 1. Summary` in a `**Format**: 2` spec
    - **Guard**: If the spec's status is not "Complete", stop: "⛔ Spec is not marked Complete. Run `/verify` first."
 2. Read the feature's `plan.md` (architecture context for tech-writer)
 3. Read all task files in `specs/<KEY|NNN>-feature/tasks/` — extract Completion Notes (files changed) to build the changed files list for tech-writer
@@ -51,7 +51,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the audit gate counts finished features by it, `auditGate.mergedSpecMarker`). It runs before the squash, which needs the `[WIP]` history. An existing `summary.md` is overwritten.
 
 1. **Change data**: `git diff --stat [DEFAULT_BRANCH]...HEAD` and `git log --oneline [DEFAULT_BRANCH]...HEAD`; in wrapper mode also `git -C $SOURCE_ROOT diff --stat [source squash base]` and `git -C $SOURCE_ROOT log --oneline [source squash base]..HEAD` (skip these when Phase 1 found no source `[WIP]` commit). The files of every task come from the Completion Notes read in Phase 1, deduplicated.
-2. **Write** in this format, each section 1–5 lines; omit a section that would be empty:
+2. **Write** (read `.claude/commands/_writing.md` → "Reports" first) in this format, each section 1–5 lines; omit a section that would be empty:
    ```markdown
    ## Feature Summary: [<KEY|NNN> — feature name]
 
@@ -219,6 +219,8 @@ Estimated context load: light (<3 tasks) | moderate (3-5) | heavy (6+)
 Write only facts read in this run (the Phase 3 commit hashes, the follow-ups from the feature's own files). Do not carry over the previous snapshot's decisions, file lists or task counters. Never stage the file (the template's `.gitignore` lists it): Phase 3 has already committed, and this write belongs to no commit. A later `/fix` or `/refactor` keeps the "Open Follow-ups" section while Current Feature is "None active".
 
 ## PHASE 4: Present Results
+
+In words (`CLAUDE.md` → "Talking to the User"):
 
 ```
 ## Feature Finalized

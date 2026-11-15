@@ -6,8 +6,6 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 ```
 /research "topic or idea"
 /research "what about WebSockets for real-time updates?"
-/research "caching strategy for API responses"
-/research "should we add dark mode?"
 ```
 
 ## Arguments
@@ -25,13 +23,6 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 - You want to compare approaches before writing a spec
 - You need to validate that an idea fits the project's architecture
 
-### /research vs /specify
-
-| Command | Input | Purpose | Output |
-|---------|-------|---------|--------|
-| `/research` | Vague idea or topic | Does this fit? What exists? What are the options? | Feasibility report |
-| `/specify` | Feature description (any clarity level) | Create a formal contract with acceptance criteria | Spec file |
-
 ## PHASE 1: Load Context
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, scope all codebase scanning to that path.
@@ -41,7 +32,7 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 3. Read `CLAUDE.md` for project structure, tech stack, and available patterns
 4. Read `docs/architecture.md` if it exists — for current architecture patterns
 5. Scan `specs/` directory names to check if this topic overlaps with an existing or in-progress feature (a directory named after the request's ticket key is that feature)
-6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate. Keep `$ARGUMENTS` exactly (or the user's reply when you asked) for the report's `**Request (verbatim)**` block; in autonomous mode, the roadmap row or the description from the conductor's Inputs. Never paraphrase it.
+6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate. Keep `$ARGUMENTS` exactly (or the user's reply when you asked) for the report's `**Request (verbatim)**` block; in autonomous mode, the roadmap row or the description from the conductor's Inputs. Never paraphrase it; a split leaves it whole (the part goes in `**This part**:`).
 7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic; copy its description verbatim into the report's `**Request (verbatim)**` block, under the label line `> Issue <KEY> — <title (summary)>:`, preceded by a lone `>` line: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic or the Inputs: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why.
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
@@ -119,7 +110,7 @@ Keep it concise — this is a feasibility check, not a full evaluation
 
 ## PHASE 4: Generate Research Report
 
-Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation.
+Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation. Read `.claude/commands/_writing.md` → "Reports" first.
 
 ### Report Format
 
@@ -132,6 +123,7 @@ Generate the full report and **render it directly in the console** so the user c
 **Topic**: [user's original description]
 **Issue**: [KEY — summary; `KEY — not read (<reason>)`; omit this line when the topic names no issue]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
+**This part**: [after a split (Phase 5): the part this report covers; omit otherwise]
 **Request (verbatim)**:
 > [the request kept in Phase 1 step 6, word for word; every line prefixed `> `, a blank line as `>`]
 >
@@ -204,6 +196,10 @@ Generate the full report and **render it directly in the console** so the user c
 | New dependencies | Low/Med/High | [packages/services needed] |
 | Risk | Low/Med/High | [what could go wrong] |
 
+## Split
+
+[Only when a size signal fired (Phase 5): the signals and numbers; the question and answer word for word, dated; after a split, each other part as a request, one per line; omit the section otherwise]
+
 ## Recommendation
 
 [One of three outcomes with a concrete next step:]
@@ -219,12 +215,12 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 
 ### Step 1: Ask to Save
 
-Use `AskUserQuestion` to ask: **"Save this research as feature `specs/<directory>/`?"**, naming the directory it will create. When an issue was read, recommend Yes: an unsaved report's `/specify` line carries only the request, not the issue text.
+First the size check of `.claude/storage-rules.md` → "Feature Size"; after a split, the saved report is the Phase 4 report plus `**This part**:` and `## Split`; nothing else is rewritten. Then use `AskUserQuestion` to ask: **"Save this research as feature `specs/<directory>/`?"**, naming the directory it will create. Recommend Yes when an issue was read (an unsaved report's `/specify` line carries only the request, not the issue text) or after a split (an unsaved report records no choice).
 
 **Autonomous mode** (`_autonomous-mode.md`, point `research-save`): save it without asking; when the request holds several ticket keys, return `blocked (user gate ticket)` with the keys before creating anything (point `ticket`).
 
 - **If yes**: the report starts the feature's directory and spec branch.
-  1. **Directory**: name it by `.claude/storage-rules.md` → "Feature Directories" (the ticket key when the request has one, otherwise the next number; one ticket per feature). When a directory of the same ticket exists and has no `spec.md`, reuse it and overwrite its report (interactive: ask first); one with a `spec.md` is the existing-spec case of Phase 1 step 5.
+  1. **Directory**: name it by `.claude/storage-rules.md` → "Feature Directories". When a directory of the same ticket exists and has no `spec.md`, reuse it and overwrite its report (interactive: ask first); one with a `spec.md` is the existing-spec case of Phase 1 step 5.
   2. **Branch**: on the default branch, `git checkout -b spec/<directory>` (`git checkout spec/<directory>` when that branch exists); already on `spec/<directory>`, stay; on any other branch, the three options of `/specify` 0.3 (autonomous point `branch`).
   3. **Write** `specs/<directory>/research-report.md`, then commit it alone (follow the **Commit Convention** section in CLAUDE.md): `git add specs/<directory>/research-report.md && git commit -m "[WIP] Research: <directory>"`.
   4. Confirm: `Saved to specs/<directory>/research-report.md on branch spec/<directory>`
@@ -241,7 +237,7 @@ Next steps:
 - To shelve: no action needed
 ```
 
-When the report was not saved, the proceed line is `/specify "[the request, verbatim]"`: the request kept in Phase 1 step 6, unchanged, never a refined description. Tailor the next steps to the verdict. If not recommended, lead with the alternative. If feasible, lead with `/specify`.
+When the report was not saved, the proceed line is `/specify "[the request, verbatim]"`: the request kept in Phase 1 step 6, unchanged, never a refined description. After a split, the next steps also list each other part: `/research "<its request from Split>"`. Tailor the next steps to the verdict. If not recommended, lead with the alternative. If feasible, lead with `/specify`.
 
 ## IMPORTANT RULES
 
@@ -249,7 +245,5 @@ When the report was not saved, the proceed line is `/specify "[the request, verb
 2. **Signal-based external research** — do not web search unless signals justify it. Simple ideas that only touch existing codebase patterns need no external research.
 3. **No code modifications** — this command only reads and reports. Its only writes are a saved report, its feature directory, its spec branch and that one commit.
 4. **Constitution awareness** — all feasibility assessments must account for architecture rules and NON-NEGOTIABLE constraints.
-5. **Check for duplicates** — scan `specs/` for existing features that overlap. Don't research what's already specified.
-6. **Recommend concretely** — always suggest a specific next command the user can copy-paste: `/specify` with the saved report's path, or with the request verbatim; never a refined description.
-7. **Consult memory** — check `MEMORY.md` for lessons, gotchas, or decisions about similar areas.
-8. **Concise over comprehensive** — the report should help the user decide quickly. Trim anything that doesn't aid the decision.
+5. **Recommend concretely** — always suggest a specific next command the user can copy-paste: `/specify` with the saved report's path, or with the request verbatim; never a refined description.
+6. **Consult memory** — check `MEMORY.md` for lessons, gotchas, or decisions about similar areas.

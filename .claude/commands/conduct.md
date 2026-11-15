@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /conduct — Autonomous Delivery (Conductor)
 
-Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
+Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user.
 
 ## Usage
 ```
@@ -35,7 +35,7 @@ This session runs only the loop:
 4. Update the ledger. Runners commit their own output and run reports; the conductor commits nothing else.
 
 - It never reads sources, specs, plans or task files, never loads other commands, and never writes spec, plan, task, review or QA artifacts. Its writes are the ledger, content a runner returned because its write was refused (committed on the spec branch, before the closing), the rebases under "Rebase Points" and the local fast-forward under "Merge".
-- Its messages to the user stay short: one line per phase result.
+- Its messages to the user: one line per phase result, in words (`CLAUDE.md` → "Talking to the User"), never a raw `gates:` count or bare id.
 - It does only conducting: side work (tracker edits, messages to other sessions, ad-hoc investigation) goes to a separate session.
 - Target: the conductor's own context grows by at most ~40k tokens per spec; when a spec exceeds it, name the cause in its ledger row.
 
@@ -57,7 +57,6 @@ This session runs only the loop:
 | pr-update | no command: `_autonomous-mode.md` → "Pull Requests" → "Update" (only in `MERGE_MODE` `pr`, after a red CI fix or a rebase) | `MODEL_DO` | medium |
 
 - Every runner is a `general-purpose` subagent (it needs the Skill and Agent tools; nested agents work). Specialist agents the commands launch keep their own definitions.
-- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers are fresh agents launched by the runner, on the models `_independent-gate.md` → "Model" sets.
 - A structural spec (`**Type**: structural`) skips the breakdown-gate, as `_independent-gate.md` says; the phases are the same.
 - A gate phase launches only when the authoring runner returned `done` with `next: <gate> specs/<KEY|NNN>-*`. When the gate is off, the user gate is answered by resuming the authoring runner, and the gate phase is skipped.
 - `/plan` always runs in a fresh runner after the spec-gate, or after `/specify` when its gate is off; it never resumes the `/specify` runner.
@@ -71,11 +70,11 @@ Forge conductor mode, phase runner. Phase: <phase>[ task <NNN> | wave W<n>]. Fea
 Follow .claude/commands/_autonomous-mode.md at every interactive point and in "What Every Runner Follows". Invoke Skill "<command>" with args "<args>" and run it to completion.
 Inputs: <the roadmap row or description; the previous phase's result block; the feature directory for /specify; the feature directory and the authoring run report path for a gate phase; the bug file for /fix; each intent question with the user's answer, verbatim, for a resumed /verify>.
 Wait for your nested agents by their completion notifications: never with sleep loops, background timers or `until` polls; stop every background shell you started before you return.
-Write the full report to specs/<KEY|NNN>-*/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (≤ 10 lines).
+Write the full report to specs/<KEY|NNN>-*/runs/<phase>[-task-NNN | -W<n>].md. Return only the result block (`_autonomous-mode.md` → "Result block").
 ```
 
 - **Branch**: the spec branch the runner works on; the default branch for `research`, which creates the spec branch (`spec-cost.py` then counts those calls under the branch each was made on).
-- **research**: starts on the default branch, creates the feature directory (`.claude/storage-rules.md` → "Feature Directories") and its spec branch, and commits its `research-report.md` there (its run report; the result block names the directory). Later runners get that `Feature:` and `Branch:`.
+- **research**: starts on the default branch and creates the feature directory and its spec branch (`_autonomous-mode.md`, point `research-save`). Later runners get that `Feature:` and `Branch:`.
 - **spec-gate**, **plan-gate**: the `Invoke Skill` sentence reads "Read .claude/commands/_independent-gate.md, run the <gate> on <the spec or the plan>, then follow .claude/commands/<specify|plan>.md from its gate step to its end."
 - **closing** adds to its prompt, when `MERGE_MODE` is `pr`: "After /finalize, open the pull request as `_autonomous-mode.md` → "Pull Requests" says, and put its URL in `artifacts:`."
 - **fix** adds: "The /fix skill's code-review step and its test-assessment step are mandatory, not replaceable by self-review." The conductor checks both verdicts in the run report before it continues.
@@ -102,6 +101,7 @@ A runner that ends on an API error (timeout, server error) is resumed first via 
 - **`blocked (existing spec …)`** from research: resume that spec instead.
 - **`blocked (crash marker …)`**: a marker of another command or task is in the tree; STOP 6 for the spec, with the marker summary in the report.
 - **`blocked (user gate <point>)`**: show the user the runner's summary and the point, take the answer, and resume the same runner with it.
+- **`follow-ups:`** (the other parts of a split, point `scope`): tell the user each request in one line, to start as its own feature; never queue or start them.
 - **`blocked (intent: <n> questions)`** from verify (STOP 1): park the spec, with the questions in its ledger row. On resume (`/conduct specs/<KEY|NNN>-*`), show the user each surface with its Include/Exclude options, take the answers verbatim, and launch a fresh `/verify` runner whose Inputs carry each question with its answer, verbatim (`_intent-check.md` records them before its auditor runs).
 - **`blocked (write refused: <path>)`**: save the content the runner returned verbatim to that path, commit it as `[WIP] Docs: <feature> — <file>`, and resume the runner.
 - **`/verify` files bugs**: run one `fix` runner per bug, sequentially (pre-wave check before each), then `/verify` again. A spec still failing after 3 verify cycles is STOP 6.

@@ -1,6 +1,6 @@
 # /plan — Technical Implementation Plan
 
-Takes an approved spec and produces a technical plan: research findings, data model, API contracts, and architecture decisions. This is the bridge between WHAT (spec) and HOW (task breakdown).
+Takes an approved spec and produces a technical plan: research findings, data model, API contracts, and architecture decisions.
 
 ## Usage
 ```
@@ -37,11 +37,11 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 - Check how similar features are implemented
 - Identify reusable code and patterns
 - For greenfield projects: check the constitution's scaffolding guide for pattern references
-- Do not re-read `docs/`; the spec's "Current State" and "Affected Areas" carry their context (rule 8)
+- Do not re-read `docs/` (rule 8)
 
 ### Step 2: Signal Scan
 
-Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack.** If the spec references a library/technology that's already in the project's dependencies (check `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.), that is NOT a signal.
+Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack** (as listed in `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.).
 
 | Signal | Example | NOT a signal when... |
 |--------|---------|---------------------|
@@ -61,8 +61,7 @@ Read the spec and check for these signals. **Only flag signals for things NOT al
 For each signal, choose the appropriate research tool:
 
 **For specific libraries named in the spec:**
-- Try Context7 first (`resolve-library-id` → `query-docs`)
-- If Context7 has no docs for the library, fall back to WebSearch
+- Context7 first (`resolve-library-id` → `query-docs`); WebSearch when it has no docs for the library
 
 **For comparing alternatives or architectural decisions:**
 - Use WebSearch to find current best practices and proven approaches
@@ -96,13 +95,11 @@ Save to `specs/[feature-name]/research.md`:
 | [option B] | [pros] | [cons] | Chosen / Rejected |
 | [option C] | [pros] | [cons] | Chosen / Rejected |
 
-**Decision**: [chosen option] — [one-line rationale]
+**Decision**: [chosen option] — [one-line rationale] (a "Key Design Decisions" row)
 
 ## References
 - [links to docs, examples, or source files consulted]
 ```
-
-With no signals, skip research.md.
 
 ## PHASE 1: Technical Design
 
@@ -144,11 +141,11 @@ If the feature involves API calls (REST, GraphQL, etc.), define contracts. Save 
 - **Errors**: [error cases and response format]
 ```
 
-For existing codebases, reference existing GraphQL queries/mutations or REST endpoints. Only document NEW or CHANGED contracts.
+For existing codebases, reference the existing queries, mutations or endpoints. Only document NEW or CHANGED contracts.
 
 ### 1.3: Architecture Decisions
 
-Document HOW the feature maps to the project's architecture. This is the core of the plan.
+Document HOW the feature maps to the project's architecture. This is the core of the plan; each decision is a "Key Design Decisions" row.
 
 ### 1.4: Structural specs
 
@@ -196,7 +193,7 @@ A plan that touches a theme's files and records neither is incomplete. A copy gr
 
 ## PHASE 2: Write the Plan
 
-Save to `specs/[feature-name]/plan.md`:
+Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns).
 
 ```markdown
 # Plan: [Feature Name]
@@ -204,10 +201,11 @@ Save to `specs/[feature-name]/plan.md`:
 **Date**: [YYYY-MM-DD]
 **Spec**: [path to spec.md]
 **Status**: Draft
+**Format**: 2 [only when the spec has it]
 
 ## Summary
 
-[2-3 sentences: what this plan implements and the technical approach]
+[As "Plans" says]
 
 ## Technical Context
 
@@ -225,8 +223,6 @@ Save to `specs/[feature-name]/plan.md`:
 
 ### Layer Map
 
-[Which architectural layers this feature touches and what happens in each]
-
 | Layer | What | Files (existing or new) |
 |-------|------|------------------------|
 | Domain | [types, interfaces, use cases] | [file paths] |
@@ -235,9 +231,9 @@ Save to `specs/[feature-name]/plan.md`:
 
 ### Key Design Decisions
 
-| Decision | Chosen Approach | Why | Alternatives Rejected |
-|----------|----------------|-----|----------------------|
-| [decision] | [approach] | [rationale] | [alternatives] |
+| Id | Decision | Chosen Approach | Why | Alternatives Rejected |
+|----|----------|----------------|-----|----------------------|
+| DEC-[N] | [decision] | [approach] | [rationale] | [alternatives] |
 
 ### File Impact
 
@@ -292,9 +288,9 @@ Save to `specs/[feature-name]/plan.md`:
 
 ## Risk Assessment
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| [risk] | Low/Med/High | Low/Med/High | [how to handle] |
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-[N] | [risk] | Low/Med/High | Low/Med/High | [how to handle] |
 
 ## Dependencies
 
@@ -311,16 +307,15 @@ Save to `specs/[feature-name]/plan.md`:
 
 Before presenting the plan to the user, verify completeness:
 
-1. Read every AC from the spec's Acceptance Criteria section
-2. For each AC, verify the plan addresses it:
-   - Check the plan's "Layer Map" and "File Impact" for files/components related to this AC
-   - Check "Key Design Decisions" for approach decisions relevant to this AC
+1. Read every AC of the spec
+2. For each AC, verify the plan addresses it: files or components in "Layer Map" and "File Impact", approach decisions in "Key Design Decisions"
 3. If any AC has no clear implementation path in the plan:
    - Revise the plan to add the missing coverage
    - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown"
-4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
+4. Check the reverse: a File Impact file NOT in the spec's Affected Areas gets a note in File Impact as an addition discovered during planning.
 5. Every new symbol or concept in File Impact, the data model and the contracts has a Reuse Map row with its search; every "Prior art" candidate of the spec decided `reuse` or `extend` has its row (1.5 step 0); every theme of 1.6 whose files the plan touches has a decision in "Open Themes Touched".
 6. Every copy group and hub that 1.5 step 5 listed for a touched file has a row in "Copies and Hubs", and every group the plan would bring to a third copy has a seam task ordered before the copy.
+7. Run `python3 scripts/forge/spec_lint.py labels specs/[feature-name]/plan.md` and fix its blocking findings.
 
 ## PHASE 2.6: Independent Gate (plan-gate)
 
@@ -332,23 +327,24 @@ Read `.claude/commands/_independent-gate.md` and run the **plan-gate** (architec
 
 **Autonomous mode** (`_autonomous-mode.md`, point `plan`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting. A question for the user is answered as point `clarify` says.
 
-Present a summary:
+Present a summary (`CLAUDE.md` → "Talking to the User"):
 
 "I've created the technical plan at `specs/[feature-name]/plan.md`.
 
+[A `**Format**: 2` plan: its `## Summary` in place of the next four lines]
 **Approach**: [1-2 sentences]
 **Files affected**: [count] ([N] new, [M] modified)
 **Key decisions**: [list the most important ones]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]
-**Spec hash**: [Prerequisites step 2]
-[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
+**Spec since review**: [Prerequisites step 2, in words]
+[the gate result from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and approve. Once approved, run `/breakdown` to generate tasks."
 
 ## IMPORTANT RULES
 
-1. **Plans describe HOW, not WHAT** — the spec already defines WHAT. Don't repeat requirements, translate them into technical decisions
+1. **Plans describe HOW, not WHAT** (`_writing.md`) — translate requirements into technical decisions, never repeat them
 2. **Constitution compliance is mandatory** — verify before presenting to user. If the plan would violate a rule, redesign or flag it
 3. **Reference existing code** — for existing codebases, always reference actual file paths and existing patterns. Don't propose new patterns when existing ones work
 4. **Greenfield: follow the scaffolding guide** — the constitution's Section 7 (or the document it points to) defines where things go. Follow it

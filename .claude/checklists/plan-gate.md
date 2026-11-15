@@ -6,7 +6,7 @@
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
-- Severity is Critical, Warning or Suggestion. Critical when the design breaks a project rule or the spec, opens a data or secret exposure (one caller reaching another owner's data, a secret reaching a client or log), or leaves an AC unverifiable at the planned level.
+- Severity is Critical, Warning or Note. Critical when the design breaks a project rule or the spec, opens a data or secret exposure (one caller reaching another owner's data, a secret reaching a client or log), or leaves an AC unverifiable at the planned level.
 - Defects outside the list are reported too, as `new`.
 
 **Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape <KEY|NNN>/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id in their lens; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.

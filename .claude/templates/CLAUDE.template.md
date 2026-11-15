@@ -69,6 +69,14 @@ Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existi
 ### Structural Checks
 - The project binding `.claude/quality-profile.json` (search scopes, ratchets, hubs, audit gate; empty keys run in their manual form) feeds `/review`'s Structural Check: a grown ratchet or a third copy the plan did not decide is Critical.
 
+## Talking to the User
+
+Every message to the user (a summary, a HARD GATE, a question, a report, a relayed result) follows these rules:
+- **Words first**: say the thing; a label may follow in brackets: "exports run nightly (DEC-2)", never "DEC-2" alone. Labels: `.claude/storage-rules.md` → "Labels".
+- **Constitution sections by name**: "the error-handling rule (§ 2.2)", never "§ 2.2" alone.
+- **Counts in words**: "1 critical, 7 warnings, no notes", never `C1 W7 N0`.
+- **Forge's machine ids** (`.claude/storage-rules.md` → "Labels") stay in files; a message says what they mean.
+
 ## Key Rules
 
 ### Always
@@ -120,7 +128,7 @@ Flow: `/setup-wizard` → `/constitute` (once each) → `/onboard` (once, existi
 
 ## Artifact Storage
 
-Features live in `specs/<KEY|NNN>-kebab-name/` (`<KEY|NNN>`: the ticket key, or a number when there is none; `research-report.md`, `spec.md`, `plan.md`, optional `research.md`, `data-model.md`, `contracts.md`, `tasks/` with `README.md` and `NNN-short-title.md`, `gates/`, `escapes.md`); docs by topic in `docs/` (`overview.md`, `architecture.md`, `features/`, `api/`, `guides/`). Full conventions: `.claude/storage-rules.md`. **Wrapper mode**: all artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`.
+Features live in `specs/<KEY|NNN>-kebab-name/` (`<KEY|NNN>`: the ticket key, or a number when there is none; `research-report.md`, `spec.md`, `history.md` (Format 2 specs: the request and the user's answers), `plan.md`, optional `research.md`, `data-model.md`, `contracts.md`, `tasks/` with `README.md` and `NNN-short-title.md`, `gates/`, `escapes.md`); docs by topic in `docs/` (`overview.md`, `architecture.md`, `features/`, `api/`, `guides/`). Full conventions: `.claude/storage-rules.md`. **Wrapper mode**: all artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`.
 
 ## Session Continuity
 

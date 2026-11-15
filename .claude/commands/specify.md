@@ -42,11 +42,7 @@ Determine the repository's default branch using these methods in order:
 
 **If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
 
-**If on the default branch**: Prepare for spec branch creation (branch is created in Phase 4 once the directory is named):
-
-1. **Generate short description**: From `$ARGUMENTS` (a research report or feature directory: from the report's Request block), generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`). Save this for use in Phase 4.
-
-2. **Note**: Branch creation is deferred to Phase 4 so the branch number matches the spec directory number. Phases 1-3 are read-only research and safe to run on the default branch.
+**If on the default branch**: the branch is created in Phase 4, once the directory is named, so both share the name; Phases 1-3 only read and are safe here. **Generate a short description** from `$ARGUMENTS` (a research report or feature directory: from the report's Request block), a 2-3 word kebab-case summary of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`), for Phase 4.
 
 **If on any other branch** (not default, not `spec/*`): Ask the user:
 ```
@@ -73,7 +69,7 @@ When `.claude/quality-profile.json` sets `auditGate`, run `python3 scripts/forge
 
 When `auditGate` is unset, or the script reports the state as unknown, note it in the HARD GATE summary and continue.
 
-**Autonomous mode** (`_autonomous-mode.md`, point `audit-gate`): exit 1, and exit 2 on a remediation request after the retry, are STOP 8. Spec type when unsure: `structural` only when the request remediates audit themes or names no behaviour change; record the choice under Decisions.
+**Autonomous mode** (`_autonomous-mode.md`, point `audit-gate`): exit 2 on a remediation request after the retry is STOP 8 too; a spec type that is unsure is chosen as that point says and recorded under Decisions.
 
 ## Pre-Step: Reset Session State
 
@@ -88,7 +84,7 @@ No tasks executed yet. This file is updated automatically after each `/execute-t
 
 ## PHASE 1: Understand the Request
 
-Read the user's description from `$ARGUMENTS`, or from the report's Request block when `$ARGUMENTS` is a report or its directory. The spec records it verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
+Read the user's description from `$ARGUMENTS`, or from the report's Request block when `$ARGUMENTS` is a report or its directory. It is recorded verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
 
 Before doing ANY analysis, read these files for context:
 1. `constitution.md` — project rules and patterns
@@ -100,7 +96,7 @@ Before doing ANY analysis, read these files for context:
    - `docs/features/*.md` — scan for features related to the request
    - `docs/api/*.md` — if the request involves API changes
    - If `docs/` doesn't exist or is empty, skip — rely on codebase analysis in Phase 3
-5. The `/research` report for this request (`specs/<KEY|NNN>-*/research-report.md`, or a `research/YYYY-MM-DD-<slug>.md` from before 1.39.0), when the user names one or `$ARGUMENTS` is its path (its `**Request (verbatim)**` block is then the request). Its "Reuse or Extend" rows are the first prior-art candidates of Phase 1.5, and its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use its findings (its Request block is still the request: copy it), tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
+5. The `/research` report for this request (`specs/<KEY|NNN>-*/research-report.md`, or a `research/YYYY-MM-DD-<slug>.md` from before 1.39.0), when the user names one or `$ARGUMENTS` is its path. Its `**This part**:` field, after a split, is the part this spec covers. Its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use its findings (its Request block is still the request: record it), tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
 
 ## PHASE 1.5: Prior Art
 
@@ -132,9 +128,9 @@ Based on the description, identify ambiguities and ask clarifying questions. Ask
 - After each round, decide if more clarification is needed based on the answers
 - Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
 - If the description is clear enough, skip to Phase 3
-- Each question as asked and the user's answer as given go verbatim into the spec's `## Request (verbatim)` section
+- Each question as asked and the user's answer as given go verbatim into the request record
 
-**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never Request entries.
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never request-record entries.
 
 ## PHASE 3: Codebase Analysis
 
@@ -170,11 +166,11 @@ Since there's little or no existing code:
 4. **Reference framework docs** — use WebSearch if needed for framework-specific best practices for this feature type
 5. **Check MEMORY.md** — for any lessons from previous features in this project
 
-**Key difference**: In the spec, "Section 2: Current Behavior" should describe "Current State" instead — what exists so far (even if nothing) and what the scaffolding guide says about where this feature should live.
+**In the spec**, "Current State" says what exists so far (even nothing) and where the scaffolding guide puts this feature.
 
 ## PHASE 4: Write the Specification
 
-Use the feature directory of `$ARGUMENTS` when there is one. Otherwise name and create it by `.claude/storage-rules.md` → "Feature Directories": one ticket per feature (several keys: ask; autonomous point `ticket`); an existing directory of the ticket is reused, and its `research-report.md` is the research report. Save the spec to `specs/<KEY|NNN>-feature-name/spec.md`.
+Use the feature directory of `$ARGUMENTS` when there is one. Otherwise name and create it by `.claude/storage-rules.md` → "Feature Directories" (autonomous point `ticket`); a reused directory's `research-report.md` is the research report. Save the spec to `specs/<KEY|NNN>-feature-name/spec.md`.
 
 **If branch creation was deferred from Phase 0.3**: Before writing any files, create and checkout the spec branch named after the directory:
 ```
@@ -196,6 +192,8 @@ The acceptance criteria of a structural spec are invariants, each with the check
 
 ### Spec Format:
 
+A new spec takes this template. Read `.claude/commands/_writing.md` → "Specs" now: each section holds what it says. Save the request record to a new `specs/<KEY|NNN>-feature-name/history.md` (`_intent-check.md` → "The Request Record").
+
 ```markdown
 # Spec: [Feature Name]
 
@@ -203,20 +201,16 @@ The acceptance criteria of a structural spec are invariants, each with the check
 **Status**: Draft | Approved | In Progress | Complete
 **Author**: Claude + [User]
 **Type**: feature | structural
+**Format**: 2
 [The `Audit gate: …` line from Phase 0.4, verbatim; omit when `auditGate` is unset]
 
-## Request (verbatim)
+## 1. Summary
 
-[The request and the Phase 2 questions and answers, word for word; rules in `.claude/commands/_intent-check.md` → "The Request Record"]
-
-## 1. Overview
-
-[2-3 sentence description of what this feature does and why it's needed]
+[5-10 plain lines for people, with why it is needed]
 
 ## 2. Current State
 
-[Existing codebase: Describe how the system currently works in the affected area. Include file paths and line numbers. Incorporate context from docs/ loaded in Phase 1 — documented behavior, architecture patterns, and feature relationships. This section is the primary way downstream commands (/plan, /breakdown) inherit docs knowledge, so capture it fully here rather than assuming they will read docs themselves.]
-[Greenfield: Describe what exists so far (may be nothing). Reference the constitution's scaffolding guide for where this feature should be built.]
+[The facts the criteria and the plan depend on, with file:line; a link to research-report.md, when there is one, for the rest]
 
 ## 2a. Prior art
 
@@ -226,54 +220,48 @@ The acceptance criteria of a structural spec are invariants, each with the check
 |-----------|------------------------------|----------|---------------|
 | [symbol, module or feature-doc section] | [the behaviour the spec needs, extends, re-specifies or may contradict] | reuse behaviour / extend / new, because [reason] / unrelated after reading | [file:line, callers found] |
 
-## 3. Desired Behavior
+## 3. Behaviour and Acceptance Criteria
 
-[Describe exactly what should change]
-[Be specific — "the button should be blue" not "improve the button"]
+### 3.1 [Behaviour]
+
+[A few lines of behaviour]
+
+- [ ] **AC-1**: [Specific, testable criterion]
 
 ## 4. Affected Areas
 
 | Area | Files | Impact |
 |------|-------|--------|
 | [Component/Module] | [file paths] | [what changes] |
-| ... | ... | ... |
 
-## 5. Acceptance Criteria
+## 5. Out of Scope
 
-Each criterion must be testable and unambiguous:
+- [One line per entry]
 
-- [ ] **AC-1**: [Specific, testable criterion]
-- [ ] **AC-2**: [Specific, testable criterion]
-- [ ] **AC-3**: [Specific, testable criterion]
-...
+## 6. Technical Constraints
 
-## 6. Out of Scope
+[Only what constitution.md and CLAUDE.md do not already say: external systems, features that must not break]
 
-[Explicitly list things that are NOT part of this spec]
-[This prevents scope creep during implementation]
+## 7. Decisions
 
-- NOT included: [thing 1]
-- NOT included: [thing 2]
-
-## 7. Technical Constraints
-
-[Any constraints from the constitution, architecture, or external systems]
-
-- Must follow: [architecture pattern]
-- Must not break: [existing feature]
-- Must use: [specific API/pattern]
+- **DEC-1** [Title]: [decision]. Why: [one sentence].
 
 ## 8. Open Questions
 
-[Any remaining uncertainties that might come up during implementation]
-[These should be minor — major questions should have been resolved in Phase 2]
+- **Q-[N]** [Question]
 
 ## 9. Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| [risk] | Low/Med/High | Low/Med/High | [how to handle] |
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-1 | [risk] | Low/Med/High | Low/Med/High | [how to handle] |
 ```
+
+**An existing spec keeps its format.** When the directory already has a `spec.md` (a revision, for example when `/verify` or the intent check sends the user back), edit it in place, keeping its `**Format**: 2` line or its absence. An older spec keeps its Request section (when it has one) and its own section names and numbers; a decision goes under its Decisions section, added after Risks when missing.
+
+### Size Check
+
+A `**Format**: 2` spec, once its criteria are written: run `python3 scripts/forge/spec_lint.py scope specs/<KEY|NNN>-*` and apply `.claude/storage-rules.md` → "Feature Size".
 
 ## PHASE 4.5: Independent Gate (spec-gate)
 
@@ -285,26 +273,29 @@ Read `.claude/commands/_independent-gate.md` and run the **spec-gate** on `specs
 
 **Autonomous mode** (`_autonomous-mode.md`, point `specify`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting.
 
-Present the spec summary to the user:
+Present the spec to the user (`CLAUDE.md` → "Talking to the User"):
 
-"I've created the specification at `specs/<KEY|NNN>-[feature-name]/spec.md`. Key points:
+"I've created the specification at `specs/<KEY|NNN>-[feature-name]/spec.md`.
+[A `**Format**: 2` spec: its `## 1. Summary` as written. An older spec: these key points]
 - **What changes**: [1-2 sentences]
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria
 - **Out of scope**: [key exclusions]
-- [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
+
+[the gate result from `_independent-gate.md` → "At the HARD GATE"]
+[After a Size Check split: each other part as `/research "<request>"`]
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
 
-A change request that adds or excludes scope is appended to the Request section, verbatim and dated.
+A change request that adds or excludes scope is appended to the request record, verbatim and dated.
 
 ## IMPORTANT RULES
 
 1. **Specs are contracts** — once approved, the implementation must satisfy every acceptance criterion
 2. **Be exhaustive on "out of scope"** — this prevents the most common problem (scope creep)
 3. **Every AC must be testable** — "improved UX" is not testable, "modal closes after successful save" is
-4. **Reference specific files** — use `path/to/file.ts:line` format for existing code. For greenfield, reference the constitution's directory structure for where files should be created
+4. **Reference specific files** — use `path/to/file.ts:line` for existing code. For greenfield, reference the constitution's directory structure for where files should be created
 5. **Check MEMORY.md** — if similar work was done before, reference what went right/wrong
-6. **Don't propose solutions** — the spec describes WHAT, not HOW. Solutions come in `/breakdown`
+6. **Don't propose solutions** — the spec says WHAT (`_writing.md` → "Rules")
 7. **Greenfield: include scaffolding needs** — if the feature requires creating directory structure, types, or foundational modules that don't exist yet, list them in the "Affected Areas" table with Impact = "Create new"
 8. **Prior art before questions** — Phase 1.5 runs before Phase 2, and the spec carries its "2a. Prior art" section; a spec without it is incomplete. The decision is about behaviour (reuse, extend, new); the symbol to call is the plan's decision

@@ -136,10 +136,12 @@ Run these on ALL changed files across all tasks. Run each command check through 
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
-- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope. Files changed to cover a surface the user included (an Include answer in the spec's Request section) are in scope
+- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope. Files changed to cover a surface the user included (an Include answer in the request record, `_intent-check.md` → "The Request Record") are in scope
 - **Leftover artifacts**: Check for debug logs, bare TODOs, commented-out code across all changed files
 
 ## PHASE 5: Generate Verification Report
+
+Read `.claude/commands/_writing.md` → "Reports" first.
 
 ```markdown
 ## Verification Report
@@ -202,7 +204,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 If all acceptance criteria pass, code quality checks pass and no included intent surface is open (Phase 3.5):
 1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/<KEY|NNN>-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
 2. Update the spec file status to "Complete"
-   - In the spec's **Acceptance Criteria** section, change `- [ ]` to `- [x]` for every AC that passed verification
+   - In the spec, change `- [ ]` to `- [x]` for every AC that passed verification
 3. Update the task index README.md with a completion summary
 
 If issues found:
@@ -225,7 +227,7 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 ## PHASE 8: Present Results
 
-Show the user the verification report and recommend next action:
+Show the user the verification report and recommend next action, in words (`CLAUDE.md` → "Talking to the User"):
 
 - If APPROVED: "All acceptance criteria are met and integration checks pass. Next: run `/finalize` to write the feature summary, generate docs and squash."
 - If NEEDS WORK: "Found [N] issues. Details in the verification report above." Then proceed to Phase 9.

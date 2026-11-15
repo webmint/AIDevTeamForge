@@ -15,11 +15,11 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
 
 ## Arguments
 - `$ARGUMENTS` — What to execute. Supports these formats:
-  - **Empty**: Execute the next pending task (lowest number with all dependencies satisfied) from the active feature.
+  - **Empty**: Execute the next pending task from the active feature.
   - **Single number** (e.g. `3`): Execute that specific task in the active feature.
   - **Feature/task** (e.g. `001/3` or `user-auth/3`): Execute a specific task in a specific feature.
   - **Comma-separated** (e.g. `1,3,5`): Execute these specific tasks sequentially in the active feature. Each task gets the full Phase 0–7 treatment.
-  - **Range** (e.g. `1-5`): Execute tasks 1 through 5 sequentially. Equivalent to `1,2,3,4,5`.
+  - **Range** (e.g. `1-5`): Execute tasks 1 through 5 sequentially.
   - **Wave** (e.g. `W2`): Execute the tasks of that wave, as listed in the feature's `tasks/README.md` "Waves" table.
   - **`all`**: Execute all pending tasks in the active feature, in dependency order.
 
@@ -357,13 +357,13 @@ Update `.claude/wip.md` — change Phase to `4 (Complete)`.
 1. In the task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`):
    - Change **Status** to `Complete`
    - In the **Done When** section, change every `- [ ]` to `- [x]` for conditions that were verified as met
-   - Fill in the Completion Notes section:
+   - Read `.claude/commands/_writing.md` → "Tasks", then fill in the Completion Notes section:
      ```
      **Completed**: [date/time]
      **Files changed**: [actual files that changed]
      **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
      **Reuse checks**: [the agent's `Reuse check:` lines, one per new exported symbol, or "none"]
-     **Notes**: [any deviations from plan or things to watch]
+     **Notes**: [as "Tasks" says]
      ```
 2. Update the task index (`specs/<KEY|NNN>-feature/tasks/README.md`) — mark this task's status as Complete
 

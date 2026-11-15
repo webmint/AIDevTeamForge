@@ -533,6 +533,60 @@ class ReportTests(Base):
         self.assertEqual(out[0], "W-2 quote_mismatch widget.py:3 (ambiguous: 2 candidates, none passes)")
         self.assertIn("note W-1 widget.py:3 ambiguous: 2 candidates, one passes", out)
 
+    CITE = "- `src/widget.py:3` — `return rate * 2`\n"
+
+    def test_new_id_form_clean_report(self):
+        code, out = self.run_report(
+            "## Critical\n### CRIT-1 a\n" + self.CITE + "## Warning\n### WARN-1 b\n" + self.CITE
+            + "## Note\n### NOTE-1 c\n" + self.CITE + "## Re-check\n### CRIT-1: closed\n"
+            + "## Dispositions\n- CRIT-1: fixed — done\n- WARN-1, NOTE-1: recorded\n")
+        self.assertEqual((code, out), (0, ["citations: 3 checked, 0 failed"]))
+
+    def test_new_id_form_failures(self):
+        code, out = self.run_report("## Note\n### NOTE-1 [security-floor] leak\n" + self.CITE)
+        self.assertEqual((code, out[0]), (1, "NOTE-1 floor_in_suggestion -"))
+        code, out = self.run_report("## Note\n### NOTE-1 a\nno evidence here\n")
+        self.assertEqual(out[0], "NOTE-1 no_quoted_citation -")
+        code, out = self.run_report("## Warning\n### WARN-1 a\n" + self.CITE + "- **WARN-2** bullet\n")
+        self.assertEqual(out[0], "WARN-2 finding_not_heading -")
+        code, out = self.run_report("## Critical\n#### CRIT-1 deep\n" + self.CITE)
+        self.assertIn("CRIT-1 finding_not_heading -", out)
+        code, out = self.run_report("## Warning\n### WARN-1 a\n" + self.CITE + "## Checked and passing\n### NOTE-9 x\n")
+        self.assertEqual(out[0], "NOTE-9 finding_not_heading -")
+
+    def test_note_section_title_matches_exactly(self):
+        for title in ("Note", "note", "NOTE"):
+            code, out = self.run_report("## " + title + "\n### NOTE-1 a\n" + self.CITE)
+            self.assertEqual(code, 0, title)
+        for title in ("Notes", "Notes and observations", "Note on scope"):
+            code, out = self.run_report("# t\n**Result**: C0 W0 N0\n## " + title + "\n### NOTE-1 a\n" + self.CITE)
+            self.assertEqual(out[0], "NOTE-1 finding_not_heading -", title)
+        code, out = self.run_report("## Warnings\n### WARN-1 a\n" + self.CITE)  # the other severities keep the prefix match
+        self.assertEqual(code, 0)
+
+    def test_clean_count_line_both_forms(self):
+        for count in ("C0 W0 N0", "C0 W0 S0"):
+            code, out = self.run_report("# Gate\n**Result**: " + count + ".\n")
+            self.assertEqual((code, out), (0, ["citations: 0 checked, 0 failed"]), count)
+        code, out = self.run_report("# Gate\n**Result**: C0 W1 N0.\n")
+        self.assertEqual(out[0], "report no_findings_parsed -")
+
+    def test_old_form_report_keeps_a_free_text_note_section(self):
+        # a 1.39-era report: `## Note` is a plain section there, as before the new forms
+        for body in ("# Gate\n**Result**: C0 W0 S0.\n## Note\nThe spec reads well.\n",
+                     "# Gate\n## Warning\n### W-1 a\n" + self.CITE + "## Note\nThe spec reads well.\n",
+                     "## Suggestion\n### S-1 a\n" + self.CITE + "## Note\nThe spec reads well.\n"):
+            self.assertEqual(self.run_report(body)[0], 0, body)
+        # a new-form report: `## Note` is a severity section, so prose before its first finding is flagged
+        code, out = self.run_report("# Gate\n**Result**: C0 W0 N0.\n## Note\nThe spec reads well.\n")
+        self.assertEqual((code, out[0]), (1, "report finding_not_heading -"))
+
+    def test_old_and_new_ids_in_one_report(self):
+        # a report keeps the form it was started with; the parser does not enforce that, it accepts both
+        code, out = self.run_report("## Warning\n### W-1 a\n" + self.CITE + "### WARN-2 b\n" + self.CITE
+                                    + "## Suggestion\n### S-1 c\n" + self.CITE)
+        self.assertEqual((code, out), (0, ["citations: 3 checked, 0 failed"]))
+
 
 class SnapshotTests(Base):
     """Finding citations of the gate's own spec verify against the spec as reviewed (gates/spec.reviewed-*.md)."""

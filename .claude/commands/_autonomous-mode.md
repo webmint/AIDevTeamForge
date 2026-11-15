@@ -23,6 +23,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `default-branch` | `/specify` 0.2, no default branch found | Use `DEFAULT_BRANCH` from `.claude/project-config.json` |
 | `audit-gate` | `/specify` 0.4: exit 1 (an audit is due); exit 2 on a remediation request after the retry; spec type unsure | Exit 1 and the remediation exit 2: STOP 8, return `blocked (audit due)`; never "start anyway". Spec type: `structural` only when the request remediates audit themes or names no behaviour change; record the choice |
 | `ticket` | `/research` Phase 5 and `/specify` Phase 4, the request holds several ticket keys (`.claude/storage-rules.md` → "Feature Directories") | Never chosen autonomously: return `blocked (user gate ticket)` with the keys found |
+| `scope` | `/research` Phase 5 and `/specify` Phase 4 "Size Check", a size signal fires and no choice is recorded (`.claude/storage-rules.md` → "Feature Size") | Never chosen autonomously: return `blocked (user gate scope)` with the signals, their numbers and the options. After a split, the runner that took the answer lists the other parts under `follow-ups:` |
 | `existing-spec` | `/research` Phase 1, an existing spec covers the topic | Return `blocked (existing spec specs/<KEY|NNN>-*)`; the conductor resumes that spec |
 | `clarify` | `/specify` Phase 2, `/plan` questions, `/fix` questions | Answer from the sources of truth. When they do not answer, take the recommended option and record it as a decision. A question that falls under STOP 1 or 2 is a STOP |
 | `specify` | `/specify` Phase 5 HARD GATE | Self-approval (below) |
@@ -32,7 +33,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 | `checkpoint` | `_multi-task-continuation.md` review checkpoint | "Continue" |
 | `context` | `_multi-task-continuation.md` context health | Ignore the task count. On a context guard message: finish the current task, run the Batch Gate over the completed tasks (unless the stop message forbids it), and return `status: paused (context)` with `next` naming the remaining tasks; never show the compaction prompt |
 | `recovery` | `_recovery.md` 0.3, a crash marker `.claude/wip.md` exists | "Resume" when the marker names the same command, task and feature as this runner's prompt; otherwise return `blocked (crash marker: <its summary>)` without touching it |
-| `intent` | `/verify` Phase 3.5, the intent check lists DIRECT surfaces the spec's Request section does not answer yet | STOP 1: write the run report and return `blocked (intent: <n> questions)` with the surfaces as questions; never answer them from the sources of truth or the spec. The answers come back on resume (`/conduct` → "Runner Outcomes") |
+| `intent` | `/verify` Phase 3.5, the intent check lists DIRECT surfaces the request record (`_intent-check.md`) does not answer yet | STOP 1: write the run report and return `blocked (intent: <n> questions)` with the surfaces as questions; never answer them from the sources of truth or the spec. The answers come back on resume (`/conduct` → "Runner Outcomes") |
 | `bugs` | `/verify` 9.3 bug filing | "Yes": file every issue. The runner never fixes product code; the conductor runs one `/fix` per bug |
 | `fix-scope` | `/fix` Phase 1, "larger than expected" | STOP 1: return `blocked`; the conductor parks it and proposes a `/specify` |
 | `fix` | `/fix` Phase 2 diagnosis HARD GATE | Self-confirm the root cause once the evidence shows it (a reproduction, a failing test or a quoted code path), and record it. Without such evidence: STOP 6 after 3 attempts |
@@ -46,7 +47,7 @@ When rule 1 or 2 fails, the command keeps its interactive form, even when the us
 A HARD GATE self-approves only after its independent gate (`_independent-gate.md`); for the spec and the plan, the `spec-gate` / `plan-gate` phase runner self-approves, not the authoring runner (`_independent-gate.md` → "When It Runs"):
 - The gate must run. When its checklist says `**Gate**: off` (or the file is missing), the point is interactive: stop as at a point kept interactive. A breakdown-gate that `_independent-gate.md` skips for a structural spec is not off: the runner checks itself that every copy the plan lists and every Reuse Map row lands in a task, records that in its run report, and self-approves.
 - The gate's loop ends with no open Critical. In autonomous mode a Critical the author `rejected` stays open unless the fresh re-check reviewer (`_independent-gate.md` → "Loop" step 1) accepts the rejection. A Critical still open after the loop, or a finding that Loop step 2 or 5 or "Spec-gate checks" step 3 (an `unverified` Critical) or step 5 (a security-floor disposition that fails the script) sends to the HARD GATE as open, is STOP 6 (the conductor parks the spec).
-- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> S<n>, open Critical: none` under the header, and continue.
+- Then set the artifact's `**Status**: Approved`, add `Self-approved (autonomous mode, <date>): <checks performed>; gate <gate> C<n> W<n> N<n>, open Critical: none` under the header, and continue.
 
 An artifact that the user never saw is approved on evidence, not on trust: the gate is what makes self-approval acceptable.
 
@@ -68,7 +69,7 @@ When sources conflict, earlier entries win:
 ## STOP Conditions
 
 Stop, report, and wait for the user:
-1. A product decision the sources do not answer and that is costly to reverse (scope, money or legal semantics, data loss). DIRECT surfaces the Request section does not answer yet are STOP 1: only the user answers them (point `intent`).
+1. A product decision the sources do not answer and that is costly to reverse (scope, money or legal semantics, data loss). DIRECT surfaces the request record does not answer yet are STOP 1: only the user answers them (point `intent`).
 2. An irreconcilable conflict between sources of truth, or a needed change to a constitution rule.
 3. Credentials, accounts, paid or external services: a push other than the routine one under "Pull Requests", any force push, merging a pull request or any merge into a remote branch, a deploy, a change to repository, CI or cloud settings or secrets. A local fast-forward of the default branch to its remote (`git merge --ff-only`) is routine.
 4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` are routine.
@@ -90,13 +91,13 @@ STOP 1, 3, 4 and 6 confined to one spec park that spec; the others stop the run 
 - **Review effort follows severity**, as in the `task-review` row. A repair of the same failed item relaunches the specialist one `effort` level above its definition (`medium` → `high` → `xhigh`; never `max`).
 - **Instruction and config files**: a finding whose fix would reword `CLAUDE.md`, `.claude/agents/*.md`, `.claude/commands/*.md` or `.claude/project-config.json` beyond an acceptance criterion is recorded for the user, not fixed.
 - **Session state**: a runner skips the commands' steps that write or reset `.claude/session-state.md` (reading it is fine): parallel runners would overwrite each other's snapshot. The conductor's ledger is the resume source.
-- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. Commit every `specs/<KEY|NNN>-*/gates/*` file you wrote (the `scripts/forge/` checks write them too) with your phase's commit. A research runner commits only its `research-report.md`, alone, on the spec branch it created.
+- **Commits**: where you stage yourself, stage by explicit path, never `git add -A` or `.`: another runner may be writing in the same tree. Commit your run report before you return (with the phase's own commit, or alone as `[WIP] Docs: <feature> — <phase> run report`), so the tree is clean. Commit every `specs/<KEY|NNN>-*/gates/*` file you wrote (the `scripts/forge/` checks write them too), and `specs/<KEY|NNN>-*/history.md` when you wrote to it, with your phase's commit. A research runner commits only its `research-report.md`, alone, on the spec branch it created.
 - **Write refused**: when the harness refuses a runner's Write of `summary.md` (or another report), return its full content with `status: blocked (write refused: <path>)`; the conductor saves it verbatim, commits it, and resumes the runner.
 - **Open items**: a finding the unit does not fix (deferred Warning or one whose fix was reverted, recorded-only finding, follow-up) goes under `## For the register` in the run report, one line each with its severity. The conductor decides where it goes (an issue, the next spec, the user).
 
 **Run report**: `specs/<KEY|NNN>-*/runs/<phase>[-task-NNN | -W<n>].md` (a research runner: the research report itself). It covers what was done, the gate details, the review findings with their dispositions, the self-approval notes, and one line `binding: <keys of .claude/quality-profile.json the phase read; "(unset)" after a key that fell back> | none`.
 
-**Result block** — the runner's entire final message, at most 10 lines:
+**Result block** — the runner's entire final message, at most 11 lines:
 ```
 phase: <phase>[ task NNN | wave W<n>]
 spec: <specs/<KEY|NNN>-slug>
@@ -108,10 +109,13 @@ blockers: <one line each, with its STOP number or finding id> | none
 duration: <h:mm>
 nested: all completed (<n>) | none | pending <ids> (a STOP only)
 next: <exact next command>
+follow-ups: "<request>"; … (the other parts of a split, point `scope`) | none
 ```
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
 - `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
-- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers return the gate's own lines, and the runner that ran the gate puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> S<n>` in `gates:`.
+- The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers return the gate's own lines, and the runner that ran the gate puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> N<n>` in `gates:`.
+- `follow-ups` holds only the other parts of a split, each as the request the user will start; open items go under `## For the register`.
+- What reaches the user (a user-gate summary, a `blockers:` line, a STOP report) is in words: `CLAUDE.md` → "Talking to the User".
 
 ## Pull Requests
 

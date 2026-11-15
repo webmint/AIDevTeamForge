@@ -326,6 +326,449 @@ class LintAdvisory(Base):
         self.assertIn("Spinner.spin", found[0][2])
 
 
+FORMAT2_SPEC = GOOD_SPEC.replace("**Type**: feature\n", "**Type**: feature\n**Format**: 2\n") + """
+## 7. Decisions
+
+- **DEC-1** Spin order: clockwise. Why: the motor turns that way.
+
+## 8. Open Questions
+
+- **Q-2** Which colour?
+
+### Q-3 Which size?
+
+## 9. Risks
+
+| Id | Risk |
+|----|------|
+| RISK-1 | the motor stalls |
+
+The gate found CRIT-1, WARN-2 and NOTE-3; DEC-1 answers Q-2 and RISK-1 stays.
+"""
+
+
+class Labels(Base):
+    def lint(self, text, key=None):
+        blocking, advisory = spec_lint.lint(text, key)
+        return [f for f in blocking + advisory if f[0] in ("B5", "A4")]
+
+    def config(self, pattern):
+        os.makedirs(os.path.join(self.root, ".claude"), exist_ok=True)
+        with open(os.path.join(self.root, ".claude", "project-config.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"ISSUE_KEY_PATTERN": "%s"}' % pattern)
+
+    def test_every_label_of_the_table_passes(self):
+        self.assertTrue(spec_lint.is_format2(FORMAT2_SPEC))
+        self.assertEqual(spec_lint.lint(FORMAT2_SPEC), ([], []))
+
+    def test_invented_definitions_block(self):
+        text = FORMAT2_SPEC + "\n- **KD-2** Use the cache.\n### D1 Second choice\n1. **OQ-4** a\n- [ ] **PD-1**: b\n"
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found],
+                         [("B5", "KD-2"), ("B5", "D1"), ("B5", "OQ-4"), ("B5", "PD-1")])
+        self.assertIn("a product or standard name: reword so the item does not open with it", found[0][2])
+
+    def test_single_letter_definitions_block(self):
+        text = FORMAT2_SPEC + "\n- **S9** a\n- **T2** b\n- **X-1** c\n### W1 d\n- **N1** e\n"
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found],
+                         [("B5", "S9"), ("B5", "T2"), ("B5", "X-1"), ("B5", "W1"), ("B5", "N1")])
+
+    def test_short_standard_names_pass_as_definitions(self):
+        text = FORMAT2_SPEC + "\n- **S3** bucket\n- **EC2** hosts\n### P95 latency\n- **HTML5** forms\n"
+        self.assertEqual(self.lint(text), [])
+
+    def test_rows_of_a_label_table_block(self):
+        decisions = FORMAT2_SPEC.replace("- **DEC-1** Spin order: clockwise. Why: the motor turns that way.\n",
+                                         "| Decision | Why |\n|---|---|\n| DEC-1 | clockwise |\n| KD-1 | queue |\n")
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in self.lint(decisions)], [("B5", "KD-1")])
+        self.assertIn("so the row does not open with it", self.lint(decisions)[0][2])
+        by_header = FORMAT2_SPEC + "\n## 10. Parts\n\n| # | Part |\n|---|---|\n| P-1 | spinner |\n| T2 | stop |\n"
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in self.lint(by_header)], [("B5", "P-1"), ("B5", "T2")])
+
+    def test_label_table_heading_words_match_whole_words(self):
+        text = FORMAT2_SPEC + "\n## 10. Questionnaire fields\n\n| Field | What |\n|---|---|\n| V2 | form |\n"
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["A4"])
+        text = FORMAT2_SPEC + "\n## 10. Key Design Decisions\n\n| Field | What |\n|---|---|\n| V2 | form |\n"
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["B5"])
+
+    def test_table_rows_warn_only_for_an_unknown_label(self):
+        text = FORMAT2_SPEC + ("\n## 10. Parts\n\n| Name | What |\n|----|------|\n| OQ-3 | a |\n| T1 | b |\n| UTF-8 | c |\n"
+                               "| S3 | d |\n")
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("A4", "OQ-3")])
+        self.assertIn("table row", found[0][2])
+
+    def test_invented_reference_warns(self):
+        found = self.lint(FORMAT2_SPEC + "\nThis follows KD-9 and HG-1.\n")
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("A4", "KD-9"), ("A4", "HG-1")])
+
+    def test_forge_machine_ids_and_standard_names_pass(self):
+        text = FORMAT2_SPEC + ("\nSG-26, PG-A01, TR-27, B3-9, C1, E1, T1, F-3, W2, S-1, C0 W1 N2 S0, UTF-8, SHA-256, "
+                               "EC2, S3, ISO-8601, E2E and K8s.\n")
+        self.assertEqual(self.lint(text), [])
+
+    def test_literal_ticket_key_passes(self):
+        self.config("PROJ-[0-9]+")
+        key = spec_lint.project_key(self.root)
+        text = FORMAT2_SPEC + "\n- **PROJ-1301** the parent ticket\n\nSee PROJ-1302.\n"
+        self.assertEqual(self.lint(text, key), [])
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["B5", "A4"])  # without the project's pattern
+        self.write("spec.md", text)
+        self.assertEqual(self.run_cli("lint", FEATURE)[0], 0)
+
+    def test_old_spec_lints_as_before_the_label_checks(self):
+        text = GOOD_SPEC + "\nSee EN-12 AC-9, GB-4 §7 and EC-2 AC-8.\n"  # ticket keys qualify, as before
+        self.assertEqual(spec_lint.lint(text)[0], [])
+
+    def test_default_jira_pattern_is_ignored(self):
+        self.config("[A-Z][A-Z0-9]+-[0-9]+")
+        self.assertIsNone(spec_lint.project_key(self.root))
+        self.write("spec.md", FORMAT2_SPEC + "\n- **KD-2** Use the cache.\n")
+        code, out, _err = self.run_cli("lint", FEATURE)
+        self.assertEqual(code, 1)
+        self.assertIn("B5-", out)
+
+    def test_qualified_old_label_passes(self):
+        self.config("PROJ-[0-9]+")
+        text = FORMAT2_SPEC + "\nAs spec 001 D-3, 001's KD-2, ticket OQ-1 and PROJ-1301 D-4 said.\n"
+        self.assertEqual(self.lint(text, spec_lint.project_key(self.root)), [])
+
+    def test_quotes_code_spans_and_fences_are_skipped(self):
+        text = FORMAT2_SPEC + '\nThe user said "keep KD-2" and “drop D1”; see `KD-3`.\n\n```\n- **KD-4** x\n```\n'
+        self.assertEqual(self.lint(text), [])
+
+    def test_a_file_without_format_2_is_not_checked(self):
+        text = GOOD_SPEC + "\n- **KD-2** Use the cache.\n\nThis follows KD-9.\n"
+        self.assertEqual(self.lint(text), [])
+        late = GOOD_SPEC + "\n**Format**: 2\n\n- **KD-2** Use the cache.\n"  # not a header line
+        self.assertFalse(spec_lint.is_format2(late))
+        self.assertEqual(self.lint(late), [])
+
+    def test_labels_verb_on_a_plan(self):
+        plan = ("# Plan: Widget\n\n**Spec**: spec.md\n**Format**: 2\n\n## Key Design Decisions\n\n"
+                "| Id | Decision |\n|----|----------|\n| DEC-2 | cache |\n| KD-1 | queue |\n\n- **D1** retry\n\n"
+                "## Layer Map\n\n| Layer | Files |\n|---|---|\n| OQ-9 | x |\n")
+        self.write("plan.md", plan)
+        before = sorted(os.listdir(os.path.join(self.feature, "gates")))
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 1)
+        self.assertIn("BLOCKING\nB5-11 `KD-1`", out)
+        self.assertIn("\nB5-13 `D1`", out)
+        self.assertIn("ADVISORY\nA4-19 table row opens with `OQ-9`", out)
+        self.assertTrue(out.rstrip().endswith("labels: B2 A1"))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.feature, "gates"))), before)  # writes nothing
+        self.write("plan.md", plan.replace("**Format**: 2\n", ""))
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 0)
+        self.assertIn("labels: not checked", out)
+        self.assertEqual(self.run_cli("labels", FEATURE + "/missing.md")[0], 2)
+
+    def test_labels_verb_reads_the_project_config_under_root(self):
+        self.write("plan.md", "# Plan\n\n**Format**: 2\n\n## Decisions\n\n- **PROJ-1301** parent ticket\n")
+        self.assertEqual(self.run_cli("labels", FEATURE + "/plan.md")[0], 1)
+        self.config("PROJ-[0-9]+")
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.rstrip().endswith("labels: B0 A0"))
+
+
+# The two spec shapes of `/specify` (`.claude/commands/specify.md` → "Spec Format"): the Format 2 template and the
+# older template that an existing spec keeps.
+NEW_SHAPE_SPEC = """# Spec: Widget spinner
+
+**Date**: 2026-01-01
+**Status**: Draft
+**Author**: Claude + User
+**Type**: feature
+**Format**: 2
+
+## 1. Summary
+
+The widget spins when the user presses start and stops at a limit.
+Its colours stay as they are.
+The user decides whether the limit becomes a setting later.
+
+## 2. Current State
+
+The spinner turns once per call (`src/spinner.py:10-20`); the rest is in research-report.md.
+
+## 2a. Prior art
+
+| Candidate | What this spec needs from it | Decision | Evidence read |
+|-----------|------------------------------|----------|---------------|
+| `Spinner.spin` | one turn per call | reuse behaviour | `src/spinner.py:10-20` |
+
+## 3. Behaviour and Acceptance Criteria
+
+### 3.1 Start
+
+The user presses start on the widget screen; the stop rule is in §3.2.
+
+- [ ] **AC-1**: The widget turns at 50 rpm within 200 ms of the press.
+
+### 3.2 Stop
+
+- [ ] **AC-2**: The widget stops after 10 turns started as §3.1 says.
+
+## 4. Affected Areas
+
+| Area | Files | Impact |
+|------|-------|--------|
+| Spinner | `src/spinner.py` | add a stop limit |
+
+## 5. Out of Scope
+
+- The widget's colours (DEC-1).
+
+## 6. Technical Constraints
+
+The limit is read once, at start.
+
+## 7. Decisions
+
+- **DEC-1** Colours: unchanged. Why: the request names only motion.
+
+## 8. Open Questions
+
+- **Q-4** Should the limit become a setting later?
+
+## 9. Risks
+
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-1 | the motor stalls at 50 rpm | Low | Med | AC-1 measures the rate |
+"""
+
+OLD_SHAPE_SPEC = """# Spec: Widget spinner
+
+**Date**: 2026-01-01
+**Status**: Draft
+**Author**: Claude + User
+**Type**: feature
+
+## Request (verbatim)
+
+> Make the widget spin fast, see §42 and AC-99.
+
+Q (Phase 2, 2026-01-01): Which limit?
+A: 10 turns, as KD-2 says.
+
+## 1. Overview
+
+The widget spins and stops at a limit.
+
+## 2. Current State
+
+The spinner turns once per call (`src/spinner.py:10-20`).
+
+## 2a. Prior art
+
+| Candidate | What this spec needs from it | Decision | Evidence read |
+|-----------|------------------------------|----------|---------------|
+| `Spinner.spin` | one turn per call | reuse behaviour | the spinner file |
+
+## 3. Desired Behavior
+
+### 3.2 Stop
+
+The widget stops quickly and is fast.
+
+## 4. Affected Areas
+
+| Area | Files | Impact |
+|------|-------|--------|
+| Spinner | `src/spinner.py` | add a stop limit |
+
+## 5. Acceptance Criteria
+
+- [ ] **AC-1**: The widget stops after 10 turns (§3.2).
+- [ ] **AC-2**: The widget stops after 12 turns at most, see AC-3.
+
+## 6. Out of Scope
+
+- NOT included: colours
+
+## 7. Technical Constraints
+
+- Must follow: a robust design.
+
+## 8. Open Questions
+
+- **OQ-1** Should the limit become a setting?
+
+## 9. Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| KD-1 the motor stalls | Low | Med | measure the rate |
+"""
+
+# `spec_lint.py lint` output for OLD_SHAPE_SPEC with the script of 1.40.0 Piece 1b-3a (dcadd0b), before the new
+# template existed: the older shape lints the same after it
+OLD_SHAPE_LINT = """BLOCKING
+B2-44 AC-3 names no AC of this spec
+
+ADVISORY
+A3-27 prior-art row without a `file:line` in its evidence cell: `Spinner.spin`
+A2-33 vague phrase 'fast' with no number or named standard: The widget stops quickly and is fast.
+A1-43 'turns' appears with different numbers: 10 (line 43), 12 (line 44)
+A2-52 vague phrase 'robust' with no number or named standard: - Must follow: a robust design.
+
+spec-lint: B1 A4
+"""
+
+
+class TemplateShapes(Base):
+    def test_new_shape_lints_clean(self):
+        self.assertTrue(spec_lint.is_format2(NEW_SHAPE_SPEC))
+        self.assertEqual(spec_lint.lint(NEW_SHAPE_SPEC), ([], []))
+        self.write("spec.md", NEW_SHAPE_SPEC)
+        code, out, _err = self.run_cli("lint", FEATURE)
+        self.assertEqual(code, 0)
+        self.assertTrue(out.rstrip().endswith("spec-lint: B0 A0"))
+
+    def test_new_shape_label_lines_are_checked(self):
+        for old, new, token in (("- **DEC-1** Colours", "- **D-1** Colours", "D-1"),
+                                ("- **Q-4** Should", "- **OQ-4** Should", "OQ-4"),
+                                ("| RISK-1 | the motor", "| R-1 | the motor", "R-1")):
+            found = spec_lint.lint(NEW_SHAPE_SPEC.replace(old, new))[0]
+            self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("B5", token)])
+
+    def test_new_shape_keys_ac_and_vague_checks_on_section_3(self):
+        text = NEW_SHAPE_SPEC.replace("- [ ] **AC-2**: The widget stops", "- **AC-2**: The widget stops")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[0]], ["B1"])  # an AC without its checkbox
+        text = NEW_SHAPE_SPEC.replace("The user presses start", "The fast user presses start")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A2"])
+        text = NEW_SHAPE_SPEC.replace("The limit is read once, at start.", "The limit is read in a robust way.")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A2"])
+        text = NEW_SHAPE_SPEC.replace("| `src/spinner.py:10-20` |", "| the spinner file |")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A3"])
+
+    def test_old_shape_lints_as_before(self):
+        self.assertFalse(spec_lint.is_format2(OLD_SHAPE_SPEC))
+        self.assertEqual(spec_lint.render_lint(*spec_lint.lint(OLD_SHAPE_SPEC)), OLD_SHAPE_LINT)
+
+    def test_section_3_2_resolves_in_both_shapes(self):
+        for text, heading in ((NEW_SHAPE_SPEC, "### 3.2 Stop"), (OLD_SHAPE_SPEC, "### 3.2 Stop")):
+            self.assertEqual(self.b(text + "\nSee §3.2.\n"), [])
+            self.assertEqual([c for c, _n, _m in self.b(text.replace(heading, "### Stop") + "\nSee §3.2.\n")],
+                             ["B3"] * (text.count("§3.2") + 1))
+
+    def b(self, text):
+        return [f for f in spec_lint.lint(text)[0] if f[0] == "B3"]
+
+
+def scope_spec(criteria=2, rows=3, kind="feature", scope_line=None):
+    """NEW_SHAPE_SPEC with `criteria` ACs and `rows` data rows in Affected Areas (rows >= 2): the first row names three
+    files, the last names the first file again, each other row one new file, so there are rows + 1 distinct files."""
+    text = NEW_SHAPE_SPEC.replace("**Type**: feature", "**Type**: " + kind)
+    if scope_line:
+        text = text.replace("**Format**: 2\n", "**Format**: 2\n" + scope_line + "\n")
+    acs = "\n".join("- [ ] **AC-%d**: The widget passes check %d." % (n, n) for n in range(2, criteria + 1))
+    text = text.replace("- [ ] **AC-2**: The widget stops after 10 turns started as §3.1 says.", acs)
+    paths = ["src/m%d.py" % n for n in range(1, rows + 2)]
+    lines = ["| Group | %s | change, see `docs/impact.md` |" % ", ".join("`%s`" % p for p in paths[:3])]
+    lines += ["| Module %d | `%s:12` | edit |" % (i, p) for i, p in enumerate(paths[3:])]
+    lines.append("| Again | `src/m1.py` | the same file again |")
+    old = "| Spinner | `src/spinner.py` | add a stop limit |"
+    assert old in text
+    return text.replace(old, "\n".join(lines))
+
+
+class Scope(Base):
+    def run_scope(self, text):
+        self.write("spec.md", text)
+        return self.run_cli("scope", FEATURE)
+
+    def test_criteria_signal_fires_above_20_not_at_20(self):
+        at = spec_lint.scope(scope_spec(criteria=20))
+        self.assertEqual((at.kind, at.criteria, at.fired), ("feature", 20, []))
+        above = spec_lint.scope(scope_spec(criteria=21))
+        self.assertEqual((above.criteria, above.fired), (21, ["criteria"]))
+        code, out, _err = self.run_scope(scope_spec(criteria=21))
+        self.assertEqual(code, 0)  # a fired signal never fails the run
+        self.assertIn("criteria: 21 (signal: more than 20): fired", out)
+        self.assertTrue(out.rstrip().endswith("scope: criteria fired"))
+        self.assertIn("agent's judgement: 3 or more parts", out)
+
+    def test_rows_signal_fires_above_15_for_structural_not_at_15(self):
+        at = spec_lint.scope(scope_spec(rows=15, kind="structural"))
+        # 16 distinct files in 15 rows: a row naming many files counts once, and files are no signal
+        self.assertEqual((at.kind, at.rows, at.files, at.fired), ("structural", 15, 16, []))
+        above = spec_lint.scope(scope_spec(rows=16, kind="structural"))
+        self.assertEqual((above.rows, above.fired), (16, ["rows"]))
+        code, out, _err = self.run_scope(scope_spec(criteria=25, rows=16, kind="structural"))
+        self.assertEqual(code, 0)
+        self.assertIn("rows in Affected Areas: 16 (signal: more than 15): fired", out)
+        self.assertIn("files named in Affected Areas: 17 (information, not a signal)", out)
+        self.assertIn("criteria: 25 (not a signal for a structural spec)", out)
+        self.assertIn("agent's judgement: 3 or more layers", out)
+        self.assertTrue(out.rstrip().endswith("scope: rows fired"))
+
+    def test_list_items_count_as_rows_only_without_a_table(self):
+        text = scope_spec(rows=2, kind="structural")
+        text = text.replace("## 5. Out of Scope", "- `src/list/a.py`\n- `src/list/b.py`\n\n## 5. Out of Scope")
+        self.assertEqual(spec_lint.scope(text).rows, 2)  # the table's rows; the items still name files
+        items = "\n".join("- `src/l%d.py`, `src/k%d.py`" % (n, n) for n in range(16))
+        text = NEW_SHAPE_SPEC.replace("**Type**: feature", "**Type**: structural").replace(
+            "| Area | Files | Impact |\n|------|-------|--------|\n| Spinner | `src/spinner.py` | add a stop limit |", items)
+        result = spec_lint.scope(text)
+        self.assertEqual((result.rows, result.files, result.fired), (16, 32, ["rows"]))
+
+    def test_nested_list_items_belong_to_their_top_level_row(self):
+        items = "- Module A\n  - `src/a.py`\n  - `src/b.py`\n- Module B\n  - `src/c.py`"
+        text = NEW_SHAPE_SPEC.replace(
+            "| Area | Files | Impact |\n|------|-------|--------|\n| Spinner | `src/spinner.py` | add a stop limit |", items)
+        result = spec_lint.scope(text)
+        self.assertEqual((result.rows, result.files), (2, 3))
+
+    def test_feature_spec_is_not_judged_by_rows(self):
+        result = spec_lint.scope(scope_spec(rows=40))
+        self.assertEqual((result.rows, result.fired), (40, []))
+        _code, out, _err = self.run_scope(scope_spec(rows=40))
+        self.assertIn("rows in Affected Areas: 40 (not a signal for a feature spec)", out)
+        self.assertTrue(out.rstrip().endswith("scope: no counted signal fired"))
+
+    def test_scope_line_is_printed_as_recorded(self):
+        _code, out, _err = self.run_scope(scope_spec(scope_line="**Scope**: part 1 of 3"))
+        self.assertIn("\n**Scope**: part 1 of 3\n", out)
+        _code, out, _err = self.run_scope(scope_spec(scope_line="**Scope**: whole, one screen and its report"))
+        self.assertIn("\n**Scope**: whole, one screen and its report\n", out)
+        _code, out, _err = self.run_scope(scope_spec())
+        self.assertIn("\nScope line: none\n", out)
+
+    def test_old_spec_is_not_checked(self):
+        self.assertIsNone(spec_lint.scope(OLD_SHAPE_SPEC))
+        code, out, _err = self.run_scope(OLD_SHAPE_SPEC)
+        self.assertEqual((code, out.strip()), (0, "scope: not checked (spec.md has no `**Format**: 2` header line)"))
+        self.assertEqual(self.run_cli("scope", "specs/901-missing")[0], 2)
+
+    def test_paths_in_a_cell(self):
+        self.assertEqual(spec_lint._path_tokens("src/a.ts:3-9, and/or the src/x helper<br>lib/b/c, e.g.", False),
+                         ["src/a.ts", "lib/b/c"])
+        self.assertEqual(spec_lint._path_tokens("src/x ./src/y.py#L4 https://example.org/a.html /plan", True),
+                         ["src/x", "src/y.py"])
+        self.assertEqual(spec_lint.scope(NEW_SHAPE_SPEC).files, 1)
+        self.assertEqual(spec_lint._path_tokens("features/{a,b}/locales/{uk,en}.ts, x.ts", True),
+                         ["features/b/locales/en.ts", "features/b/locales/uk.ts", "features/a/locales/en.ts",
+                          "features/a/locales/uk.ts", "x.ts"])
+
+    def test_counts_loose_criteria_list_items_and_not_paragraphs(self):
+        text = scope_spec(criteria=3).replace("- [ ] **AC-3**:", "- [x] **AC-3 (probe first)**:")
+        text = text.replace("## 5. Out of Scope", "Paths under `pkg/` unless stated, see `docs/a.md`.\n\n"
+                            "- `src/list/item.py` and `src/list/other.py`\n\n## 5. Out of Scope")
+        result = spec_lint.scope(text)
+        self.assertEqual((result.criteria, result.rows, result.files), (3, 3, 6))
+
+    def test_storage_rules_names_the_constants(self):
+        with open(os.path.join(REPO, ".claude", "storage-rules.md"), encoding="utf-8") as handle:
+            rules = handle.read()
+        section = rules.split("## Feature Size", 1)[1].split("\n## ", 1)[0]
+        for name in ("SCOPE_MAX_CRITERIA", "SCOPE_MAX_AREA_ROWS", "SCOPE_MIN_PARTS", "SCOPE_MIN_LAYERS"):
+            self.assertIn("`{}` ({})".format(name, getattr(spec_lint, name)), section)
+
+
 class LintCli(Base):
     def test_output_file_ids_and_exit_codes(self):
         self.write("spec.md", GOOD_SPEC.replace("contract §13", "(approved, §13)"))
