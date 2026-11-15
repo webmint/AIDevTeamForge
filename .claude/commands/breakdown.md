@@ -125,7 +125,7 @@ When bundling, merge the mechanical task's files, contracts, and done-when condi
 
 ### Task Format
 
-For each task, generate:
+For each task, generate (read `.claude/commands/_writing.md` → "Tasks" first):
 
 ```markdown
 ### Task [N]: [Short imperative title]
@@ -138,7 +138,7 @@ For each task, generate:
 **Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the touched theme it fixes (`fixes #n in <paths>`, or the triage theme id `fixes T1 in <paths>` without an issue tracker); or "none (no new symbol)"]
 
 **Description**:
-[Detailed description of what to change and why]
+[What this task changes and why]
 
 **Change details**:
 - In `path/to/file.ts`:
@@ -189,7 +189,7 @@ For each task, determine if the agent needs documentation context beyond what's 
 - **Tasks extending existing patterns**: Reference `docs/architecture.md` if the pattern is documented there
 - **API tasks touching existing endpoints**: Reference the relevant `docs/api/*.md` file
 - **Self-contained tasks** (new types, isolated logic): No doc reference needed — the task description is sufficient
-- **Maximum 2 doc references per task** — if more context is needed, include it directly in the task description
+- **Maximum 2 doc references per task** — if more context is needed, name its section (path and heading) in the task description
 
 ### Review Checkpoint Placement
 
@@ -332,5 +332,4 @@ Tasks should be executed in order (dependencies are marked)."
 6. **All ACs covered** — every acceptance criterion from the spec must be addressed by at least one task
 7. **Don't over-split** — a simple find-and-replace across 5 files is ONE task, not five tasks
 8. **Contract chain integrity** — every task's "Produces" must be consumed by a downstream "Expects" or map to a spec AC. Every "Expects" must trace to an upstream "Produces" or existing codebase state. Broken chains indicate missing tasks or wrong dependencies
-9. **Contracts use semantic identifiers** — reference function names, export names, interface names, field names. Never line numbers (they shift as earlier tasks modify files)
-10. **Reuse field in every task** — it carries the plan's Reuse Map rows and touched themes into the task, so the implementer's Reuse check starts from them
+9. **Reuse field in every task** — it carries the plan's Reuse Map rows and touched themes into the task, so the implementer's Reuse check starts from them

@@ -91,7 +91,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 
 ## Description
 
-[Detailed description of what to do]
+[What this task changes and why]
 
 ## Change Details
 
@@ -123,7 +123,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 **Completed**: [date/time]
 **Files changed**: [actual files]
 **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
-**Notes**: [deviations or observations]
+**Notes**: [as `.claude/commands/_writing.md` → "Tasks" says]
 ```
 
 ## File Lifecycle

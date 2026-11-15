@@ -35,7 +35,7 @@ Fill `<…>`; add only the gate's inputs (spec-gate: also the lines of "Spec-gat
 Independent gate reviewer. Gate: <gate>[, lens <architect|security|qa>]. Feature: specs/<KEY|NNN>-*.
 You did not write the artifact under review. Read the primary sources first, then work adversarially through .claude/checklists/<gate>.md[, the "<Lens> lens" section only]. Report any other defect as "new".
 Inputs: <the gate's inputs>. Change no file except your report.
-For each finding give: severity (Critical / Warning / Note), checklist id or "new", location, and evidence quoted from the artifact and from the source. Report findings only: an item that passes gets no line.
+Read .claude/commands/_writing.md → "Reports". For each finding give: severity (Critical / Warning / Note), checklist id or "new", what is wrong, location, what to do, and evidence quoted from the artifact and from the source. Report findings only: an item that passes gets no line.
 Write the full report to specs/<KEY|NNN>-*/gates/<gate>[-<lens>].md. Return only one line `<gate>: C<n> W<n> N<n>`, then one line per Critical and Warning: `<severity> <id> <location> — <one-line defect>`.
 With `Re-check only: <ids>`: read only the report's findings for those ids and their Dispositions, the artifact sections those findings locate and the sources they cite. Append your result under `## Re-check` in the existing report; never rewrite it. Return one line per id: `<id>: closed | still open | rejection accepted | rejection not accepted — <reason>`.
 With `Correct citations only: <ids>` (spec-gate) and a citations file: edit only those findings' or re-check entries' citations in the existing report; never rewrite it. Return one line per id: `<id>: corrected | cannot quote — <reason>`.

@@ -141,6 +141,8 @@ Run these on ALL changed files across all tasks. Run each command check through 
 
 ## PHASE 5: Generate Verification Report
 
+Read `.claude/commands/_writing.md` → "Reports" first.
+
 ```markdown
 ## Verification Report
 
