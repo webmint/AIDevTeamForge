@@ -128,7 +128,7 @@ Every message to the user (a summary, a HARD GATE, a question, a report, a relay
 
 ## Artifact Storage
 
-Features live in `specs/<KEY|NNN>-kebab-name/` (`<KEY|NNN>`: the ticket key, or a number when there is none; `research-report.md`, `spec.md`, `plan.md`, optional `research.md`, `data-model.md`, `contracts.md`, `tasks/` with `README.md` and `NNN-short-title.md`, `gates/`, `escapes.md`); docs by topic in `docs/` (`overview.md`, `architecture.md`, `features/`, `api/`, `guides/`). Full conventions: `.claude/storage-rules.md`. **Wrapper mode**: all artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`.
+Features live in `specs/<KEY|NNN>-kebab-name/` (`<KEY|NNN>`: the ticket key, or a number when there is none; `research-report.md`, `spec.md`, `history.md` (Format 2 specs: the request and the user's answers), `plan.md`, optional `research.md`, `data-model.md`, `contracts.md`, `tasks/` with `README.md` and `NNN-short-title.md`, `gates/`, `escapes.md`); docs by topic in `docs/` (`overview.md`, `architecture.md`, `features/`, `api/`, `guides/`). Full conventions: `.claude/storage-rules.md`. **Wrapper mode**: all artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`.
 
 ## Session Continuity
 

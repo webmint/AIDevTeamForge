@@ -19,6 +19,7 @@ specs/
   <KEY|NNN>-feature-name/          # One directory per feature: AP-1305-feature-name or 001-feature-name
     research-report.md             # Research report (/research), written when the directory is created
     spec.md                        # Feature specification (/specify)
+    history.md                     # Request and the user's answers, word for word (Format 2 specs; /specify, /verify); append-only
     plan.md                        # Technical implementation plan (/plan)
     research.md                    # Research findings (/plan) — optional
     data-model.md                  # Entity definitions (/plan) — optional
@@ -129,12 +130,12 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 
 ```
 /research     → displays report in console; when saved, creates specs/<KEY|NNN>-name/ and its spec branch and commits specs/<KEY|NNN>-name/research-report.md
-/specify      → creates specs/<KEY|NNN>-name/spec.md (+ gates/spec-gate.md)
+/specify      → creates specs/<KEY|NNN>-name/spec.md (+ gates/spec-gate.md; history.md for a Format 2 spec)
 /plan         → creates specs/<KEY|NNN>-name/plan.md (+ research.md, data-model.md, contracts.md if needed; gates/plan-gate-<lens>.md)
 /breakdown    → creates specs/<KEY|NNN>-name/tasks/001-xxx.md, 002-xxx.md, ... (+ gates/breakdown-gate.md)
 /execute-task → updates individual task file status + completion notes
 /review       → creates specs/<KEY|NNN>-name/review.md (security, performance, test findings)
-/verify       → updates specs/<KEY|NNN>-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
+/verify       → updates specs/<KEY|NNN>-name/spec.md status to Complete; appends intent-check answers to the request record (history.md for a Format 2 spec); Phase 9 triage may create bugs/NNN-xxx.md
 /finalize     → writes specs/<KEY|NNN>-name/summary.md (PR-ready feature summary, Phase 1.4) and specs/<KEY|NNN>-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
