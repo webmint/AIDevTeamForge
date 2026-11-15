@@ -32,6 +32,7 @@
       ".claude/commands/_autonomous-mode.md",
       ".claude/commands/_intent-check.md",
       ".claude/commands/_writing.md",
+      ".claude/commands/_plan-checks.md",
       ".claude/commands/conduct.md",
       ".claude/template-manifest.json",
       ".claude/storage-rules.md",

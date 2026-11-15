@@ -104,9 +104,8 @@ Based on the bug description (and `--file` flag if provided):
 1. **If `--file` is provided**: Read that file as the starting point
 2. **If no file specified**: Use Grep and Glob to search for code related to the bug description — error messages, function names, component names, etc.
 3. Read all files that appear related (up to 10 files for initial scan)
-4. Check `.claude/memory/MEMORY.md` for known pitfalls in this area
-5. **Task overlap check**: Scan `specs/*/tasks/*.md` for any Pending or In Progress tasks that list the same files in their Files section. If found, warn the user: "Note: Task [N] in feature [X] also targets [file]. Your fix may cause merge conflicts during future task execution." This is a warning only — do not block the fix.
-6. **Read related documentation**: Search `docs/` for files that reference the affected source files or their parent module (use Grep on `docs/` for the file names or directory names). Read up to 2 matching doc files — these describe the intended behavior for the affected area and help the fix agent understand what "correct" looks like. If no matches or `docs/` doesn't exist, skip.
+4. **Task overlap check**: Scan `specs/*/tasks/*.md` for any Pending or In Progress tasks that list the same files in their Files section. If found, warn the user: "Note: Task [N] in feature [X] also targets [file]. Your fix may cause merge conflicts during future task execution." This is a warning only — do not block the fix.
+5. **Read related documentation**: Search `docs/` for files that reference the affected source files or their parent module (use Grep on `docs/` for the file names or directory names). Read up to 2 matching doc files — these describe the intended behavior for the affected area and help the fix agent understand what "correct" looks like. If no matches or `docs/` doesn't exist, skip.
 
 ### 1.3: Scope Check
 
@@ -238,7 +237,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 Use the Agent tool to launch the agent selected in Phase 2.3. You are the orchestrator — delegate the fix, do not write implementation code yourself.
 
-Provide the agent with all context (the agent reads nothing itself — everything comes from this prompt):
+Provide the agent with all context (it reads only `constitution.md` itself; everything else comes from this prompt):
 
 ```
 You are fixing a diagnosed bug.
@@ -256,14 +255,14 @@ You are fixing a diagnosed bug.
 [Content of the affected source files — already read in Phase 1.2]
 
 ## Documentation Context
-[Content from related docs/ files found in Phase 1.2 step 6, if any. Describes intended behavior for this area. Omit if no docs were found.]
+[Content from related docs/ files found in Phase 1.2 step 5, if any. Describes intended behavior for this area. Omit if no docs were found.]
 
 ## Reuse
 [The search scopes: resolve `.claude/quality-profile.json` → `searchScopes` minus `generatedDirs` (`python3 scripts/forge/quality_profile.py scopes`) and write the list here (when unset: the source directories). A new exported symbol gets a Reuse check (search the scopes by name, signature and meaning before adding it); when `canonicalSources` is set, the registry is consulted by concept (`python3 scripts/forge/check-canonical-sources.py --concepts`, then `--rows '<regex>'`), never read whole.]
 
 ## Rules
 1. Make the smallest possible change that fixes the bug — nothing more
-2. Follow the project's constitution (key rules: [relevant rules from constitution.md])
+2. Read `constitution.md` → [the sections that govern the layers this fix touches] and follow them
 3. Known pitfalls for this area: [from MEMORY.md]
 4. No refactoring of surrounding code
 5. No feature additions

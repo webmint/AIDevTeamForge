@@ -22,18 +22,21 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 |------|----------|--------------------------------------------------|
 | spec-gate | `general-purpose` | `specs/<KEY|NNN>-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; a `**Format**: 2` spec: `specs/<KEY|NNN>-*/research-report.md` and `history.md`, if present; the source files the spec's Affected Areas name; `specs/<KEY|NNN>-*/gates/reviewer-inputs.txt` and `specs/<KEY|NNN>-*/gates/spec.citations.txt` ("Spec-gate checks" step 1) |
 | plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names |
-| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `.claude/commands/_agent-assignment.md` |
+| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `.claude/commands/_agent-assignment.md` |
 
 - **Model**: run `general-purpose` reviewers on a different model from this session where possible (the Agent tool's `model`: `sonnet` when this session runs Opus, `opus` when it runs Sonnet). The diversity is the point. Specialist agents keep the model of their own definition, except the plan-gate Architect lens, whichever agent runs it: launch it with the Agent tool's `model` set to `MODEL_ARCHITECT_LENS` from `.claude/project-config.json` (missing = the `MODEL_DO` value). The Security and QA lenses keep their own. The breakdown-gate reviewer is the one exception to the different-model rule: it runs on `sonnet`, also when this session runs Sonnet.
 - **Missing agent**: a plan-gate lens whose agent is not in `.claude/agents/` runs as `general-purpose` with the same lens.
 
 ## Reviewer Prompt
 
-Fill `<…>`; add only the gate's inputs (spec-gate: also the lines of "Spec-gate checks" step 2):
+Fill `<…>`; add only the gate's inputs, and paste these lines verbatim, never paraphrased:
+- spec-gate: the lines of "Spec-gate checks" step 2.
+- plan-gate: from `.claude/commands/_plan-checks.md`, the "Precedents" and "Runtime" sections into the architect lens's prompt and "CI-unrun tests" into the QA lens's.
+- breakdown-gate: `A task's Done When that restates a rule of constitution.md or contracts.md cites it (file and section). One narrower than the rule it restates is a Warning.`
 
 ```
 Independent gate reviewer. Gate: <gate>[, lens <architect|security|qa>]. Feature: specs/<KEY|NNN>-*.
-You did not write the artifact under review. Read the primary sources first, then work adversarially through .claude/checklists/<gate>.md[, the "<Lens> lens" section only]. Report any other defect as "new".
+You did not write the artifact under review. Read the primary sources first, then work adversarially through .claude/checklists/<gate>.md[, the "<Lens> lens" section only], and every check pasted into this prompt (a failure there is reported as "new"). Report any other defect as "new".
 Inputs: <the gate's inputs>. Change no file except your report.
 Read .claude/commands/_writing.md → "Reports". For each finding give: severity (Critical / Warning / Note), checklist id or "new", what is wrong, location, what to do, and evidence quoted from the artifact and from the source. Report findings only: an item that passes gets no line.
 Write the full report to specs/<KEY|NNN>-*/gates/<gate>[-<lens>].md. Return only one line `<gate>: C<n> W<n> N<n>`, then one line per Critical and Warning: `<severity> <id> <location> — <one-line defect>`.
