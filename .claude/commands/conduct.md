@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /conduct — Autonomous Delivery (Conductor)
 
-Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user. Interactive Forge is unchanged: a project that does not opt in never runs this command.
+Runs the whole spec cycle (`/research` → `/specify` → spec-gate → `/plan` → plan-gate → `/breakdown` → `/execute-task` waves → `/review` → `/verify` → closing) with one subagent per phase, and keeps this main session small. The runners follow `.claude/commands/_autonomous-mode.md` at every point where a command would ask the user.
 
 ## Usage
 ```
@@ -35,7 +35,7 @@ This session runs only the loop:
 4. Update the ledger. Runners commit their own output and run reports; the conductor commits nothing else.
 
 - It never reads sources, specs, plans or task files, never loads other commands, and never writes spec, plan, task, review or QA artifacts. Its writes are the ledger, content a runner returned because its write was refused (committed on the spec branch, before the closing), the rebases under "Rebase Points" and the local fast-forward under "Merge".
-- Its messages to the user stay short: one line per phase result.
+- Its messages to the user: one line per phase result, in words (`CLAUDE.md` → "Talking to the User"), never a raw `gates:` count or bare id.
 - It does only conducting: side work (tracker edits, messages to other sessions, ad-hoc investigation) goes to a separate session.
 - Target: the conductor's own context grows by at most ~40k tokens per spec; when a spec exceeds it, name the cause in its ledger row.
 

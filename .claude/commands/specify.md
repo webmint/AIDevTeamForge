@@ -42,11 +42,7 @@ Determine the repository's default branch using these methods in order:
 
 **If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
 
-**If on the default branch**: Prepare for spec branch creation (branch is created in Phase 4 once the directory is named):
-
-1. **Generate short description**: From `$ARGUMENTS` (a research report or feature directory: from the report's Request block), generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`). Save this for use in Phase 4.
-
-2. **Note**: Branch creation is deferred to Phase 4 so the branch number matches the spec directory number. Phases 1-3 are read-only research and safe to run on the default branch.
+**If on the default branch**: the branch is created in Phase 4, once the directory is named, so both share the name; Phases 1-3 only read and are safe here. **Generate a short description** now: from `$ARGUMENTS` (a research report or feature directory: from the report's Request block), a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`), for Phase 4.
 
 **If on any other branch** (not default, not `spec/*`): Ask the user:
 ```
@@ -285,14 +281,16 @@ Read `.claude/commands/_independent-gate.md` and run the **spec-gate** on `specs
 
 **Autonomous mode** (`_autonomous-mode.md`, point `specify`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting.
 
-Present the spec summary to the user:
+Present the spec to the user (`CLAUDE.md` → "Talking to the User"):
 
-"I've created the specification at `specs/<KEY|NNN>-[feature-name]/spec.md`. Key points:
+"I've created the specification at `specs/<KEY|NNN>-[feature-name]/spec.md`.
+[A `**Format**: 2` spec: its `## 1. Summary` as written. An older spec: these key points]
 - **What changes**: [1-2 sentences]
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria
 - **Out of scope**: [key exclusions]
-- [the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
+
+[the gate result from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
 

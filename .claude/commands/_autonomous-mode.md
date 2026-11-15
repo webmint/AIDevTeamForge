@@ -112,6 +112,7 @@ next: <exact next command>
 - `duration` is the runner's own wall time (`date -u` at its start and before it returns).
 - `nested` says how many agents it launched and that all of them completed and no background command of its own still runs. A block without it is unverified: the conductor runs the pre-wave check before it starts anything in that tree. Only a STOP returns while nested work is pending: `status: blocked`, the STOP number on `blockers:` and `nested: pending <every pending id>`; every other return (`done`, `paused`, `blocked (user gate …)`, `blocked (write refused …)`) waits for the notifications first.
 - The breakdown-gate runs inside `/breakdown`; the spec-gate and the plan-gate run in their own phase runner (`_independent-gate.md` → "When It Runs"). Their reviewers return the gate's own lines, and the runner that ran the gate puts each `**Gate**:` line in its run report and `<gate> C<n> W<n> N<n>` in `gates:`.
+- What reaches the user (a user-gate summary, a `blockers:` line, a STOP report) is in words: `CLAUDE.md` → "Talking to the User".
 
 ## Pull Requests
 
