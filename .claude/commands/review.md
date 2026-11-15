@@ -15,7 +15,7 @@ Launches specialist review agents (security, performance, test assessment) on co
 **Source Root**: Read `CLAUDE.md` and note the Source Root (default: `.`). When reading task completion notes, changed files are listed relative to the repository root. In wrapper mode (`SOURCE_ROOT != "."`), source files live under the Source Root path — inform agents of this so they read files from the correct location.
 
 1. Read the spec file (from `$ARGUMENTS` or most recent feature directory in `specs/`)
-2. Read the feature's `plan.md` (for architecture decisions — needed by performance-analyst)
+2. Read the feature's `plan.md` (for architecture decisions and its "Runtime" section, needed by PHASE 3)
 3. Read all task files in `specs/<KEY|NNN>-feature/tasks/` — extract:
    - Task titles and completion status
    - Completion Notes (files changed, deviations)
@@ -55,12 +55,13 @@ If `.claude/agents/performance-analyst.md` exists, launch the **performance-anal
 Provide the agent with:
 1. The list of all changed files
 2. The feature spec (especially any performance-related acceptance criteria)
-3. The plan's architecture decisions (from `plan.md`, for context on expected data flow)
+3. The plan's architecture decisions and its "Runtime" section (from `plan.md`, for context on expected data flow; a plan with no "Runtime" section (older plans): say so)
 4. Relevant entries from MEMORY.md (known performance anti-patterns)
+5. The scale questions: "For each entry point and write path the changed files add or change: N+1 queries; independent remote calls made one after another; a write path or entry point with no Runtime row. Check the code against each Runtime row: every layer that can run a write twice, what a second attempt returns after the first took effect (committed or sent, also past a deadline the caller saw fail), what delivers a failed delivery again, who learns of a failure without polling, and the worst case against the platform limit at the row's scale. Without a Runtime section, answer the same questions from the code for each such path; a missing row is then not a finding. Rate each finding High, Medium or Low."
 
 Collect the agent's findings with impact levels (High, Medium, Low).
 
-If the agent doesn't exist, skip this phase silently.
+If the agent doesn't exist, launch the **code-reviewer** agent instead, with the same five items and "Answer only the scale questions"; its `### Performance` findings fill the report's "Performance Review". If neither agent exists, skip this phase silently.
 
 ## PHASE 4: Test Assessment
 
@@ -125,7 +126,7 @@ Read `.claude/commands/_writing.md` → "Reports", then save the structured revi
 
 ## Performance Review
 
-[Include if performance-analyst ran, otherwise:]
+[Include if PHASE 3 ran, by either agent, otherwise:]
 _Skipped — no performance-analyst agent configured._
 
 - High: [N] | Medium: [N] | Low: [N]

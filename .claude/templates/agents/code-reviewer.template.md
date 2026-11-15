@@ -54,6 +54,9 @@ You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, an
 ### 6. Memory Check
 - Cross-reference `.claude/memory/MEMORY.md` for known pitfalls related to changed code
 
+### 7. Scale Questions (only when `/review` hands them to you)
+When `/review` hands you its scale questions, answer only those; rate each finding High, Medium or Low under `### Performance`.
+
 ## Output Format
 
 ```

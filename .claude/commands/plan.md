@@ -285,6 +285,10 @@ Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → 
 
 [If no documentation impact: "No documentation changes expected — internal implementation only."]
 
+## Runtime
+
+[As `_plan-checks.md` → "Runtime" says]
+
 ## Risk Assessment
 
 | Id | Risk | Likelihood | Impact | Mitigation |
@@ -351,4 +355,4 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions
 8. **Docs context comes from the spec** — do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk
-9. **Reuse map is mandatory** — no new operation, figure, helper, closed-set member or seam without its search and decision (1.5); no touched open theme without a fix or a recorded deferral (1.6)
+9. **Reuse map is mandatory** — with its searches (1.5) and a decision per touched open theme (1.6)
