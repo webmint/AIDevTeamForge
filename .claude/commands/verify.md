@@ -225,7 +225,7 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 ## PHASE 8: Present Results
 
-Show the user the verification report and recommend next action:
+Show the user the verification report and recommend next action, in words (`CLAUDE.md` → "Talking to the User"):
 
 - If APPROVED: "All acceptance criteria are met and integration checks pass. Next: run `/finalize` to write the feature summary, generate docs and squash."
 - If NEEDS WORK: "Found [N] issues. Details in the verification report above." Then proceed to Phase 9.

@@ -29,8 +29,6 @@ Read these files in order:
 5. `.claude/memory/MEMORY.md` — past lessons
 6. `CLAUDE.md` — project structure and available agents
 
-Verify both spec AND plan are approved. If not, stop and inform the user.
-
 ## PHASE 2: Deep File Analysis
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, all source file paths are relative to the workspace root (e.g., `SOURCE_ROOT/src/components/...`). Claude artifact paths (`specs/`, `docs/`) remain at the workspace root.
@@ -302,7 +300,7 @@ Read `.claude/commands/_independent-gate.md` and run the **breakdown-gate** on `
 
 **Autonomous mode** (`_autonomous-mode.md`, point `breakdown`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting.
 
-Present a summary:
+Present a summary (`CLAUDE.md` → "Talking to the User"):
 
 "I've broken down the spec into **[N] tasks** at `specs/[<KEY|NNN>-feature]/tasks/`:
 
@@ -315,7 +313,7 @@ Riskiest tasks: [list high-risk tasks and why]
 Review checkpoints: [count] (before tasks [list])
 Contract orphans: [any Produces items not consumed by downstream Expects, or 'none']
 
-[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
+[the gate result from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review the task files. You can:
 1. Approve as-is → run `/execute-task 001` to start

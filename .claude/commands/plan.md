@@ -41,7 +41,7 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 
 ### Step 2: Signal Scan
 
-Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack.** If the spec references a library/technology that's already in the project's dependencies (check `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.), that is NOT a signal.
+Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack** (as listed in `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.).
 
 | Signal | Example | NOT a signal when... |
 |--------|---------|---------------------|
@@ -61,8 +61,7 @@ Read the spec and check for these signals. **Only flag signals for things NOT al
 For each signal, choose the appropriate research tool:
 
 **For specific libraries named in the spec:**
-- Try Context7 first (`resolve-library-id` → `query-docs`)
-- If Context7 has no docs for the library, fall back to WebSearch
+- Context7 first (`resolve-library-id` → `query-docs`); WebSearch when it has no docs for the library
 
 **For comparing alternatives or architectural decisions:**
 - Use WebSearch to find current best practices and proven approaches
@@ -144,7 +143,7 @@ If the feature involves API calls (REST, GraphQL, etc.), define contracts. Save 
 - **Errors**: [error cases and response format]
 ```
 
-For existing codebases, reference existing GraphQL queries/mutations or REST endpoints. Only document NEW or CHANGED contracts.
+For existing codebases, reference the existing queries, mutations or endpoints. Only document NEW or CHANGED contracts.
 
 ### 1.3: Architecture Decisions
 
@@ -331,17 +330,18 @@ Read `.claude/commands/_independent-gate.md` and run the **plan-gate** (architec
 
 **Autonomous mode** (`_autonomous-mode.md`, point `plan`): self-approve as that file's "Self-Approval at a HARD GATE" says, instead of waiting. A question for the user is answered as point `clarify` says.
 
-Present a summary:
+Present a summary (`CLAUDE.md` → "Talking to the User"):
 
 "I've created the technical plan at `specs/[feature-name]/plan.md`.
 
+[A `**Format**: 2` plan: its `## Summary` in place of the next four lines]
 **Approach**: [1-2 sentences]
 **Files affected**: [count] ([N] new, [M] modified)
 **Key decisions**: [list the most important ones]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]
-**Spec hash**: [Prerequisites step 2]
-[the `**Gate**:` line from `_independent-gate.md` → "At the HARD GATE"]
+**Spec since review**: [Prerequisites step 2, in words]
+[the gate result from `_independent-gate.md` → "At the HARD GATE"]
 
 Please review and approve. Once approved, run `/breakdown` to generate tasks."
 

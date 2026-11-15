@@ -173,7 +173,7 @@ git add specs/[feature]/review.md && git diff --cached --quiet || git commit -m 
 
 ## PHASE 6: Present Summary
 
-Display a concise summary of findings:
+Display a concise summary of findings, in words (`CLAUDE.md` → "Talking to the User"):
 
 ```
 ## Review Complete

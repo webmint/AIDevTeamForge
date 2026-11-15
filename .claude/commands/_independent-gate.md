@@ -78,9 +78,11 @@ Spec-gate only; the other gates skip it. Each script writes its file under `spec
 
 ## At the HARD GATE
 
-Add this line to the summary presented to the user:
+The gate's result line (a conductor-mode runner puts it in its run report, `_autonomous-mode.md` → "Result block"):
 
 `**Gate**: <gate> — C<n> W<n> N<n>; fixed <n>; open Critical: <ids, or none>; report: specs/<KEY|NNN>-*/gates/<gate>[-<lens>].md` (plan-gate: one line per lens). An id under `open Critical` may be a finding that Loop step 2 or 5 sends to the HARD GATE as open, or that "Spec-gate checks" step 3 (an `unverified` Critical) or step 5 sends there. Spec-gate: run that section's step 9 first.
+
+The summary presented to the user says that line in words, never raw (`CLAUDE.md` → "Talking to the User"): "spec-gate: 1 critical, 7 warnings, 2 notes; 7 fixed; still open: archived rows are not exported (CRIT-1); report: <path>". An older report's `S<n>` is its notes. Step 9's additions likewise: "the spec is unchanged since the review" (or what changed after it, and which fixes are not yet reviewed, each in words), "lint: no blocking findings, 3 advisory", "citations that could not be verified: none".
 
 - An open Critical is the user's decision: fix it now, accept it (record `accepted by user — <reason>` in the report's Dispositions), or stop.
 - When the user's change requests at the HARD GATE change the artifact's substance (a new or changed AC, design decision, contract or task), run the gate again on the changed parts, reporting Warning and above only, before asking for approval again.
