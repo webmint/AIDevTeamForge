@@ -6,7 +6,7 @@
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
-- Severity is Critical, Warning or Suggestion. Critical when an AC has no task, a dependency or wave order would break a build, or a task contradicts a contract. A task that omits or contradicts an AC's literal wording or a contract behaviour is at least a Warning and is fixed, never deferred (`_independent-gate.md` → "Loop").
+- Severity is Critical, Warning or Note. Critical when an AC has no task, a dependency or wave order would break a build, or a task contradicts a contract. A task that omits or contradicts an AC's literal wording or a contract behaviour is at least a Warning and is fixed, never deferred (`_independent-gate.md` → "Loop").
 - Defects outside the list are reported too, as `new`.
 
 **Origin**: `seed` = shipped with Forge; `field` = generalized from defects that escaped earlier gates in field use; `escape <KEY|NNN>/E<n>` = added by this project's /finalize learning step; `audit <date>/<theme>` = added by /audit. New items take the next free id; ids are never reused. An escape that an existing item already covers adds its origin to that item instead of a new item.

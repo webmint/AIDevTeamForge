@@ -77,6 +77,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 **Depends on**: [task numbers] or None
 **Blocks**: [task numbers] or None
 **Spec criteria**: AC-[numbers]
+**Decisions**: DEC-[numbers] or None
 **Review checkpoint**: Yes/No
 **Context docs**: [doc file paths] or None
 **Reuse**: [plan Reuse Map rows: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; `fixes #n in <paths>`] or none (no new symbol)
@@ -157,6 +158,26 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 - `Pending` — not yet started
 - `In Progress` — currently being executed
 - `Complete` — done and verified
+
+## Labels
+
+The ids that specs, plans, tasks and gate reports define and cite.
+
+| Label | Meaning | Numbered |
+|---|---|---|
+| `AC-3` | acceptance criterion | in the spec |
+| `DEC-2` | decision | one sequence per feature: the spec's Decisions section starts it; the rows of the plan's "Key Design Decisions" table continue it; tasks cite it |
+| `Q-1` | question for the user, open or answered | one sequence per feature |
+| `RISK-1` | risk | the spec's Risks table; the plan continues it when it adds one |
+| `CRIT-1`, `WARN-1`, `NOTE-1` | gate finding: critical, warning, note | in each gate file |
+
+- **Defining a label**: a list item that opens with the bold id (`- **DEC-1** <title>: <text>`), a heading that opens with the id (`### Q-1 <question>`), or the first cell of a table row.
+- **Gate files** use the sections `## Critical`, `## Warning`, `## Note`; the one-line count a gate returns is `C<n> W<n> N<n>`. A gate file keeps the id form it was started with: an older one keeps its `C-1`, `W-1`, `S-1` ids, `## Suggestion` and `S<n>`, and the scripts accept both forms.
+- **Other names stay as they are**: task 003; wave `W2` (`/execute-task W2`); tickets as the tracker writes them.
+- **Forge's machine ids stay inside files** and are never shown to the user without words: checklist ids (`SG-26`), lint codes (`B3-9`, `C1`), escape ids (`E<n>`), audit theme and finding ids (`T1`, `F-3`), STOP numbers, the `**Gate**:` count line.
+- **Standard names** (`UTF-8`, `S3`, `EC2`) are not labels.
+- **Citing an old document**: a new document cites an old document's label only with its source: "spec 001 D-3".
+- **Nothing else** shaped like a label (capitals, an optional hyphen, then digits: `KD-2`, `D1`, `OQ-3`) is used.
 
 ## Cross-Referencing
 

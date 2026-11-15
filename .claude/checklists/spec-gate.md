@@ -6,7 +6,7 @@
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
-- Severity is Critical, Warning or Suggestion. Critical when the spec breaks a project rule (`CLAUDE.md`, `constitution.md`), leaves an AC untestable, leaves an open question unclosed that an AC depends on, or can be read two ways on an AC. Otherwise Warning or Suggestion.
+- Severity is Critical, Warning or Note. Critical when the spec breaks a project rule (`CLAUDE.md`, `constitution.md`), leaves an AC untestable, leaves an open question unclosed that an AC depends on, or can be read two ways on an AC. Otherwise Warning or Note.
 - Defects outside the list are reported too, as `new`.
 - Severity floor: a finding whose subject is authorisation, access scope, path or key construction, or personal data is at least Warning and is tagged `[security-floor]`. Every finding carries a `path:line` citation with the verbatim quote (syntax: `.claude/commands/_independent-gate.md` → "Spec-gate checks").
 
