@@ -136,7 +136,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
-- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope. Files changed to cover a surface the user included (an Include answer in the spec's Request section) are in scope
+- **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope. Files changed to cover a surface the user included (an Include answer in the request record, `_intent-check.md` → "The Request Record") are in scope
 - **Leftover artifacts**: Check for debug logs, bare TODOs, commented-out code across all changed files
 
 ## PHASE 5: Generate Verification Report

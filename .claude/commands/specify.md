@@ -84,7 +84,7 @@ No tasks executed yet. This file is updated automatically after each `/execute-t
 
 ## PHASE 1: Understand the Request
 
-Read the user's description from `$ARGUMENTS`, or from the report's Request block when `$ARGUMENTS` is a report or its directory. The spec records it verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
+Read the user's description from `$ARGUMENTS`, or from the report's Request block when `$ARGUMENTS` is a report or its directory. It is recorded verbatim: read `.claude/commands/_intent-check.md` → "The Request Record".
 
 Before doing ANY analysis, read these files for context:
 1. `constitution.md` — project rules and patterns
@@ -96,7 +96,7 @@ Before doing ANY analysis, read these files for context:
    - `docs/features/*.md` — scan for features related to the request
    - `docs/api/*.md` — if the request involves API changes
    - If `docs/` doesn't exist or is empty, skip — rely on codebase analysis in Phase 3
-5. The `/research` report for this request (`specs/<KEY|NNN>-*/research-report.md`, or a `research/YYYY-MM-DD-<slug>.md` from before 1.39.0), when the user names one or `$ARGUMENTS` is its path (its `**Request (verbatim)**` block is then the request). Its "Reuse or Extend" rows are the first prior-art candidates of Phase 1.5, and its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use its findings (its Request block is still the request: copy it), tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
+5. The `/research` report for this request (`specs/<KEY|NNN>-*/research-report.md`, or a `research/YYYY-MM-DD-<slug>.md` from before 1.39.0), when the user names one or `$ARGUMENTS` is its path (its `**Request (verbatim)**` block is then the request). Its "Reuse or Extend" rows are the first prior-art candidates of Phase 1.5, and its recommendation is weighed in Phase 2. Check it is not stale: after `git fetch origin`, run `git diff --name-only <Investigated at sha> <ref> -- <scoped paths>`, with `<ref>` = the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]`. Any output means a merge touched the investigated area: do not use its findings (its Request block is still the request: record it), tell the user it is stale and have `/research` re-run against the current code. A report without an `**Investigated at**:` line counts as stale.
 
 ## PHASE 1.5: Prior Art
 
@@ -128,9 +128,9 @@ Based on the description, identify ambiguities and ask clarifying questions. Ask
 - After each round, decide if more clarification is needed based on the answers
 - Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
 - If the description is clear enough, skip to Phase 3
-- Each question as asked and the user's answer as given go verbatim into the spec's `## Request (verbatim)` section
+- Each question as asked and the user's answer as given go verbatim into the request record
 
-**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never Request entries.
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never request-record entries.
 
 ## PHASE 3: Codebase Analysis
 
@@ -294,7 +294,7 @@ Present the spec to the user (`CLAUDE.md` → "Talking to the User"):
 
 Please review and either approve or request changes. Once approved, run `/plan` to create the technical implementation plan."
 
-A change request that adds or excludes scope is appended to the Request section, verbatim and dated.
+A change request that adds or excludes scope is appended to the request record, verbatim and dated.
 
 ## IMPORTANT RULES
 
