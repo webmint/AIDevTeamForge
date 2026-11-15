@@ -31,7 +31,7 @@ If during diagnosis (Phase 2) the bug turns out to be larger than expected, STOP
 
 Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
-**Checkpoint**: At the start of execution, create an empty checkpoint in the source repo:
+**Checkpoint** (Phase 3.1), an empty commit in the source repo:
 `git -C $SOURCE_ROOT commit -m "[WIP] checkpoint" --allow-empty` → store hash as `$SOURCE_CHECKPOINT`
 
 **WIP commit**: After code passes verification (Phase 5), commit all source changes:
@@ -39,7 +39,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
 **Squash** (at Phase 8.1.1): Propose a commit message and ask user to confirm before committing:
 1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
-2. Generate description from bug description (Phase 2.2)
+2. Generate description from bug description (Phase 2.2), without spec paths or Forge ids (`AC-3`, `spec 007`): the source repo cannot resolve them
 3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
    **Autonomous mode** (`_autonomous-mode.md`, point `commit`): use the proposed message.
 4. On confirmation: `git -C $SOURCE_ROOT reset --soft $SOURCE_CHECKPOINT && git -C $SOURCE_ROOT commit -m "<confirmed message>"`
@@ -464,11 +464,11 @@ git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 
 Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 
-### 8.1.1: Source Repo Squash (wrapper mode only)
+### 8.1.1: Source Repo Squash
 
 Skip if `SOURCE_ROOT` is `.` or no `[WIP]` commits in source repo.
 
-Run the **Squash** procedure from the Source Repo Auto-Commit section above. Generate the description from the bug description (Phase 2.2).
+Run the **Squash** procedure from the Source Repo Auto-Commit section above.
 
 ### 8.1.5: Update Bug File (if applicable)
 

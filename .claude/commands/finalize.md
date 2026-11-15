@@ -16,7 +16,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
 **Squash** (at Phase 3): Propose a commit message and ask user to confirm before committing:
 1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
-2. Generate description from the spec overview (Phase 1 step 1), first 1-2 sentences
+2. Generate description from the spec overview (Phase 1 step 1), first 1-2 sentences, without spec paths or Forge ids (`AC-3`, `spec 007`): the source repo cannot resolve them
 3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
    **Autonomous mode** (`_autonomous-mode.md`, point `commit`): use the proposed message.
 4. On confirmation: `git -C $SOURCE_ROOT reset --soft [squash-base] && git -C $SOURCE_ROOT commit -m "<confirmed message>"`

@@ -38,7 +38,7 @@ CMD_BUDGET=20000
 cmd_ceiling() {
   case "$1" in
     audit.md) echo 51734 ;; setup-wizard.md) echo 39916 ;; execute-task.md) echo 30058 ;;
-    fix.md) echo 26982 ;; refactor.md) echo 26596 ;; plan.md) echo 22648 ;;
+    fix.md) echo 26964 ;; refactor.md) echo 26577 ;; plan.md) echo 22648 ;;
     *) echo "$CMD_BUDGET" ;;
   esac
 }
