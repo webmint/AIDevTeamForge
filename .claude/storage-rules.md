@@ -156,7 +156,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 /breakdown    → creates specs/<KEY|NNN>-name/tasks/001-xxx.md, 002-xxx.md, ... (+ gates/breakdown-gate.md)
 /execute-task → updates individual task file status + completion notes
 /review       → creates specs/<KEY|NNN>-name/review.md (security, performance, test findings)
-/verify       → updates specs/<KEY|NNN>-name/spec.md status to Complete; appends intent-check answers to the request record (history.md for a Format 2 spec); Phase 9 triage may create bugs/NNN-xxx.md
+/verify       → writes and commits specs/<KEY|NNN>-name/verification.md (the verify report); updates spec.md status to Complete; appends intent-check answers to the request record (history.md for a Format 2 spec); Phase 9 triage may create bugs/NNN-xxx.md
 /finalize     → writes specs/<KEY|NNN>-name/summary.md (PR-ready feature summary, Phase 1.4) and specs/<KEY|NNN>-name/escapes.md and appends learned items to .claude/checklists/; squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
