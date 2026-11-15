@@ -98,6 +98,22 @@ class IdsAndMarkers(Case):
         self.assertIn((1, "A5"), self.codes(out))  # seven comment lines in a row
         self.assertTrue(out[-1].startswith("comment-lint: C7 "))
 
+    def test_every_label_blocks_in_a_comment(self):
+        self.write("src/l.js", "\n".join([
+            "// Follows DEC-2.",            # 1 C1
+            "// Answers Q-1.",              # 2 C1
+            "// Guards RISK-3.",            # 3 C1
+            "// Fixes CRIT-1 and WARN-2.",  # 4 C1
+            "// From NOTE-3.",              # 5 C1
+            "// NOTE: keep the order.",     # 6 nothing
+            "const z = 1;",
+            "",
+        ]))
+        code, out, _e = self.run_lint()
+        self.assertEqual(code, 1)
+        self.assertEqual([(n, c) for n, c in self.codes(out) if c.startswith("C")],
+                         [(1, "C1"), (2, "C1"), (3, "C1"), (4, "C1"), (5, "C1")])
+
     def test_markers_inside_strings_and_test_titles_are_not_comments(self):
         self.write("test/a.test.js", "\n".join([
             "const url = 'http://example.invalid/AC-1';",

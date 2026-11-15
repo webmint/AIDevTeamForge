@@ -20,9 +20,10 @@ such a block, so an old id in an untouched line is not reported. C4 applies to a
 an edited old doc comment over the limit is A6.
 
 Blocking (a TR-27 Critical, unless the reviewer marks the line `false positive: <reason>`):
-  C1  an id in a comment: `AC-<n>`; after `spec`/`task`: a number of 1-3 digits; after `plan`, `decision`, `finding`
-      or `escape`: an upper-case id like `K14`, `Q-11`, `D1-D5` (the cue word in any case, the id upper-case); the
-      project's `ISSUE_KEY_PATTERN` (`project-config.json`) when it starts with a literal prefix (`AP-[0-9]+`; a
+  C1  an id in a comment: a label of `.claude/storage-rules.md` "Labels" (`AC-<n>`, `DEC-<n>`, `Q-<n>`, `RISK-<n>`,
+      `CRIT-<n>`, `WARN-<n>`, `NOTE-<n>`); after `spec`/`task`: a number of 1-3 digits; after `plan`, `decision`,
+      `finding` or `escape`: an upper-case id like `K14`, `Q11`, `D1-D5` (the cue word in any case, the id upper-case);
+      the project's `ISSUE_KEY_PATTERN` (`project-config.json`) when it starts with a literal prefix (`AP-[0-9]+`; a
       generic Jira or `#<n>` pattern is not used)
   C2  `§` in a comment
   C3  a date next to a provenance word (verified, as of, since, checked, updated, on, until) within 3 words, or a
@@ -91,7 +92,8 @@ TRIPLE_QUOTE = {"java", "kt", "kts", "scala", "swift", "dart"}
 NO_LINE_COMMENT = {"css"}
 LINE_OPENERS = ("//", "///", "//!", "#", "--")
 
-ID_ALWAYS = re.compile(r"\bAC-\d+[a-z]?\b")
+# The labels of `.claude/storage-rules.md` "Labels"
+ID_ALWAYS = re.compile(r"\b(?:AC|DEC|Q|RISK|CRIT|WARN|NOTE)-\d+[a-z]?\b")
 ID_NUMBERED = re.compile(r"\b(?:spec|task)s?\s+#?\d{1,3}\b", re.IGNORECASE)
 ID_CUED = re.compile(r"\b(?:plan|decision|finding|escape)s?\s+([A-Za-z]{1,2}-?\d+)\b", re.IGNORECASE)
 # The cue word may be in any case, but the id after it must be upper-case ("plan K14", not "plan b2"):

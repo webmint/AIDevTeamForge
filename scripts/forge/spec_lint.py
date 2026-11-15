@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Mechanical checks of a feature's spec.md, and the hash that tells /plan whether the spec changed after its review.
 
-Two verbs. `lint` runs the blocking checks B1-B4 and the advisory checks A1-A3; `hash` computes, records and checks
-the spec hash kept in the spec-gate report (the hash leaves out the `**Status**:` and `Self-approved (autonomous mode`
-header lines).
+Three verbs. `lint` runs the blocking checks B1-B5 and the advisory checks A1-A4; `labels` runs the label checks B5 and
+A4 (and B4) on one file, a Format 2 `plan.md`; `hash` computes, records and checks the spec hash kept in the spec-gate
+report (the hash leaves out the `**Status**:` and `Self-approved (autonomous mode` header lines).
 
 Usage:
   python3 scripts/forge/spec_lint.py lint <feature-dir> [--root <dir>]
+  python3 scripts/forge/spec_lint.py labels <file> [--root <dir>]
   python3 scripts/forge/spec_lint.py hash <feature-dir> [--root <dir>] [--record | --unreviewed "<ids>" | --check]
-      --root <dir>   project root; the feature dir (`specs/<KEY|NNN>-name`) is resolved against it (default: the current dir)
+      --root <dir>   project root; the feature dir (`specs/<KEY|NNN>-name`) or the file is resolved against it, and its
+                     `.claude/project-config.json` gives the ticket keys of B5 and A4 (default: the current dir)
   `hash` takes at most one of its three flags; without one it prints `sha256:<hex>` and writes nothing.
 
 Blocking (B) and advisory (A) checks, all on `<feature-dir>/spec.md` (the `## Request (verbatim)` section, fenced code
@@ -31,6 +33,21 @@ blocks and, where noted, code spans and quoted text are skipped; heading lines a
       with no number plus unit and no named standard in the same sentence.
   A3  evidence shape: a code span that looks like a path citation but has a bad line part (`:0`, `:L12`, `#L12`,
       `:12-`, a reversed range), and a `## 2a. Prior art` table row whose evidence cell has no `file:line`.
+Label checks, only in a file with the header line `**Format**: 2` (before the first `## ` heading); code spans and
+quoted text are skipped. A label-shaped id is capitals, an optional hyphen, then digits (`KD-2`, `D1`). It is known when
+its prefix is a label of `.claude/storage-rules.md` "Labels" (AC, DEC, Q, RISK, CRIT, WARN, NOTE) or a multi-letter
+standard name (`UTF-8`, `SHA-256`), when it is a short standard or product name (`S3`, `EC2`, `P95`, `HTML5`), or when
+it is a ticket key of the project's `ISSUE_KEY_PATTERN` (`project-config.json`; only a pattern that starts with a
+literal prefix, `AP-[0-9]+`, as in comment_lint.py; the generic Jira pattern would match `KD-2` and is not used).
+Outside a definition a Forge machine id is known too (checklist ids `SG-26`, lint codes `B3-9`, escape `E1`, audit
+`T1`, `F-3`, `S2`, gate counts and older finding ids `C<n> W<n> N<n> S<n>`, `W-1`, waves `W2`); Forge never defines
+one in a spec or plan, so a definition of `S9`, `T2` or `W-3` is B5.
+  B5  a label definition with an id that is not known: a list item that opens with the bold id (`- **KD-2** ...`,
+      `- [ ] **D1** ...`), a heading that opens with the id (`### D1 ...`), or the first cell of a row in a table under
+      a heading naming decisions, risks or questions, or with an `Id` or `#` header cell (`| KD-1 | ... |`).
+  A4  the first cell of a row in any other table that opens with an id that is not known (product and standard names
+      often sit there), and such an id anywhere else. Not checked: a reference qualified by the token right before it,
+      as in B2 (`spec 001 D-3`).
 
 Spec hash: SHA-256 of spec.md without two header lines, both only before the first `## ` heading: the `**Status**:`
 line and any line starting `Self-approved (autonomous mode` (the HARD GATE approval and the autonomous self-approval
@@ -48,15 +65,19 @@ add or edit them). A `**Status**:` line in the body counts.
   Edits of spec-gate.md are atomic (temp file + os.replace) and touch only those two lines.
 
 Output: `lint` writes `<feature-dir>/gates/spec-lint.txt` (a BLOCKING and an ADVISORY section, each line
-`<code>-<spec.md line> <message>` (e.g. `B3-9`), then `spec-lint: B<n> A<n>`) and prints the same text.
-Exit codes: lint 0 no blocking finding, 1 at least one; hash --check 0 unchanged, 1 changed; every verb 2 for bad
-arguments or an unreadable or unwritable file, and --check 2 when there is no spec-gate report or no recorded hash.
+`<code>-<spec.md line> <message>` (e.g. `B3-9`), then `spec-lint: B<n> A<n>`) and prints the same text. `labels` prints
+the same form, ending `labels: B<n> A<n>` (line numbers of its file), and writes nothing; a file without the Format line
+prints `labels: not checked (...)`.
+Exit codes: lint and labels 0 no blocking finding (or not checked), 1 at least one; hash --check 0 unchanged, 1
+changed; every verb 2 for bad arguments or an unreadable or unwritable file, and --check 2 when there is no spec-gate
+report or no recorded hash.
 Stdlib only; Python 3.9+.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import sys
@@ -65,7 +86,8 @@ import tempfile
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import spec_refs  # noqa: E402  (sibling module; path set above)
+import comment_lint  # noqa: E402  (sibling module; path set above)
+import spec_refs  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants ported verbatim from the 2.0 branch (develop-2.0-init @ dac1624)
@@ -149,6 +171,26 @@ _BAD_LINE_PART = (
 _BAD_CITE_RE = re.compile(r"^(?P<path>[^\s:#`]*[^\s:#`/][^\s:#`]*)(?P<bad>" + _BAD_LINE_PART + r")$")
 _REVERSED_RE = re.compile(r"^(?P<path>[^\s:#`]+):(?P<a>\d+)-(?P<b>\d+)$")
 _PATHLIKE_RE = re.compile(r"(?:/|\.[A-Za-z][A-Za-z0-9]*$)")
+# Labels (`.claude/storage-rules.md` "Labels"), checked only in a file with the `**Format**: 2` header line
+_FORMAT2_RE = re.compile(r"^\*\*Format\*\*:[ \t]*2(?![\w.])")
+_LABEL_PREFIXES = frozenset("AC DEC Q RISK CRIT WARN NOTE".split())
+# Forge's machine ids: checklist ids (`SG-26`, `PG-`, `BG-`, `TR-`, `TL-`), lint codes (`B3-9`, `A1`, `C1`), escape
+# ids (`E1`), audit theme, finding and lens ids (`T1`, `F-3`, `S2`), the `**Gate**:` counts and older finding ids
+# (`C<n> W<n> N<n> S<n>`, `W-1`), and waves (`W2`)
+_FORGE_ID_PREFIXES = frozenset("SG PG BG TR TL B A C E T F S W N".split())
+# Standard and product names for the label checks: multi-letter prefixes (comment_lint.py's STANDARD_NAMES added), and
+# exact tokens for the short ones, so that a single letter (`S9`, `X-1`) does not pass as a definition
+_LABEL_STANDARD_PREFIXES = _STANDARD_PREFIXES | frozenset(
+    "ASCII UTC GMT IPV OWASP BCP ANSI POSIX JIS GB EN DIN".split())
+_LABEL_STANDARD_TOKENS = frozenset("S3 EC2 H264 H265 X509 P50 P90 P95 P99 SOC2 HTML5 CSS3".split())
+# a table whose first cells define labels: under a heading naming one of these words, or with this header cell
+_LABEL_TABLE_WORDS_RE = re.compile(r"\b(?:decisions?|risks?|questions?)\b", re.IGNORECASE)
+_LABEL_TABLE_HEADERS = frozenset(("id", "#"))
+_LABEL_RE = re.compile(r"(?<![\w-])([A-Z]+)-?\d+(?!\w)")
+_LABEL_LIST_DEF_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?\*\*")
+_LABEL_HEADING_DEF_RE = re.compile(r"^ {0,3}#{1,6}[ \t]+(?:\*\*)?")
+_LABEL_ROW_DEF_RE = re.compile(r"^\s*\|\s*(?:\*\*)?")
+_LABEL_SET = "AC, DEC, Q, RISK, CRIT, WARN, NOTE"
 
 
 class SpecError(Exception):
@@ -439,24 +481,126 @@ def _check_evidence(lines: List[Line]) -> List[Finding]:
     return found
 
 
-def lint(text: str) -> Tuple[List[Finding], List[Finding]]:
+def is_format2(text: str) -> bool:
+    """True when a header line (before the first `## ` heading) is `**Format**: 2`."""
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if _H2_RE.match(raw):
+            return False
+        if _FORMAT2_RE.match(raw):
+            return True
+    return False
+
+
+def project_key(root: str) -> Optional["re.Pattern[str]"]:
+    """`ISSUE_KEY_PATTERN` of `<root>/.claude/project-config.json` when it starts with a literal prefix, else None."""
+    try:
+        with open(os.path.join(root, ".claude", "project-config.json"), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    value = data.get("ISSUE_KEY_PATTERN", "") if isinstance(data, dict) else ""
+    return comment_lint.issue_key_regex(value) if isinstance(value, str) else None
+
+
+def _known_label(token: str, prefix: str, key: Optional["re.Pattern[str]"], definition: bool) -> bool:
+    """A label, a ticket key or a standard name; outside a definition also a Forge machine id."""
+    return (prefix in _LABEL_PREFIXES or prefix in _LABEL_STANDARD_PREFIXES or token in _LABEL_STANDARD_TOKENS
+            or (key is not None and key.fullmatch(token) is not None)
+            or (not definition and prefix in _FORGE_ID_PREFIXES))
+
+
+def _label_table(heading: str, header_row: str) -> bool:
+    """True when a table defines labels in its first cells (a Decisions, Risks or Questions heading, or an `Id` / `#`
+    header cell)."""
+    cells = _table_cells(header_row)
+    first = cells[0].strip("*").strip().lower() if cells else ""
+    return bool(_LABEL_TABLE_WORDS_RE.search(heading)) or first in _LABEL_TABLE_HEADERS
+
+
+def _check_labels(lines: List[Line], key: Optional["re.Pattern[str]"]) -> Tuple[List[Finding], List[Finding]]:
+    """(B5, A4) of a Format 2 file: label definitions and references outside the label set."""
+    blocking: List[Finding] = []
+    advisory: List[Finding] = []
+    heading, last_row, defining_table = "", -1, False
+    for line in lines:
+        if line.heading:
+            heading = line.text
+        is_row = line.text.lstrip().startswith("|")
+        if is_row and last_row != line.number - 1:  # the header row of a new table
+            defining_table = _label_table(heading, line.text)
+        last_row = line.number if is_row else -1
+        text = _without_code(line.text, _MASK)
+        text = _blank_spans(text, [(m.start(), m.end()) for m in _QUOTED_RE.finditer(text)], _MASK)
+        defined_at, what = -1, ""
+        for regex, kind in ((_LABEL_LIST_DEF_RE, "item"), (_LABEL_HEADING_DEF_RE, "heading"),
+                            (_LABEL_ROW_DEF_RE, "row")):
+            m = regex.match(text)
+            if m and _LABEL_RE.match(text, m.end()):
+                defined_at, what = m.end(), kind
+                break
+        blocks = what in ("item", "heading") or (what == "row" and defining_table)
+        for m in _LABEL_RE.finditer(text):
+            token = m.group(0)
+            definition = m.start() == defined_at
+            if _known_label(token, m.group(1), key, definition and blocks):
+                continue
+            if definition and blocks:
+                blocking.append(("B5", line.number, "`{}` defines a label outside `.claude/storage-rules.md` "
+                                 "\"Labels\" ({}, or the project's ticket keys); a product or standard name: reword so "
+                                 "the {} does not open with it".format(token, _LABEL_SET, what)))
+                continue
+            if definition:
+                advisory.append(("A4", line.number, "table row opens with `{}`, not a label of "
+                                 "`.claude/storage-rules.md` \"Labels\" (a product or standard name is fine)".format(
+                                     token)))
+                continue
+            word = _preceding_word(text, m.start()).lower()
+            if _SPEC_NUMBER_RE.match(word) or word in _AC_QUALIFIERS or _ticket_before(text[:m.start()]):
+                continue
+            advisory.append(("A4", line.number, "`{}` is not a label of `.claude/storage-rules.md` \"Labels\"; use "
+                             "one, or name its source (`spec 001 D-3`)".format(token)))
+    return blocking, advisory
+
+
+def labels(text: str, key: Optional["re.Pattern[str]"] = None) -> Tuple[List[Finding], List[Finding]]:
+    """The label checks alone (B5, A4, and B4 for a fence never closed) of a Format 2 file; ([], []) for another."""
+    if not is_format2(text):
+        return [], []
+    lines, unclosed = _scan(text)
+    blocking, advisory = _check_labels(lines, key)
+    if unclosed is not None:
+        blocking.append(_unclosed_finding(unclosed))
+    order = lambda f: (f[1], f[0])  # noqa: E731
+    return sorted(blocking, key=order), sorted(advisory, key=order)
+
+
+def _unclosed_finding(unclosed: Tuple[int, bool]) -> Finding:
+    return ("B4", unclosed[0], "code fence opened on line {}{} is never closed; the lines after it were not "
+            "checked".format(unclosed[0], " in the Request section" if unclosed[1] else ""))
+
+
+def lint(text: str, key: Optional["re.Pattern[str]"] = None) -> Tuple[List[Finding], List[Finding]]:
+    """All checks; B5 and A4 only in a Format 2 spec. `key` is the project's ticket-key pattern (`project_key`)."""
     lines, unclosed = _scan(text)
     blocking, defined = _check_ac_ids(lines)
     blocking += _check_ac_refs(lines, defined)
     blocking += _check_section_refs(lines, _heading_numbers(lines))
     if unclosed is not None:
-        blocking.append(("B4", unclosed[0], "code fence opened on line {}{} is never closed; the lines after it were "
-                         "not checked".format(unclosed[0], " in the Request section" if unclosed[1] else "")))
+        blocking.append(_unclosed_finding(unclosed))
     advisory = _check_numbers(lines) + _check_vague(lines) + _check_evidence(lines)
-    key = lambda f: (f[1], f[0])  # noqa: E731
-    return sorted(blocking, key=key), sorted(advisory, key=key)
+    if is_format2(text):
+        label_blocking, label_advisory = _check_labels(lines, key)
+        blocking += label_blocking
+        advisory += label_advisory
+    order = lambda f: (f[1], f[0])  # noqa: E731
+    return sorted(blocking, key=order), sorted(advisory, key=order)
 
 
-def render_lint(blocking: List[Finding], advisory: List[Finding]) -> str:
+def render_lint(blocking: List[Finding], advisory: List[Finding], name: str = "spec-lint") -> str:
     def block(title: str, items: List[Finding]) -> List[str]:
         return [title] + (["{}-{} {}".format(*f) for f in items] if items else ["(none)"])
     out = block("BLOCKING", blocking) + [""] + block("ADVISORY", advisory) + [
-        "", "spec-lint: B{} A{}".format(len(blocking), len(advisory))]
+        "", "{}: B{} A{}".format(name, len(blocking), len(advisory))]
     return "\n".join(out) + "\n"
 
 
@@ -599,29 +743,51 @@ def check_hash(spec_path: str, gate_path: str) -> Tuple[int, str]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spec_lint.py", description="Mechanical checks and hash of a spec.md")
     sub = parser.add_subparsers(dest="verb", required=True)
-    lint_p = sub.add_parser("lint", help="run the blocking B1-B4 and advisory A1-A3 checks")
+    lint_p = sub.add_parser("lint", help="run the blocking B1-B5 and advisory A1-A4 checks")
     lint_p.add_argument("feature_dir")
+    labels_p = sub.add_parser("labels", help="run the label checks B5 and A4 on one Format 2 file (a plan.md)")
+    labels_p.add_argument("file")
     hash_p = sub.add_parser("hash", help="print, record or check the spec hash (the Status and self-approval header lines are excluded)")
     hash_p.add_argument("feature_dir")
     group = hash_p.add_mutually_exclusive_group()
     group.add_argument("--record", action="store_true", help="record the hash in gates/spec-gate.md")
     group.add_argument("--unreviewed", metavar="IDS", help="record the ids of fixes made after the recorded hash")
     group.add_argument("--check", action="store_true", help="compare the spec with the recorded hash")
-    for p in (lint_p, hash_p):
+    for p in (lint_p, labels_p, hash_p):
         p.add_argument("--root", default=".", help="project root (default: the current directory)")
     return parser
 
 
+def _run_labels(root: str, name: str) -> int:
+    path = os.path.join(root, name)
+    if not os.path.isfile(path):
+        raise SpecError("no file at {}".format(path))
+    text = _read_text(path)
+    if not is_format2(text):
+        print("labels: not checked ({} has no `**Format**: 2` header line)".format(name))
+        return 0
+    blocking, advisory = labels(text, project_key(root))
+    sys.stdout.write(render_lint(blocking, advisory, "labels"))
+    return 1 if blocking else 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parser().parse_args(argv)
-    feature = os.path.join(os.path.abspath(args.root), args.feature_dir)
+    root = os.path.abspath(args.root)
+    if args.verb == "labels":
+        try:
+            return _run_labels(root, args.file)
+        except SpecError as err:
+            sys.stderr.write("spec_lint: {}\n".format(err))
+            return 2
+    feature = os.path.join(root, args.feature_dir)
     spec_path = os.path.join(feature, "spec.md")
     gate_path = os.path.join(feature, "gates", "spec-gate.md")
     try:
         if not os.path.isfile(spec_path):
             raise SpecError("no spec.md at {}".format(spec_path))
         if args.verb == "lint":
-            blocking, advisory = lint(_read_text(spec_path))
+            blocking, advisory = lint(_read_text(spec_path), project_key(root))
             report = render_lint(blocking, advisory)
             _atomic_write(os.path.join(feature, "gates", "spec-lint.txt"), report)
             sys.stdout.write(report)

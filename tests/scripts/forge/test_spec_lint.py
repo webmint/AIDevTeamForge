@@ -326,6 +326,153 @@ class LintAdvisory(Base):
         self.assertIn("Spinner.spin", found[0][2])
 
 
+FORMAT2_SPEC = GOOD_SPEC.replace("**Type**: feature\n", "**Type**: feature\n**Format**: 2\n") + """
+## 7. Decisions
+
+- **DEC-1** Spin order: clockwise. Why: the motor turns that way.
+
+## 8. Open Questions
+
+- **Q-2** Which colour?
+
+### Q-3 Which size?
+
+## 9. Risks
+
+| Id | Risk |
+|----|------|
+| RISK-1 | the motor stalls |
+
+The gate found CRIT-1, WARN-2 and NOTE-3; DEC-1 answers Q-2 and RISK-1 stays.
+"""
+
+
+class Labels(Base):
+    def lint(self, text, key=None):
+        blocking, advisory = spec_lint.lint(text, key)
+        return [f for f in blocking + advisory if f[0] in ("B5", "A4")]
+
+    def config(self, pattern):
+        os.makedirs(os.path.join(self.root, ".claude"), exist_ok=True)
+        with open(os.path.join(self.root, ".claude", "project-config.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"ISSUE_KEY_PATTERN": "%s"}' % pattern)
+
+    def test_every_label_of_the_table_passes(self):
+        self.assertTrue(spec_lint.is_format2(FORMAT2_SPEC))
+        self.assertEqual(spec_lint.lint(FORMAT2_SPEC), ([], []))
+
+    def test_invented_definitions_block(self):
+        text = FORMAT2_SPEC + "\n- **KD-2** Use the cache.\n### D1 Second choice\n1. **OQ-4** a\n- [ ] **PD-1**: b\n"
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found],
+                         [("B5", "KD-2"), ("B5", "D1"), ("B5", "OQ-4"), ("B5", "PD-1")])
+        self.assertIn("a product or standard name: reword so the item does not open with it", found[0][2])
+
+    def test_single_letter_definitions_block(self):
+        text = FORMAT2_SPEC + "\n- **S9** a\n- **T2** b\n- **X-1** c\n### W1 d\n- **N1** e\n"
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found],
+                         [("B5", "S9"), ("B5", "T2"), ("B5", "X-1"), ("B5", "W1"), ("B5", "N1")])
+
+    def test_short_standard_names_pass_as_definitions(self):
+        text = FORMAT2_SPEC + "\n- **S3** bucket\n- **EC2** hosts\n### P95 latency\n- **HTML5** forms\n"
+        self.assertEqual(self.lint(text), [])
+
+    def test_rows_of_a_label_table_block(self):
+        decisions = FORMAT2_SPEC.replace("- **DEC-1** Spin order: clockwise. Why: the motor turns that way.\n",
+                                         "| Decision | Why |\n|---|---|\n| DEC-1 | clockwise |\n| KD-1 | queue |\n")
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in self.lint(decisions)], [("B5", "KD-1")])
+        self.assertIn("so the row does not open with it", self.lint(decisions)[0][2])
+        by_header = FORMAT2_SPEC + "\n## 10. Parts\n\n| # | Part |\n|---|---|\n| P-1 | spinner |\n| T2 | stop |\n"
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in self.lint(by_header)], [("B5", "P-1"), ("B5", "T2")])
+
+    def test_label_table_heading_words_match_whole_words(self):
+        text = FORMAT2_SPEC + "\n## 10. Questionnaire fields\n\n| Field | What |\n|---|---|\n| V2 | form |\n"
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["A4"])
+        text = FORMAT2_SPEC + "\n## 10. Key Design Decisions\n\n| Field | What |\n|---|---|\n| V2 | form |\n"
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["B5"])
+
+    def test_table_rows_warn_only_for_an_unknown_label(self):
+        text = FORMAT2_SPEC + ("\n## 10. Parts\n\n| Name | What |\n|----|------|\n| OQ-3 | a |\n| T1 | b |\n| UTF-8 | c |\n"
+                               "| S3 | d |\n")
+        found = self.lint(text)
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("A4", "OQ-3")])
+        self.assertIn("table row", found[0][2])
+
+    def test_invented_reference_warns(self):
+        found = self.lint(FORMAT2_SPEC + "\nThis follows KD-9 and HG-1.\n")
+        self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("A4", "KD-9"), ("A4", "HG-1")])
+
+    def test_forge_machine_ids_and_standard_names_pass(self):
+        text = FORMAT2_SPEC + ("\nSG-26, PG-A01, TR-27, B3-9, C1, E1, T1, F-3, W2, S-1, C0 W1 N2 S0, UTF-8, SHA-256, "
+                               "EC2, S3, ISO-8601, E2E and K8s.\n")
+        self.assertEqual(self.lint(text), [])
+
+    def test_literal_ticket_key_passes(self):
+        self.config("AP-[0-9]+")
+        key = spec_lint.project_key(self.root)
+        text = FORMAT2_SPEC + "\n- **AP-1301** the parent ticket\n\nSee AP-1302.\n"
+        self.assertEqual(self.lint(text, key), [])
+        self.assertEqual([c for c, _n, _m in self.lint(text)], ["B5", "A4"])  # without the project's pattern
+        self.write("spec.md", text)
+        self.assertEqual(self.run_cli("lint", FEATURE)[0], 0)
+
+    def test_old_spec_lints_as_before_the_label_checks(self):
+        text = GOOD_SPEC + "\nSee EN-12 AC-9, GB-4 §7 and EC-2 AC-8.\n"  # ticket keys qualify, as before
+        self.assertEqual(spec_lint.lint(text)[0], [])
+
+    def test_default_jira_pattern_is_ignored(self):
+        self.config("[A-Z][A-Z0-9]+-[0-9]+")
+        self.assertIsNone(spec_lint.project_key(self.root))
+        self.write("spec.md", FORMAT2_SPEC + "\n- **KD-2** Use the cache.\n")
+        code, out, _err = self.run_cli("lint", FEATURE)
+        self.assertEqual(code, 1)
+        self.assertIn("B5-", out)
+
+    def test_qualified_old_label_passes(self):
+        self.config("AP-[0-9]+")
+        text = FORMAT2_SPEC + "\nAs spec 001 D-3, 001's KD-2, ticket OQ-1 and AP-1301 D-4 said.\n"
+        self.assertEqual(self.lint(text, spec_lint.project_key(self.root)), [])
+
+    def test_quotes_code_spans_and_fences_are_skipped(self):
+        text = FORMAT2_SPEC + '\nThe user said "keep KD-2" and “drop D1”; see `KD-3`.\n\n```\n- **KD-4** x\n```\n'
+        self.assertEqual(self.lint(text), [])
+
+    def test_a_file_without_format_2_is_not_checked(self):
+        text = GOOD_SPEC + "\n- **KD-2** Use the cache.\n\nThis follows KD-9.\n"
+        self.assertEqual(self.lint(text), [])
+        late = GOOD_SPEC + "\n**Format**: 2\n\n- **KD-2** Use the cache.\n"  # not a header line
+        self.assertFalse(spec_lint.is_format2(late))
+        self.assertEqual(self.lint(late), [])
+
+    def test_labels_verb_on_a_plan(self):
+        plan = ("# Plan: Widget\n\n**Spec**: spec.md\n**Format**: 2\n\n## Key Design Decisions\n\n"
+                "| Id | Decision |\n|----|----------|\n| DEC-2 | cache |\n| KD-1 | queue |\n\n- **D1** retry\n\n"
+                "## Layer Map\n\n| Layer | Files |\n|---|---|\n| OQ-9 | x |\n")
+        self.write("plan.md", plan)
+        before = sorted(os.listdir(os.path.join(self.feature, "gates")))
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 1)
+        self.assertIn("BLOCKING\nB5-11 `KD-1`", out)
+        self.assertIn("\nB5-13 `D1`", out)
+        self.assertIn("ADVISORY\nA4-19 table row opens with `OQ-9`", out)
+        self.assertTrue(out.rstrip().endswith("labels: B2 A1"))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.feature, "gates"))), before)  # writes nothing
+        self.write("plan.md", plan.replace("**Format**: 2\n", ""))
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 0)
+        self.assertIn("labels: not checked", out)
+        self.assertEqual(self.run_cli("labels", FEATURE + "/missing.md")[0], 2)
+
+    def test_labels_verb_reads_the_project_config_under_root(self):
+        self.write("plan.md", "# Plan\n\n**Format**: 2\n\n## Decisions\n\n- **AP-1301** parent ticket\n")
+        self.assertEqual(self.run_cli("labels", FEATURE + "/plan.md")[0], 1)
+        self.config("AP-[0-9]+")
+        code, out, _err = self.run_cli("labels", FEATURE + "/plan.md")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.rstrip().endswith("labels: B0 A0"))
+
+
 class LintCli(Base):
     def test_output_file_ids_and_exit_codes(self):
         self.write("spec.md", GOOD_SPEC.replace("contract §13", "(approved, §13)"))
