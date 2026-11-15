@@ -6,12 +6,12 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (22 commands + 7 shared partials in `.claude/commands/`)
+### Commands (22 commands + 9 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `research.md` — Quick feasibility check for vague ideas; investigates codebase and docs/ for related patterns, signal-based external research (Context7 first for libraries, WebSearch for comparisons), displays full report in console and optionally saves to `research/YYYY-MM-DD-[topic-slug].md`; the report keeps the request (and a named issue's text) verbatim, and the next step is `/specify <report path>` (1.36.0)
-- `specify.md` — Creates feature specs with acceptance criteria; clarifies requirements in rounds of up to 5 questions (no artificial limit); auto-creates `spec/NNN-short-desc` branch when on default branch; keeps the user's request verbatim in the spec's `## Request (verbatim)` section (1.36.0)
+- `specify.md` — Creates feature specs with acceptance criteria; clarifies requirements in rounds of up to 5 questions (no artificial limit); auto-creates `spec/NNN-short-desc` branch when on default branch; keeps the user's request verbatim (1.36.0): since 1.40.0 a new spec (`**Format**: 2`) has no Request section: the request stays in the feature's `research-report.md` or is copied to `history.md`, which also holds the user's answers; an older spec keeps its `## Request (verbatim)` section
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research with tightened triggers (not-in-project qualifier); Context7 first for library docs; Phase 2.5 cross-references plan against spec ACs before presenting to user
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints; references shared `_agent-assignment.md` for agent selection
 - `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /finalize
@@ -36,8 +36,9 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from 
 - `_tech-writer-onboarding.md` — Full onboarding scan instructions Section A (onboard)
 - `_agent-assignment.md` — Shared file-layer→agent mapping table, referenced by breakdown, fix, and refactor
 - `_autonomous-mode.md` (1.31.0) — rules for conductor runners: interactive points and their autonomous behaviour, self-approval after a clean gate, STOP conditions, runner rules, result block, pull requests
-- `_intent-check.md` (1.36.0) — the Request record rules and `/verify`'s intent check: auditor prompt, DIRECT/BROADER handling, autonomous STOP 1 and resume with the user's answers
+- `_intent-check.md` (1.36.0) — the Request record rules (where the request is kept: `research-report.md` and `history.md` for a Format 2 spec, the spec's Request section for an older one) and `/verify`'s intent check: auditor prompt, DIRECT/BROADER handling, autonomous STOP 1 and resume with the user's answers
 - `_independent-gate.md` (1.30.0) — fresh-context gate reviewer before the HARD GATE of specify (spec-gate), plan (plan-gate, three lenses) and breakdown (breakdown-gate); one fix loop on Criticals, open ones shown at the gate
+- `_writing.md` (1.40.0) — shared writing rules for specs, plans, tasks and reports, read by the commands that write them
 
 Structural-quality layer (1.30.0): `/research` Reuse or Extend; `/specify` audit gate start line, Prior Art, spec type `feature | structural`; `/plan` 1.4–1.6 (Migration, Reuse Map, seams, Copies and Hubs, open themes); `/breakdown` `**Reuse**:` field; `/execute-task` Reuse check, New exports and Copies review inputs; `/fix` Class Sweep; `/review` 4.5 Adoption Check and 4.6 Structural Check; `/finalize` 1.5 escape analysis and 1.6 structural hand-off; `/audit` `--since-last`, structural lens, themes, triage and learning step
 
