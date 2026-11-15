@@ -9,17 +9,19 @@ Usage:
   python3 scripts/forge/verify_citations.py spec <spec.md> [--root <dir>]
       --root <dir>   project root that cited paths resolve against (default: the current directory)
 
-Report mode: findings are the `### <id>` headings under `## Critical`, `## Warning` and `## Suggestion` (severity from
-the section); dispositions are the `- <id>[, <id>...]: <text>` bullets under any `## Dispositions...` heading
-(indented lines below one belong to it; ids may be backticked); `## Re-check` citations are attributed to the id of
-their `### <id>` heading. Every citation in a finding, unquoted ones included, is checked for file and line range;
-a quoted one also for its quote.
+Report mode: findings are the `### <id>` headings under `## Critical`, `## Warning` and `## Note` (severity from the
+section; `## Note` matches only exactly, the others by prefix, so `## Notes` is not a severity section). An older
+report (a `### C-1`, `W-1` or `S-1` heading, a `## Suggestion` section or a `C<n> W<n> S<n>` count) has `## Suggestion`
+as its lowest severity, and its `## Note` is a plain section. Dispositions are the `- <id>[, <id>...]: <text>` bullets
+under any `## Dispositions...` heading (indented lines below one belong to it; ids may be backticked); `## Re-check`
+citations are attributed to the id of their `### <id>` heading. Every citation in a finding, unquoted ones included,
+is checked for file and line range; a quoted one also for its quote.
 Reasons (citation-level, the failure line ends with the citation):
   file_missing, line_oob, range_too_wide (M-N > 300), quote_mismatch, quote_empty, quote_too_short (fewer than 8
   non-space characters in the quote or 3 in a fragment), quote_unclosed (an unclosed backtick run after the span).
 Reasons (finding-level, the failure line ends with `-`):
   no_quoted_citation        a finding without any quoted citation
-  floor_in_suggestion       a `[security-floor]` finding (tag case-insensitive) under `## Suggestion`
+  floor_in_suggestion       a `[security-floor]` finding (tag case-insensitive) under `## Note` or `## Suggestion`
   floor_disposition_unverified  a `[security-floor]` finding whose last disposition word (the first token after
                             `<id>:`, `*` and backticks stripped; one of fixed, rejected, deferred, recorded,
                             accepted, unverified) is `recorded`,
@@ -29,12 +31,13 @@ Reasons (finding-level, the failure line ends with `-`):
                             disposition, or whose first token is not a disposition word
   duplicate_id              two `### <id>` headings with the same id (their floor flags are OR-ed)
   finding_not_heading       (a) a bullet, bold or heading line under a severity section that starts with a finding id
-                            (`C-1`, `W-2`, `S-3`) but is not a `### ` heading; (b) a `#### <id>` heading anywhere;
-                            (c) a `### <id>` heading in a section that is not a severity, re-check or disposition
-                            section; (d) id `report`: any non-blank line before the first `###` heading of a severity
-                            section other than `None` (once per section). `C0 W0 S0` excuses none of these.
+                            (`CRIT-1`, `WARN-2`, `NOTE-3`, or `C-1`, `W-2`, `S-3`) but is not a `### ` heading;
+                            (b) a `#### <id>` heading anywhere; (c) a `### <id>` heading in a section that is not a
+                            severity, re-check or disposition section; (d) id `report`: any non-blank line before the
+                            first `###` heading of a severity section other than `None` (once per section). A clean
+                            count line excuses none of these.
   unclosed_fence            a fenced code block still open at the end of the report (id `report`)
-  no_findings_parsed        no `## Critical|Warning|Suggestion` section and no `C0 W0 S0` line
+  no_findings_parsed        no `## Critical|Warning|Note|Suggestion` section and no `C0 W0 N0` (or `C0 W0 S0`) line
 Spec mode: every `path:N[-M]` code span, outside the `## Request (verbatim)` section: file exists and lines in
 range; a quoted one also verifies its quote.
 A path with several suffix matches is ambiguous: the check passes when any candidate passes (a `note` line says so).
@@ -62,7 +65,10 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import spec_refs  # noqa: E402  (sibling module; path set above)
 
-SEVERITIES = ("critical", "warning", "suggestion")
+SEVERITIES = ("critical", "warning", "suggestion", "note")
+RECORD_ONLY = ("suggestion", "note")  # the lowest severity: `## Suggestion` (old reports) or `## Note`
+CLEAN_COUNTS = ("C0 W0 S0", "C0 W0 N0")
+_OLD_FORM_RE = re.compile(r"^ {0,3}(?:###\s+[*`]*[CWS]-\d+\b|##\s+(?i:suggestion))|\bC\d+ W\d+ S\d+\b", re.M)
 FLOOR_TAG = "[security-floor]"
 FLOOR_WORDS = ("recorded", "rejected", "deferred")
 _DISPOSITION_RE = re.compile(r"^ {0,3}[-*]\s+(?P<ids>[^:]*?)\s*:\s*(?P<rest>.*)$")
@@ -70,10 +76,11 @@ _ID_TOKEN_RE = re.compile(r"^[A-Za-z][\w.\-]*$")
 DISPOSITION_WORDS = ("fixed", "rejected", "deferred", "recorded", "accepted", "unverified")
 _H3_RE = re.compile(r"^ {0,3}###\s")
 _HEADING_ID_RE = re.compile(r"^ {0,3}###\s+[*`]*([^\s:*`]+)")
-_FINDING_LINE_RE = re.compile(r"^\s*(?:(?:#{1,6}|[-*+])\s+[*`]*|\*\*|\d+[.)]\s+\*\*)(?P<id>[CWS]-\d+)\b")
-_ID_HEADING_RE = re.compile(r"^ {0,3}###\s+[*`]*(?P<id>[CWS]-\d+)\b")
+_FINDING_ID = r"(?:CRIT|WARN|NOTE|[CWS])-\d+"  # CRIT-1, WARN-2, NOTE-3; old reports: C-1, W-2, S-3
+_FINDING_LINE_RE = re.compile(r"^\s*(?:(?:#{1,6}|[-*+])\s+[*`]*|\*\*|\d+[.)]\s+\*\*)(?P<id>%s)\b" % _FINDING_ID)
+_ID_HEADING_RE = re.compile(r"^ {0,3}###\s+[*`]*(?P<id>%s)\b" % _FINDING_ID)
 _NONE_LINES = ("none", "none.")
-_DEEP_HEADING_RE = re.compile(r"^\s*#{4,}\s+[*`]*(?P<id>[CWS]-\d+)\b")
+_DEEP_HEADING_RE = re.compile(r"^\s*#{4,}\s+[*`]*(?P<id>%s)\b" % _FINDING_ID)
 
 
 class Block(NamedTuple):
@@ -227,9 +234,11 @@ def check_report(text: str, root: str, spec: Optional[str] = None, snapshots: Op
     files: Dict[str, set] = {}  # id -> real paths of the files the finding cites
     duplicated: set = set()
     seen_severity = False
+    old_form = bool(_OLD_FORM_RE.search(text))  # an older report: its `## Note` is a plain section
     for sec in sections:
         title = sec.title.lower()
-        severity = next((s for s in SEVERITIES if title.startswith(s)), None)
+        severity = next((s for s in SEVERITIES
+                         if (title == s and not old_form if s == "note" else title.startswith(s))), None)
         keeps_findings = severity or title.startswith(("re-check", "recheck", "disposition"))
         fence: Optional[str] = None
         in_preamble = bool(severity)
@@ -272,14 +281,14 @@ def check_report(text: str, root: str, spec: Optional[str] = None, snapshots: Op
                     cited |= _real(cands)
                 if not quoted:
                     res.fail(block.ident, "no_quoted_citation")
-                if is_floor and severity == "suggestion":
+                if is_floor and severity in RECORD_ONLY:
                     res.fail(block.ident, "floor_in_suggestion")
         elif title.startswith("re-check") or title.startswith("recheck"):
             for block in _blocks(sec):
                 for cit in _citations(block.lines):
                     if cit.quote is not None or cit.unclosed:
                         res.verify(block.ident or "re-check", cit)
-    if not seen_severity and not any("C0 W0 S0" in line for line in text.split("\n")):
+    if not seen_severity and not any(c in line for line in text.split("\n") for c in CLEAN_COUNTS):
         res.fail("report", "no_findings_parsed")
     fence = None
     for line in text.split("\n"):
