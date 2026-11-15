@@ -73,8 +73,16 @@ Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the aud
 
    ### Acceptance criteria
    - [x] AC-1: [short description]
+
+   ### Checks not run
+   [Omit the section when every check ran.]
+   - [the check, in words]: [why] ("performance: covered by the code reviewer; no performance agent configured")
    ```
-   Describe behaviour and outcomes in user-facing language ("Added email validation to signup", not "Created validateEmail in utils/validation.ts"), group files by area, and state only what the spec, plan, task files and git history say.
+   Describe behaviour and outcomes in user-facing language ("Added email validation to signup", not "Created validateEmail in utils/validation.ts"), group files by area, and state only what the spec, plan, task files and git history say. "Checks not run" is the exception: one line per review, verification or gate check that did not run or that another agent covered, each check once, in words and without Forge ids. Its sources:
+   - `review.md`: its `_Skipped …_` and `_Covered by …_` lines, an older report's included;
+   - `verification.md`: the `**Verified by**:` line when it says code reading, AC rows marked SKIPPED or MANUAL, and the intent check's skip or could-not-run line;
+   - `runs/{spec-gate,plan-gate,breakdown,review,verify}.md`, when present: each `**Gate**:` line and `## HARD GATE notes`;
+   - the gate reports in `gates/`: a first line `(general-purpose; …)` and `Not run: …` lines. For the spec-gate, each plan-gate lens and the breakdown-gate, a missing report gives a line only when that gate's checklist `**Gate**:` line is on and `_independent-gate.md` → "When It Runs" runs it for this spec type; a gate switched off gives "<the gate, in words, e.g. the plan review>: switched off in this project". A feature with no `gates/` folder gives one line: "independent gates: none recorded".
 3. **Commit** (follow the **Commit Convention** section in CLAUDE.md): `git add specs/[feature]/summary.md && git commit -m "[WIP] Feature summary: <KEY|NNN>-feature-name"`; skip the commit when `summary.md` is unchanged (a rerun)
 
 ## PHASE 1.5: Escape Analysis

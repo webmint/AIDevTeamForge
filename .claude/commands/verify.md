@@ -103,7 +103,7 @@ For EACH acceptance criterion (AC-N) in the spec:
 2. **Read the changed files** and verify the criterion is actually satisfied
 3. **Mark status**: PASS / FAIL / PARTIAL
 
-Generate the same checklist table (without the Category column).
+Generate the same checklist table (without the Category column), and record why code reading was used in the report's `**Verified by**:` line.
 
 ### 3.4: Handle Failures
 
@@ -141,7 +141,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 
 ## PHASE 5: Generate Verification Report
 
-Read `.claude/commands/_writing.md` → "Reports" first.
+Read `.claude/commands/_writing.md` → "Reports" first, then save the report to `specs/[feature]/verification.md` (a rerun overwrites it):
 
 ```markdown
 ## Verification Report
@@ -159,6 +159,7 @@ Read `.claude/commands/_writing.md` → "Reports" first.
 ...
 
 **Result**: [ALL PASS / X of Y PASS]
+**Verified by**: [the ac-verifier agent, in a browser or via the API | the ac-verifier agent; frontend criteria by code reading, Chrome MCP not available | commands (structural spec) | code reading — AC verification switched off in this project / no ac-verifier agent configured / Chrome MCP not available in browser-only mode]
 
 ### Intent Check
 [From Phase 3.5, as `_intent-check.md` → "Handling the Result" (Report) lays out: readings, the reading implemented, DIRECT surfaces with their outcome, BROADER as Info; or its skip or could-not-run line]
@@ -166,7 +167,7 @@ Read `.claude/commands/_writing.md` → "Reports" first.
 ### Code Quality
 - Type checker: PASS/FAIL
 - Linter: PASS/FAIL
-- Build: PASS/FAIL/SKIP
+- Build: PASS/FAIL/SKIP [SKIP: no Build Command]
 - Cross-task consistency: PASS/FAIL [details if fail]
 - No scope creep: PASS/FAIL [details if fail]
 - No leftover artifacts: PASS/FAIL [details if fail]
@@ -174,8 +175,8 @@ Read `.claude/commands/_writing.md` → "Reports" first.
 ### Review Findings
 [Include if review.md was found, otherwise: "No review report available — run `/review` for security, performance, and test coverage analysis."]
 
-**Security**: Critical: [N] | High: [N] | Medium: [N] | Info: [N]
-**Performance**: High: [N] | Medium: [N] | Low: [N] [or "not reviewed" / "skipped"]
+**Security**: Critical: [N] | High: [N] | Medium: [N] | Info: [N] [or "skipped"]
+**Performance**: High: [N] | Medium: [N] | Low: [N] [or "not reviewed" / "skipped"; "covered by the code reviewer" when review.md says so]
 **Test Coverage**: [ADEQUATE / GAPS FOUND / "not reviewed" / "skipped"]
 
 [List Critical/High findings that affect the verdict]
@@ -197,6 +198,11 @@ Read `.claude/commands/_writing.md` → "Reports" first.
 
 [If NEEDS WORK: specific tasks that need re-execution or new tasks needed]
 [If APPROVED: ready for finalize]
+```
+
+Commit the verification report:
+```
+git add specs/[feature]/verification.md && git diff --cached --quiet || git commit -m "[WIP] Verification report: [feature-name]"
 ```
 
 ## PHASE 6: Update Spec Status

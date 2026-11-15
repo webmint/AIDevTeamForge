@@ -58,3 +58,4 @@
 - **PG-Q10** A plan whose AC proves two states equivalent (a baseline against a migrated schema, a copy against its source) names the attributes the proving check can observe and those it cannot, and adds a check or a normalizing step for each blind attribute or records it as an accepted blind spot. — field
 - **PG-Q11** A plan that adds a generator whose output is committed names how the committed file is re-checked after later changes to its inputs land; a check that fails on the committed result is a Warning. — field
 - **PG-Q12** A plan that places the probe or self-check of an AC in a test suite names the command or script that runs that suite and confirms that the command the AC names executes it; a probe in a suite that command never collects is a Warning. — field
+- **PG-Q13** The tests the plan names as each criterion's proof meet `_plan-checks.md` → "CI-unrun tests" (pasted into this prompt); a failure there is reported under this id. — field

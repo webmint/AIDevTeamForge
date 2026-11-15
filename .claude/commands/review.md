@@ -61,7 +61,7 @@ Provide the agent with:
 
 Collect the agent's findings with impact levels (High, Medium, Low).
 
-If the agent doesn't exist, launch the **code-reviewer** agent instead, with the same five items and "Answer only the scale questions"; its `### Performance` findings fill the report's "Performance Review". If neither agent exists, skip this phase silently.
+If the agent doesn't exist, launch the **code-reviewer** agent instead, with the same five items and "Answer only the scale questions"; its `### Performance` findings fill the report's "Performance Review", which notes: _Covered by the code reviewer; no performance-analyst agent configured._ If neither agent exists, skip this phase and note in the report: _Skipped — no performance-analyst or code-reviewer agent configured._
 
 ## PHASE 4: Test Assessment
 
@@ -71,19 +71,19 @@ Provide the agent with:
 1. The list of all changed files (from all task completion notes)
 2. The spec's acceptance criteria (for AC-to-test traceability)
 3. The feature's test files (if any were created or modified across tasks)
-4. The checklist `.claude/checklists/test-lens.md`, when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id
+4. The checklist `.claude/checklists/test-lens.md`, when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id (otherwise note in the report: _Skipped — test-lens checklist off or missing._)
 
 The agent assesses: test coverage gaps for changed code, untested AC items, missing edge case tests, and test strength (would each test fail if the feature were broken; scoped, exact assertions). It does NOT write tests — report only.
 
-If the agent doesn't exist, skip this phase silently.
+If the agent doesn't exist, skip this phase and note in the report: _Skipped — no qa-engineer agent configured._
 
 ## PHASE 4.5: Adoption Check
 
-A shared source helps only when it is consumed. This phase reads the project binding `.claude/quality-profile.json`: the canonical sources registry (`canonicalSources`), the search scopes (`searchScopes` minus `generatedDirs`, printed by `python3 scripts/forge/quality_profile.py scopes`; the source directories when unset) and the export patterns (`newExports`). When the registry is unset, skip the registry part (items 1 and 3 below) and say so in the report.
+A shared source helps only when it is consumed. This phase reads the project binding `.claude/quality-profile.json`: the canonical sources registry (`canonicalSources`), the search scopes (`searchScopes` minus `generatedDirs`, printed by `python3 scripts/forge/quality_profile.py scopes`; the source directories when unset) and the export patterns (`newExports`). When the registry is unset, skip the registry part (items 1 and 3 below) and note in the report: Registry checks: not applicable (no canonical sources registry set).
 
 `<base>` is the branch's merge base with the binding's `integrationRef` (else `origin/[DEFAULT_BRANCH]`, from `.claude/project-config.json`): `git merge-base HEAD <ref>`.
 
-Launch the **code-reviewer** agent (or, when it does not exist, do it yourself) with:
+Launch the **code-reviewer** agent (or, when it does not exist, do it yourself and note in the report: _Covered by the main session; no code-reviewer agent configured._) with:
 1. The registry rows this spec added or changed (diff of the registry document against `<base>`) and the plan's Reuse Map, when it has one.
 2. The spec's new exports: `python3 scripts/forge/new-exports.py --base <base>`.
 3. Instruction: "For every registry row the spec added or changed, search the scopes by name, signature and meaning for other derivations of the same concept, outside its single definition. For every `reuse` or `extend` row of the Reuse Map, confirm the code consumes the named source. Where the per-task code reviews already searched a new export (their new-exports check), reuse that result; search the rest. Report each hit with file:line and whether the hit is in this spec's changed files or in older code."
@@ -118,6 +118,8 @@ Read `.claude/commands/_writing.md` → "Reports", then save the structured revi
 
 ## Security Review
 
+[If PHASE 2 was skipped: _Skipped — no security-reviewer agent configured._]
+
 - Critical: [N] | High: [N] | Medium: [N] | Info: [N]
 
 [For each finding:]
@@ -126,8 +128,10 @@ Read `.claude/commands/_writing.md` → "Reports", then save the structured revi
 
 ## Performance Review
 
-[Include if PHASE 3 ran, by either agent, otherwise:]
-_Skipped — no performance-analyst agent configured._
+[Include if PHASE 3 ran, by either agent. When code-reviewer ran it, first:]
+_Covered by the code reviewer; no performance-analyst agent configured._
+[If neither agent exists, instead:]
+_Skipped — no performance-analyst or code-reviewer agent configured._
 
 - High: [N] | Medium: [N] | Low: [N]
 
@@ -139,6 +143,8 @@ _Skipped — no performance-analyst agent configured._
 
 [Include if qa-engineer ran, otherwise:]
 _Skipped — no qa-engineer agent configured._
+[If the test-lens checklist did not run:]
+_Skipped — test-lens checklist off or missing._
 
 - AC items with test coverage: [N] of [M]
 - Coverage gaps: [list uncovered areas]
@@ -148,6 +154,8 @@ _Skipped — no qa-engineer agent configured._
 - [AC-N]: [description of missing coverage]
 
 ## Adoption Check
+
+[If PHASE 4.5 noted a `_Skipped …_` or `_Covered by …_` line, it goes first]
 
 - Registry rows checked: [N] | Reuse Map rows confirmed: [N of M] | New exports: [N]
 - Bypasses in this spec: [N] (Critical) | in older code: [N] (follow-ups)
@@ -180,7 +188,7 @@ Display a concise summary of findings, in words (`CLAUDE.md` → "Talking to the
 ## Review Complete
 
 **Security**: [N] Critical, [N] High, [N] Medium, [N] Info
-**Performance**: [summary or "skipped"]
+**Performance**: [summary, "covered by the code reviewer", or "skipped"]
 **Test Coverage**: [verdict or "skipped"]
 **Adoption**: [bypasses in this spec / in older code, or "skipped (no registry)"]
 **Structure**: [ratchets grown / third copies added / hub edits undecided]
@@ -197,3 +205,4 @@ Next: Run `/verify` to validate acceptance criteria and render verdict.
 3. **Idempotent** — running `/review` again overwrites `review.md` with fresh findings
 4. **All agents run in parallel when possible** — launch security, performance, test assessment and the adoption check concurrently to minimize execution time; run the structural check yourself meanwhile
 5. **Constitution violations are always Critical** — never downgrade a constitution-related security finding
+6. **No check is skipped silently** — a phase that did not run, or that another agent covered, gets its one line in the report; `/finalize` carries it to `summary.md`
