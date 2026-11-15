@@ -659,6 +659,116 @@ class TemplateShapes(Base):
         return [f for f in spec_lint.lint(text)[0] if f[0] == "B3"]
 
 
+def scope_spec(criteria=2, rows=3, kind="feature", scope_line=None):
+    """NEW_SHAPE_SPEC with `criteria` ACs and `rows` data rows in Affected Areas (rows >= 2): the first row names three
+    files, the last names the first file again, each other row one new file, so there are rows + 1 distinct files."""
+    text = NEW_SHAPE_SPEC.replace("**Type**: feature", "**Type**: " + kind)
+    if scope_line:
+        text = text.replace("**Format**: 2\n", "**Format**: 2\n" + scope_line + "\n")
+    acs = "\n".join("- [ ] **AC-%d**: The widget passes check %d." % (n, n) for n in range(2, criteria + 1))
+    text = text.replace("- [ ] **AC-2**: The widget stops after 10 turns started as §3.1 says.", acs)
+    paths = ["src/m%d.py" % n for n in range(1, rows + 2)]
+    lines = ["| Group | %s | change, see `docs/impact.md` |" % ", ".join("`%s`" % p for p in paths[:3])]
+    lines += ["| Module %d | `%s:12` | edit |" % (i, p) for i, p in enumerate(paths[3:])]
+    lines.append("| Again | `src/m1.py` | the same file again |")
+    old = "| Spinner | `src/spinner.py` | add a stop limit |"
+    assert old in text
+    return text.replace(old, "\n".join(lines))
+
+
+class Scope(Base):
+    def run_scope(self, text):
+        self.write("spec.md", text)
+        return self.run_cli("scope", FEATURE)
+
+    def test_criteria_signal_fires_above_20_not_at_20(self):
+        at = spec_lint.scope(scope_spec(criteria=20))
+        self.assertEqual((at.kind, at.criteria, at.fired), ("feature", 20, []))
+        above = spec_lint.scope(scope_spec(criteria=21))
+        self.assertEqual((above.criteria, above.fired), (21, ["criteria"]))
+        code, out, _err = self.run_scope(scope_spec(criteria=21))
+        self.assertEqual(code, 0)  # a fired signal never fails the run
+        self.assertIn("criteria: 21 (signal: more than 20): fired", out)
+        self.assertTrue(out.rstrip().endswith("scope: criteria fired"))
+        self.assertIn("agent's judgement: 3 or more parts", out)
+
+    def test_rows_signal_fires_above_15_for_structural_not_at_15(self):
+        at = spec_lint.scope(scope_spec(rows=15, kind="structural"))
+        # 16 distinct files in 15 rows: a row naming many files counts once, and files are no signal
+        self.assertEqual((at.kind, at.rows, at.files, at.fired), ("structural", 15, 16, []))
+        above = spec_lint.scope(scope_spec(rows=16, kind="structural"))
+        self.assertEqual((above.rows, above.fired), (16, ["rows"]))
+        code, out, _err = self.run_scope(scope_spec(criteria=25, rows=16, kind="structural"))
+        self.assertEqual(code, 0)
+        self.assertIn("rows in Affected Areas: 16 (signal: more than 15): fired", out)
+        self.assertIn("files named in Affected Areas: 17 (information, not a signal)", out)
+        self.assertIn("criteria: 25 (not a signal for a structural spec)", out)
+        self.assertIn("agent's judgement: 3 or more layers", out)
+        self.assertTrue(out.rstrip().endswith("scope: rows fired"))
+
+    def test_list_items_count_as_rows_only_without_a_table(self):
+        text = scope_spec(rows=2, kind="structural")
+        text = text.replace("## 5. Out of Scope", "- `src/list/a.py`\n- `src/list/b.py`\n\n## 5. Out of Scope")
+        self.assertEqual(spec_lint.scope(text).rows, 2)  # the table's rows; the items still name files
+        items = "\n".join("- `src/l%d.py`, `src/k%d.py`" % (n, n) for n in range(16))
+        text = NEW_SHAPE_SPEC.replace("**Type**: feature", "**Type**: structural").replace(
+            "| Area | Files | Impact |\n|------|-------|--------|\n| Spinner | `src/spinner.py` | add a stop limit |", items)
+        result = spec_lint.scope(text)
+        self.assertEqual((result.rows, result.files, result.fired), (16, 32, ["rows"]))
+
+    def test_nested_list_items_belong_to_their_top_level_row(self):
+        items = "- Module A\n  - `src/a.py`\n  - `src/b.py`\n- Module B\n  - `src/c.py`"
+        text = NEW_SHAPE_SPEC.replace(
+            "| Area | Files | Impact |\n|------|-------|--------|\n| Spinner | `src/spinner.py` | add a stop limit |", items)
+        result = spec_lint.scope(text)
+        self.assertEqual((result.rows, result.files), (2, 3))
+
+    def test_feature_spec_is_not_judged_by_rows(self):
+        result = spec_lint.scope(scope_spec(rows=40))
+        self.assertEqual((result.rows, result.fired), (40, []))
+        _code, out, _err = self.run_scope(scope_spec(rows=40))
+        self.assertIn("rows in Affected Areas: 40 (not a signal for a feature spec)", out)
+        self.assertTrue(out.rstrip().endswith("scope: no counted signal fired"))
+
+    def test_scope_line_is_printed_as_recorded(self):
+        _code, out, _err = self.run_scope(scope_spec(scope_line="**Scope**: part 1 of 3"))
+        self.assertIn("\n**Scope**: part 1 of 3\n", out)
+        _code, out, _err = self.run_scope(scope_spec(scope_line="**Scope**: whole, one screen and its report"))
+        self.assertIn("\n**Scope**: whole, one screen and its report\n", out)
+        _code, out, _err = self.run_scope(scope_spec())
+        self.assertIn("\nScope line: none\n", out)
+
+    def test_old_spec_is_not_checked(self):
+        self.assertIsNone(spec_lint.scope(OLD_SHAPE_SPEC))
+        code, out, _err = self.run_scope(OLD_SHAPE_SPEC)
+        self.assertEqual((code, out.strip()), (0, "scope: not checked (spec.md has no `**Format**: 2` header line)"))
+        self.assertEqual(self.run_cli("scope", "specs/901-missing")[0], 2)
+
+    def test_paths_in_a_cell(self):
+        self.assertEqual(spec_lint._path_tokens("src/a.ts:3-9, and/or the src/x helper<br>lib/b/c, e.g.", False),
+                         ["src/a.ts", "lib/b/c"])
+        self.assertEqual(spec_lint._path_tokens("src/x ./src/y.py#L4 https://example.org/a.html /plan", True),
+                         ["src/x", "src/y.py"])
+        self.assertEqual(spec_lint.scope(NEW_SHAPE_SPEC).files, 1)
+        self.assertEqual(spec_lint._path_tokens("features/{a,b}/locales/{uk,en}.ts, x.ts", True),
+                         ["features/b/locales/en.ts", "features/b/locales/uk.ts", "features/a/locales/en.ts",
+                          "features/a/locales/uk.ts", "x.ts"])
+
+    def test_counts_loose_criteria_list_items_and_not_paragraphs(self):
+        text = scope_spec(criteria=3).replace("- [ ] **AC-3**:", "- [x] **AC-3 (probe first)**:")
+        text = text.replace("## 5. Out of Scope", "Paths under `pkg/` unless stated, see `docs/a.md`.\n\n"
+                            "- `src/list/item.py` and `src/list/other.py`\n\n## 5. Out of Scope")
+        result = spec_lint.scope(text)
+        self.assertEqual((result.criteria, result.rows, result.files), (3, 3, 6))
+
+    def test_storage_rules_names_the_constants(self):
+        with open(os.path.join(REPO, ".claude", "storage-rules.md"), encoding="utf-8") as handle:
+            rules = handle.read()
+        section = rules.split("## Feature Size", 1)[1].split("\n## ", 1)[0]
+        for name in ("SCOPE_MAX_CRITERIA", "SCOPE_MAX_AREA_ROWS", "SCOPE_MIN_PARTS", "SCOPE_MIN_LAYERS"):
+            self.assertIn("`{}` ({})".format(name, getattr(spec_lint, name)), section)
+
+
 class LintCli(Base):
     def test_output_file_ids_and_exit_codes(self):
         self.write("spec.md", GOOD_SPEC.replace("contract §13", "(approved, §13)"))

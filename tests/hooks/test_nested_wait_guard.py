@@ -309,7 +309,12 @@ class GuardHelpers(unittest.TestCase):
 
     def test_result_keys_are_the_result_block_keys(self):
         self.assertEqual(guard.RESULT_KEYS, {"phase", "spec", "status", "artifacts", "gates", "decisions logged",
-                                             "blockers", "duration", "nested", "next"})
+                                             "blockers", "duration", "nested", "next", "follow-ups"})
+
+    def test_follow_ups_line_ends_the_field_above(self):
+        fields = dict(guard.message_fields("nested: pending AG1\n  follow-ups: \"/specify export the report\""))
+        self.assertEqual(fields["nested"], "pending AG1")
+        self.assertIn("/specify export", fields["follow-ups"])
 
     def test_stop_exempt_variants(self):
         pending = [guard.Pending("agent", "AG1", "t", ""), guard.Pending("shell", "bsh1", "Bash", "")]

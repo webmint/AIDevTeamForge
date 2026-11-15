@@ -65,6 +65,27 @@ docs/
 2. Extract the highest NNN prefix (ticket-named directories do not count)
 3. Next feature = highest + 1 (or 001 if empty)
 
+## Feature Size
+
+A large spec is a strong signal that the work should be split into several features. There are no word limits and no hard stop.
+
+| Kind of spec (`**Type**:`) | Signal |
+|---|---|
+| Feature | `SCOPE_MIN_PARTS` (3) or more parts that can be delivered and checked separately, or more than `SCOPE_MAX_CRITERIA` (20) acceptance criteria |
+| Structural | more than `SCOPE_MAX_AREA_ROWS` (15) rows in "Affected Areas" (a row naming many files counts once), or `SCOPE_MIN_LAYERS` (3) or more layers at once (database, API, interface, another module) |
+
+The thresholds are starting values, kept as constants in `scripts/forge/spec_lint.py`; the numbers here follow them. The script counts criteria and rows; the agent judges parts and layers.
+
+- **Where**: `/research` before it saves its report, on its estimate of the spec's parts, criteria and Affected Areas rows; `/specify` once the criteria of a `**Format**: 2` spec are written, with `python3 scripts/forge/spec_lint.py scope specs/<KEY|NNN>-*`. A choice already recorded (the report's "Split" section, the spec's `**Scope**:` line) is not asked again.
+- **When a signal fires**: say which signals fired, with the numbers, and offer 2–3 ways to split, plus "keep it whole" with what that risks. The user decides (autonomous point `scope`); "keep it whole" is a valid answer.
+- **Recording the choice**: the options as offered, each other part of a split written out as its request, then the user's answer in the user's words. The intent check sees only this record, so a part it names is answered, not a new question.
+  - `/research`: in the report's "Split" section. A report that is not saved records nothing, and `/specify` asks again.
+  - `/specify`: a `### Q-N` entry in `history.md`, source `size check` (`_intent-check.md` → "The Request Record"), holding the same, and the header line `**Scope**: whole, <reason>` or `**Scope**: part 1 of <m>`. A choice the report recorded is copied into that entry the same way, options and requests included.
+- **Split**: one feature directory, for the first part. The request is never rewritten.
+  - `/research` saves the report for the first part: its `**This part**:` field names that part, and its "Split" section lists the other parts, each written as a request without this feature's ticket key.
+  - `/specify` writes the spec for the first part (the report's `**This part**:`), or cuts an existing spec down to it; the Out of Scope lines for the other parts name the `Q-N` answer. The run goes on.
+  - The run that took the answer returns the other parts to the user: in its final message, or, as an autonomous runner, under `follow-ups:`. Each starts as its own feature, with its own ticket when there is a tracker: `/research "<request>"` or `/specify "<request>"`, never this feature's report path (that report is the first part's).
+
 ## Task File Format
 
 Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:

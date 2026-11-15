@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Mechanical checks of a feature's spec.md, and the hash that tells /plan whether the spec changed after its review.
 
-Three verbs. `lint` runs the blocking checks B1-B5 and the advisory checks A1-A4; `labels` runs the label checks B5 and
-A4 (and B4) on one file, a Format 2 `plan.md`; `hash` computes, records and checks the spec hash kept in the spec-gate
-report (the hash leaves out the `**Status**:` and `Self-approved (autonomous mode` header lines).
+Four verbs. `lint` runs the blocking checks B1-B5 and the advisory checks A1-A4; `labels` runs the label checks B5 and
+A4 (and B4) on one file, a Format 2 `plan.md`; `scope` prints the size signals of a Format 2 spec; `hash` computes,
+records and checks the spec hash kept in the spec-gate report (the hash leaves out the `**Status**:` and
+`Self-approved (autonomous mode` header lines).
 
 Usage:
   python3 scripts/forge/spec_lint.py lint <feature-dir> [--root <dir>]
   python3 scripts/forge/spec_lint.py labels <file> [--root <dir>]
+  python3 scripts/forge/spec_lint.py scope <feature-dir> [--root <dir>]
   python3 scripts/forge/spec_lint.py hash <feature-dir> [--root <dir>] [--record | --unreviewed "<ids>" | --check]
       --root <dir>   project root; the feature dir (`specs/<KEY|NNN>-name`) or the file is resolved against it, and its
                      `.claude/project-config.json` gives the ticket keys of B5 and A4 (default: the current dir)
@@ -50,6 +52,18 @@ one in a spec or plan, so a definition of `S9`, `T2` or `W-3` is B5.
       often sit there), and such an id anywhere else. Not checked: a reference qualified by the token right before it,
       as in B2 (`spec 001 D-3`).
 
+Size signals (`scope`, `.claude/storage-rules.md` → "Feature Size"; only a spec with the `**Format**: 2` header line).
+The thresholds are the SCOPE_* constants below, starting values. The `**Type**:` header line says which signals apply:
+  feature     more than SCOPE_MAX_CRITERIA acceptance criteria (distinct `AC-N` definitions, the loose forms B1
+              reports included)
+  structural  more than SCOPE_MAX_AREA_ROWS rows in the `## ` section whose title holds "Affected Areas": the data rows
+              of its tables, or its top-level list items when it has no table. A row naming many files counts once.
+  Any other Type is read as feature. For information it also prints the distinct paths named there (in table rows,
+the Files column when the table has one, else the whole row, and in list items, not in paragraphs; `x/{a,b}.ts` names
+two; a `:line` part is dropped); they are no signal.
+Parts (feature, SCOPE_MIN_PARTS or more) and layers (structural, SCOPE_MIN_LAYERS or more) are the agent's judgement:
+the verb names them and does not count them. It also prints the spec's `**Scope**:` header line as recorded.
+
 Spec hash: SHA-256 of spec.md without two header lines, both only before the first `## ` heading: the `**Status**:`
 line and any line starting `Self-approved (autonomous mode` (the HARD GATE approval and the autonomous self-approval
 add or edit them). A `**Status**:` line in the body counts.
@@ -68,8 +82,11 @@ add or edit them). A `**Status**:` line in the body counts.
 Output: `lint` writes `<feature-dir>/gates/spec-lint.txt` (a BLOCKING and an ADVISORY section, each line
 `<code>-<spec.md line> <message>` (e.g. `B3-9`), then `spec-lint: B<n> A<n>`) and prints the same text. `labels` prints
 the same form, ending `labels: B<n> A<n>` (line numbers of its file), and writes nothing; a file without the Format line
-prints `labels: not checked (...)`.
-Exit codes: lint and labels 0 no blocking finding (or not checked), 1 at least one; hash --check 0 unchanged, 1
+prints `labels: not checked (...)`. `scope` prints one line per signal and ends `scope: <signals> fired` or
+`scope: no counted signal fired`, or prints `scope: not checked (...)` for a spec without the Format line; it writes
+nothing.
+Exit codes: lint and labels 0 no blocking finding (or not checked), 1 at least one; scope 0 whatever the signals; hash
+--check 0 unchanged, 1
 changed; every verb 2 for bad arguments or an unreadable or unwritable file, and --check 2 when there is no spec-gate
 report or no recorded hash.
 Stdlib only; Python 3.9+.
@@ -192,6 +209,22 @@ _LABEL_LIST_DEF_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?\*\*"
 _LABEL_HEADING_DEF_RE = re.compile(r"^ {0,3}#{1,6}[ \t]+(?:\*\*)?")
 _LABEL_ROW_DEF_RE = re.compile(r"^\s*\|\s*(?:\*\*)?")
 _LABEL_SET = "AC, DEC, Q, RISK, CRIT, WARN, NOTE"
+# Size signals (`.claude/storage-rules.md` → "Feature Size"): starting values, recalibrated on project data
+SCOPE_MAX_CRITERIA = 20  # a feature spec: more acceptance criteria than this
+SCOPE_MAX_AREA_ROWS = 15  # a structural spec: more rows in "Affected Areas" than this
+SCOPE_MIN_PARTS = 3  # a feature spec: this many parts that can be delivered and checked separately (agent's judgement)
+SCOPE_MIN_LAYERS = 3  # a structural spec: this many layers at once (agent's judgement)
+_TYPE_RE = re.compile(r"^\*\*Type\*\*:[ \t]*[*_`]*([A-Za-z]+)")
+_SCOPE_LINE_RE = re.compile(r"^\*\*Scope\*\*:")
+_FILES_HEADERS = frozenset(("files", "file", "file(s)", "paths", "path"))
+_PATH_SEPARATORS = " \t,;"
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_BRACE_RE = re.compile(r"\{([^{}]*)\}")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
+_PATH_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,9}$")
+_PATH_LINE_PART_RE = re.compile(r"(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)+$")
+_NOT_PATHS = frozenset(("e.g", "i.e", "etc", "vs"))
+_AC_ID_RE = re.compile(r"AC-(\w+)")
 
 
 class SpecError(Exception):
@@ -492,6 +525,140 @@ def is_format2(text: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Size signals
+# ---------------------------------------------------------------------------
+
+class Scope(NamedTuple):
+    kind: str  # "feature" | "structural"
+    criteria: int
+    rows: int  # rows of "Affected Areas": table data rows, else list items
+    files: int  # distinct paths named there (information only)
+    scope_line: Optional[str]  # the `**Scope**:` header line as recorded, or None
+    fired: List[str]  # "criteria", "rows"
+
+
+def _header(text: str) -> List[str]:
+    """The lines before the first `## ` heading."""
+    out: List[str] = []
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if _H2_RE.match(raw):
+            break
+        out.append(raw)
+    return out
+
+
+def _words(text: str) -> List[str]:
+    """`text` split at spaces, commas and semicolons outside `{...}`; each `{a,b}` expanded (`x/{a,b}.ts` names two)."""
+    words, word, depth = [], "", 0
+    for ch in _BR_RE.sub(" ", text.replace("](", " ")) + " ":
+        depth += (ch == "{") - (ch == "}" and depth > 0)
+        if ch in _PATH_SEPARATORS and depth == 0:
+            words.append(word)
+            word = ""
+        else:
+            word += ch
+    out: List[str] = []
+    for word in words:
+        todo = [word]
+        while todo:
+            item = todo.pop()
+            m = _BRACE_RE.search(item)
+            if m is None or "," not in m.group(1) or len(out) + len(todo) > 1000:
+                out.append(item)
+                continue
+            todo.extend(item[:m.start()] + part + item[m.end():] for part in m.group(1).split(","))
+    return out
+
+
+def _path_tokens(text: str, code: bool) -> List[str]:
+    """Paths named in `text`: a token with a file extension or ending in `/`; in a code span also one with a `/` after
+    its first character (`/plan` is a command); in plain text one holding two `/` (so `and/or` is not one)."""
+    found = []
+    for token in _words(text):
+        token = token.strip("()[]{}<>*_\"'`").rstrip(".:")
+        token = _PATH_LINE_PART_RE.sub("", token)
+        if token.startswith("./"):
+            token = token[2:]
+        if not token or token.lower() in _NOT_PATHS or "://" in token:
+            continue
+        ext = bool(_PATH_EXT_RE.search(token))
+        if (code and "/" in token.lstrip("/")) or ext or token.endswith("/") or token.count("/") >= 2:
+            found.append(token)
+    return found
+
+
+def _affected_areas(lines: List[Line]) -> Tuple[int, set]:
+    """(rows, distinct paths) of the "Affected Areas" section. Rows: its tables' data rows, or its top-level list items
+    (no leading indent) when it has no table. Paths: in its table rows (the Files column when the table has one, else the whole row) and list items; a
+    paragraph is commentary and is not counted."""
+    paths: set = set()
+    table_rows = items = 0
+    last_row, column = -1, None
+    for line in lines:
+        if "affected areas" not in line.section.lower() or line.heading:
+            continue
+        is_row = line.text.lstrip().startswith("|")
+        cells = _table_cells(line.text) if is_row else []
+        if is_row and last_row != line.number - 1:  # the header row of a new table
+            names = [c.strip("*").strip().lower() for c in cells]
+            column = next((i for i, n in enumerate(names) if n in _FILES_HEADERS), None)
+            last_row = line.number
+            continue
+        last_row = line.number if is_row else -1
+        if (is_row and NUMERIC_TABLE_SEP_RE.match(line.text)) or not (is_row or _LIST_ITEM_RE.match(line.text)):
+            continue
+        if is_row:
+            table_rows += 1
+        elif not line.text[:1].isspace():  # a nested item belongs to the row above it
+            items += 1
+        text = cells[column] if is_row and column is not None and column < len(cells) else line.text
+        for _s, _e, content in spec_refs.code_spans(text):
+            paths.update(_path_tokens(content, True))
+        paths.update(_path_tokens(_without_code(text), False))
+    return (table_rows or items), paths
+
+
+def scope(text: str) -> Optional[Scope]:
+    """The size signals of a Format 2 spec; None for another."""
+    if not is_format2(text):
+        return None
+    header = _header(text)
+    kinds = [m.group(1).lower() for m in (_TYPE_RE.match(l) for l in header) if m]
+    kind = "structural" if kinds and kinds[0] == "structural" else "feature"
+    scope_line = next((l.rstrip() for l in header if _SCOPE_LINE_RE.match(l)), None)
+    lines, _unclosed = _scan(text)
+    criteria = len({m.group(1) for m in (_AC_ID_RE.search(l.text) for l in lines if _AC_DEF_RE.match(l.text)
+                                         or _loose_ac(l)) if m})
+    rows, paths = _affected_areas(lines)
+    fired = []
+    if kind == "feature" and criteria > SCOPE_MAX_CRITERIA:
+        fired.append("criteria")
+    if kind == "structural" and rows > SCOPE_MAX_AREA_ROWS:
+        fired.append("rows")
+    return Scope(kind, criteria, rows, len(paths), scope_line, fired)
+
+
+def render_scope(result: Scope) -> str:
+    def signal(name: str, applies: bool, limit: int) -> str:
+        if not applies:
+            return "(not a signal for a {} spec)".format(result.kind)
+        return "(signal: more than {}): {}".format(limit, "fired" if name in result.fired else "not fired")
+    feature = result.kind == "feature"
+    judge = ("{} or more parts that can be delivered and checked separately".format(SCOPE_MIN_PARTS) if feature else
+             "{} or more layers at once (database, API, interface, another module)".format(SCOPE_MIN_LAYERS))
+    out = [
+        "type: {}".format(result.kind),
+        "criteria: {} {}".format(result.criteria, signal("criteria", feature, SCOPE_MAX_CRITERIA)),
+        "rows in Affected Areas: {} {}".format(result.rows, signal("rows", not feature, SCOPE_MAX_AREA_ROWS)),
+        "files named in Affected Areas: {} (information, not a signal)".format(result.files),
+        "agent's judgement: {}".format(judge),
+        result.scope_line or "Scope line: none",
+        "scope: {} fired".format(", ".join(result.fired)) if result.fired else "scope: no counted signal fired",
+    ]
+    return "\n".join(out) + "\n"
+
+
 def project_key(root: str) -> Optional["re.Pattern[str]"]:
     """`ISSUE_KEY_PATTERN` of `<root>/.claude/project-config.json` when it starts with a literal prefix, else None."""
     try:
@@ -748,13 +915,15 @@ def _parser() -> argparse.ArgumentParser:
     lint_p.add_argument("feature_dir")
     labels_p = sub.add_parser("labels", help="run the label checks B5 and A4 on one Format 2 file (a plan.md)")
     labels_p.add_argument("file")
+    scope_p = sub.add_parser("scope", help="print the size signals of a Format 2 spec (always exit 0)")
+    scope_p.add_argument("feature_dir")
     hash_p = sub.add_parser("hash", help="print, record or check the spec hash (the Status and self-approval header lines are excluded)")
     hash_p.add_argument("feature_dir")
     group = hash_p.add_mutually_exclusive_group()
     group.add_argument("--record", action="store_true", help="record the hash in gates/spec-gate.md")
     group.add_argument("--unreviewed", metavar="IDS", help="record the ids of fixes made after the recorded hash")
     group.add_argument("--check", action="store_true", help="compare the spec with the recorded hash")
-    for p in (lint_p, labels_p, hash_p):
+    for p in (lint_p, labels_p, scope_p, hash_p):
         p.add_argument("--root", default=".", help="project root (default: the current directory)")
     return parser
 
@@ -787,6 +956,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if not os.path.isfile(spec_path):
             raise SpecError("no spec.md at {}".format(spec_path))
+        if args.verb == "scope":
+            result = scope(_read_text(spec_path))
+            if result is None:
+                print("scope: not checked (spec.md has no `**Format**: 2` header line)")
+            else:
+                sys.stdout.write(render_scope(result))
+            return 0
         if args.verb == "lint":
             blocking, advisory = lint(_read_text(spec_path), project_key(root))
             report = render_lint(blocking, advisory)

@@ -85,7 +85,7 @@ FIELD_LINE = re.compile(r"^[\s>\-]*[*`_]*([A-Za-z][A-Za-z _-]*?)[*`_]*\s*:[*`_]*
 # The keys of a result block (`_autonomous-mode.md` -> "Result block"). Only these start a field, so a continuation
 # line such as `- implementer: still running` stays inside the field above it.
 RESULT_KEYS = frozenset({"phase", "spec", "status", "artifacts", "gates", "decisions logged", "blockers", "duration",
-                         "nested", "next"})
+                         "nested", "next", "follow-ups"})
 TOP_LIST_ITEM = re.compile(r"[-*>+]\s")
 
 
