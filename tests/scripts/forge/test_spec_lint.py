@@ -473,6 +473,192 @@ class Labels(Base):
         self.assertTrue(out.rstrip().endswith("labels: B0 A0"))
 
 
+# The two spec shapes of `/specify` (`.claude/commands/specify.md` → "Spec Format"): the Format 2 template and the
+# older template that an existing spec keeps.
+NEW_SHAPE_SPEC = """# Spec: Widget spinner
+
+**Date**: 2026-01-01
+**Status**: Draft
+**Author**: Claude + User
+**Type**: feature
+**Format**: 2
+
+## 1. Summary
+
+The widget spins when the user presses start and stops at a limit.
+Its colours stay as they are.
+The user decides whether the limit becomes a setting later.
+
+## 2. Current State
+
+The spinner turns once per call (`src/spinner.py:10-20`); the rest is in research-report.md.
+
+## 2a. Prior art
+
+| Candidate | What this spec needs from it | Decision | Evidence read |
+|-----------|------------------------------|----------|---------------|
+| `Spinner.spin` | one turn per call | reuse behaviour | `src/spinner.py:10-20` |
+
+## 3. Behaviour and Acceptance Criteria
+
+### 3.1 Start
+
+The user presses start on the widget screen; the stop rule is in §3.2.
+
+- [ ] **AC-1**: The widget turns at 50 rpm within 200 ms of the press.
+
+### 3.2 Stop
+
+- [ ] **AC-2**: The widget stops after 10 turns started as §3.1 says.
+
+## 4. Affected Areas
+
+| Area | Files | Impact |
+|------|-------|--------|
+| Spinner | `src/spinner.py` | add a stop limit |
+
+## 5. Out of Scope
+
+- The widget's colours (DEC-1).
+
+## 6. Technical Constraints
+
+The limit is read once, at start.
+
+## 7. Decisions
+
+- **DEC-1** Colours: unchanged. Why: the request names only motion.
+
+## 8. Open Questions
+
+- **Q-4** Should the limit become a setting later?
+
+## 9. Risks
+
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-1 | the motor stalls at 50 rpm | Low | Med | AC-1 measures the rate |
+"""
+
+OLD_SHAPE_SPEC = """# Spec: Widget spinner
+
+**Date**: 2026-01-01
+**Status**: Draft
+**Author**: Claude + User
+**Type**: feature
+
+## Request (verbatim)
+
+> Make the widget spin fast, see §42 and AC-99.
+
+Q (Phase 2, 2026-01-01): Which limit?
+A: 10 turns, as KD-2 says.
+
+## 1. Overview
+
+The widget spins and stops at a limit.
+
+## 2. Current State
+
+The spinner turns once per call (`src/spinner.py:10-20`).
+
+## 2a. Prior art
+
+| Candidate | What this spec needs from it | Decision | Evidence read |
+|-----------|------------------------------|----------|---------------|
+| `Spinner.spin` | one turn per call | reuse behaviour | the spinner file |
+
+## 3. Desired Behavior
+
+### 3.2 Stop
+
+The widget stops quickly and is fast.
+
+## 4. Affected Areas
+
+| Area | Files | Impact |
+|------|-------|--------|
+| Spinner | `src/spinner.py` | add a stop limit |
+
+## 5. Acceptance Criteria
+
+- [ ] **AC-1**: The widget stops after 10 turns (§3.2).
+- [ ] **AC-2**: The widget stops after 12 turns at most, see AC-3.
+
+## 6. Out of Scope
+
+- NOT included: colours
+
+## 7. Technical Constraints
+
+- Must follow: a robust design.
+
+## 8. Open Questions
+
+- **OQ-1** Should the limit become a setting?
+
+## 9. Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| KD-1 the motor stalls | Low | Med | measure the rate |
+"""
+
+# `spec_lint.py lint` output for OLD_SHAPE_SPEC with the script of 1.40.0 Piece 1b-3a (dcadd0b), before the new
+# template existed: the older shape lints the same after it
+OLD_SHAPE_LINT = """BLOCKING
+B2-44 AC-3 names no AC of this spec
+
+ADVISORY
+A3-27 prior-art row without a `file:line` in its evidence cell: `Spinner.spin`
+A2-33 vague phrase 'fast' with no number or named standard: The widget stops quickly and is fast.
+A1-43 'turns' appears with different numbers: 10 (line 43), 12 (line 44)
+A2-52 vague phrase 'robust' with no number or named standard: - Must follow: a robust design.
+
+spec-lint: B1 A4
+"""
+
+
+class TemplateShapes(Base):
+    def test_new_shape_lints_clean(self):
+        self.assertTrue(spec_lint.is_format2(NEW_SHAPE_SPEC))
+        self.assertEqual(spec_lint.lint(NEW_SHAPE_SPEC), ([], []))
+        self.write("spec.md", NEW_SHAPE_SPEC)
+        code, out, _err = self.run_cli("lint", FEATURE)
+        self.assertEqual(code, 0)
+        self.assertTrue(out.rstrip().endswith("spec-lint: B0 A0"))
+
+    def test_new_shape_label_lines_are_checked(self):
+        for old, new, token in (("- **DEC-1** Colours", "- **D-1** Colours", "D-1"),
+                                ("- **Q-4** Should", "- **OQ-4** Should", "OQ-4"),
+                                ("| RISK-1 | the motor", "| R-1 | the motor", "R-1")):
+            found = spec_lint.lint(NEW_SHAPE_SPEC.replace(old, new))[0]
+            self.assertEqual([(c, m.split("`")[1]) for c, _n, m in found], [("B5", token)])
+
+    def test_new_shape_keys_ac_and_vague_checks_on_section_3(self):
+        text = NEW_SHAPE_SPEC.replace("- [ ] **AC-2**: The widget stops", "- **AC-2**: The widget stops")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[0]], ["B1"])  # an AC without its checkbox
+        text = NEW_SHAPE_SPEC.replace("The user presses start", "The fast user presses start")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A2"])
+        text = NEW_SHAPE_SPEC.replace("The limit is read once, at start.", "The limit is read in a robust way.")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A2"])
+        text = NEW_SHAPE_SPEC.replace("| `src/spinner.py:10-20` |", "| the spinner file |")
+        self.assertEqual([c for c, _n, _m in spec_lint.lint(text)[1]], ["A3"])
+
+    def test_old_shape_lints_as_before(self):
+        self.assertFalse(spec_lint.is_format2(OLD_SHAPE_SPEC))
+        self.assertEqual(spec_lint.render_lint(*spec_lint.lint(OLD_SHAPE_SPEC)), OLD_SHAPE_LINT)
+
+    def test_section_3_2_resolves_in_both_shapes(self):
+        for text, heading in ((NEW_SHAPE_SPEC, "### 3.2 Stop"), (OLD_SHAPE_SPEC, "### 3.2 Stop")):
+            self.assertEqual(self.b(text + "\nSee §3.2.\n"), [])
+            self.assertEqual([c for c, _n, _m in self.b(text.replace(heading, "### Stop") + "\nSee §3.2.\n")],
+                             ["B3"] * (text.count("§3.2") + 1))
+
+    def b(self, text):
+        return [f for f in spec_lint.lint(text)[0] if f[0] == "B3"]
+
+
 class LintCli(Base):
     def test_output_file_ids_and_exit_codes(self):
         self.write("spec.md", GOOD_SPEC.replace("contract §13", "(approved, §13)"))

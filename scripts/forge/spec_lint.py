@@ -29,8 +29,9 @@ blocks and, where noted, code spans and quoted text are skipped; heading lines a
   B4  a fenced code block that is never closed (the lines after its opening were not checked).
   A1  numerical consistency: one noun with two or more numbers (a heuristic: two quantities with the same unit are a
       false positive).
-  A2  a vague non-functional phrase in a sentence of Desired Behavior, Acceptance Criteria or Technical Constraints,
-      with no number plus unit and no named standard in the same sentence.
+  A2  a vague non-functional phrase in a sentence of Desired Behavior, Acceptance Criteria or Technical Constraints
+      (a `## ` title containing one of these; a Format 2 spec's "Behaviour and Acceptance Criteria" too), with no number
+      plus unit and no named standard in the same sentence.
   A3  evidence shape: a code span that looks like a path citation but has a bad line part (`:0`, `:L12`, `#L12`,
       `:12-`, a reversed range), and a `## 2a. Prior art` table row whose evidence cell has no `file:line`.
 Label checks, only in a file with the header line `**Format**: 2` (before the first `## ` heading); code spans and

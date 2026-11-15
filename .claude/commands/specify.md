@@ -166,7 +166,7 @@ Since there's little or no existing code:
 4. **Reference framework docs** — use WebSearch if needed for framework-specific best practices for this feature type
 5. **Check MEMORY.md** — for any lessons from previous features in this project
 
-**Key difference**: In the spec, "Section 2: Current Behavior" should describe "Current State" instead — what exists so far (even if nothing) and what the scaffolding guide says about where this feature should live.
+**In the spec**, "Current State" says what exists so far (even nothing) and where the scaffolding guide puts this feature.
 
 ## PHASE 4: Write the Specification
 
@@ -192,6 +192,8 @@ The acceptance criteria of a structural spec are invariants, each with the check
 
 ### Spec Format:
 
+A new spec takes this template. Read `.claude/commands/_writing.md` → "Specs" now: each section holds what it says. Save the request record to a new `specs/<KEY|NNN>-feature-name/history.md` (`_intent-check.md` → "The Request Record").
+
 ```markdown
 # Spec: [Feature Name]
 
@@ -199,20 +201,16 @@ The acceptance criteria of a structural spec are invariants, each with the check
 **Status**: Draft | Approved | In Progress | Complete
 **Author**: Claude + [User]
 **Type**: feature | structural
+**Format**: 2
 [The `Audit gate: …` line from Phase 0.4, verbatim; omit when `auditGate` is unset]
 
-## Request (verbatim)
+## 1. Summary
 
-[The request and the Phase 2 questions and answers, word for word; rules in `.claude/commands/_intent-check.md` → "The Request Record"]
-
-## 1. Overview
-
-[2-3 sentence description of what this feature does and why it's needed]
+[5-10 plain lines for people, with why it is needed]
 
 ## 2. Current State
 
-[Existing codebase: Describe how the system currently works in the affected area. Include file paths and line numbers. Incorporate context from docs/ loaded in Phase 1 — documented behavior, architecture patterns, and feature relationships. This section is the primary way downstream commands (/plan, /breakdown) inherit docs knowledge, so capture it fully here rather than assuming they will read docs themselves.]
-[Greenfield: Describe what exists so far (may be nothing). Reference the constitution's scaffolding guide for where this feature should be built.]
+[The facts the criteria and the plan depend on, with file:line; a link to research-report.md, when there is one, for the rest]
 
 ## 2a. Prior art
 
@@ -222,54 +220,44 @@ The acceptance criteria of a structural spec are invariants, each with the check
 |-----------|------------------------------|----------|---------------|
 | [symbol, module or feature-doc section] | [the behaviour the spec needs, extends, re-specifies or may contradict] | reuse behaviour / extend / new, because [reason] / unrelated after reading | [file:line, callers found] |
 
-## 3. Desired Behavior
+## 3. Behaviour and Acceptance Criteria
 
-[Describe exactly what should change]
-[Be specific — "the button should be blue" not "improve the button"]
+### 3.1 [Behaviour]
+
+[A few lines of behaviour]
+
+- [ ] **AC-1**: [Specific, testable criterion]
 
 ## 4. Affected Areas
 
 | Area | Files | Impact |
 |------|-------|--------|
 | [Component/Module] | [file paths] | [what changes] |
-| ... | ... | ... |
 
-## 5. Acceptance Criteria
+## 5. Out of Scope
 
-Each criterion must be testable and unambiguous:
+- [One line per entry]
 
-- [ ] **AC-1**: [Specific, testable criterion]
-- [ ] **AC-2**: [Specific, testable criterion]
-- [ ] **AC-3**: [Specific, testable criterion]
-...
+## 6. Technical Constraints
 
-## 6. Out of Scope
+[Only what constitution.md and CLAUDE.md do not already say: external systems, features that must not break]
 
-[Explicitly list things that are NOT part of this spec]
-[This prevents scope creep during implementation]
+## 7. Decisions
 
-- NOT included: [thing 1]
-- NOT included: [thing 2]
-
-## 7. Technical Constraints
-
-[Any constraints from the constitution, architecture, or external systems]
-
-- Must follow: [architecture pattern]
-- Must not break: [existing feature]
-- Must use: [specific API/pattern]
+- **DEC-1** [Title]: [decision]. Why: [one sentence].
 
 ## 8. Open Questions
 
-[Any remaining uncertainties that might come up during implementation]
-[These should be minor — major questions should have been resolved in Phase 2]
+- **Q-[N]** [Question]
 
 ## 9. Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| [risk] | Low/Med/High | Low/Med/High | [how to handle] |
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-1 | [risk] | Low/Med/High | Low/Med/High | [how to handle] |
 ```
+
+**An existing spec keeps its format.** When the directory already has a `spec.md` (a revision, for example when `/verify` or the intent check sends the user back), edit it in place, keeping its `**Format**: 2` line or its absence. An older spec keeps its Request section (when it has one) and its own section names and numbers; a decision goes under its Decisions section, added after Risks when missing.
 
 ## PHASE 4.5: Independent Gate (spec-gate)
 
