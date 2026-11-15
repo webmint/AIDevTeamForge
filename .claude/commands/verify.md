@@ -202,7 +202,7 @@ Run these on ALL changed files across all tasks. Run each command check through 
 If all acceptance criteria pass, code quality checks pass and no included intent surface is open (Phase 3.5):
 1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/<KEY|NNN>-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
 2. Update the spec file status to "Complete"
-   - In the spec's **Acceptance Criteria** section, change `- [ ]` to `- [x]` for every AC that passed verification
+   - In the spec, change `- [ ]` to `- [x]` for every AC that passed verification
 3. Update the task index README.md with a completion summary
 
 If issues found:

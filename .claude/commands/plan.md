@@ -1,6 +1,6 @@
 # /plan — Technical Implementation Plan
 
-Takes an approved spec and produces a technical plan: research findings, data model, API contracts, and architecture decisions. This is the bridge between WHAT (spec) and HOW (task breakdown).
+Takes an approved spec and produces a technical plan: research findings, data model, API contracts, and architecture decisions.
 
 ## Usage
 ```
@@ -37,7 +37,7 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 - Check how similar features are implemented
 - Identify reusable code and patterns
 - For greenfield projects: check the constitution's scaffolding guide for pattern references
-- Do not re-read `docs/`; the spec's "Current State" and "Affected Areas" carry their context (rule 8)
+- Do not re-read `docs/` (rule 8)
 
 ### Step 2: Signal Scan
 
@@ -95,13 +95,11 @@ Save to `specs/[feature-name]/research.md`:
 | [option B] | [pros] | [cons] | Chosen / Rejected |
 | [option C] | [pros] | [cons] | Chosen / Rejected |
 
-**Decision**: [chosen option] — [one-line rationale]
+**Decision**: [chosen option] — [one-line rationale] (a "Key Design Decisions" row)
 
 ## References
 - [links to docs, examples, or source files consulted]
 ```
-
-With no signals, skip research.md.
 
 ## PHASE 1: Technical Design
 
@@ -147,7 +145,7 @@ For existing codebases, reference the existing queries, mutations or endpoints. 
 
 ### 1.3: Architecture Decisions
 
-Document HOW the feature maps to the project's architecture. This is the core of the plan.
+Document HOW the feature maps to the project's architecture. This is the core of the plan; each decision is a "Key Design Decisions" row.
 
 ### 1.4: Structural specs
 
@@ -195,7 +193,7 @@ A plan that touches a theme's files and records neither is incomplete. A copy gr
 
 ## PHASE 2: Write the Plan
 
-Save to `specs/[feature-name]/plan.md`:
+Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns).
 
 ```markdown
 # Plan: [Feature Name]
@@ -203,10 +201,11 @@ Save to `specs/[feature-name]/plan.md`:
 **Date**: [YYYY-MM-DD]
 **Spec**: [path to spec.md]
 **Status**: Draft
+**Format**: 2 [only when the spec has it]
 
 ## Summary
 
-[2-3 sentences: what this plan implements and the technical approach]
+[As "Plans" says]
 
 ## Technical Context
 
@@ -224,8 +223,6 @@ Save to `specs/[feature-name]/plan.md`:
 
 ### Layer Map
 
-[Which architectural layers this feature touches and what happens in each]
-
 | Layer | What | Files (existing or new) |
 |-------|------|------------------------|
 | Domain | [types, interfaces, use cases] | [file paths] |
@@ -234,9 +231,9 @@ Save to `specs/[feature-name]/plan.md`:
 
 ### Key Design Decisions
 
-| Decision | Chosen Approach | Why | Alternatives Rejected |
-|----------|----------------|-----|----------------------|
-| [decision] | [approach] | [rationale] | [alternatives] |
+| Id | Decision | Chosen Approach | Why | Alternatives Rejected |
+|----|----------|----------------|-----|----------------------|
+| DEC-[N] | [decision] | [approach] | [rationale] | [alternatives] |
 
 ### File Impact
 
@@ -291,9 +288,9 @@ Save to `specs/[feature-name]/plan.md`:
 
 ## Risk Assessment
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| [risk] | Low/Med/High | Low/Med/High | [how to handle] |
+| Id | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| RISK-[N] | [risk] | Low/Med/High | Low/Med/High | [how to handle] |
 
 ## Dependencies
 
@@ -310,7 +307,7 @@ Save to `specs/[feature-name]/plan.md`:
 
 Before presenting the plan to the user, verify completeness:
 
-1. Read every AC from the spec's Acceptance Criteria section
+1. Read every AC of the spec
 2. For each AC, verify the plan addresses it: files or components in "Layer Map" and "File Impact", approach decisions in "Key Design Decisions"
 3. If any AC has no clear implementation path in the plan:
    - Revise the plan to add the missing coverage
@@ -347,7 +344,7 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 
 ## IMPORTANT RULES
 
-1. **Plans describe HOW, not WHAT** — the spec already defines WHAT. Don't repeat requirements, translate them into technical decisions
+1. **Plans describe HOW, not WHAT** (`_writing.md`) — translate requirements into technical decisions, never repeat them
 2. **Constitution compliance is mandatory** — verify before presenting to user. If the plan would violate a rule, redesign or flag it
 3. **Reference existing code** — for existing codebases, always reference actual file paths and existing patterns. Don't propose new patterns when existing ones work
 4. **Greenfield: follow the scaffolding guide** — the constitution's Section 7 (or the document it points to) defines where things go. Follow it
