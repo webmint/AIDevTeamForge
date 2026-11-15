@@ -8,7 +8,26 @@ Referenced by `/plan` (Phase 2, before it writes the plan) and `_independent-gat
 
 ## Precedents
 
-_Filled by piece 5 of release 1.41.0 (the Precedents table); pasted into the architect lens's prompt._
+Every new plan writes a `## Precedents` section, whatever the spec's format. It sits next to the Reuse Map, not inside it: the Map's rows are symbols, decided reuse, extend or new. A Precedents row is a construct the plan adds that the codebase already does somewhere: in this repository or in another repository of the same system that the project's docs or CLAUDE.md name. That rule is the test, not a list of kinds. When the plan adds no such construct, the section is one line: "None: <what was searched>".
+
+One row per construct:
+
+| Construct | Nearest example (path:symbol) | Decision |
+|---|---|---|
+
+- **Construct**: what the plan adds, named by what it does.
+- **Nearest example**: found by looking at two or three existing examples of the same kind and taking the closest (the same layer, module or kind of data). What such a search looks for, for example:
+  - how the row types of storage code are kept private;
+  - how a race on create is handled;
+  - how each endpoint module documents its contract;
+  - how existing schemas spell column types.
+- **Decision**: `follow`, or `depart: <one sentence of why>`. A departure is also a row in "Key Design Decisions".
+
+### How the rows are judged
+
+- A missing section, or a row without its example or decision, is a Warning.
+- A departure without its "Key Design Decisions" row is a Warning.
+- The reviewer repeats the search for two or three of the plan's constructs; a construct with a precedent and no row, or a nearer example than the one cited, is a Warning.
 
 ## Runtime
 

@@ -27,6 +27,7 @@
 - **PG-A12** When `.claude/quality-profile.json` sets `ratchets`, the lens runs the clone ratchet's copies command over every file the plan and its tasks will edit (tests and fixtures included). A plan that extends or copies logic that already has two or more copies without a seam task ordered first is Critical; a "not a copy" or "differs per case" reason is checked by diffing the copies, and a removal that would join two stretches of an existing clone names the extraction. — seed
 - **PG-A13** A plan that adds a shared helper, config block or dependency lists every existing file that must change with it, found by reading the guards, lint rules and manifests that cover the new file's location: the allow or option lists the new file would trip, the manifest that holds its sibling dependencies, and config constraints that an intermediate state breaks (an empty file list, for example). A helper that the callers moved onto the shared module will need and that it does not offer yet is planned in the same change (reuse decided per PG-A08). A missing entry is a Warning. — field
 - **PG-A14** The plan's `## Runtime` section meets `_plan-checks.md` → "Runtime" (pasted into this prompt); a failure there is reported under this id. — field
+- **PG-A15** The plan's `## Precedents` section meets `_plan-checks.md` → "Precedents" (pasted into this prompt); a failure there is reported under this id. — field
 
 ## Security lens
 
