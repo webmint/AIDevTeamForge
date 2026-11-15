@@ -11,7 +11,9 @@ Referenced by the commands that write specs, plans, tasks and reports. Labels an
 - Each fact is written once.
 - The spec says WHAT; the plan says HOW.
 - A decision gets one sentence of why.
-- A document refers to another document instead of retelling it.
+- A document refers to another document by path and label instead of retelling it, and copies only what its format asks for.
+- A label in prose carries a few words of what it names ("AC-3, the total after a discount"), never the id alone; header fields (`**Spec criteria**:`, `**Decisions**:`) keep bare ids.
+- A document states what holds, not how the run went (steps taken, agents launched, inputs read, checks run, what was tried first), except the lines its format names.
 
 ## Specs
 
@@ -25,7 +27,7 @@ A spec with the header line `**Format**: 2` holds in each section only what the 
 - **8. Open Questions**: numbered as `_intent-check.md` → "The Request Record" says. Once answered, the answer goes to `history.md` and the line goes.
 - **9. Risks**: numbered after the highest `RISK` in the spec and its plan.
 
-The spec states what holds, not who said or found it: the request, answers, gate findings and amendments live in `research-report.md`, `history.md` and `gates/`, and the spec does not copy them. The header's `**Status**:` and `Self-approved …` lines stay.
+The request, answers, gate findings and amendments live in `research-report.md`, `history.md` and `gates/`, and the spec does not copy them. The header's `**Status**:` and `Self-approved …` lines stay.
 
 ## Plans
 
@@ -35,3 +37,18 @@ In a plan with the header line `**Format**: 2`:
 - **Risk Assessment**: each row opens with `RISK-N`, continuing the spec's Risks (the highest `RISK` in the spec and the plan, plus one).
 
 An older spec's plan has no Format line and no Id columns, and its Summary is 2–3 sentences on what it implements and how.
+
+## Tasks
+
+In a task file (`.claude/storage-rules.md` → "Task File Format"):
+- **Description**: what the task changes and why.
+- **Change Details**: one change per bullet. The implementer gets the task and its criteria, not the plan: Change Details carry every name, signature and value from the plan that the change needs. Decisions are cited by `DEC-N`, not re-argued.
+- **Done When**: the checks that prove the task, in its criteria's own terms (values, names, messages).
+- **Completion Notes**: the template's fields, with what happened. `**Notes**`: deviations from the task or plan, each with one sentence of why, and what a later task must know; a record another step writes there (a `false positive: <reason>`, a reverted Warning, a fixed code-review Critical and what it was, `Batch gate failed`) is one line. No review or gate narration (verdicts, finding counts, test totals).
+
+## Reports
+
+The research report, `review.md`, the verify report, `summary.md` and gate reports:
+- **A finding** says what is wrong, where (`file:line` when in code) and what to do, in plain words; its reasoning takes one or two sentences.
+- **A passing check** gets its result, not how it was checked; the research report's "None found" still names the searches that found nothing.
+- **A gate report** keeps the evidence `_independent-gate.md` asks for.

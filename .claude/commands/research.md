@@ -119,7 +119,7 @@ Keep it concise — this is a feasibility check, not a full evaluation
 
 ## PHASE 4: Generate Research Report
 
-Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation.
+Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation. Read `.claude/commands/_writing.md` → "Reports" first.
 
 ### Report Format
 

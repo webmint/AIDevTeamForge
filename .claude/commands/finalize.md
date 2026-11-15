@@ -51,7 +51,7 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 Writes `specs/[feature]/summary.md`, the PR-ready record of the feature (the audit gate counts finished features by it, `auditGate.mergedSpecMarker`). It runs before the squash, which needs the `[WIP]` history. An existing `summary.md` is overwritten.
 
 1. **Change data**: `git diff --stat [DEFAULT_BRANCH]...HEAD` and `git log --oneline [DEFAULT_BRANCH]...HEAD`; in wrapper mode also `git -C $SOURCE_ROOT diff --stat [source squash base]` and `git -C $SOURCE_ROOT log --oneline [source squash base]..HEAD` (skip these when Phase 1 found no source `[WIP]` commit). The files of every task come from the Completion Notes read in Phase 1, deduplicated.
-2. **Write** in this format, each section 1–5 lines; omit a section that would be empty:
+2. **Write** (read `.claude/commands/_writing.md` → "Reports" first) in this format, each section 1–5 lines; omit a section that would be empty:
    ```markdown
    ## Feature Summary: [<KEY|NNN> — feature name]
 

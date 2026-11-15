@@ -106,7 +106,7 @@ When a key is unset, run the step by hand (the clone detector on the changed fil
 
 ## PHASE 5: Write Review Report
 
-Save the structured review report to `specs/[feature]/review.md`:
+Read `.claude/commands/_writing.md` → "Reports", then save the structured review report to `specs/[feature]/review.md`:
 
 ```markdown
 # Review Report: [<KEY|NNN>-feature-name]
