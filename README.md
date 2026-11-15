@@ -105,14 +105,14 @@ Run these once when you first install the template:
   ↑ approve    ↑ approve    ↑ approve      per task       per feat   per feat   per feat    per feat
 ```
 
-- **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). **Requires approval.** Auto-creates `spec/<KEY|NNN>-short-desc` branch.
+- **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). When a spec looks too large for one feature (for example more than 20 acceptance criteria; `.claude/storage-rules.md` → "Feature Size"), it says so and offers ways to split it; you decide, and keeping it whole is a valid answer. **Requires approval.** Auto-creates `spec/<KEY|NNN>-short-desc` branch.
 - **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. **Requires approval.**
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task W2` — a wave from `tasks/README.md` | `/execute-task all` — all pending
   - In a batch, each task keeps type check, lint and affected tests; the full build and the full test suite run once per wave (batch gate)
 - **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-engineer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
-- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Intent check: a fresh auditor compares the change with your verbatim request (kept in the spec) and asks about every surface the request describes that the change leaves as before. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
+- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Intent check: a fresh auditor compares the change with your verbatim request (kept in `research-report.md` and `history.md`, or in an older spec's Request section) and asks about every surface the request describes that the change leaves as before. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
 - **`/finalize`** — PR-ready feature summary (`summary.md`) + feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR. (`/summarize` was merged into it in 1.38.0.)
 
 ### Autonomous Delivery (opt-in)
@@ -145,7 +145,7 @@ With `DELIVERY_MODE: autonomous` in `.claude/project-config.json` (Question 10 o
 - **`/review-pr`** — Strict review of a pull request that never went through the spec cycle: code-reviewer (constitution, architecture, existing patterns across the repository), security-reviewer, performance-analyst and qa-engineer in parallel, with the linked issue as acceptance criteria; verdict APPROVE / APPROVE WITH WARNINGS / REQUEST CHANGES / BLOCK in chat. The code host and the tracker are set by the developer (Question 11 of `/setup-wizard`): PR commands with `<N>` / `<KEY>` placeholders (GitHub and GitLab presets offered), `ISSUE_TRACKER` `jira` (through an MCP server you name) / `github` / `none`. `/research` reads an issue its topic names through the same keys.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
-- **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console; saving it creates the feature directory `specs/<KEY|NNN>-name/` with `research-report.md` on its spec branch.
+- **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console; saving it creates the feature directory `specs/<KEY|NNN>-name/` with `research-report.md` on its spec branch. Before saving, it gives the same size signal as `/specify` and offers a split.
 
 ## Artifact Storage
 
@@ -155,7 +155,9 @@ research/
 
 specs/
   001-user-auth/                 # Feature directories (ticket key or number)
+    research-report.md           # /research report (optional)
     spec.md                      # /specify output
+    history.md                   # Request and your answers, word for word (/specify, /verify)
     plan.md                      # /plan output
     research.md                  # /plan research (optional)
     data-model.md                # /plan entities (optional)
@@ -177,6 +179,7 @@ bugs/
 - Task files: `NNN-short-title.md` — sequential within feature
 - Bug files: `NNN-short-description.md` — sequential, standalone
 - Everything for a feature lives in one directory
+- Labels that specs, plans and gate reports use (acceptance criteria, decisions, questions, risks, gate findings): `.claude/storage-rules.md` → "Labels"
 - Full storage rules in `.claude/storage-rules.md`
 
 ## Hard Gates

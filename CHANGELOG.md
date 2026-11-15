@@ -5,6 +5,48 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-11-15
+
+Specs, plans and reports a person can read: one set of labels, messages to the user in words, the request and answers in their own file, shared writing rules, and a signal when a spec grows too large. These are the maintainer's decisions of 2026-11-14.
+
+### Added
+- **One label set** (`.claude/storage-rules.md` → "Labels"): acceptance criteria (`AC-3`), decisions (`DEC-2`), questions for the user (`Q-1`) and risks (`RISK-1`), numbered the same way in every feature. Decisions and risks are one sequence per feature: the spec starts it and the plan continues it. Task files gain a `**Decisions**:` line.
+- **Gate findings** are `CRIT-1`, `WARN-1` and `NOTE-1`, under Critical, Warning and Note (Note replaces Suggestion). The count line is `C<n> W<n> N<n>`.
+- **Writing rules** (`.claude/commands/_writing.md`), read by the commands before they write:
+  - a document states what holds, not how the run went; each fact is written once; a label in prose carries a few words of what it names;
+  - "Specs" and "Plans" say what each section holds;
+  - "Tasks": the task carries the names, signatures and values the implementer needs, one change per bullet; Done When states the checks in the criteria's terms; Completion Notes hold deviations and one-line records only;
+  - "Reports" covers the research report, `review.md`, the verify report, `summary.md` and gate reports: a finding says what is wrong, where and what to do.
+- **Talking to the User** (`CLAUDE.template.md`): words first, a label only in brackets ("exports run nightly (DEC-2)"); constitution sections by name; counts in words ("1 critical, 7 warnings, no notes"); Forge's machine ids stay in files. The HARD GATEs, gate summaries, final reports and the autonomous result block follow it.
+- **`history.md`** in the feature directory holds the request when it does not come from the feature's `research-report.md`, each question to the user with the answer word for word, and change requests. It is append-only and written by `/specify` and `/verify`.
+- **Size signal** (`.claude/storage-rules.md` → "Feature Size"): a feature spec with more than 20 acceptance criteria, a feature in 3 or more parts that can be delivered separately, a structural spec with more than 15 Affected Areas rows or touching 3 or more layers. The script counts criteria and rows; the agent judges parts and layers.
+  - `/research` (before saving) and `/specify` (after the criteria) say which signal fired, with the numbers, and offer ways to split or to keep the spec whole. The user decides; in autonomous mode this is the user gate `scope`.
+  - On a split, the spec covers the first part. The other parts are recorded as requests and go back to the user, each to start as its own feature (`follow-ups:` from an autonomous runner).
+  - The thresholds are starting values. On real specs from two projects, 5 of 32 structural specs and 64 of 140 feature specs would fire.
+- **Scripts**:
+  - `spec_lint.py` blocks invented labels in a new spec or plan (B5): a label it defines must be from the label set, a ticket key or a standard name. An unknown label elsewhere is advisory (A4). On 549 real specs and plans with the Format line added, B5 found 4,922 invented labels. Old specs lint as before.
+  - `spec_lint.py labels <file>`, which `/plan` runs on its plan before the gate, and `spec_lint.py scope <dir>`, which prints the size signals.
+  - `comment_lint.py` C1 always blocks `DEC`, `Q`, `RISK`, `CRIT`, `WARN` and `NOTE` ids in code comments.
+
+### Changed
+- **New spec and plan templates** (`**Format**: 2`). The spec's sections, in order: Summary for people, Current State, Prior art, Behaviour and Acceptance Criteria (one group per behaviour, each rule stated once), Affected Areas, Out of Scope, Technical Constraints, Decisions, Open Questions, Risks.
+  - The spec states what holds, not who said it. It has no Request section: the request, the answers and the gate findings stay in `research-report.md`, `history.md` and `gates/`.
+  - The HARD GATE shows the spec's or plan's Summary. `/finalize` uses the spec's Summary as the overview.
+  - An answer given in `/plan` is a decision row in the plan.
+- **The request record** (`_intent-check.md`): for a new spec, `/specify`, the intent check of `/verify`, the autonomous runners and the spec gate read the request from `research-report.md` and `history.md`.
+- **`verify_citations.py`** reads both the new and the old finding ids.
+- **`nested-wait-guard`** knows the result block's new `follow-ups` key; the block has 11 lines.
+- **Command sizes**: `specify.md` is back under the 20,000-byte budget; the `plan.md` (22,648) and `execute-task.md` (30,058) ceilings are lowered.
+- **For existing projects**: no migration is needed.
+  - Old specs, plans and gate files keep their labels, their Request section and their `C-`/`W-`/`S-` findings, and keep working. An existing spec keeps its format when revised. New specs get `**Format**: 2`.
+  - Checklists are copy-if-missing. Copy these edits by hand:
+    - `spec-gate.md`, `plan-gate.md` and `breakdown-gate.md`, "How to use": "Severity is Critical, Warning or Suggestion" becomes "Severity is Critical, Warning or Note" (in `spec-gate.md` also "Otherwise Warning or Suggestion" → "Otherwise Warning or Note").
+    - `spec-gate.md` **Inputs**: after "the `/research` report the spec cites, if any;" add "a `**Format**: 2` spec: `specs/<KEY|NNN>-*/research-report.md` and `history.md`, if present;".
+    - `spec-gate.md` **SG-05**: after "recorded in the spec" add " (a `**Format**: 2` spec: the answer in `history.md` under `### Q-N`, and in the spec a `DEC` line, an Out of Scope line or an AC; every Phase 2 or HARD GATE answer in `history.md` is reflected in the spec so)".
+    - `spec-gate.md` **SG-26**: before "An exclusion that rests on inferred intent" add "In a `**Format**: 2` spec the request is the feature's `research-report.md` Request block and `history.md`, and the exclusion names what allows it: the request, a `Q-N` answer in `history.md` (a split answer excludes the other parts), or in a spec an autonomous runner wrote, a `DEC-N` line."
+  - `CLAUDE.md`: when `update.sh` reports a merge conflict in `CLAUDE.md` or finds no baseline for it, it leaves `CLAUDE.md` unchanged. Then add the "Talking to the User" section by hand, copied from `.claude/templates/CLAUDE.template.md`; several commands refer to it.
+- Template version: 1.39.0 → 1.40.0
+
 ## [1.39.0] - 2026-11-14
 
 Spec folders are named by ticket and start at research. These are the maintainer's decisions of 2026-11-14.
