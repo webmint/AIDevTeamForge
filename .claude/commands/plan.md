@@ -312,15 +312,14 @@ Save to `specs/[feature-name]/plan.md`:
 Before presenting the plan to the user, verify completeness:
 
 1. Read every AC from the spec's Acceptance Criteria section
-2. For each AC, verify the plan addresses it:
-   - Check the plan's "Layer Map" and "File Impact" for files/components related to this AC
-   - Check "Key Design Decisions" for approach decisions relevant to this AC
+2. For each AC, verify the plan addresses it: files or components in "Layer Map" and "File Impact", approach decisions in "Key Design Decisions"
 3. If any AC has no clear implementation path in the plan:
    - Revise the plan to add the missing coverage
    - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown"
-4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
+4. Check the reverse: a File Impact file NOT in the spec's Affected Areas gets a note in File Impact as an addition discovered during planning.
 5. Every new symbol or concept in File Impact, the data model and the contracts has a Reuse Map row with its search; every "Prior art" candidate of the spec decided `reuse` or `extend` has its row (1.5 step 0); every theme of 1.6 whose files the plan touches has a decision in "Open Themes Touched".
 6. Every copy group and hub that 1.5 step 5 listed for a touched file has a row in "Copies and Hubs", and every group the plan would bring to a third copy has a seam task ordered before the copy.
+7. Run `python3 scripts/forge/spec_lint.py labels specs/[feature-name]/plan.md` and fix its blocking findings.
 
 ## PHASE 2.6: Independent Gate (plan-gate)
 
