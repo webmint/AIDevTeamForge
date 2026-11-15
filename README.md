@@ -237,7 +237,7 @@ The constitution template comes with universal rules that apply to ALL projects 
 
 **PREFER**: Explicit over implicit, composition over inheritance, flat over nested, boring over clever, existing patterns over new ones, small PRs over large.
 
-**Workflow**: Minimal changes, semantic understanding before renaming, read-first principle, document new code, check constitution and memory before every task.
+**Workflow**: Minimal changes, semantic understanding before renaming, read-first principle, doc comments only where needed, check constitution and memory before every task.
 
 Project-specific rules (architecture, naming conventions, type safety, testing, domain rules) are populated by `/constitute`.
 
@@ -286,7 +286,7 @@ After running `/setup-wizard`:
 - `CLAUDE.md` — Adjust workflow steps
 - `constitution.md` — Add project-specific rules
 - `.claude/settings.json` — Modify hooks and plugins
-- `docs/` — Project documentation. Implementing agents write inline docs (JSDoc/docstrings) per task; tech-writer generates feature-level docs at `/verify` time
+- `docs/` — Project documentation. Implementing agents write doc comments only on exported or public API whose name and types do not say it all; tech-writer generates feature-level docs at `/finalize` time
 
 ## Template Files
 

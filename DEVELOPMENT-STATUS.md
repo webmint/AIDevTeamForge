@@ -103,7 +103,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 4. **Sequential numbering** — features: 001, 002...; tasks within feature: 001, 002...
 5. **All agents as templates, wizard selects** — 14 templates, setup wizard conditionally generates based on project
 6. **Universal constitution rules pre-populated** — SOLID, DRY, KISS, error handling, code quality, workflow rules all built-in; `/constitute` preserves these `[universal]` sections verbatim and only populates `[project-specific]` sections
-7. **Two-layer documentation** — implementing agents write inline docs (JSDoc/docstrings) as part of code; code-reviewer verifies inline docs per-task; tech-writer generates feature-level docs in `docs/` at `/verify` time (once per feature, not per task). `/fix` and `/refactor` run tech-writer per-command (standalone, no /verify follows). `/refresh-docs` catches stale docs via git delta
+7. **Two-layer documentation** — implementing agents write a doc comment only on exported or public API whose name and types do not say it all (1.38.0); code-reviewer checks comments per task (TR-27, TR-28); tech-writer generates feature-level docs in `docs/` at `/finalize` time (once per feature, not per task). `/fix` and `/refactor` run tech-writer per command. `/refresh-docs` catches stale docs via git delta
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents
@@ -167,4 +167,4 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - ~~`constitution.md` stub generation (step 3.5 in wizard) — template content TBD~~ **FIXED: wizard copies template with resolved headers, preserves sentinel strings**
 - ~~`/clarify` command overlap with `/specify`~~ **RESOLVED: `/clarify` removed, clarification absorbed into `/specify` Phase 2**
 - Consider spec validation agents (R1 from competitive analysis) — plan-spec cross-reference already added, spec validation is lower priority with per-task code review as safety net
-- ~~Consider if tech-writer should also update inline code docs (JSDoc/docstrings) or just `docs/` folder~~ **DECIDED: both. Tech-writer updates inline docs (JSDoc/docstrings) AND `docs/` folder.**
+- ~~Consider if tech-writer should also update inline code docs (JSDoc/docstrings) or just `docs/` folder~~ **DECIDED: both. Tech-writer updates inline docs (JSDoc/docstrings) AND `docs/` folder.** Superseded in 1.38.0: the tech-writer adds no doc comments and only corrects one the change made wrong.
