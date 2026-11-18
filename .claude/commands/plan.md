@@ -267,10 +267,6 @@ Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → 
 
 [For each new seam or new implementation of a seam: the contract (pre, post, invariants) and the shared contract suite it runs. "No new seam" otherwise.]
 
-## Precedents
-
-[As `_plan-checks.md` → "Precedents" says]
-
 ## Open Themes Touched
 
 | Theme issue | Touched files | Decision |
@@ -353,7 +349,7 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 
 1. **Plans describe HOW, not WHAT** (`_writing.md`) — translate requirements into technical decisions, never repeat them
 2. **Constitution compliance is mandatory** — verify before presenting to user. If the plan would violate a rule, redesign or flag it
-3. **Reference existing code** — for existing codebases, actual file paths and existing patterns
+3. **Reference existing code** — for existing codebases, always reference actual file paths and existing patterns. Don't propose new patterns when existing ones work
 4. **Greenfield: follow the scaffolding guide** — the constitution's Section 7 (or the document it points to) defines where things go. Follow it
 5. **Minimal supporting docs** — only create research.md, data-model.md, contracts.md if they're actually needed. Don't create empty files
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions

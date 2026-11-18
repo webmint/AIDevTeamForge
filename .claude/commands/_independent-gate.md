@@ -31,8 +31,8 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 
 Fill `<…>`; add only the gate's inputs, and paste these lines verbatim, never paraphrased:
 - spec-gate: the lines of "Spec-gate checks" step 2.
-- plan-gate: from `.claude/commands/_plan-checks.md`, the "Precedents" and "Runtime" sections into the architect lens's prompt and "CI-unrun tests" into the QA lens's.
-- breakdown-gate: ``A task's Done When that restates a rule of constitution.md or contracts.md cites it (file and section). One narrower than the rule it restates is a Warning. Every `follow` row of the plan's Precedents is `follow <path:symbol>` in the Reuse field of each task that adds that construct; a missing one is a Warning.``
+- plan-gate: from `.claude/commands/_plan-checks.md`, the "Runtime" section into the architect lens's prompt and "CI-unrun tests" into the QA lens's.
+- breakdown-gate: `A task's Done When that restates a rule of constitution.md or contracts.md cites it (file and section). One narrower than the rule it restates is a Warning.`
 
 ```
 Independent gate reviewer. Gate: <gate>[, lens <architect|security|qa>]. Feature: specs/<KEY|NNN>-*.[ Your report's first line: (general-purpose; no <agent> agent configured).]

@@ -102,7 +102,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 **Decisions**: DEC-[numbers] or None
 **Review checkpoint**: Yes/No
 **Context docs**: [doc file paths] or None
-**Reuse**: [plan Reuse Map rows: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; plan Precedents rows: `follow <path:symbol>`; `fixes #n in <paths>`] or none (no new symbol)
+**Reuse**: [plan Reuse Map rows: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; `fixes #n in <paths>`] or none (no new symbol)
 
 ## Files
 

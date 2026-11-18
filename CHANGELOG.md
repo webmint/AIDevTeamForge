@@ -7,11 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.41.0] - 2026-11-16
 
-Review misses caught at the step that should catch them: the constitution reaches the agents as written, plans ask how the codebase already does a thing and what happens at runtime, no check is skipped without a line, and Forge's ids stay out of the product.
+Review misses caught at the step that should catch them: the constitution reaches the agents as written, plans ask what happens at runtime, no check is skipped without a line, and Forge's ids stay out of the product.
 
 ### Added
 - **Plan checks** (`.claude/commands/_plan-checks.md`), read by `/plan` before it writes the plan. The plan gate pastes its sections into the lens prompts word for word, because a lens reads only its own checklist section.
-  - **Precedents**: every new plan has a `## Precedents` section: one row for each construct the plan adds that the codebase already does somewhere (in this repository or in another repository of the same system that the docs name), with the nearest example and "follow" or "depart: <why>". A departure is also a design decision. A followed row reaches the task's Reuse field as `follow <path:symbol>`, and code-reviewer checks new code against that example.
   - **Runtime**: every new plan has a `## Runtime` section when the feature adds or changes a write, background or scheduled work, or an entry point. Server-side work fills a write-path table (every layer that can run a write twice, what the second attempt sees, what delivers a failed delivery again, who learns of a failure without polling) and a time-budget table (the platform limit against the worst case, at a measured or stated scale). A client feature that calls a write answers two questions per call: can the user trigger it twice, and what the user sees when it fails or hangs. A feature with neither says so in one line.
   - **CI-unrun tests**: the plan gate's QA lens checks each criterion's only proof against the CI configuration. A test no CI job runs is a Warning; a project decision that CI runs only some suites is cited, not an exemption. A repository with no CI gets one Note.
 - **`/verify` saves its report** to `specs/<KEY|NNN>-name/verification.md` and commits it. Before, it only showed the report.
@@ -27,13 +26,12 @@ Review misses caught at the step that should catch them: the constitution reache
 - **Commit messages** that `/finalize`, `/fix` and `/refactor` propose for the product repository carry no spec paths or Forge ids in wrapper mode.
 - **`/release`** (template repo only) searches every tracked file for older statements of a rule the release changes.
 - **Command sizes**: the `execute-task.md`, `fix.md`, `refactor.md` and `plan.md` ceilings are lowered.
-- **For existing projects**: no migration is needed. A plan written before the update keeps its form; a new plan for an older spec gets the Precedents and Runtime sections.
+- **For existing projects**: no migration is needed. A plan written before the update keeps its form; a new plan for an older spec gets the Runtime section.
   - **Cost**: the task reviewer now reads the whole constitution: about 10 thousand more input tokens per task review for a 39 KB constitution, 37 thousand for a 149 KB one. Most of it is the same prefix in every review of a run.
   - Checklists are copy-if-missing. Copy these edits by hand. A new item goes under the **next free id** of that checklist, not under the id it has in Forge, because projects add their own items to the same sequence. The checks themselves come from Forge's files and run without these items; an item gives the reviewer the id to report under.
     - `breakdown-gate.md` **Inputs**: after "`CLAUDE.md`;" add " `constitution.md` if present;".
-    - `breakdown-gate.md` **BG-10**: "(reuse, extend or new)" becomes "(reuse, extend, new or follow)".
     - `breakdown-gate.md`, a new item (Forge's BG-11): "A task's Done When meets the restatement rule pasted into this prompt; a failure there is reported under this id. — field"
-    - `plan-gate.md`, Architect lens, two new items (Forge's PG-A14 and PG-A15): "The plan's `## Runtime` section meets `_plan-checks.md` → "Runtime" (pasted into this prompt); a failure there is reported under this id. — field" and "The plan's `## Precedents` section meets `_plan-checks.md` → "Precedents" (pasted into this prompt); a failure there is reported under this id. — field"
+    - `plan-gate.md`, Architect lens, a new item (Forge's PG-A14): "The plan's `## Runtime` section meets `_plan-checks.md` → "Runtime" (pasted into this prompt); a failure there is reported under this id. — field"
     - `plan-gate.md`, QA lens, a new item (Forge's PG-Q13): "The tests the plan names as each criterion's proof meet `_plan-checks.md` → "CI-unrun tests" (pasted into this prompt); a failure there is reported under this id. — field"
     - `task-review.md` **TR-27**: "The comments the diff adds pass" becomes "The comments the diff adds, and the lines it adds to product `.md` files (wrapper mode), pass".
   - `CLAUDE.md`: Key Rules item 7 changed (see "Fixed"). When `update.sh` reports a merge conflict in `CLAUDE.md` or finds no baseline for it, it leaves `CLAUDE.md` unchanged. Then replace item 7 by hand with item 7 of `.claude/templates/CLAUDE.template.md`.

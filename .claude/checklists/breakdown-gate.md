@@ -22,5 +22,5 @@
 - **BG-07** Every plan item (decision, file, contract) lands in a task, and nothing in the tasks lies outside the plan without a note. — seed
 - **BG-08** When one task composes parts that other tasks build, its Done when covers the composed result with its optional inputs, not only each part alone. — seed
 - **BG-09** Every control, anchor and action that the spec's screen sections or anchor list name has an owning task, found by searching the task files for each name, not only by reading the AC table. — field
-- **BG-10** Every reuse decision in the plan (reuse, extend, new or follow) lands in the task that writes the consumer or creates the new definition. A task that creates an exported symbol the plan does not list is Critical. — seed
+- **BG-10** Every reuse decision in the plan (reuse, extend or new) lands in the task that writes the consumer or creates the new definition. A task that creates an exported symbol the plan does not list is Critical. — seed
 - **BG-11** A task's Done When meets the restatement rule pasted into this prompt; a failure there is reported under this id. — field

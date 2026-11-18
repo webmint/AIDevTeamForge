@@ -135,7 +135,7 @@ For each task, generate (read `.claude/commands/_writing.md` → "Tasks" first):
 **Depends on**: [task numbers this task requires to be done first, or "None"]
 **Blocks**: [task numbers that can't start until this is done]
 **Context docs**: [specific doc file paths the agent should read, or "None"]
-**Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the precedent it follows (`follow <path:symbol>`); the touched theme it fixes (`fixes #n in <paths>`, or the triage theme id `fixes T1 in <paths>` without an issue tracker); or "none (no new symbol)"]
+**Reuse**: [the plan's Reuse Map rows this task acts on: `reuse <X> at <path>` / `extend <X> at <path>` / `new <X> (registry row: <concept>)`; the touched theme it fixes (`fixes #n in <paths>`, or the triage theme id `fixes T1 in <paths>` without an issue tracker); or "none (no new symbol)"]
 
 **Description**:
 [What this task changes and why]
@@ -158,7 +158,7 @@ For each task, generate (read `.claude/commands/_writing.md` → "Tasks" first):
 
 ### Reuse Rules
 
-- Every row of the plan's Reuse Map, and every `follow` row of its Precedents, lands in the `Reuse` field of at least one task: a `reuse` or `extend` row in every task that writes a consumer of it, a `new` row in the task that creates the shared source (that task also adds the registry row the plan wrote), a `follow` row as `follow <path:symbol>` in every task that adds that construct. A seam task from the plan's "Copies and Hubs" is ordered before the task that would add the copy.
+- Every row of the plan's Reuse Map lands in the `Reuse` field of at least one task: a `reuse` or `extend` row in every task that writes a consumer of it, a `new` row in the task that creates the shared source (that task also adds the registry row the plan wrote). A seam task from the plan's "Copies and Hubs" is ordered before the task that would add the copy.
 - Every theme the plan's "Open Themes Touched" fixes in place gets a task (or a part of the task that touches its files) whose `Reuse` field says `fixes #n in <paths>` and whose Done When proves the fix.
 - A task that creates a new exported symbol the Reuse Map does not list is a breakdown gap: add the row to the plan (with its search) or drop the symbol.
 
