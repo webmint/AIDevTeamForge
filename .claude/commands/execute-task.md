@@ -194,14 +194,12 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 ### 3.1: Launch Agent
 
-**MANDATORY**: You MUST use the Agent tool to launch the assigned agent for every task, even a single line change, a boilerplate file, or "trivial" work. You are the orchestrator: you delegate, verify, and coordinate; agents write the code.
-
-Use the Agent tool to launch the agent specified in the task's "Agent" field.
+**MANDATORY**: Use the Agent tool to launch the agent in the task's "Agent" field for every task, even a one-line change, a boilerplate file, or "trivial" work. You are the orchestrator: you delegate, verify, and coordinate; agents write the code.
 
 Provide the agent with:
 1. The full task description and change details
 2. The relevant section of the spec (acceptance criteria this task addresses)
-3. The constitution's relevant rules
+3. The path `constitution.md` and the names of its sections that govern the layers the task touches (prompt rule 2; no paraphrase)
 4. Any warnings from MEMORY.md
 5. The list of files to change
 6. Clear instruction: **make ONLY the changes described in this task, nothing more**
@@ -222,7 +220,7 @@ You are executing Task [N] from an approved task breakdown.
 
 ## Rules
 1. Make ONLY the changes described above — nothing more, except consolidation: when your change would add or extend a copy of logic that exists elsewhere, reuse or extract the shared definition (the seam task the plan's "Copies and Hubs" names, or, for a copy the plan missed, the extraction inside this task when it stays within this task's files and their direct consumers); otherwise stop and report the copy
-2. Follow the project's constitution (key rules: [relevant rules])
+2. Read `constitution.md` → [the sections that govern the layers this task touches] and follow them
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
@@ -308,7 +306,7 @@ After verification passes, launch the **code-reviewer** agent on all files chang
 Provide the agent with:
 1. The list of changed files (`git diff --name-only` against the checkpoint commit)
 2. The task description and scope constraints
-3. The constitution's relevant rules
+3. The path `constitution.md` (read it whole; check the diff against every applicable rule)
 4. Relevant entries from `.claude/memory/MEMORY.md`
 5. The checklists `.claude/checklists/task-review.md` and `.claude/checklists/test-lens.md`, each when it exists and its `**Gate**:` line does not say `off`: the agent reports every failed item by its id. The test lens asks of every new or changed test: would it fail if the feature were broken? Assertions are scoped (to the element or row, not page-wide) and exact (values, not mere presence).
 6. **New exports** (the reviewer's independent reuse check): the output of `python3 scripts/forge/new-exports.py --base <checkpoint commit>`, which reads `.claude/quality-profile.json` → `newExports` (when unset, list the new exported symbols of the diff by hand), together with the implementer's `Reuse check:` lines and the `## Reuse` section of the implementer's prompt (search scopes, registry lookup). Instruction: "Do not trust the Reuse check lines. For each new export, search the scopes yourself by name, signature and meaning. A semantic duplicate of existing code, or another derivation of a registered concept, is Critical. A new shared export without a registry row, or without a Reuse check line saying why it is new, is a Warning. Report the count of new exports and of duplicates found."
@@ -375,8 +373,6 @@ git add [changed source files] specs/ && git commit -m "[WIP] Task [N]: [title] 
 ```
 
 Delete `.claude/wip.md`.
-
-> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/finalize` when the feature is approved.
 
 ### 4.3: Report
 

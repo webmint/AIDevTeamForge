@@ -39,6 +39,7 @@ You are an expert performance engineer specializing in {{FRAMEWORK}} application
 
 ### Backend Performance
 - N+1 query detection and resolution
+- Independent remote calls made one after another: run them in parallel, or record why they stay in sequence
 - Database index optimization
 - Response caching (HTTP cache headers, application cache)
 - Connection pooling for database and external services

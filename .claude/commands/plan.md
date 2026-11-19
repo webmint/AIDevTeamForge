@@ -27,7 +27,7 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 
 **Guard**: Read `constitution.md`. If it contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."
 
-**This phase always runs.** Scan the spec to determine the research depth needed.
+Scan the spec to determine the research depth needed.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
 
@@ -37,7 +37,6 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 - Check how similar features are implemented
 - Identify reusable code and patterns
 - For greenfield projects: check the constitution's scaffolding guide for pattern references
-- Do not re-read `docs/` (rule 8)
 
 ### Step 2: Signal Scan
 
@@ -193,7 +192,7 @@ A plan that touches a theme's files and records neither is incomplete. A copy gr
 
 ## PHASE 2: Write the Plan
 
-Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns).
+Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns). Read `.claude/commands/_plan-checks.md` and write what each of its sections asks for.
 
 ```markdown
 # Plan: [Feature Name]
@@ -286,6 +285,10 @@ Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → 
 
 [If no documentation impact: "No documentation changes expected — internal implementation only."]
 
+## Runtime
+
+[As `_plan-checks.md` → "Runtime" says]
+
 ## Risk Assessment
 
 | Id | Risk | Likelihood | Impact | Mitigation |
@@ -319,7 +322,7 @@ Before presenting the plan to the user, verify completeness:
 
 ## PHASE 2.6: Independent Gate (plan-gate)
 
-Read `.claude/commands/_independent-gate.md` and run the **plan-gate** (architect, security and qa lenses in parallel) on the plan and its supporting documents. Apply its loop before presenting the plan.
+Read `.claude/commands/_independent-gate.md` and run the **plan-gate** on the plan and its supporting documents. Apply its loop before presenting the plan.
 
 ## PHASE 3: User Approval
 
@@ -352,4 +355,4 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions
 8. **Docs context comes from the spec** — do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk
-9. **Reuse map is mandatory** — no new operation, figure, helper, closed-set member or seam without its search and decision (1.5); no touched open theme without a fix or a recorded deferral (1.6)
+9. **Reuse map is mandatory** — with its searches (1.5) and a decision per touched open theme (1.6)

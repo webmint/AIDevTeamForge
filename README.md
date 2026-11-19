@@ -106,7 +106,7 @@ Run these once when you first install the template:
 ```
 
 - **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). When a spec looks too large for one feature (for example more than 20 acceptance criteria; `.claude/storage-rules.md` → "Feature Size"), it says so and offers ways to split it; you decide, and keeping it whole is a valid answer. **Requires approval.** Auto-creates `spec/<KEY|NNN>-short-desc` branch.
-- **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. **Requires approval.**
+- **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. Every new plan has a Runtime section (repeated writes, time limits, who learns of a failure). **Requires approval.**
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task W2` — a wave from `tasks/README.md` | `/execute-task all` — all pending
@@ -168,6 +168,7 @@ specs/
       002-create-repository.md
       003-build-login-form.md
     gates/                       # Independent gate reports (/specify, /plan, /breakdown)
+    verification.md              # /verify report
     escapes.md                   # Escape analysis (/finalize)
 
 bugs/
@@ -237,7 +238,7 @@ The constitution template comes with universal rules that apply to ALL projects 
 
 **PREFER**: Explicit over implicit, composition over inheritance, flat over nested, boring over clever, existing patterns over new ones, small PRs over large.
 
-**Workflow**: Minimal changes, semantic understanding before renaming, read-first principle, document new code, check constitution and memory before every task.
+**Workflow**: Minimal changes, semantic understanding before renaming, read-first principle, doc comments only where needed, check constitution and memory before every task.
 
 Project-specific rules (architecture, naming conventions, type safety, testing, domain rules) are populated by `/constitute`.
 
@@ -286,7 +287,7 @@ After running `/setup-wizard`:
 - `CLAUDE.md` — Adjust workflow steps
 - `constitution.md` — Add project-specific rules
 - `.claude/settings.json` — Modify hooks and plugins
-- `docs/` — Project documentation. Implementing agents write inline docs (JSDoc/docstrings) per task; tech-writer generates feature-level docs at `/verify` time
+- `docs/` — Project documentation. Implementing agents write doc comments only on exported or public API whose name and types do not say it all; tech-writer generates feature-level docs at `/finalize` time
 
 ## Template Files
 

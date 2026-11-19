@@ -86,7 +86,7 @@ Every message to the user (a summary, a HARD GATE, a question, a report, a relay
 4. **Memory is persistent** — check `.claude/memory/MEMORY.md` for lessons from past sessions
 5. **Specs are contracts** — once approved, implementation must satisfy every acceptance criterion
 6. **One task at a time** — execute tasks sequentially following the dependency graph
-7. **Document new code** — all new functions/variables must have clear documentation
+7. **Doc comments only where needed** — a doc comment on exported or public API only when its name and types do not say it all; none on private helpers, constants, fields or constructors (the constitution's documentation rule)
 8. **Lint everything** — linting must pass on all changed files before task completion
 9. **Handle both paths** — every fallible operation must handle success AND error cases
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code

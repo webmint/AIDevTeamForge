@@ -43,7 +43,7 @@ An older spec's plan has no Format line and no Id columns, and its Summary is 2â
 In a task file (`.claude/storage-rules.md` â†’ "Task File Format"):
 - **Description**: what the task changes and why.
 - **Change Details**: one change per bullet. The implementer gets the task and its criteria, not the plan: Change Details carry every name, signature and value from the plan that the change needs. Decisions are cited by `DEC-N`, not re-argued.
-- **Done When**: the checks that prove the task, in its criteria's own terms (values, names, messages).
+- **Done When**: the checks that prove the task, in its criteria's own terms (values, names, messages). A check that restates a rule of `constitution.md` or `contracts.md` cites it (file and section) and keeps its whole scope.
 - **Completion Notes**: the template's fields, with what happened. `**Notes**`: deviations from the task or plan, each with one sentence of why, and what a later task must know; a record another step writes there (a `false positive: <reason>`, a reverted Warning, a fixed code-review Critical and what it was, `Batch gate failed`) is one line. No review or gate narration (verdicts, finding counts, test totals).
 
 ## Reports

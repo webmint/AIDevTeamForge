@@ -21,11 +21,16 @@ an edited old doc comment over the limit is A6.
 
 Blocking (a TR-27 Critical, unless the reviewer marks the line `false positive: <reason>`):
   C1  an id in a comment: a label of `.claude/storage-rules.md` "Labels" (`AC-<n>`, `DEC-<n>`, `Q-<n>`, `RISK-<n>`,
-      `CRIT-<n>`, `WARN-<n>`, `NOTE-<n>`); after `spec`/`task`: a number of 1-3 digits; after `plan`, `decision`,
-      `finding` or `escape`: an upper-case id like `K14`, `Q11`, `D1-D5` (the cue word in any case, the id upper-case);
-      the project's `ISSUE_KEY_PATTERN` (`project-config.json`) when it starts with a literal prefix (`PROJ-[0-9]+`; a
-      generic Jira or `#<n>` pattern is not used)
-  C2  `§` in a comment
+      `CRIT-<n>`, `WARN-<n>`, `NOTE-<n>`); after `spec`/`task`: a number of 1-3 digits; a spec tag (`spec-007`,
+      `[spec-007]`, `spec-PROJ-1305`); after `plan`, `decision`, `finding` or `escape`: an upper-case id like `K14`,
+      `Q11`, `D1-D5` (the cue word in any case, the id upper-case); the project's `ISSUE_KEY_PATTERN`
+      (`project-config.json`) when it starts with a literal prefix (`PROJ-[0-9]+`; a generic Jira or `#<n>` pattern is
+      not used); in wrapper mode only, unlike the other checks, a `specs/` feature folder path
+      (`specs/014-data-explorer/review.md`, `specs/PROJ-1305-x`), which does not resolve in the source repository
+  C2  `§` in a comment; a Forge document name followed by a section, anchor or line number (`spec.md 3.2`,
+      `plan.md#4`, `contracts.md section 2`, `tasks/003-x.md:12`) or by `§` and any heading (`review.md § Test
+      Assessment`, also bare `constitution §2.1`): the files of `.claude/storage-rules.md` "Directory Structure",
+      `review.md`, `summary.md` and `constitution.md`, in lower case; a name or path inside a URL is not judged
   C3  a date next to a provenance word (verified, as of, since, checked, updated, on, until) within 3 words, or a
       branch name (`feature/`, `bugfix/`, `hotfix/` or `release/` with a ticket-like or numbered name, `spec/NNN-`,
       `spec/<KEY>-`)
@@ -40,6 +45,11 @@ Advisory (the reviewer judges):
   A5  a plain (non-doc) comment block of more than 6 whole lines
   A6  an edited old doc comment over the C4 limit
   A7  a ticket-like key (`ABC-123`) that is not a known standard name, when no ISSUE_KEY_PATTERN applies
+  A8  `§` in a product Markdown file
+Product Markdown (wrapper mode only, where the specs live outside the source repository): every added line of a `.md`
+file is judged for C1 without the project key (a product CHANGELOG or README may name tickets), C2 for a document name
+with a section number, and A8; nothing else (no length checks). Its lines say they are in a product document. In a
+standalone project `.md` is skipped.
 Doc comments: `/** */` (JS, TS, Java, Kotlin, PHP, Scala, Dart, Swift, and the `<script>` part of Vue and Svelte),
 `///` (C#, Rust, Swift, Dart), `//!` (Rust), a whole-line `//` block on the line directly above a Go `func`, `type`,
 `var` or `const`, a Python docstring (the first statement of a module, or of a `def`/`class` body, decorators and
@@ -54,7 +64,8 @@ line can be miscounted. CSS takes `/* */` only.
 Output: one line `<path>:<line>: <code> <text>` per finding, then `comment-lint: C<n> A<n> files=<n>` (plus
 `skipped=<extensions>`). Exit 1 when there is a C line, 0 otherwise, 2 on a usage or git error.
 `stats` prints the measures of a change (added lines, comment lines and share, lines in blocks of 6 or more, C1 lines,
-doc blocks), split into source and test files; it exits 0, or 2 on a usage or git error.
+doc blocks), split into source and test files (product Markdown is not measured); it exits 0, or 2 on a usage or
+git error.
 """
 from __future__ import annotations
 
@@ -84,6 +95,7 @@ HASH = {"py", "rb", "sh", "bash", "zsh", "yaml", "yml", "toml", "r", "pl", "ps1"
 DASH = {"sql", "lua"}
 MARKUP = {"html", "htm", "xml", "svg", "vue", "svelte"}
 KNOWN = C_LIKE | HASH | DASH | MARKUP
+DOCUMENT = {"md"}  # judged as a whole, in wrapper mode only
 TS_EXT = {"ts", "tsx", "mts", "cts"}
 SLASH_DOC = {"cs", "rs", "swift", "dart"}
 STAR_DOC = {"js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "java", "kt", "kts", "scala", "swift", "php", "dart",
@@ -95,6 +107,20 @@ LINE_OPENERS = ("//", "///", "//!", "#", "--")
 # The labels of `.claude/storage-rules.md` "Labels"
 ID_ALWAYS = re.compile(r"\b(?:AC|DEC|Q|RISK|CRIT|WARN|NOTE)-\d+[a-z]?\b")
 ID_NUMBERED = re.compile(r"\b(?:spec|task)s?\s+#?\d{1,3}\b", re.IGNORECASE)
+# The spec tag of a test title (`[spec-007]`, `spec-PROJ-1305`); not `ecma-spec-262` or `[spec-lint]`:
+SPEC_TAG = re.compile(r"(?<![\w-])spec-(?:\d{1,3}|[A-Z][A-Z0-9]+-\d+)\b")
+# A Forge document of `.claude/storage-rules.md` "Directory Structure" (and `/review`, `/finalize`, the constitution)
+# followed by a section, anchor or line number, or by `§` and any heading; bare `constitution` only before `§`:
+DOC_NAME = (r"(?:(?:research-report|spec|plan|research|data-model|contracts|history|escapes|review|summary|"
+            r"constitution|spec-gate|plan-gate(?:-[a-z]+)?|breakdown-gate)\.md|tasks/(?:README|\d{3}-[\w.-]*?)\.md)")
+FORGE_DOC = re.compile(r"(?<![\w.-])(?:" + DOC_NAME + r"(?:\s*\(?\s*(?i:sections?|part|step|phase|item)\s+|\s+\(?|#|:)"
+                       r"\d+(?:\.\d+)*\b|(?:" + DOC_NAME + r"|constitution)\s*\(?\s*§\s*\w(?:[\w.-]*\w)?)")
+# A feature folder of the workspace's `specs/` (`specs/014-data-explorer/review.md`, `../specs/PROJ-1305-user-report`):
+# `specs/` at a word start or after `../`, a kebab-case name with no extension. Not a product's own nested `specs/`
+# (`cypress/e2e/specs/001-login.cy.ts`) or a numbered file (`specs/001-login.feature`):
+SPEC_PATH = re.compile(r"(?:(?<![\w./-])|(?<=\.\./))specs/(?:\d{3}|[A-Z][A-Z0-9]+-\d+)-[a-z0-9][a-z0-9-]*"
+                       r"(?=/|\.(?!\w)|[^\w.-]|$)(?:/[\w./-]*\w)?")
+URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s)>\]'\"`]+", re.IGNORECASE)
 ID_CUED = re.compile(r"\b(?:plan|decision|finding|escape)s?\s+([A-Za-z]{1,2}-?\d+)\b", re.IGNORECASE)
 # The cue word may be in any case, but the id after it must be upper-case ("plan K14", not "plan b2"):
 CUED_ID = re.compile(r"^[A-Z]{1,2}-?\d+$")
@@ -559,19 +585,39 @@ def _cued_id(text: str) -> Optional[str]:
     return None
 
 
-def line_findings(text: str, key: Optional[re.Pattern]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-    """(blocking, advisory) findings of one added comment line: (code, matched text)."""
+def forge_id(text: str) -> Optional[str]:
+    """The first label, spec or task number, spec tag or cued id in the text (C1 without the project key), else None."""
+    found = ID_ALWAYS.search(text) or ID_NUMBERED.search(text) or SPEC_TAG.search(text)
+    return found.group(0) if found else _cued_id(text)
+
+
+def spec_path(text: str) -> Optional[str]:
+    """The first `specs/` feature folder path outside URLs, else None."""
+    found = SPEC_PATH.search(URL.sub(" ", text))
+    return found.group(0) if found else None
+
+
+def forge_doc_citation(text: str) -> Optional[str]:
+    """The first Forge document name followed by a section number, outside URLs, else None."""
+    found = FORGE_DOC.search(URL.sub(" ", text))
+    return found.group(0) if found else None
+
+
+def line_findings(text: str, key: Optional[re.Pattern], wrapper: bool = False
+                  ) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    """(blocking, advisory) findings of one added comment line: (code, matched text). `wrapper`: the specs live
+    outside the source repository, so a `specs/` path does not resolve."""
     blocking: List[Tuple[str, str]] = []
     advisory: List[Tuple[str, str]] = []
-    found = ID_ALWAYS.search(text) or ID_NUMBERED.search(text)
-    match = found.group(0) if found else _cued_id(text)
+    match = forge_id(text) or (spec_path(text) if wrapper else None)
     if match is None and key is not None:
         keyed = key.search(text)
         match = keyed.group(0) if keyed else None
     if match is not None:
         blocking.append(("C1", match))
-    if "§" in text:
-        blocking.append(("C2", "§"))
+    cited = forge_doc_citation(text)
+    if cited or "§" in text:
+        blocking.append(("C2", cited or "§"))
     dated = _provenance_date(text)
     if dated:
         blocking.append(("C3", dated))
@@ -593,7 +639,7 @@ def line_findings(text: str, key: Optional[re.Pattern]) -> Tuple[List[Tuple[str,
     return blocking, advisory
 
 
-def lint_file(path: str, text: str, added: Set[int], key: Optional[re.Pattern], ratio: float
+def lint_file(path: str, text: str, added: Set[int], key: Optional[re.Pattern], ratio: float, wrapper: bool = False
               ) -> Tuple[List[Finding], Dict[str, int]]:
     """Findings of one file (extension in KNOWN) and its measures."""
     blocks, ts = comment_blocks(path, text)
@@ -617,7 +663,7 @@ def lint_file(path: str, text: str, added: Set[int], key: Optional[re.Pattern], 
         for number, ctext in block.lines:
             if number not in added:
                 continue
-            blocking, advisory = line_findings(ctext, key)
+            blocking, advisory = line_findings(ctext, key, wrapper)
             if any(code == "C1" for code, _t in blocking):
                 measures["id_lines"] += 1
             for code, match in blocking + advisory:
@@ -638,6 +684,23 @@ def lint_file(path: str, text: str, added: Set[int], key: Optional[re.Pattern], 
         share = 100.0 * len(comment_lines) / added_nonblank
         findings.append(Finding(path, min(added), "A2", f"{share:.0f}% of the added lines are comments"))
     return findings, measures
+
+
+def lint_document(path: str, text: str, added: Set[int]) -> List[Finding]:
+    """Findings of a Markdown file of the product repository (wrapper mode): every added line is judged."""
+    findings: List[Finding] = []
+    for number, line in enumerate(text.split("\n"), 1):
+        if number not in added:
+            continue
+        match = forge_id(line) or spec_path(line)
+        if match is not None:
+            findings.append(Finding(path, number, "C1", f"{match} (in a product document)"))
+        cited = forge_doc_citation(line)
+        if cited:
+            findings.append(Finding(path, number, "C2", f"{cited} (in a product document)"))
+        elif "§" in line:
+            findings.append(Finding(path, number, "A8", "§ in a product document: blocks if it cites a Forge document"))
+    return findings
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -692,6 +755,7 @@ def run(argv: List[str]) -> int:
         print(f"comment-lint: {exc}", file=sys.stderr)
         return 2
     key = issue_key_regex(_project_key(workspace))
+    wrapper = os.path.normpath(repo) != os.path.normpath(workspace)
     findings: List[Finding] = []
     skipped: Set[str] = set()
     totals = {kind: {"added": 0, "comment": 0, "in_long_blocks": 0, "id_lines": 0, "doc_blocks": 0}
@@ -699,7 +763,8 @@ def run(argv: List[str]) -> int:
     files = 0
     for path in sorted(added):
         ext = extension(path)
-        if ext not in KNOWN:
+        document = wrapper and ext in DOCUMENT
+        if ext not in KNOWN and not document:
             if ext:
                 skipped.add(ext)
             continue
@@ -711,8 +776,11 @@ def run(argv: List[str]) -> int:
                 text = handle.read()
         except OSError:
             continue
-        file_findings, measures = lint_file(path, text, added[path], key, args.ratio)
         files += 1
+        if document:
+            findings.extend(lint_document(path, text, added[path]))
+            continue
+        file_findings, measures = lint_file(path, text, added[path], key, args.ratio, wrapper)
         findings.extend(file_findings)
         kind = "test" if TEST_PATH.search(path) else "source"
         for name, value in measures.items():

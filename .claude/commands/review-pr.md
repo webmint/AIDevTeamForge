@@ -94,11 +94,11 @@ If the agent doesn't exist, note in the report: _Skipped — no security-reviewe
 
 ## PHASE 4: Performance Review
 
-If `.claude/agents/performance-analyst.md` exists, launch the **performance-analyst** agent with the diff, the changed files and how to read them at the PR head, the issue or PR description (performance-relevant criteria) and the MEMORY.md anti-patterns. If it doesn't exist, skip this phase silently.
+If `.claude/agents/performance-analyst.md` exists, launch the **performance-analyst** agent with the diff, the changed files and how to read them at the PR head, the issue or PR description (performance-relevant criteria) and the MEMORY.md anti-patterns. If it doesn't exist, note in the report: _Skipped — no performance-analyst agent configured._
 
 ## PHASE 5: Test Assessment
 
-If `.claude/agents/qa-engineer.md` exists, launch the **qa-engineer** agent with the diff, the changed files and how to read them at the PR head, the issue as acceptance criteria (or the PR description), the PR's test files, and the checklist `.claude/checklists/test-lens.md` when it exists and its `**Gate**:` line does not say `off`. It assesses coverage gaps, untested criteria and test strength (would each test fail if the change were broken). It does not write tests. If it doesn't exist, skip this phase silently.
+If `.claude/agents/qa-engineer.md` exists, launch the **qa-engineer** agent with the diff, the changed files and how to read them at the PR head, the issue as acceptance criteria (or the PR description), the PR's test files, and the checklist `.claude/checklists/test-lens.md` when it exists and its `**Gate**:` line does not say `off`. It assesses coverage gaps, untested criteria and test strength (would each test fail if the change were broken). It does not write tests. If it doesn't exist, note in the report: _Skipped — no qa-engineer agent configured._
 
 ## PHASE 6: Report
 

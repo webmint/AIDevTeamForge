@@ -103,6 +103,12 @@ Update if any of these changed:
 
 Skip if changes are purely internal to command logic without affecting the user-facing template output.
 
+### 5.6: Older statements of a changed rule
+
+When the release changes a rule, search every tracked file except `CHANGELOG.md` (`.claude/`, `scripts/`, `README.md`, `DEVELOPMENT-STATUS.md`, `install.sh`, `update.sh`) for older statements of the same rule, under each wording it may have, and remove them or reword them to the new rule.
+
+Skip if no rule changed.
+
 ## PHASE 6: Summary
 
 Present what was done:

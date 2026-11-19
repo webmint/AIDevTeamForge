@@ -10,7 +10,7 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 
 - The gate runs when `.claude/checklists/<gate>.md` exists and its `**Gate**:` line does not say `off`.
 - Otherwise skip it and write `Gate <gate>: off` in the HARD GATE summary. The checklists are project-owned: a project switches a gate off on that line (deleting the file does not work: `update.sh` restores missing checklists).
-- A structural spec (`**Type**: structural` in its header; see `/specify` → "Spec type") runs the spec-gate as usual, the plan-gate with the architect lens only (plus the security lens when it touches access control, privileged code, permissions or authentication), and no breakdown-gate: write `Gate breakdown-gate: skipped (structural spec)` in the HARD GATE summary.
+- A structural spec (`**Type**: structural` in its header; see `/specify` → "Spec type") runs the spec-gate as usual, the plan-gate with the architect lens only (plus the security lens when it touches access control, privileged code, permissions or authentication), and no breakdown-gate: write `Gate breakdown-gate: skipped (structural spec)`, and `Gate plan-gate: <lens> lens skipped (structural spec)` for each lens not run, in the HARD GATE summary.
 - **Conductor mode** (a `/conduct` phase runner; the prompt's `Phase:` field decides). The breakdown-gate stays inside `/breakdown`. For the spec-gate and the plan-gate:
   - A runner whose Phase is `specify` or `plan` reads the gate's `**Gate**:` line at the gate step. When the gate is off (or its checklist is missing), it runs the command on to its HARD GATE, which is then interactive (`_autonomous-mode.md` → "Self-Approval at a HARD GATE"): it returns `status: blocked (user gate <specify|plan>)` with the HARD GATE summary, which includes `Gate <gate>: off`. Otherwise it does not run the gate. It commits the artifact, `history.md` when it wrote to it, and its run report, and returns `status: done`, `gates: none (<gate> pending)`, `next: <gate> specs/<KEY|NNN>-*`. The run report adds `## Sources read` (each file read, with the sections or line ranges that mattered) and `## HARD GATE notes` (every note the command puts in the HARD GATE summary, such as the audit-gate notes, plus the decisions-log path).
   - A runner whose Phase is `spec-gate` or `plan-gate` runs this file's gate and Loop on the current artifact, opening only the sources a fix needs. It then follows the authoring command from its gate step to its end. It builds the HARD GATE summary from the artifact and the `## HARD GATE notes`, self-approves (`_autonomous-mode.md`), and runs any later step. Then it commits the artifact's approval changes, `history.md` when it wrote to it, the `gates/` reports and its own run report, by explicit path (`_autonomous-mode.md` → "Commits").
@@ -21,21 +21,24 @@ Referenced by `/specify` (spec-gate), `/plan` (plan-gate) and `/breakdown` (brea
 | Gate | Reviewer | Inputs (pass the paths; the reviewer reads them) |
 |------|----------|--------------------------------------------------|
 | spec-gate | `general-purpose` | `specs/<KEY|NNN>-*/spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md` and the `docs/features/*.md` the spec touches; the `/research` report the spec cites, if any; a `**Format**: 2` spec: `specs/<KEY|NNN>-*/research-report.md` and `history.md`, if present; the source files the spec's Affected Areas name; `specs/<KEY|NNN>-*/gates/reviewer-inputs.txt` and `specs/<KEY|NNN>-*/gates/spec.citations.txt` ("Spec-gate checks" step 1) |
-| plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names |
-| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `.claude/commands/_agent-assignment.md` |
+| plan-gate | three lenses in parallel, in one message: `architect` (Architect lens), `security-reviewer` (Security lens), `qa-engineer` (QA lens) | `plan.md`; `research.md`, `data-model.md`, `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names; QA lens: also the CI configuration files |
+| breakdown-gate | `general-purpose` | `tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `.claude/commands/_agent-assignment.md` |
 
 - **Model**: run `general-purpose` reviewers on a different model from this session where possible (the Agent tool's `model`: `sonnet` when this session runs Opus, `opus` when it runs Sonnet). The diversity is the point. Specialist agents keep the model of their own definition, except the plan-gate Architect lens, whichever agent runs it: launch it with the Agent tool's `model` set to `MODEL_ARCHITECT_LENS` from `.claude/project-config.json` (missing = the `MODEL_DO` value). The Security and QA lenses keep their own. The breakdown-gate reviewer is the one exception to the different-model rule: it runs on `sonnet`, also when this session runs Sonnet.
-- **Missing agent**: a plan-gate lens whose agent is not in `.claude/agents/` runs as `general-purpose` with the same lens.
+- **Missing agent**: a plan-gate lens whose agent is not in `.claude/agents/` runs as `general-purpose` with the same lens, and its prompt says so.
 
 ## Reviewer Prompt
 
-Fill `<…>`; add only the gate's inputs (spec-gate: also the lines of "Spec-gate checks" step 2):
+Fill `<…>`; add only the gate's inputs, and paste these lines verbatim, never paraphrased:
+- spec-gate: the lines of "Spec-gate checks" step 2.
+- plan-gate: from `.claude/commands/_plan-checks.md`, the "Runtime" section into the architect lens's prompt and "CI-unrun tests" into the QA lens's.
+- breakdown-gate: `A task's Done When that restates a rule of constitution.md or contracts.md cites it (file and section). One narrower than the rule it restates is a Warning.`
 
 ```
-Independent gate reviewer. Gate: <gate>[, lens <architect|security|qa>]. Feature: specs/<KEY|NNN>-*.
-You did not write the artifact under review. Read the primary sources first, then work adversarially through .claude/checklists/<gate>.md[, the "<Lens> lens" section only]. Report any other defect as "new".
+Independent gate reviewer. Gate: <gate>[, lens <architect|security|qa>]. Feature: specs/<KEY|NNN>-*.[ Your report's first line: (general-purpose; no <agent> agent configured).]
+You did not write the artifact under review. Read the primary sources first, then work adversarially through .claude/checklists/<gate>.md[, the "<Lens> lens" section only], and every check pasted into this prompt (a failure there is reported as "new"). Report any other defect as "new".
 Inputs: <the gate's inputs>. Change no file except your report.
-Read .claude/commands/_writing.md → "Reports". For each finding give: severity (Critical / Warning / Note), checklist id or "new", what is wrong, location, what to do, and evidence quoted from the artifact and from the source. Report findings only: an item that passes gets no line.
+Read .claude/commands/_writing.md → "Reports". For each finding give: severity (Critical / Warning / Note), checklist id or "new", what is wrong, location, what to do, and evidence quoted from the artifact and from the source. Report findings only: an item that passes gets no line. A condition or caveat you would attach to a passing item or to another finding ("passes, but …", "the plan should record this") is its own Warning.
 Write the full report to specs/<KEY|NNN>-*/gates/<gate>[-<lens>].md. Return only one line `<gate>: C<n> W<n> N<n>`, then one line per Critical and Warning: `<severity> <id> <location> — <one-line defect>`.
 With `Re-check only: <ids>`: read only the report's findings for those ids and their Dispositions, the artifact sections those findings locate and the sources they cite. Append your result under `## Re-check` in the existing report; never rewrite it. Return one line per id: `<id>: closed | still open | rejection accepted | rejection not accepted — <reason>`.
 With `Correct citations only: <ids>` (spec-gate) and a citations file: edit only those findings' or re-check entries' citations in the existing report; never rewrite it. Return one line per id: `<id>: corrected | cannot quote — <reason>`.
@@ -56,7 +59,7 @@ Spec-gate: every review, re-check and fix round also runs "Spec-gate checks" ste
 
 ## Spec-gate checks
 
-Spec-gate only; the other gates skip it. Each script writes its file under `specs/<KEY|NNN>-*/gates/` and prints it. Exit 0 is clean, 1 is findings; on exit 2 (usage or I/O error) note its message in the HARD GATE summary and go on without that check.
+Spec-gate only; the other gates skip it. Each script writes its file under `specs/<KEY|NNN>-*/gates/` and prints it. Exit 0 is clean, 1 is findings; on exit 2 (usage or I/O error) note its message in the HARD GATE summary and in `gates/spec-gate.md` (once it exists: `Not run: <script> — <message>`), and go on without that check.
 
 1. **Before the reviewer**: run `python3 scripts/forge/spec_lint.py lint specs/<KEY|NNN>-*` and fix its blocking findings as in step 4 (record those dispositions once the report exists). Then run `python3 scripts/forge/spec_paths.py specs/<KEY|NNN>-*`, which writes `gates/reviewer-inputs.txt` (files to verify, the author's notes on validation and normalisation, a security focus), and `python3 scripts/forge/verify_citations.py spec specs/<KEY|NNN>-*/spec.md`, which writes `gates/spec.citations.txt` (not blocking by itself). Pass both files as inputs.
 2. **Reviewer prompt**: add these lines.

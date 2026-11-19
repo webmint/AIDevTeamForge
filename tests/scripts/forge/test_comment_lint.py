@@ -143,6 +143,131 @@ class IdsAndMarkers(Case):
         code, out, _e = self.run_lint()
         self.assertEqual((code, self.codes(out)), (0, [(1, "A3"), (2, "A4")]))
 
+    def test_spec_tags_block_and_lookalikes_do_not(self):
+        self.write("src/t.js", "\n".join([
+            "// Covers [spec-007].",                   # 1 C1
+            "// Same as spec-007 above.",              # 2 C1
+            "// Per spec-PROJ-1305.",                    # 3 C1
+            "// See ecma-spec-262 for the grammar.",   # 4 nothing
+            "// Checked by [spec-lint].",              # 5 nothing
+            "// A spec-compliant parser.",             # 6 nothing
+            "const t = 1;",
+            "// Implements spec 7 of the protocol.",   # 8 C1: a number after `spec`; the reviewer marks it
+            "const u = 2;",
+            "",
+        ]))
+        code, out, _e = self.run_lint()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.codes(out), [(1, "C1"), (2, "C1"), (3, "C1"), (8, "C1")])
+
+    def test_forge_document_with_a_section_number_blocks(self):
+        self.write("src/k.js", "\n".join([
+            "// Filtered as contracts.md 5.2 says.",                     # 1 C2
+            "// The rule of spec.md \u00a73.",                            # 2 C2 (once)
+            "// See specs/001-a/plan.md#4-data.",                         # 3 C2
+            "// As tasks/003-add-x.md step 2 does.",                      # 4 C2
+            "// constitution.md:42",                                      # 5 C2
+            "const k = 1;",
+            "// https://example.invalid/blob/main/spec.md#3 is the RFC.", # 7 nothing: a URL
+            "// Touches plan.md, 2 more files.",                          # 8 nothing: no section
+            "// Reads api.spec.md 3 times.",                              # 9 nothing: another file
+            "// See HISTORY.md 1.2.",                                     # 10 nothing: upper case
+            "// The format is in spec.md.",                               # 11 nothing: no number
+            "const m = 2;",
+            "",
+        ]))
+        code, out, _e = self.run_lint()
+        self.assertEqual(code, 1)
+        self.assertEqual([(n, c) for n, c in self.codes(out) if c != "A5"],
+                         [(1, "C2"), (2, "C2"), (3, "C2"), (4, "C2"), (5, "C2")])
+        self.assertIn("src/k.js:1: C2 contracts.md 5.2", out)
+        self.assertIn("src/k.js:2: C2 spec.md \u00a73", out)
+
+
+class ProductMarkdown(Case):
+    """Wrapper mode: the source repository `app/` is nested in the workspace."""
+
+    def wrapper(self):
+        app = os.path.join(self.root, "app")
+        os.makedirs(app)
+        for args in (("init", "-q", "-b", "main"), ("config", "user.email", "t@example.invalid"),
+                     ("config", "user.name", "t")):
+            subprocess.run(["git", "-C", app, *args], check=True, capture_output=True)
+        self.write("app/README.md", "# App\n\nOld text with AC-1.\n")
+        self.write("app/src/a.js", "const a = 1;\n")
+        subprocess.run(["git", "-C", app, "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", app, "commit", "-q", "-m", "base"], check=True, capture_output=True)
+        self.config(SOURCE_ROOT="app", ISSUE_KEY_PATTERN="PROJ-[0-9]+")
+
+    def test_ids_and_citations_block_tickets_pass_and_the_paragraph_sign_is_advisory(self):
+        self.wrapper()
+        self.write("app/README.md", "\n".join([
+            "# App",
+            "",
+            "Old text with AC-1.",                           # 3 old: not judged
+            "Built for PROJ-1234.",                            # 4 nothing: a ticket key
+            "Rule AC-3 holds.",                              # 5 C1
+            "Tested by [spec-007].",                         # 6 C1
+            "See [the plan](../specs/001-a/plan.md#4).",     # 7 C1 (the folder) + C2
+            "Per \u00a7 4 of the terms.",                     # 8 A8
+            "As spec.md \u00a7 3 says.",                      # 9 C2 only
+            "Released on 2026-01-01; no longer beta.",       # 10 nothing: dates and history are not judged
+            "Writes are queued (constitution \u00a72.1: services enqueue).",  # 11 C2
+            "Kept as review.md \u00a7 Test Assessment says.",  # 12 C2
+            "Dropped, see contracts.md \u00a7 Rejected.",      # 13 C2
+            "Tokens follow OAuth spec section 4.1.",         # 14 nothing
+            "",
+        ]))
+        self.write("app/src/a.js", "const a = 1;\n// For PROJ-1234.\n")  # code keeps the key check
+        code, out, _e = self.run_lint()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.codes(out, "README.md"), [(5, "C1"), (6, "C1"), (7, "C1"), (7, "C2"), (8, "A8"), (9, "C2"),
+                                                        (11, "C2"), (12, "C2"), (13, "C2")])
+        self.assertEqual(self.codes(out, "src/a.js"), [(2, "C1")])
+        self.assertIn("README.md:5: C1 AC-3 (in a product document)", out)
+        self.assertIn("README.md:8: A8 \u00a7 in a product document: blocks if it cites a Forge document", out)
+        self.assertIn("README.md:11: C2 constitution \u00a72.1 (in a product document)", out)
+        self.assertEqual(out[-1], "comment-lint: C9 A1 files=2")
+
+    def test_spec_folder_paths_block_in_wrapper_mode_only(self):
+        lines = "\n".join([
+            " * Closes the gap left open in specs/014-data-explorer/review.md:",  # 1 C1 (wrapper)
+            " * specs/034-students-api/data-model.md for the field contracts.",   # 2 C1 (wrapper)
+            " * (see specs/028-cross-tab-session/contracts.md).",                 # 3 C1 (wrapper)
+            " * Mirrors specs/PROJ-1305-user-report.",                            # 4 C1 (wrapper)
+            " * Spec: https://example.invalid/specs/001-a/plan.md here.",         # 5 nothing: a URL
+            " * Split out on spec/011-review-fixes.",                             # 6 C3: a branch, not a path
+            " * Fixtures live in tests/specs/ and my-specs/001-a.",              # 7 nothing
+            " * Runs tests/specs/001-login.cy.ts against src/specs/001-users.yaml.",  # 8 nothing: product files
+            " * Steps in specs/001-login.feature; see ../specs/006-provider-failure-codes.",  # 9 C1 (the second)
+            "",
+        ])
+        text = "/*\n" + lines + " */\nconst p = 1;\n"
+        self.wrapper()
+        self.write("app/src/p.js", text)
+        code, out, _e = self.run_lint()
+        self.assertEqual([(n, c) for n, c in self.codes(out) if c.startswith("C")],
+                         [(2, "C1"), (3, "C1"), (4, "C1"), (5, "C1"), (7, "C3"), (10, "C1")])
+        self.assertIn("src/p.js:2: C1 specs/014-data-explorer/review.md", out)
+        self.assertIn("src/p.js:10: C1 specs/006-provider-failure-codes", out)
+        self.write("src/p.js", text)  # the same comment in a standalone project
+        os.remove(os.path.join(self.root, ".claude", "project-config.json"))
+        code, out, _e = self.run_lint()
+        self.assertEqual([(n, c) for n, c in self.codes(out, "src/p.js") if c.startswith("C")], [(7, "C3")])
+
+    def test_a_long_document_has_no_length_findings_and_is_not_measured(self):
+        self.wrapper()
+        self.write("app/docs/guide.md", "Plain prose.\n" * 40)
+        code, out, _e = self.run_lint("--ratio", "1")
+        self.assertEqual((code, out), (0, ["comment-lint: C0 A0 files=1"]))
+        code, out, _e = self.run_lint("stats")
+        self.assertEqual(out[0], "source: added=0 comment=0 share=0% in_blocks_6plus=0 id_lines=0 doc_blocks=0")
+
+    def test_standalone_project_skips_markdown(self):
+        self.write("docs/x.md", "AC-3 and spec.md#3 and [spec-007].\n")
+        code, out, _e = self.run_lint()
+        self.assertEqual((code, out[-1]), (0, "comment-lint: C0 A0 files=0 skipped=md"))
+
 
 class DocComments(Case):
     def test_doc_length_counts_description_lines_only(self):

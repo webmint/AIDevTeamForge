@@ -6,13 +6,13 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (22 commands + 9 shared partials in `.claude/commands/`)
+### Commands (22 commands + 10 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `research.md` — Quick feasibility check for vague ideas; investigates codebase and docs/ for related patterns, signal-based external research (Context7 first for libraries, WebSearch for comparisons), displays full report in console and optionally saves to `research/YYYY-MM-DD-[topic-slug].md`; the report keeps the request (and a named issue's text) verbatim, and the next step is `/specify <report path>` (1.36.0)
 - `specify.md` — Creates feature specs with acceptance criteria; clarifies requirements in rounds of up to 5 questions (no artificial limit); auto-creates `spec/NNN-short-desc` branch when on default branch; keeps the user's request verbatim (1.36.0): since 1.40.0 a new spec (`**Format**: 2`) has no Request section: the request stays in the feature's `research-report.md` or is copied to `history.md`, which also holds the user's answers; an older spec keeps its `## Request (verbatim)` section
-- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research with tightened triggers (not-in-project qualifier); Context7 first for library docs; Phase 2.5 cross-references plan against spec ACs before presenting to user
+- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research with tightened triggers (not-in-project qualifier); Context7 first for library docs; Phase 2.5 cross-references plan against spec ACs before presenting to user; since 1.41.0 every new plan has a Runtime section (write paths and time budget, `_plan-checks.md`)
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints; references shared `_agent-assignment.md` for agent selection
 - `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /finalize
 - `review.md` — Expert code review: launches specialist agents (security-reviewer, performance-analyst, qa-engineer) on all changed files. Produces structured review report saved to `specs/[feature]/review.md`. No verdict — findings only
@@ -39,6 +39,7 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from 
 - `_intent-check.md` (1.36.0) — the Request record rules (where the request is kept: `research-report.md` and `history.md` for a Format 2 spec, the spec's Request section for an older one) and `/verify`'s intent check: auditor prompt, DIRECT/BROADER handling, autonomous STOP 1 and resume with the user's answers
 - `_independent-gate.md` (1.30.0) — fresh-context gate reviewer before the HARD GATE of specify (spec-gate), plan (plan-gate, three lenses) and breakdown (breakdown-gate); one fix loop on Criticals, open ones shown at the gate
 - `_writing.md` (1.40.0) — shared writing rules for specs, plans, tasks and reports, read by the commands that write them
+- `_plan-checks.md` (1.41.0) — what every new plan asks before it is written (Runtime) and the CI-unrun tests check; `/plan` reads it, and the plan gate pastes its sections into the architect and QA lenses
 
 Structural-quality layer (1.30.0): `/research` Reuse or Extend; `/specify` audit gate start line, Prior Art, spec type `feature | structural`; `/plan` 1.4–1.6 (Migration, Reuse Map, seams, Copies and Hubs, open themes); `/breakdown` `**Reuse**:` field; `/execute-task` Reuse check, New exports and Copies review inputs; `/fix` Class Sweep; `/review` 4.5 Adoption Check and 4.6 Structural Check; `/finalize` 1.5 escape analysis and 1.6 structural hand-off; `/audit` `--since-last`, structural lens, themes, triage and learning step
 
@@ -103,7 +104,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 4. **Sequential numbering** — features: 001, 002...; tasks within feature: 001, 002...
 5. **All agents as templates, wizard selects** — 14 templates, setup wizard conditionally generates based on project
 6. **Universal constitution rules pre-populated** — SOLID, DRY, KISS, error handling, code quality, workflow rules all built-in; `/constitute` preserves these `[universal]` sections verbatim and only populates `[project-specific]` sections
-7. **Two-layer documentation** — implementing agents write inline docs (JSDoc/docstrings) as part of code; code-reviewer verifies inline docs per-task; tech-writer generates feature-level docs in `docs/` at `/verify` time (once per feature, not per task). `/fix` and `/refactor` run tech-writer per-command (standalone, no /verify follows). `/refresh-docs` catches stale docs via git delta
+7. **Two-layer documentation** — implementing agents write a doc comment only on exported or public API whose name and types do not say it all (1.38.0); code-reviewer checks comments per task (TR-27, TR-28); tech-writer generates feature-level docs in `docs/` at `/finalize` time (once per feature, not per task). `/fix` and `/refactor` run tech-writer per command. `/refresh-docs` catches stale docs via git delta
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents
@@ -167,4 +168,4 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - ~~`constitution.md` stub generation (step 3.5 in wizard) — template content TBD~~ **FIXED: wizard copies template with resolved headers, preserves sentinel strings**
 - ~~`/clarify` command overlap with `/specify`~~ **RESOLVED: `/clarify` removed, clarification absorbed into `/specify` Phase 2**
 - Consider spec validation agents (R1 from competitive analysis) — plan-spec cross-reference already added, spec validation is lower priority with per-task code review as safety net
-- ~~Consider if tech-writer should also update inline code docs (JSDoc/docstrings) or just `docs/` folder~~ **DECIDED: both. Tech-writer updates inline docs (JSDoc/docstrings) AND `docs/` folder.**
+- ~~Consider if tech-writer should also update inline code docs (JSDoc/docstrings) or just `docs/` folder~~ **DECIDED: both. Tech-writer updates inline docs (JSDoc/docstrings) AND `docs/` folder.** Superseded in 1.38.0: the tech-writer adds no doc comments and only corrects one the change made wrong.
