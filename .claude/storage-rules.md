@@ -164,7 +164,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
-/decompose    → creates decompositions/YYYY-MM-DD-<slug>.md (not committed; standalone, not in workflow chain)
+/decompose    → creates decompositions/YYYY-MM-DD-<slug>.md (not committed; standalone, not in workflow chain); with Jira, creates issues and their links after confirmation
 /conduct      → autonomous mode only: runs the commands above as subagents; keeps the local ledger .claude/delivery-status.md (never committed); each runner writes specs/<KEY|NNN>-name/runs/<phase>.md
 ```
 

@@ -274,9 +274,9 @@ If AC_VERIFICATION is "off" or "api-only", do NOT add chrome-devtools to `.mcp.j
 (Default to "Interactive" if the user skips. Interactive writes `DELIVERY_MODE: "interactive"` and leaves the other delivery keys out.)
 
 ### Question 11: Pull Requests and Issue Tracker
-Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads an issue the topic names). Run the git commands of this question inside the Source Root in wrapper mode. Detect the host from `git remote get-url origin` and propose the matching preset from `.claude/commands/review-pr.md` → "Configuration":
+Used by `/review-pr` (review of a PR with no spec), `/research` (reads an issue the topic names) and `/decompose`. In wrapper mode, run its git commands inside the Source Root. Detect the host from `git remote get-url origin` and propose the matching preset from `.claude/commands/review-pr.md` → "Configuration":
 - `github.com` in the URL → the GitHub (`gh`) preset; `gitlab` in the URL → the GitLab (`glab`) preset.
-- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set). A host without PR refs uses `refs/heads/<HEAD>` as `PR_HEAD_REF` (`<HEAD>` = the head branch name in the view output). Credentials for the commands (an API token) live only in the environment and are referenced from the command (`$VAR`), never written into `project-config.json`.
+- Any other host, or no remote → ask for the commands (`<N>` = PR number, `<KEY>` = issue key), or skip them (`/review-pr` then stops with the keys to set). A host without PR refs uses `refs/heads/<HEAD>` as `PR_HEAD_REF` (`<HEAD>`: the head branch in the view output). Credentials (an API token) stay in the environment, referenced as `$VAR`, never in `project-config.json`.
 
 "Which commands show a pull request?" — show the proposed `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND` and `PR_HEAD_REF`; the user accepts, edits any of them, or skips them.
 
@@ -284,7 +284,7 @@ Used by `/review-pr` (review of a PR that has no spec) and by `/research` (reads
 
 "Which issue tracker does the team use?"
 - **None** (default) — `ISSUE_TRACKER: "none"`.
-- **Jira** — read through an MCP server that has a tool reading one issue by key (the Atlassian server's `getJiraIssue`). Ask for the server name as it appears in its tool names `mcp__<server>__…` (default `atlassian`; propose the name of a connected server with such a tool) → `JIRA_MCP_SERVER`, and for the site when the account has several (`acme.atlassian.net`) → `JIRA_SITE`. Key pattern default `[A-Z][A-Z0-9]+-[0-9]+`.
+- **Jira** — an MCP server with a tool that reads one issue by key (the Atlassian server's `getJiraIssue`) and, for `/decompose`, tools that create an issue, list a project's issue types, search issues (an epic's children), create an issue link and list link types. Ask for the server name as it appears in its tool names `mcp__<server>__…` (default `atlassian`; propose a connected server that has the read tool) → `JIRA_MCP_SERVER`, and for the site when the account has several (`acme.atlassian.net`) → `JIRA_SITE`. Key pattern default `[A-Z][A-Z0-9]+-[0-9]+`.
 - **GitHub Issues** — read with `gh issue view`. Key pattern default `#[0-9]+`; with the GitHub preset, propose `in:title,body` in `PR_SEARCH_COMMAND` (PRs name issues in the description: `Closes #123`).
 
 Show the key pattern default and let the user replace it → `ISSUE_KEY_PATTERN`.
@@ -559,7 +559,7 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 
 **Optional delivery keys** (Question 10; a missing key means its default, so older configs need no migration): `DELIVERY_MODE` (`interactive` | `autonomous`), and in autonomous mode `DELIVERY_GATES`, `MERGE_MODE`, `ROADMAP_FILE`, `PUSH_REMOTE`, `PUSH_BRANCH_PREFIXES`. Every value is a JSON string, as for the other keys.
 
-**Optional review keys** (Question 11; a missing key means its default): `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF`, `PR_REMOTE`, `ISSUE_TRACKER` (`jira` | `github` | `none`), `ISSUE_KEY_PATTERN`, and for Jira `JIRA_MCP_SERVER`, `JIRA_SITE`. Write the user's answers as JSON strings; every Question 11 key that is skipped or does not apply is `""`, never `"N/A"` (the rule below is for the other keys). The example above shows the GitHub preset with no tracker; with Jira add `ISSUE_KEY_PATTERN`, `JIRA_MCP_SERVER` and `JIRA_SITE`. Placeholders `<N>` and `<KEY>` stay literal: commands replace them at run time.
+**Optional review keys** (Question 11; a missing key means its default): `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF`, `PR_REMOTE`, `ISSUE_TRACKER` (`jira` | `github` | `none`), `ISSUE_KEY_PATTERN`, and for Jira `JIRA_MCP_SERVER`, `JIRA_SITE`. Write the user's answers as JSON strings; every Question 11 key that is skipped or does not apply is `""`, never `"N/A"` (the rule below is for the other keys). The example above shows the GitHub preset with no tracker. Placeholders `<N>` and `<KEY>` stay literal: commands replace them at run time.
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 

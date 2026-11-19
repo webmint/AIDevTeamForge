@@ -1,12 +1,12 @@
 ---
 description: A large intent into a tree of tracker tickets, each leaf ready for /research. Run by the user.
-argument-hint: "[\"intent\" | issue key]"
+argument-hint: "[\"intent\" | issue key | decompositions/<file>.md]"
 disable-model-invocation: true
 ---
 
 # /decompose — An Intent into a Tree of Tickets
 
-Turns a request too large for one feature into a tree of tickets. A **leaf** is one vertical slice, the size of one feature, that `/research` starts: a ticket or a subtask. A **container** (an epic, or a ticket with subtasks) only groups leaves and holds no work of its own. It writes `decompositions/YYYY-MM-DD-<slug>.md`.
+Turns a request too large for one feature into a tree of tickets. A **leaf** is one vertical slice, the size of one feature, that `/research` starts: a ticket or a subtask. A **container** (an epic, or a ticket with subtasks) only groups leaves and holds no work of its own. It writes `decompositions/YYYY-MM-DD-<slug>.md` and, with Jira, creates the issues and their links after the user confirms.
 
 Not part of the workflow chain and not run by `/conduct`: no autonomous points, no delivery ledger, no roadmap rows. A request that is one feature goes straight to `/research`.
 
@@ -15,14 +15,16 @@ Not part of the workflow chain and not run by `/conduct`: no autonomous points, 
 /decompose "the client wants sign-in with Google"
 /decompose PROJ-123      ← build under an existing epic or ticket (Jira)
 /decompose #42           ← the intent from a GitHub issue
+/decompose decompositions/2026-11-19-google-sign-in.md   ← create what a stopped run left out (Jira)
 ```
 
 ## Arguments
 `$ARGUMENTS`, read in this order (`ISSUE_TRACKER`, `ISSUE_KEY_PATTERN`, `JIRA_MCP_SERVER` and `JIRA_SITE` in `.claude/project-config.json`, as `.claude/commands/review-pr.md` → "Configuration" defines them, defaults included):
 1. Empty: ask for the intent (`AskUserQuestion`).
-2. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `jira`: that issue is the parent (PHASE 1, an existing parent).
-3. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `github`: run `gh issue view <n> --json title,body` (`<n>` = the argument without its `#`) (in wrapper mode inside the Source Root); its title and body are the intent. No parent: the shape follows PHASE 3, "Shape". The issue cannot be read: stop and say why.
-4. Anything else is an intent. Keys inside an intent are never read: to build under a parent, pass the key alone. With `ISSUE_TRACKER` `none`, a key-shaped argument is an intent.
+2. A path to an existing `decompositions/*.md` file: resume it (PHASE 7, "Resume from a file").
+3. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `jira`: that issue is the parent (PHASE 1, an existing parent).
+4. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `github`: run `gh issue view <n> --json title,body` (`<n>` = the argument without its `#`) (in wrapper mode inside the Source Root); its title and body are the intent. No parent: the shape follows PHASE 3, "Shape". The issue cannot be read: stop and say why.
+5. Anything else is an intent. Keys inside an intent are never read: to build under a parent, pass the key alone. With `ISSUE_TRACKER` `none`, a key-shaped argument is an intent.
 
 Keep the intent word for word (or the user's reply when you asked) for the file.
 
@@ -128,6 +130,7 @@ Write `decompositions/YYYY-MM-DD-<slug>.md` (`<slug>`: lowercase kebab-case, 2�
 
 **Date**: <YYYY-MM-DD>
 **Tracker**: <`ISSUE_TRACKER` at this run: jira | github | none>
+<With jira, each on its own line once chosen (PHASE 7): **Project**: <KEY>; **Issue types**: <level>: <type>, one per level the tree uses; **Link type**: <name> (outward "<description>", inward "<description>").>
 **Intent (verbatim)**:
 > <the intent, word for word; every line prefixed `> `, a blank line as `>`>
 
@@ -140,20 +143,56 @@ Write `decompositions/YYYY-MM-DD-<slug>.md` (`<slug>`: lowercase kebab-case, 2�
 
 ## Tree
 
-<The tree of PHASE 5, as approved.>
+<The tree of PHASE 5, as approved. With jira, each new issue's line ends with `· key: <KEY | —>`, and each number after `depends on:` carries its link's state, `(linked)` or `(not linked)`.>
 
 ## Issues
 
-<Each new issue's text, in tree order, as approved.>
+<Each new issue's text, in tree order, as approved; once the issue is created, the text sent (PHASE 7).>
 ```
 
-## PHASE 7: Next Steps
+## PHASE 7: Create the Issues (Jira)
 
-Confirm `Saved to decompositions/<file>.md`, then list the leaves in dependency order, each as `/research "<its request>"`.
+Only when the file's **Tracker** is `jira`; with `github` or `none` the file is the output: go to Next Steps. Issues in the tracker are outside the workspace and other people see them, so nothing is created before the user's yes.
+
+**Tools**, of the `mcp__<JIRA_MCP_SERVER>__` server, with a cloudId as PHASE 1 step 3 says (several sites and no `JIRA_SITE`: ask which). A tool the server offers through its discovery tool counts as available (on the Atlassian server: found with `discover`, run with `executeRead` or `executeWrite`).
+- the tool that creates an issue (on the Atlassian server: `createJiraIssue`);
+- the tool that lists a project's issue types (`listJiraProjectIssueTypesMetadata`);
+- the tool that creates an issue link (`createJiraIssueLink`);
+- the tool that lists the site's link types (`listJiraIssueLinkTypes`).
+
+No tool that creates an issue, or none that lists issue types: name the missing tool, create nothing and go to Next Steps.
+
+**Choose**, writing each choice into the file's header as soon as it is made:
+1. The project: the parent's (its key before the `-`); without a parent, ask for the project key.
+2. The issue types: read the project's; the user picks one for each level the tree uses, among the types whose hierarchy level fits it (PHASE 1 step 3); a listing without hierarchy levels offers all its types. A level with one fitting type takes it; the confirmation shows it. Never guess from a name: projects name and nest types differently.
+3. The link type, when both link tools are there: read the site's and take the one whose outward description means "blocks" and inward "is blocked by". Never guess from a name: names differ between sites. None matches: the user picks one.
+
+The picks of steps 2 and 3 go in one `AskUserQuestion` call.
+
+**Confirm**: list the project, the issue type of each level, the number of issues, and the number of links with their link type. Without a link tool, name the missing tool instead and say that the dependencies stay text only, recorded as not linked so that a later run on the file creates them; the issues are still created. Ask (`AskUserQuestion`): **yes** or **no**.
+
+**No, a failed read in Choose, or no type fitting a level** (say why): the choices made in this run are removed from the header (recorded ones the created issues used stay); nothing is created; the file stays, and `/decompose decompositions/<file>.md` creates them later. Go to Next Steps.
+
+**Create**: the containers top down, then the leaves, each after the leaves it depends on. An existing parent or child is never created again.
+- **The summary** is the heading without `### <n>. <level>: `; a child names its container's key in the create tool's parent field.
+- **Keys at creation.** Before sending, put the key before the title of each issue of this decomposition already created, wherever the text names it (`PROJ-123 <title>`): the parent in `Context:`, the leaves in `Out of scope:` and `Depends on:`. An issue not yet created stays a title, and `Split into:` stays titles: no issue is edited after creation. Nothing else changes from the approved text.
+- **The description** shows each section in Jira as its own labelled section. Check the create tool's schema for its format. Markdown: each section is a paragraph opening with its label in bold (`**Outcome:**`), sections separated by a blank line, `- ` items as a list. Atlassian Document Format: each section is a paragraph opening with its label as strong text, items as a bullet list. The file keeps the template text.
+- **At once**, the key goes into the issue's tree line and the text sent replaces its text in the file.
+
+**Links**: as soon as both ends of a dependency have a key (an existing child has one from the start), create one link of the recorded link type in which the dependency blocks the leaf: the dependency shows "<outward description> <the leaf>". Take which parameter holds which issue from the tool's parameter descriptions, not from the parameter names alone. When they do not settle it, read the dependency back after the first link (the single-issue read); a reversed link is a failure part-way; the report names it for removal by hand. Mark it `(linked)` in the file at once. A link changes neither issue's summary nor description, so linking an existing child does not edit it. `Depends on:` stays as it is: `/research` reads only the description.
+
+**Failure part-way**: a create or a link fails (an error, or the call is denied): stop. Delete nothing and retry nothing. Report which issues and links were created (the file holds them) and which were not, and that `/decompose decompositions/<file>.md` creates only the missing ones. Go to Next Steps.
+
+**Resume from a file** (Arguments, item 2): read the file; no look, slicing or review. Nothing is missing, or the file's **Tracker** is `github` or `none`: say so and go to Next Steps. Only links are missing and a link tool is missing: name it and go to Next Steps. Otherwise run this phase from its start, with the project, issue types and link type the file records (one not recorded is asked or read as on a first run), counting, confirming and creating only the issues with `key: —` and the links `(not linked)`; keys at creation use the keys the file records.
+
+## PHASE 8: Next Steps
+
+Name the file, then list the leaves in dependency order: `/research <KEY>` for a leaf with a key, `/research "<its request>"` for one without (no Jira, or not created).
 - Mark the leaves that depend on no other leaf: two or more of them can start in parallel.
 - **When everything waits on one leaf** (every other leaf depends on it, directly or through other leaves; the usual case when nothing existed), say so plainly: start with that leaf; the rest after it.
 - Never imply that leaves can start in parallel when they cannot.
 
 ## IMPORTANT RULES
 
-1. **Read-only for the code**: the only write is the file, left uncommitted. An existing parent and its children are only read.
+1. **Read-only for the code**: the only workspace write is the file, left uncommitted.
+2. **The tracker only after the yes** (PHASE 7), and only new issues and the links between them. No issue is ever edited or deleted, an existing parent and its children included (a link is not an edit), and a failed call is never retried.
