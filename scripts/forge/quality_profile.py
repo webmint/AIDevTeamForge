@@ -240,6 +240,7 @@ CONSUMERS: dict[str, list[str]] = {
     "searchScopes": [
         "scripts/forge/quality_profile.py",
         ".claude/commands/audit.md",
+        ".claude/commands/decompose.md",
         ".claude/commands/execute-task.md",
         ".claude/commands/fix.md",
         ".claude/commands/plan.md",
@@ -252,6 +253,7 @@ CONSUMERS: dict[str, list[str]] = {
     "generatedDirs": [
         "scripts/forge/quality_profile.py",
         ".claude/commands/audit.md",
+        ".claude/commands/decompose.md",
         ".claude/commands/execute-task.md",
         ".claude/commands/fix.md",
         ".claude/commands/plan.md",

@@ -75,6 +75,7 @@ check "binding init + validate" '(cd "$P2" && python3 scripts/forge/quality_prof
 check "binding consumers hold" '(cd "$P2" && python3 scripts/forge/quality_profile.py consumers >/dev/null 2>&1)'
 check "release.md not installed" '[ ! -f "$P2/.claude/commands/release.md" ]'
 check "review-pr command installed" '[ -f "$P2/.claude/commands/review-pr.md" ]'
+check "decompose command installed" '[ -f "$P2/.claude/commands/decompose.md" ]'
 # update.sh on settings.json shapes with no local hook paths must not stop (set -e, pipefail)
 cp "$P2/.claude/hooks/forge/settings-hooks.json" "$P2/.claude/settings.json"
 "$TPL/update.sh" --dry-run "$P2" < /dev/null > "$WORK/dup-forge-only.txt" 2>&1; rc=$?

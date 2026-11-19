@@ -22,6 +22,7 @@
       ".claude/commands/review.md",
       ".claude/commands/review-pr.md",
       ".claude/commands/audit.md",
+      ".claude/commands/decompose.md",
       ".claude/commands/finalize.md",
       ".claude/commands/_recovery.md",
       ".claude/commands/_agent-assignment.md",
