@@ -5,6 +5,28 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-11-20
+
+`/decompose`: a request too large for one feature becomes a tree of tickets, each the size of one feature and ready for `/research`.
+
+### Added
+- **`/decompose`** (`.claude/commands/decompose.md`), run by the user. It is not part of the workflow chain and `/conduct` does not run it.
+  - **Input**: an intent in words, a GitHub issue (`#42`), or a Jira epic or ticket to build under (`/decompose PROJ-123`). The parent's level comes from its issue type's hierarchy level, not its name; its existing children stay in the tree and are not created again.
+  - **A shallow look at the project** (at most 10 files) finds what exists in the areas the intent touches. When nothing exists (Google sign-in in an app with no users), the absence is a finding, and the first slice carries the minimal foundation its path needs; there is no foundation-only slice. A vague intent gets one batched question before any tree. An unfamiliar technology stops the command with a pointer to `/research` on the whole intent.
+  - **Slices** are vertical: each changes what a user can observe end to end, the thinnest working path first, each under the size thresholds of one feature (`storage-rules.md` → "Feature Size"). Outside work (another repository, provider console setup, credentials) is a dependency, never a slice. One slice is not a decomposition: the command gives `/research` and saves nothing. Two or three slices are tickets; four or more get an epic.
+  - **Two fixed templates**, in English whatever the intent's language: a slice has Context, Outcome (1–3 statements), Out of scope, Depends on and Open questions; a container has Intent, Outcome, Split into and Depends on. You see the current state, the tree and every issue's full text, then accept, change or cancel.
+  - **The file** `decompositions/YYYY-MM-DD-<slug>.md` (not committed) holds the intent word for word, the current state, the tree and the issues.
+  - **Jira**: after your yes, it creates the issues under their containers and links each dependency with the site's blocking link type. A run that stops part-way records what was created; `/decompose decompositions/<file>.md` creates only the missing issues and links. GitHub and no tracker: the file only.
+  - It ends with `/research <key>` (or the slice's text) for each slice, in dependency order.
+
+### Changed
+- **`/setup-wizard` Question 11** names `/decompose` among its users, and the Jira answer lists the tools `/decompose` needs: create an issue, list a project's issue types, search issues, create an issue link, list link types.
+- **`storage-rules.md`** and **`_writing.md`** list the decomposition file; `CLAUDE.md`'s flow line lists `/decompose` as standalone.
+- **For existing projects**: no migration is needed. `update.sh` adds the command.
+  - **Jira**: `/decompose` calls write tools (create an issue, create a link) on the Atlassian server; some of them are reached through its `discover` / `executeRead` / `executeWrite` tools. Allow them when prompted, or add them to your permissions.
+  - `CLAUDE.md`: when `update.sh` reports a merge conflict in `CLAUDE.md` or finds no baseline for it, it leaves `CLAUDE.md` unchanged; add `/decompose` to the Standalone list of the flow line by hand, as in `.claude/templates/CLAUDE.template.md`.
+- Template version: 1.41.0 → 1.42.0
+
 ## [1.41.0] - 2026-11-16
 
 Review misses caught at the step that should catch them: the constitution reaches the agents as written, plans ask what happens at runtime, no check is skipped without a line, and Forge's ids stay out of the product.
