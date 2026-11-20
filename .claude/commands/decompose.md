@@ -63,7 +63,7 @@ No feasibility verdict, no comparison of approaches, no web research: each leaf'
   - work in a repository this workspace does not hold (a separate front end, another service);
   - non-code work that someone with access must do: accounts, provider console setup (an OAuth client, a consent screen, redirect URIs), credentials and secrets in each environment, access granted by another team.
 - **Thinnest path first.** The first leaf is the thinnest path that works end to end; later leaves widen it or build on it. In an app that already has users: sign-in with Google for an existing user, matched by verified email. When nothing exists (PHASE 2), the first leaf carries the minimal foundation its path needs and no more (the user record, the session, one protected page); there is no foundation-only leaf.
-- **Under the size thresholds.** Estimate each leaf against `.claude/storage-rules.md` → "Feature Size": at most 20 acceptance criteria, fewer than 3 parts delivered separately. A leaf that would cross them, its foundation included, is cut thinner along the path, each piece still end to end (sign-in with a session and no stored user first; a returning user keeps their profile second).
+- **Under the size thresholds.** Estimate each leaf against `.claude/storage-rules.md` → "Feature Size": at most 20 acceptance criteria, fewer than 3 parts delivered separately. A leaf that would cross them, its foundation included, is cut thinner along the path, each piece still end to end (a report's sales total for one fixed period first; choosing the period and downloading the report second).
 - **Order.** Each leaf names the leaves it depends on, with no cycles.
 - **What is left out.** Each leaf says what it leaves to which other leaf.
 - **Existing children** (PHASE 1) are in the tree as already present. A new leaf fills only what they do not cover; a leaf an existing child already covers is not proposed.
@@ -116,10 +116,11 @@ Rules for the text:
 ## PHASE 5: Review
 
 Show in the console:
-1. The tree, one line per issue, indented under its container: `<n>. <level>: <title> · depends on: <numbers | none>`; an existing parent or child as `<n>. <level>: <KEY> <title> · existing`.
-2. Below it, the full text of every new issue in its template, exactly as it will be written.
+1. The current state, exactly as the file will hold it (PHASE 6, "Current State"), with the absence finding when nothing exists: what the tree stands on.
+2. The tree, one line per issue, indented under its container: `<n>. <level>: <title> · depends on: <numbers | none>`; an existing parent or child as `<n>. <level>: <KEY> <title> · existing`.
+3. Below it, the full text of every new issue in its template, exactly as it will be written.
 
-Then ask (`AskUserQuestion`): **accept**, **change** (the user says what) or **cancel**. A change redraws both and asks again. Cancel: nothing is saved; stop.
+Then ask (`AskUserQuestion`): **accept**, **change** (the user says what) or **cancel**. A change redraws all three and asks again. Cancel: nothing is saved; stop.
 
 ## PHASE 6: Save the File
 
@@ -139,7 +140,7 @@ Write `decompositions/YYYY-MM-DD-<slug>.md` (`<slug>`: lowercase kebab-case, 2�
 
 ## Current State
 
-<A few lines on what exists in the touched areas, with `file:line`; the absence finding when nothing exists.>
+<A few lines on what exists in the touched areas, with `file:line`; the absence finding when nothing exists; as shown at the review (PHASE 5).>
 
 ## Tree
 
