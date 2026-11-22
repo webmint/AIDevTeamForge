@@ -239,6 +239,7 @@ BLOCKING_ISSUES = {
 CONSUMERS: dict[str, list[str]] = {
     "searchScopes": [
         "scripts/forge/quality_profile.py",
+        ".claude/commands/_decompose-parts.md",
         ".claude/commands/audit.md",
         ".claude/commands/decompose.md",
         ".claude/commands/execute-task.md",
@@ -252,6 +253,7 @@ CONSUMERS: dict[str, list[str]] = {
     ],
     "generatedDirs": [
         "scripts/forge/quality_profile.py",
+        ".claude/commands/_decompose-parts.md",
         ".claude/commands/audit.md",
         ".claude/commands/decompose.md",
         ".claude/commands/execute-task.md",
@@ -269,6 +271,7 @@ CONSUMERS: dict[str, list[str]] = {
         "scripts/forge/check-task-evidence.py",
         "scripts/forge/hub-files.py",
         "scripts/forge/new-exports.py",
+        ".claude/commands/_decompose-parts.md",
         ".claude/commands/audit.md",
         ".claude/commands/research.md",
         ".claude/commands/review.md",
