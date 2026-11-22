@@ -48,7 +48,7 @@ In a task file (`.claude/storage-rules.md` → "Task File Format"):
 
 ## Reports
 
-The research report, `review.md`, the verify report, `summary.md` and gate reports:
+The research report, `review.md`, the verify report, `summary.md`, gate reports and the decomposition file (`/decompose`):
 - **A finding** says what is wrong, where (`file:line` when in code) and what to do, in plain words; its reasoning takes one or two sentences.
 - **A passing check** gets its result, not how it was checked; the research report's "None found" still names the searches that found nothing.
 - **A gate report** keeps the evidence `_independent-gate.md` asks for.

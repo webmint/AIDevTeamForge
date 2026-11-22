@@ -15,6 +15,9 @@ audits/
   YYYY-MM-DD-audit.md                  # Adversarial codebase audits (/audit) — periodic, dated, not auto-committed
   .gitignore                           # Auto-created on first /audit run (excludes .tmp-* files)
 
+decompositions/
+  YYYY-MM-DD-[slug].md                 # A large intent as a tree of tickets (/decompose) — dated, not auto-committed
+
 specs/
   <KEY|NNN>-feature-name/          # One directory per feature: PROJ-1305-feature-name or 001-feature-name
     research-report.md             # Research report (/research), written when the directory is created
@@ -161,6 +164,7 @@ Each task file (`specs/<KEY|NNN>-feature/tasks/NNN-title.md`) contains:
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 /audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
+/decompose    → creates decompositions/YYYY-MM-DD-<slug>.md (not committed; standalone, not in workflow chain); with Jira, creates issues and their links after confirmation
 /conduct      → autonomous mode only: runs the commands above as subagents; keeps the local ledger .claude/delivery-status.md (never committed); each runner writes specs/<KEY|NNN>-name/runs/<phase>.md
 ```
 
