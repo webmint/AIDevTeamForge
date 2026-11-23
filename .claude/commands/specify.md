@@ -111,26 +111,10 @@ Prior art is behavioural: it records what the product already does and whether t
 
 ## PHASE 2: Clarify Requirements
 
-Based on the description, identify ambiguities and ask clarifying questions. Ask as many questions as needed — no artificial limit. Use your judgment.
+Read `.claude/commands/_specify-checks.md` → "Decision Points" and ask the user each point it calls open, before the spec is saved: here, and for the points found later, through Phase 4.
+Each question as asked and the user's answer as given go verbatim into the request record.
 
-**Clarification areas (prioritized):**
-
-1. **Scope boundaries**: "Should this also affect [related area], or just [specific area]?"
-2. **Existing behavior**: "Currently [X] works like [this]. Should it change or stay the same?"
-3. **Data flow**: "Where should this data come from? [Option A] or [Option B]?"
-4. **Edge cases**: "What should happen when [edge case]?"
-5. **UI/UX details**: "Should there be a loading state? Error message? Confirmation dialog?"
-6. **Breaking changes**: "This might affect [existing feature]. Is that acceptable?"
-
-**Rules for clarification:**
-- Only ask questions you CANNOT answer by reading the codebase
-- Ask in rounds of up to 5 questions, prioritized by impact on the spec (scope > architecture > data > UX > edge cases)
-- After each round, decide if more clarification is needed based on the answers
-- Stop when you have enough to write the spec — remaining uncertainties go in the spec's "Open Questions" section
-- If the description is clear enough, skip to Phase 3
-- Each question as asked and the user's answer as given go verbatim into the request record
-
-**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): answer each question from the sources of truth instead of asking; when they do not answer it, take the recommended option and record it under Decisions. These answers are decisions, never request-record entries.
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): as `_specify-checks.md` → "Decision Points" says.
 
 ## PHASE 3: Codebase Analysis
 
@@ -192,7 +176,7 @@ The acceptance criteria of a structural spec are invariants, each with the check
 
 ### Spec Format:
 
-A new spec takes this template. Read `.claude/commands/_writing.md` → "Specs" now: each section holds what it says. Save the request record to a new `specs/<KEY|NNN>-feature-name/history.md` (`_intent-check.md` → "The Request Record").
+A new spec takes this template. Read `.claude/commands/_writing.md` → "Specs" now: each section holds what it says. Before a new or a revised spec is saved, apply `_specify-checks.md` → "Decision Points": points found later, one number, Open Questions only by the user's choice. Save the request record to a new `specs/<KEY|NNN>-feature-name/history.md` (`_intent-check.md` → "The Request Record").
 
 ```markdown
 # Spec: [Feature Name]
@@ -281,6 +265,7 @@ Present the spec to the user (`CLAUDE.md` → "Talking to the User"):
 - **Files affected**: [count] files across [areas]
 - **Acceptance criteria**: [count] testable criteria
 - **Out of scope**: [key exclusions]
+[When the run picked a value within an answer or the request: each value, and the answer it came from in words with its `Q-N` in brackets, or "the request"]
 
 [the gate result from `_independent-gate.md` → "At the HARD GATE"]
 [After a Size Check split: each other part as `/research "<request>"`]
