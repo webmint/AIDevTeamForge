@@ -42,12 +42,14 @@ Run in 1.7, after 1.6 and before Phase 2. A design choice that two runs of `/pla
 7. **Dependencies**: a new library or code of the project's own, where the constitution does not decide.
 8. **Tests**: the seam through which tests replace an outside service, a clock or a store.
 
+A value within what the spec allows (a timeout, an interval, a batch size) is not a choice to ask: the plan picks it, names it (a constant, or a configuration default where the project configures such values) and gives its reason.
+
 **Asking.** `AskUserQuestion`, in rounds of up to 4 questions: the recommended option first, each option with one sentence of what it changes. A question whose options depend on another answer waits for it. There is no cap; the sources are the filter.
 
 **Answers.**
 - Each is a Key Design Decisions row whose why names the user's answer: a `DEC` row in a `**Format**: 2` plan (`_writing.md` → "Plans"), a row without an id in an older one. It is not a request-record entry.
 - One that changes `data-model.md` or `contracts.md` updates them; one that changes File Impact re-runs 1.5 step 5 and 1.6 for the changed files.
-- One that changes what an acceptance criterion, an Out of Scope line or a spec decision says, or adds what the request did not ask for (a new feature, channel or flow), is not a plan decision. Filling a case the criteria leave open (an error message, a limit) is. For one that is not a plan decision, say so, list the other answers given so far in the stop message so the user can give them again on the re-run, and stop before Phase 2; `/plan` runs again after `/specify` revises the spec; that run rewrites the files this one saved.
+- One that changes what an acceptance criterion, an Out of Scope line or a spec decision says, or adds what the request did not ask for (a new feature, channel or flow), is not a plan decision. Filling a case the criteria leave open (an error message, the behaviour on an edge case) is. For one that is not a plan decision, say so, list the other answers given so far in the stop message so the user can give them again on the re-run, and stop before Phase 2; `/plan` runs again after `/specify` revises the spec; that run rewrites the files this one saved.
 - **They hold.** A plan-gate fix or a HARD GATE change that would overturn one goes back to the user, never into the fix loop.
 
 **Autonomous mode** (`_autonomous-mode.md`, point `clarify`): each open choice is answered as that point says; one that is a costly product decision or needs a constitution change stops the run (STOP 1 or 2). A choice that takes the recommended option has the why `recommended, not settled (autonomous)`.
