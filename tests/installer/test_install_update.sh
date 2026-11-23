@@ -65,6 +65,7 @@ check "independent gate partial installed" '[ -f "$P2/.claude/commands/_independ
 check "intent check partial installed" '[ -f "$P2/.claude/commands/_intent-check.md" ]'
 check "writing partial installed" '[ -f "$P2/.claude/commands/_writing.md" ]'
 check "plan checks partial installed" '[ -f "$P2/.claude/commands/_plan-checks.md" ]'
+check "specify checks partial installed" '[ -f "$P2/.claude/commands/_specify-checks.md" ]'
 check "decompose parts partial installed" '[ -f "$P2/.claude/commands/_decompose-parts.md" ]'
 # partials are read by path, never run as commands: hidden from the / menu and from the model's skill listing
 check "every partial is hidden from users and the model" '(for f in "$P2/.claude/commands/"_*.md; do fm="$(awk "NR==1&&!/^---\$/{exit} NR>1&&/^---\$/{exit} NR>1" "$f")"; echo "$fm" | grep -qx "disable-model-invocation: true" && echo "$fm" | grep -qx "user-invocable: false" || exit 1; done)'
