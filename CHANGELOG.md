@@ -5,6 +5,26 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-11-23
+
+`/specify` scans the decisions a spec must make and asks the user each one no source settles, even when it has a default to recommend, instead of taking them silently.
+
+### Added
+- **Decision Points** (`/specify` Phase 2, rules in the new partial `.claude/commands/_specify-checks.md`): a decision point is a choice that changes an acceptance criterion, an Out of Scope line or a Decision. Eight categories are scanned: scope, existing behaviour, inputs and defaults, what is counted and shown, empty and failing cases, order, repeats and restarts, output, compatibility. A choice with two or more valid outcomes that no source settles is asked (`AskUserQuestion`, rounds of up to 4, the recommended option first), even when the run has a default: the default becomes the recommended option.
+  - **What settles a choice**: the request record, `constitution.md`, `CLAUDE.md` and a fresh `/research` report (its Request block, `**This part**:`, `## Split`, Constitution Constraints; `**Depends on**` for the constraints it names), each only by naming the case; an existing convention only for a new instance of itself. The code, Prior art and the report's findings, approaches and recommendation state what exists or recommend; they settle nothing.
+  - **What, not how**: `/specify` owns what the user observes (the outcome bound, a duplicate against a missed result, whether a setting exists and what an unset one does, the status or exit code, whether a break is acceptable, whether existing records are included); `/plan` owns the mechanism (try counts and intervals, technical defaults, the error body, versioning, the migration).
+  - **Stop by coverage**: rounds continue until each point found has an answer, a settling source, an Out of Scope line the request or an answer gives, or an Open Question the user chose. Points found in Phase 3 or while drafting are asked before the spec is saved.
+  - **One number, not a range**: a value a criterion states is one number. A number an answer leaves open within its words ("a few minutes") is picked inside them and recorded as a Decision naming the answer; Phase 5 shows each picked value.
+  - **The scan** (open points, and settled points that change a criterion, with their sources) is printed before the first round.
+  - **Answers** land in the criterion they decide or the Out of Scope line they give; a `DEC` line holds a picked value, a stated try count or interval, an answer no criterion states, and every autonomous answer (why `recommended, not settled (autonomous)` when the recommended option is taken).
+  - A revision of an existing spec scans only what the change touches.
+
+### Changed
+- `specify.md`: Phase 2's six clarification areas and rules are replaced by a pointer to the partial; Phase 4 applies "Decision Points" before a new or revised spec is saved; the Phase 5 summary lists the values picked within an answer. The file is 18,774 bytes (was 19,585). Rounds hold up to 4 questions (was 5), in category order (was impact order). Open Questions come only from the user's choice.
+- **Measured** on two scratch projects, four runs each before and after: every choice that baseline runs took silently and differently (what a line shows, a record at the edge of a count, an unset setting, a default, a duplicate against a missed result, a missing input file, letter case in a sort) was asked and answered the same way in 3–4 of 4 runs; criteria counts varied less (19% → 11%, 18% → 5%). Questions per run roughly doubled (about 5–8 → 11–16).
+- **For existing projects**: no migration. `update.sh` installs the new partial and updates `specify.md`; no project-owned file changes.
+- Template version: 1.44.0 → 1.45.0
+
 ## [1.44.0] - 2026-11-23
 
 `/plan` asks the user the design choices the spec left open, instead of taking them silently, and builds on the feature's `/research` report instead of researching it again.
