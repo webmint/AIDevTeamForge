@@ -4,7 +4,53 @@ user-invocable: false
 ---
 # Plan Checks: What Every Plan Asks Before It Is Written
 
-Referenced by `/plan` (Phase 2, before it writes the plan) and `_independent-gate.md` → "Reviewer Prompt", which pastes these sections verbatim into the plan-gate lenses' prompts: "Runtime" into the architect lens's, "CI-unrun tests" into the QA lens's. A lens reads only its own checklist section, so a rule here reaches it only through that paste.
+Referenced by `/plan` ("The /research Report" in Phase 0, "Open Decisions" in 1.7, the other sections in Phase 2) and `_independent-gate.md` → "Reviewer Prompt", which pastes two sections verbatim into the plan-gate lenses' prompts: "Runtime" into the architect lens's, "CI-unrun tests" into the QA lens's. A lens reads only its own checklist section, so a rule here reaches it only through that paste; the first two sections are not pasted.
+
+## The /research Report
+
+Read in Phase 0, before Step 1.
+
+1. **Which report**: the feature directory's `research-report.md`; otherwise the `research/YYYY-MM-DD-<slug>.md` report the request record names (the source of a `### Request` entry in `history.md`, or an older spec's Request section). None: Phase 0 runs without one.
+2. **Fresh or stale**: `git fetch origin`, then `git diff --name-only <Investigated at> <ref> -- <Scoped paths>`, `<ref>` being the binding's `integrationRef`, else `origin/[DEFAULT_BRANCH]` (as `/specify` Phase 1 step 5). A failed fetch is noted in the HARD GATE summary, and the diff runs against the ref as it is. Any output, or no `**Investigated at**:` line: the report is stale. It is read for leads only; it settles nothing and is not cited.
+3. **A fresh report**:
+   - Step 1 starts from its Codebase Findings and Reuse or Extend rows. Where they and the spec's "Prior art" disagree, Prior art wins (1.5 step 0).
+   - A signal it answers (its Approaches, External Research and `**Recommended approach**` line) is not researched again: the Key Design Decisions row cites the report and quotes the finding it uses, in a line or two.
+   - A version, API or limit it states is checked again (Context7 first), because the report may predate a release; a difference goes into `research.md`.
+   - `research.md` holds only the signals the report does not answer and those differences. With none, there is no `research.md`, and Supporting Documents lists the report.
+
+## Open Decisions
+
+Run in 1.7, after 1.6 and before Phase 2. A design choice that two runs of `/plan` could take two ways is the user's.
+
+**Settled, not asked.** A choice that one of these decides; when it has a Key Design Decisions row, the row names the source as its why:
+- the spec: its criteria, Out of Scope and Decisions;
+- `constitution.md` and `CLAUDE.md`;
+- a fresh `/research` report (above);
+- an existing pattern in the code (IMPORTANT RULES 3);
+- `plan.md` itself: 1.5 (the owner by Information Expert, the layer directions, no abstraction without a confirmed axis, the extraction threshold, a seam task before a third copy) and 1.6, whose deferral keeps its own question;
+- on a re-run, the earlier `specs/[feature-name]/plan.md`'s rows whose why names the user's answer, while its `**Spec hash**:` line equals what `python3 scripts/forge/spec_lint.py hash specs/[feature-name]` prints now (no flag: it prints and writes nothing). They are carried into the new plan unchanged. A different hash, or no such line, asks them again.
+
+`research.md` settles no choice between valid options: its comparison gives the recommended one.
+
+**Open, asked.** Scan each category. A choice in it that no source settles, with two or more valid options, is asked:
+1. **Placement**: which module or layer holds new behaviour, when two existing ones could.
+2. **Timing**: in the request, after the response, or in a background or scheduled job.
+3. **Failure**: how a failed attempt is retried and counted; what a crash mid-way, a repeat or a second instance does.
+4. **Sharing**: a shared helper or local code, where the extraction threshold does not decide.
+5. **Data**: the storage model (a field on an existing record, or a new collection or table) and what happens to existing records.
+6. **Contracts**: a choice that changes compatibility or errors: a breaking change or a new version, the error contract of a new endpoint or message. Names and types of fields follow existing patterns and are not asked.
+7. **Dependencies**: a new library or code of the project's own, where the constitution does not decide.
+8. **Tests**: the seam through which tests replace an outside service, a clock or a store.
+
+**Asking.** `AskUserQuestion`, in rounds of up to 4 questions: the recommended option first, each option with one sentence of what it changes. A question whose options depend on another answer waits for it. There is no cap; the sources are the filter.
+
+**Answers.**
+- Each is a Key Design Decisions row whose why names the user's answer: a `DEC` row in a `**Format**: 2` plan (`_writing.md` → "Plans"), a row without an id in an older one. It is not a request-record entry.
+- One that changes `data-model.md` or `contracts.md` updates them; one that changes File Impact re-runs 1.5 step 5 and 1.6 for the changed files.
+- One that contradicts or adds to an acceptance criterion, an Out of Scope line or a spec decision is not a plan decision; any choice the criteria allow is. Say so and stop before Phase 2; `/plan` runs again after `/specify` revises the spec; that run rewrites the files this one saved.
+- **They hold.** A plan-gate fix or a HARD GATE change that would overturn one goes back to the user, never into the fix loop.
+
+**Autonomous mode** (`_autonomous-mode.md`, point `clarify`): each open choice is answered as that point says; one that is a costly product decision or needs a constitution change stops the run (STOP 1 or 2). A choice that takes the recommended option has the why `recommended, not settled (autonomous)`.
 
 ## Runtime
 

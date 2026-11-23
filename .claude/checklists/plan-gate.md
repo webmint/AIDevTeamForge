@@ -2,7 +2,7 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: in `/plan`, after the plan is written and before its HARD GATE · **Reviewer**: three lenses in parallel, each a separate reviewer reading only its own section plus this header: `architect` (Architect lens, PG-A), `security-reviewer` (Security lens, PG-S), `qa-engineer` (QA lens, PG-Q); a fresh context each; a different model from the author where possible.
-**Inputs**: `specs/<KEY|NNN>-*/plan.md`; `research.md`, `data-model.md` and `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names.
+**Inputs**: `specs/<KEY|NNN>-*/plan.md`; `research.md`, `research-report.md` (or the `research/` report the plan cites), `data-model.md` and `contracts.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `docs/architecture.md`; the source files the plan's File Impact names.
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.

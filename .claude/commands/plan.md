@@ -27,7 +27,7 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 
 **Guard**: Read `constitution.md`. If it contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."
 
-Scan the spec to determine the research depth needed.
+Read `.claude/commands/_plan-checks.md` → "The /research Report" first. Then scan the spec for the research depth needed.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
 
@@ -40,16 +40,16 @@ Scan the spec to determine the research depth needed.
 
 ### Step 2: Signal Scan
 
-Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack** (as listed in `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.).
+Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack** (`CLAUDE.md` and the dependency manifests).
 
-| Signal | Example | NOT a signal when... |
-|--------|---------|---------------------|
-| External library/package **not in project dependencies** | "use Stripe SDK" (and Stripe is not in package.json) | Library is already installed |
-| New integration with **unconfigured** third-party service | "connect to payment gateway" (no payment config exists) | Service is already integrated |
-| Architectural decision where multiple valid approaches exist | "real-time updates" (polling vs SSE vs WebSocket) | Always a signal — requires decision |
-| Greenfield pattern not yet present in the codebase | first use of caching, first background job | Pattern already exists in codebase |
-| Performance constraints that need benchmarking | "handle 10k concurrent users", "< 200ms response" | Always a signal — requires research |
-| Technology **not part of the project's current stack** | new protocol or tool the codebase hasn't used | Technology is already in the stack |
+| Signal | Example |
+|--------|---------|
+| External library/package **not in project dependencies** | "use Stripe SDK" (and Stripe is not in package.json) |
+| New integration with **unconfigured** third-party service | "connect to payment gateway" (no payment config exists) |
+| Architectural decision where multiple valid approaches exist (always a signal) | "real-time updates" (polling vs SSE vs WebSocket) |
+| Greenfield pattern not yet present in the codebase | first use of caching, first background job |
+| Performance constraints that need benchmarking (always a signal) | "handle 10k concurrent users", "< 200ms response" |
+| Technology **not part of the project's current stack** | new protocol or tool the codebase hasn't used |
 
 **No signals found** → proceed to Phase 1 with codebase research only.
 
@@ -67,9 +67,7 @@ For each signal, choose the appropriate research tool:
 - Compare at least 2-3 alternatives with pros/cons
 - Check library options: maintenance status, bundle size, community adoption
 
-**For all signals:**
-- Look at real-world examples of similar implementations
-- Verify external API contracts and limitations
+**For every signal:** verify the external API contracts and limits the plan relies on.
 
 ### Research output:
 
@@ -87,12 +85,11 @@ Save to `specs/[feature-name]/research.md`:
 
 ## Alternatives Compared
 
-### [Decision Area] (e.g., "Payment processor", "WebSocket library")
+### [Decision Area]
 | Option | Pros | Cons | Verdict |
 |--------|------|------|---------|
 | [option A] | [pros] | [cons] | Chosen / Rejected |
 | [option B] | [pros] | [cons] | Chosen / Rejected |
-| [option C] | [pros] | [cons] | Chosen / Rejected |
 
 **Decision**: [chosen option] — [one-line rationale] (a "Key Design Decisions" row)
 
@@ -115,7 +112,6 @@ If the feature involves data entities, define them. Save to `specs/[feature-name
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | id | string | yes | Unique identifier |
-| ... | ... | ... | ... |
 
 ### Relationships
 - [Entity A] → [Entity B]: [relationship type and description]
@@ -123,8 +119,6 @@ If the feature involves data entities, define them. Save to `specs/[feature-name
 ### Validation Rules
 - [Field]: [constraint]
 ```
-
-For existing codebases, reference existing types/interfaces instead of redefining them. Only document NEW or CHANGED entities.
 
 ### 1.2: API Contracts (if applicable)
 
@@ -140,7 +134,7 @@ If the feature involves API calls (REST, GraphQL, etc.), define contracts. Save 
 - **Errors**: [error cases and response format]
 ```
 
-For existing codebases, reference the existing queries, mutations or endpoints. Only document NEW or CHANGED contracts.
+For existing codebases, 1.1 and 1.2 reference the existing types, queries and endpoints and document only NEW or CHANGED ones.
 
 ### 1.3: Architecture Decisions
 
@@ -190,15 +184,20 @@ A plan that touches a theme's files and records neither is incomplete. A copy gr
 
 **A deferral holds once**: a theme or copy group that an earlier spec already deferred is fixed in place by the next spec that touches its files, whatever its size. When that is impossible, the plan says so and you tell the user, who decides: raise the theme to blocking (its issue gets the blocking labels, or, without a tracker, its triage row says Blocks `yes`; the audit gate then holds new feature specs until the seam lands), or defer again with the reason recorded in "Open Themes Touched".
 
+### 1.7: Open Decisions
+
+Read `.claude/commands/_plan-checks.md` → "Open Decisions" and ask the user each choice it calls open, before the plan is written.
+
 ## PHASE 2: Write the Plan
 
-Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns). Read `.claude/commands/_plan-checks.md` and write what each of its sections asks for.
+Save to `specs/[feature-name]/plan.md`. Read `.claude/commands/_writing.md` → "Plans": it says what the Summary holds and what an older spec's plan leaves out (the Format line, the Id columns). Read `.claude/commands/_plan-checks.md` → "Runtime" and "CI-unrun tests" and write what they ask for.
 
 ```markdown
 # Plan: [Feature Name]
 
 **Date**: [YYYY-MM-DD]
 **Spec**: [path to spec.md]
+**Spec hash**: [what `python3 scripts/forge/spec_lint.py hash specs/[feature-name]` prints]
 **Status**: Draft
 **Format**: 2 [only when the spec has it]
 
@@ -318,7 +317,8 @@ Before presenting the plan to the user, verify completeness:
 4. Check the reverse: a File Impact file NOT in the spec's Affected Areas gets a note in File Impact as an addition discovered during planning.
 5. Every new symbol or concept in File Impact, the data model and the contracts has a Reuse Map row with its search; every "Prior art" candidate of the spec decided `reuse` or `extend` has its row (1.5 step 0); every theme of 1.6 whose files the plan touches has a decision in "Open Themes Touched".
 6. Every copy group and hub that 1.5 step 5 listed for a touched file has a row in "Copies and Hubs", and every group the plan would bring to a third copy has a seam task ordered before the copy.
-7. Run `python3 scripts/forge/spec_lint.py labels specs/[feature-name]/plan.md` and fix its blocking findings.
+7. Every Key Design Decisions row with an Alternatives Rejected entry names as its why the source that rules them out, the user's answer, or `recommended, not settled (autonomous)` (1.7).
+8. Run `python3 scripts/forge/spec_lint.py labels specs/[feature-name]/plan.md` and fix its blocking findings.
 
 ## PHASE 2.6: Independent Gate (plan-gate)
 
