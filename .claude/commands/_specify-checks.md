@@ -49,6 +49,6 @@ A choice settled by `constitution.md`, `CLAUDE.md`, the report or an existing co
 
 **Asking.** `AskUserQuestion`, in rounds of up to 4 questions: the recommended option first, each option with one sentence of what it changes. Questions follow category order; a question whose options depend on another answer waits for it. There is no cap on rounds; the sources are the filter.
 
-**Answers.** Each is reflected in the spec as `_intent-check.md` → "The Request Record" says.
+**Answers.** Each user answer is reflected in the spec as `_intent-check.md` → "The Request Record" says: in the criterion it decides or the Out of Scope line it gives, with a `DEC` line only when no criterion or Out of Scope line states it. A value picked within an answer's or the request's words, and a stated try count or interval, still get a `DEC` line, as "One number, not a range" says; so does every autonomous answer (Autonomous mode).
 
 **Autonomous mode** (`_autonomous-mode.md`, point `clarify`): each open point is answered as that point says, from the sources of truth as `_autonomous-mode.md` → "Sources of Truth" lists them, the code included. A point that falls under STOP 1 or 2 is a STOP. A point that takes the recommended option has a Decision whose why is `recommended, not settled (autonomous)`. These answers are decisions, never request-record entries.
