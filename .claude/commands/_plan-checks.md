@@ -22,7 +22,7 @@ Read in Phase 0, before Step 1.
 
 Run in 1.7, after 1.6 and before Phase 2. A design choice that two runs of `/plan` could take two ways is the user's.
 
-**Settled, not asked.** A choice that one of these decides; when it has a Key Design Decisions row, the row names the source as its why:
+**Settled, not asked.** A choice that one of these decides. The spec, `constitution.md`, `CLAUDE.md` and the report decide it only by naming the case (a crash mid-send, a missing file), not by implying it or allowing two readings; a rule of 1.5 or an existing pattern decides it when it applies with one outcome. When the choice has a Key Design Decisions row, the row names the source as its why:
 - the spec: its criteria, Out of Scope and Decisions;
 - `constitution.md` and `CLAUDE.md`;
 - a fresh `/research` report (above);
@@ -47,7 +47,7 @@ Run in 1.7, after 1.6 and before Phase 2. A design choice that two runs of `/pla
 **Answers.**
 - Each is a Key Design Decisions row whose why names the user's answer: a `DEC` row in a `**Format**: 2` plan (`_writing.md` → "Plans"), a row without an id in an older one. It is not a request-record entry.
 - One that changes `data-model.md` or `contracts.md` updates them; one that changes File Impact re-runs 1.5 step 5 and 1.6 for the changed files.
-- One that contradicts or adds to an acceptance criterion, an Out of Scope line or a spec decision is not a plan decision; any choice the criteria allow is. Say so and stop before Phase 2; `/plan` runs again after `/specify` revises the spec; that run rewrites the files this one saved.
+- One that changes what an acceptance criterion, an Out of Scope line or a spec decision says, or adds what the request did not ask for (a new feature, channel or flow), is not a plan decision. Filling a case the criteria leave open (an error message, a limit) is. For one that is not a plan decision, say so, list the other answers given so far in the stop message so the user can give them again on the re-run, and stop before Phase 2; `/plan` runs again after `/specify` revises the spec; that run rewrites the files this one saved.
 - **They hold.** A plan-gate fix or a HARD GATE change that would overturn one goes back to the user, never into the fix loop.
 
 **Autonomous mode** (`_autonomous-mode.md`, point `clarify`): each open choice is answered as that point says; one that is a costly product decision or needs a constitution change stops the run (STOP 1 or 2). A choice that takes the recommended option has the why `recommended, not settled (autonomous)`.
