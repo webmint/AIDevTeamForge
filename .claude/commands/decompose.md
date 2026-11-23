@@ -21,7 +21,7 @@ Not part of the workflow chain and not run by `/conduct`: no autonomous points, 
 ## Arguments
 `$ARGUMENTS`, read in this order (`ISSUE_TRACKER`, `ISSUE_KEY_PATTERN`, `JIRA_MCP_SERVER` and `JIRA_SITE` in `.claude/project-config.json`, as `.claude/commands/review-pr.md` → "Configuration" defines them, defaults included):
 1. Empty: ask for the intent (`AskUserQuestion`).
-2. A path to an existing `decompositions/*.md` file: resume it (PHASE 7, "Resume from a file").
+2. A path to an existing `decompositions/*.md` file: resume it (PHASE 7, "Resume from a file"). When the file has a `**Parts**` header, read `.claude/commands/_decompose-parts.md` first; where they differ, the partial wins.
 3. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `jira`: that issue is the parent (PHASE 1, an existing parent).
 4. The whole argument matches `ISSUE_KEY_PATTERN` and `ISSUE_TRACKER` is `github`: run `gh issue view <n> --json title,body` (`<n>` = the argument without its `#`) (in wrapper mode inside the Source Root); its title and body are the intent. No parent: the shape follows PHASE 3, "Shape". The issue cannot be read: stop and say why.
 5. Anything else is an intent. Keys inside an intent are never read: to build under a parent, pass the key alone. With `ISSUE_TRACKER` `none`, a key-shaped argument is an intent.
@@ -38,7 +38,8 @@ Keep the intent word for word (or the user's reply when you asked) for the file.
    - Its existing children (key, summary, type): an epic's children with the tool that searches issues (on the Atlassian server: `searchJiraIssuesUsingJql`, JQL `parent = <KEY>`); a ticket's subtasks from the single-issue read.
    - The parent cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): stop and say why; a key alone leaves no intent to fall back on.
    - An epic and no search tool: stop before slicing and name the missing tool; the check against duplicates depends on the children.
-4. **A vague intent**: when no outcome a user could observe can be named from the intent ("the client wants something for reports"), ask once, with one `AskUserQuestion` call of at most 4 questions, and slice from the answer. No scoping interview: the review (PHASE 5) catches a wrong reading.
+4. **Several repositories**: when `RELATED_WORKSPACES` in `.claude/project-config.json` lists two or more parts (entries separated by `;`, empty ones ignored; no key, `""` and `"N/A"` list none), read `.claude/commands/_decompose-parts.md` and follow it from here on; where they differ, the partial wins. Otherwise nothing below changes. Not on a resume (Arguments, item 2): there only the file's `**Parts**` header decides.
+5. **A vague intent**: when no outcome a user could observe can be named from the intent ("the client wants something for reports"), ask once, with one `AskUserQuestion` call of at most 4 questions, and slice from the answer. No scoping interview: the review (PHASE 5) catches a wrong reading.
 
 ## PHASE 2: A Shallow Look at the Project
 
@@ -106,7 +107,7 @@ Depends on: <the outside work of its leaves, listed for the reader>
 
 Rules for the text:
 - **Other issues by title.** A leaf names another leaf by its title, never by its number in the file: the number means nothing in the tracker or to `/research`. An existing parent or child is named by key and title (`PROJ-123 <title>`).
-- **Each leaf stands on its own.** `/research` reads only the leaf's summary and description, never the parent.
+- **Each leaf stands on its own.** `/research` reads only the leaf's summary and description, and those of the issues its `Depends on:` names, one hop (never the issues those name); never the parent.
 - **No design** and no implementation steps ("add a method to the service"): those are `/breakdown`'s tasks.
 - **No Forge traces**: no command names, no `decompositions/` paths, no `file:line` into the workspace. People outside this workspace read the tracker; in wrapper mode, the client does.
 - **English**, whatever the intent's language. Only the quoted source text in the file (the intent, the parent's or the issue's text, the answers) stays word for word in its own language.
@@ -180,7 +181,7 @@ The picks of steps 2 and 3 go in one `AskUserQuestion` call.
 - **The description** shows each section in Jira as its own labelled section. Check the create tool's schema for its format. Markdown: each section is a paragraph opening with its label in bold (`**Outcome:**`), sections separated by a blank line, `- ` items as a list. Atlassian Document Format: each section is a paragraph opening with its label as strong text, items as a bullet list. The file keeps the template text.
 - **At once**, the key goes into the issue's tree line and the text sent replaces its text in the file.
 
-**Links**: as soon as both ends of a dependency have a key (an existing child has one from the start), create one link of the recorded link type in which the dependency blocks the leaf: the dependency shows "<outward description> <the leaf>". Take which parameter holds which issue from the tool's parameter descriptions, not from the parameter names alone. When they do not settle it, read the dependency back after the first link (the single-issue read); a reversed link is a failure part-way; the report names it for removal by hand. Mark it `(linked)` in the file at once. A link changes neither issue's summary nor description, so linking an existing child does not edit it. `Depends on:` stays as it is: `/research` reads only the description.
+**Links**: as soon as both ends of a dependency have a key (an existing child has one from the start), create one link of the recorded link type in which the dependency blocks the leaf: the dependency shows "<outward description> <the leaf>". Take which parameter holds which issue from the tool's parameter descriptions, not from the parameter names alone. When they do not settle it, read the dependency back after the first link (the single-issue read); a reversed link is a failure part-way; the report names it for removal by hand. Mark it `(linked)` in the file at once. A link changes neither issue's summary nor description, so linking an existing child does not edit it. `Depends on:` stays as it is: `/research` reads the description, and the issues its `Depends on:` names, one hop, never the links.
 
 **Failure part-way**: a create or a link fails (an error, or the call is denied): stop. Delete nothing and retry nothing. Report which issues and links were created (the file holds them) and which were not, and that `/decompose decompositions/<file>.md` creates only the missing ones. Go to Next Steps.
 

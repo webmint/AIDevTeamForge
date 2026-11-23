@@ -33,13 +33,15 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 4. Read `docs/architecture.md` if it exists — for current architecture patterns
 5. Scan `specs/` directory names to check if this topic overlaps with an existing or in-progress feature (a directory named after the request's ticket key is that feature)
 6. Parse `$ARGUMENTS` for the research topic. If empty, use AskUserQuestion to ask what the user wants to investigate. Keep `$ARGUMENTS` exactly (or the user's reply when you asked) for the report's `**Request (verbatim)**` block; in autonomous mode, the roadmap row or the description from the conductor's Inputs. Never paraphrase it; a split leaves it whole (the part goes in `**This part**:`).
-7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic; copy its description verbatim into the report's `**Request (verbatim)**` block, under the label line `> Issue <KEY> — <title (summary)>:`, preceded by a lone `>` line: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic or the Inputs: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why.
+7. **Issue** (when `ISSUE_TRACKER` in `.claude/project-config.json` is `jira` or `github`): if the topic (or, in autonomous mode, the conductor's Inputs) contains matches of `ISSUE_KEY_PATTERN`, read the issue the way `/review-pr` PHASE 1 step 6 does (same keys: `JIRA_MCP_SERVER`, `JIRA_SITE`; in wrapper mode `gh issue view` runs inside the Source Root; the first match the tracker returns is the issue) and fold its summary and description into the topic; copy its description verbatim into the report's `**Request (verbatim)**` block, under the label line `> Issue <KEY> — <title (summary)>:`, preceded by a lone `>` line: the issue says what is wanted, Phase 2 finds what already exists and how to build it. No key in the topic or the Inputs: proceed without an issue; never search for one. The issue cannot be read (tools not available, several Jira sites and no `JIRA_SITE`): proceed without it; the report's `**Issue**` line says why. After the issue is read, read what it depends on, one hop. Its `Depends on:` section runs from the paragraph whose text, markup removed (bold, or Atlassian Document Format strong text), starts with `Depends on:` to the next paragraph whose text, markup removed, opens with another label of `/decompose`'s leaf template (`Open questions:`), or to the end of the description, its list items included. Read the keys in it that match `ISSUE_KEY_PATTERN`, at most 5, in the order written, the same way as the issue, summary and description only, not folded into the topic; never the keys inside those issues. They go into the report's `**Depends on**` field, never the Request block. A key that cannot be read: proceed without it. The field names it, and each key past the fifth, as not read. No such section, or no keys in it: omit the field.
 
 If an existing spec already covers this topic, inform the user and ask whether they want to proceed with research anyway or work with the existing spec.
 
 **Autonomous mode** (`_autonomous-mode.md`, point `existing-spec`): return `blocked (existing spec specs/<KEY|NNN>-*)`; the conductor resumes that spec instead.
 
 ## PHASE 2: Codebase Investigation
+
+The `**Depends on**` field (Phase 1 step 7), when present, is constraints this work must meet (an interface it consumes or provides, a result it builds on): weigh it here with the codebase, never as scope to deliver.
 
 ### Step 1: Keyword Extraction
 
@@ -129,6 +131,12 @@ Generate the full report and **render it directly in the console** so the user c
 >
 > Issue [KEY] — [title]:
 > [the issue's description from step 7, quoted the same way; omit these lines when no issue was read]
+
+**Depends on**:
+> [KEY] — [title]:
+> [that issue's description from step 7, quoted the same way; one such block per issue read, in the order written, a blank line between blocks]
+
+[KEY — not read (<reason>), one line per key step 7 did not read; omit the whole field when step 7 found no keys. Never part of the Request (verbatim) block]
 
 ## Summary
 

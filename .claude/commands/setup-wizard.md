@@ -57,7 +57,7 @@ Inform the user: "This appears to be a [new/existing] project. I'll [ask you abo
 
 ## STEP 1: Auto-Detect Project Structure
 
-**All scanning in this step targets the SOURCE_ROOT directory.** For standalone projects this is the workspace root (`.`). For wrapper projects this is the inner folder (e.g., `client-project/`). Resolve all file paths (`package.json`, `tsconfig.json`, etc.) relative to SOURCE_ROOT.
+**All scanning in this step targets SOURCE_ROOT** (STEP 0.3). Resolve all file paths (`package.json`, `tsconfig.json`, etc.) relative to SOURCE_ROOT.
 
 Silently scan the project to detect as much as possible before asking questions. For greenfield projects, only scan config files. For existing projects, scan everything. Look for:
 
@@ -218,7 +218,7 @@ Use AskUserQuestion for each category. Batch related questions. Example flow:
 - Do tier: sonnet (default) or opus
 - Verify tier: sonnet (default) or opus
 
-The `tech-writer` agent is hardcoded to `sonnet` regardless of tier choices — documentation generation doesn't require opus-level reasoning.
+The `tech-writer` agent is hardcoded to `sonnet` regardless of tier choices.
 
 (Default to opus/sonnet/sonnet if the user skips or doesn't have a preference.)
 
@@ -289,6 +289,11 @@ Used by `/review-pr` (review of a PR with no spec), `/research` (reads an issue 
 
 Show the key pattern default and let the user replace it → `ISSUE_KEY_PATTERN`.
 
+### Question 12: Other Repositories
+Used by `/decompose`. "Does work in this workspace span other repositories (a separate front end or back end)?"
+- **No** (default) — `RELATED_WORKSPACES: ""`.
+- **Yes** — ask for this workspace's role, what it delivers (one or more, for a repository with several), then for each other part its role and its workspace path (the directory that holds its `CLAUDE.md`, absolute or relative to this workspace). Each role is in English, without `=` or `;`, and used once. A part whose workspace is not installed yet gets an empty path. A non-empty path that holds no `CLAUDE.md` is not written: ask again, or take an empty path. Write one string, parts separated by `;`, each `<role>=<path>`, this workspace's roles at `.` → `RELATED_WORKSPACES` (`"backend API=.; web front end=../web-ws; mobile app="`).
+
 ## STEP 3: Generate Configuration Files
 
 Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
@@ -333,9 +338,7 @@ Replace ALL placeholders:
     `Co-Authored-By: Claude <noreply@anthropic.com>`
     ```
 
-- `{{MODEL_THINK}}` — model for Think-tier agents from Question 8 (default: `opus`). Used by: `architect`, `api-designer`, `security-reviewer`.
-- `{{MODEL_DO}}` — model for Do-tier agents from Question 8 (default: `sonnet`). Used by: `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor`.
-- `{{MODEL_VERIFY}}` — model for Verify-tier agents from Question 8 (default: `sonnet`). Used by: `code-reviewer`, `ac-verifier`, `qa-engineer`.
+- `{{MODEL_THINK}}`, `{{MODEL_DO}}`, `{{MODEL_VERIFY}}` — the model for each tier's agents from Question 8 (defaults: `opus`, `sonnet`, `sonnet`; the tiers' agents are in its table).
 - `{{DEFAULT_BRANCH}}` — the integration branch detected in Step 1 (see "Detecting DEFAULT_BRANCH" below). Used by: `devops-engineer`.
 - Agent `effort:` frontmatter is fixed per tier in the templates (`high` for Think-tier agents, `medium` for the others). Keep it as written; a project may edit it later.
 
@@ -351,8 +354,6 @@ This workspace wraps a client-owned project. Claude artifacts live here; source 
 3. **Git auto-commits** apply to both repos — wrapper gets workflow commits, source repo gets WIP commits per task that are squashed into one clean commit (format: `[TICKET-ID] - Description`) when `/finalize` runs
 4. **File paths** in specs and tasks use workspace-relative paths (e.g., `{{SOURCE_ROOT}}/src/components/Button.tsx`)
 ```
-
-For standalone projects, replace `{{WRAPPER_MODE_SECTION}}` with an empty string (no section generated).
 
 Fill the commands section with REAL commands from the project's `package.json` scripts (or `Makefile`, `pyproject.toml`, etc.). Do NOT use placeholder commands.
 
@@ -405,15 +406,8 @@ Read agent templates from `.claude/templates/agents/` and generate `.claude/agen
 | AC_VERIFICATION != "off" (Question 9) | `ac-verifier` |
 
 For each agent:
-- **Preserve ALL template content** — do NOT condense, simplify, or remove sections from the template. The templates contain carefully designed workflows, steps, and rules that must survive into the generated agent files intact
-- Replace `{{FRAMEWORK}}` with actual framework
-- Replace `{{LANGUAGE}}` with actual language
-- Replace `{{ARCHITECTURE}}` with actual architecture pattern
-- Replace `{{ERROR_HANDLING}}` with actual error handling pattern
-- Replace `{{PROJECT_PATHS}}` with actual source paths from the project
-- Replace `{{TESTING}}` with actual test framework
-- Replace `{{LINT_CONFIG}}` with actual linting setup
-- Replace `{{STYLING}}` with actual CSS approach
+- **Preserve ALL template content** — do NOT condense, simplify, or remove sections from the template
+- Replace `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{PROJECT_PATHS}}` (the project's source paths), `{{TESTING}}`, `{{LINT_CONFIG}}` (the linting setup) and `{{STYLING}}` with the actual values
 - Replace `{{TYPE_SAFETY_RULES}}` with language-appropriate type safety rules. Generate 3-5 bullet points covering: escape-hatch types to avoid, null/optional safety patterns, unsafe cast/assertion patterns, and any language-specific type concerns. Base these on `{{LANGUAGE}}` — use your knowledge of the language's type system. Example for TypeScript: "No `any` types without justification, use optional chaining for nullable access, no unsafe type assertions." Example for Dart: "No `dynamic` without justification, proper null safety with `late`/`required`, avoid `as` casts." For unfamiliar languages, generate generic rules: "Avoid escape-hatch types, handle nullable values explicitly, no unsafe type casts."
 - Add project-specific patterns you discovered during detection (existing projects) or framework best-practice patterns (greenfield) — add these as NEW sections or append to existing sections, never replace template content
 - Replace `{{MODEL_THINK}}`, `{{MODEL_DO}}`, or `{{MODEL_VERIFY}}` with the model chosen for each tier in Question 8 (defaults: opus/sonnet/sonnet). Each template uses the placeholder for its tier.
@@ -560,6 +554,8 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 **Optional delivery keys** (Question 10; a missing key means its default, so older configs need no migration): `DELIVERY_MODE` (`interactive` | `autonomous`), and in autonomous mode `DELIVERY_GATES`, `MERGE_MODE`, `ROADMAP_FILE`, `PUSH_REMOTE`, `PUSH_BRANCH_PREFIXES`. Every value is a JSON string, as for the other keys.
 
 **Optional review keys** (Question 11; a missing key means its default): `PR_VIEW_COMMAND`, `PR_DIFF_COMMAND`, `PR_SEARCH_COMMAND`, `PR_HEAD_REF`, `PR_REMOTE`, `ISSUE_TRACKER` (`jira` | `github` | `none`), `ISSUE_KEY_PATTERN`, and for Jira `JIRA_MCP_SERVER`, `JIRA_SITE`. Write the user's answers as JSON strings; every Question 11 key that is skipped or does not apply is `""`, never `"N/A"` (the rule below is for the other keys). The example above shows the GitHub preset with no tracker. Placeholders `<N>` and `<KEY>` stay literal: commands replace them at run time.
+
+**Optional parts key** (Question 12): `RELATED_WORKSPACES`, written as one string on **Yes** and as `""` on **No**, like the skipped Question 11 keys. `""` and `"N/A"` mean off.
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 
