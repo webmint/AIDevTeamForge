@@ -5,6 +5,24 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0] - 2026-11-23
+
+`/plan` asks the user the design choices the spec left open, instead of taking them silently, and builds on the feature's `/research` report instead of researching it again.
+
+### Added
+- **Open decisions** (`/plan` step 1.7, rules in `.claude/commands/_plan-checks.md` → "Open Decisions"): before the plan is written, eight kinds of choice are scanned: placement, timing, failure (retries, a crash, a repeat), sharing, data, contracts, dependencies and the test seam; a value within what the spec allows (a timeout, an interval) is picked by the plan, not asked. A choice is asked (`AskUserQuestion`, rounds of up to 4, the recommended option first) when two or more options are valid and no source settles it. The spec, `constitution.md`, `CLAUDE.md` and a fresh report settle a choice only by naming the case; a rule of 1.5 or an existing code pattern settles one when it applies with one outcome. `/plan`'s own `research.md` never settles a choice: it gives the recommended option.
+  - Each answer is a Key Design Decisions row whose why names the user's answer. A plan-gate fix or a HARD GATE change that would overturn one goes back to the user.
+  - An answer that changes a criterion, an Out of Scope line or a spec decision, or adds a feature, channel or flow the request did not ask for, stops `/plan` before Phase 2 and sends the user to `/specify`; filling a case the criteria leave open (an error message, the behaviour on an edge case) stays a plan decision.
+  - The plan header records `**Spec hash**:`. A re-run keeps the earlier answers while the spec's hash is unchanged and asks them again when it changed.
+  - Autonomous mode: point `clarify` answers each open choice; one taken as the recommended option has the why `recommended, not settled (autonomous)`.
+- **The `/research` report** (`_plan-checks.md` → "The /research Report", read first in Phase 0): the feature's `research-report.md` (or the `research/` report an older spec's request record names) is checked for freshness the way `/specify` does (`git fetch origin`, then a diff of its scoped paths since `Investigated at`). A fresh report starts the codebase research and answers its signals: the plan cites it with a quoted finding and re-checks only the versions, APIs and limits it states. `research.md` holds only what the report does not answer, and is not written when that is nothing. A stale report is read for leads only.
+
+### Changed
+- `plan.md`: Phase 2 names the `_plan-checks.md` sections it writes from ("Runtime", "CI-unrun tests"); Phase 2.5 checks that every Key Design Decisions row with rejected alternatives names its settling source, the user's answer or the autonomous default. The signal table, the research template and the 1.1/1.2 notes are shorter, with the same rules; "verify the external API contracts and limits" now applies to every signal. The file is 22,554 bytes (ceiling lowered from 22,583).
+- The plan-gate reads the `/research` report the plan cites (`_independent-gate.md`).
+- **For existing projects**: no migration. `update.sh` updates the commands. `.claude/checklists/plan-gate.md` is project-owned: in its `**Inputs**:` line, after `research.md`, add `research-report.md` (or the `research/` report the plan cites). Plans written before 1.44.0 have no `**Spec hash**:` line, so a re-run of `/plan` on them asks the open choices once.
+- Template version: 1.43.0 → 1.44.0
+
 ## [1.43.0] - 2026-11-23
 
 `/decompose` across several repositories: one intent becomes one tree, with a ticket per repository for each capability, an agreement between the repositories first and a check of the whole flow last.
