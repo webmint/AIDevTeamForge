@@ -5,6 +5,29 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-11-23
+
+`/decompose` across several repositories: one intent becomes one tree, with a ticket per repository for each capability, an agreement between the repositories first and a check of the whole flow last.
+
+### Added
+- **Parts**: `RELATED_WORKSPACES` in `.claude/project-config.json` lists the repositories one intent can span, as one string of `<role>=<path>` entries separated by `;` (`"backend API=.; web front end=../web-ws; mobile app="`). This workspace is `.`; a repository with two roles is two entries; a workspace not installed yet has an empty path. Only the workspace that runs `/decompose` needs it. `/setup-wizard` asks for it in a new Question 12.
+- **`/decompose` with two or more parts** reads `.claude/commands/_decompose-parts.md`:
+  - **A look at each part**, at most 10 files per path. The other parts are read from a branch (their `integrationRef`, else `origin/<DEFAULT_BRANCH>`, else the default branch), never from the working tree, and nothing is written there. A wrong entry stops the run before the look.
+  - **Which parts the intent touches** decides the run: only this workspace's part is a run as without the list; only another workspace's part stops and names where to run; two or more parts follow the rules below. Under an existing ticket the list is ignored.
+  - **The tree**: always an epic, with tickets directly under it. A leaf is one part's piece of one capability, its summary starting with the part's role (`backend API: …`); inside a part, leaves are still never cut by layer.
+  - **The agreement leaf**, first when parts pass something to each other: it lists what must be agreed at each boundary, no shapes. It blocks every leaf that uses it and comes first in their `Depends on:`. Its `/research` in the providing part drafts the interface; the owners of the other parts add their side; the agreed text goes into the agreement issue's description by hand. It goes to no `/specify`.
+  - **The check of the whole flow**, last: one item per capability, checkable on the shared environment.
+  - **Next Steps** by part, with the workspace to run each leaf in; a part whose tracker settings cannot read the keys gets `/research "<its request>"`.
+- **`/research` reads what a leaf depends on**, one hop: the issues named in its `Depends on:` section (at most 5, summary and description) go into a new `**Depends on**` report field, outside the request. `/research` and `/specify` treat that field as constraints this work must meet, never as scope.
+
+### Changed
+- `/setup-wizard`: Question 12; STEP 3 lists the key. Some repeated text in STEP 1, STEP 3 and Question 8 is shortened so the file stays within its size ceiling; no step, key or default changed.
+- `decompose.md`: the leaf text and the Links rule say that `/research` also reads the issues a leaf depends on.
+- **For existing projects**: no migration is needed; without `RELATED_WORKSPACES` nothing changes. `update.sh` adds the partial.
+  - To use it, add `RELATED_WORKSPACES` to `.claude/project-config.json` in the workspace you run `/decompose` from, or re-run `/setup-wizard`.
+  - One Jira project and one Jira site hold the whole tree.
+- Template version: 1.42.0 → 1.43.0
+
 ## [1.42.0] - 2026-11-20
 
 `/decompose`: a request too large for one feature becomes a tree of tickets, each the size of one feature and ready for `/research`.

@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (22 commands + 10 shared partials in `.claude/commands/`)
+### Commands (22 commands + 11 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -27,7 +27,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `audit.md` — Standalone adversarial whole-codebase audit for periodic "second opinion" reviews. Launches code-reviewer + architect + qa-engineer + security-reviewer in adversarial mode with a structured Mislogic Hunt Checklist; reads recent `specs/*/review.md` for recurring-issue tracking. Anti-hallucination grounding via verbatim Evidence requirement + Phase 4 validation that re-reads cited files and discards ungrounded findings. Algorithmic-only cross-agent and recurring merging (no LLM similarity judgment). Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, NOT part of any workflow chain — invoke manually
 - `review-pr.md` (1.32.0) — strict review of a pull request without a spec: code-reviewer constitution/architecture pass plus the `/review` agents, the linked issue as acceptance criteria; code host commands and issue tracker set by the developer in `project-config.json` (Question 11); PR head read from fetched refs, never the working tree; read-only, report in chat
 - `conduct.md` (1.31.0) — opt-in autonomous delivery: the main session drives the spec cycle, one subagent per phase, reads only result blocks, parks blocked specs and continues with the roadmap, keeps a local ledger; `disable-model-invocation: true`; since 1.37.0 the spec-gate and the plan-gate run in their own runner, `/summarize` is its own phase on haiku, and the wave runner runs on `MODEL_LIGHT` (missing = `haiku`)
-- `decompose.md` (1.42.0) — a request too large for one feature into a tree of tickets (epic, tickets, subtasks, or children of an existing Jira epic or ticket), each slice vertical and ready for `/research`; two fixed English templates; writes `decompositions/YYYY-MM-DD-<slug>.md` (not committed); with Jira, creates the issues and blocking links after the user's yes and resumes from the file; `disable-model-invocation: true`, not in the workflow chain
+- `decompose.md` (1.42.0) — a request too large for one feature into a tree of tickets (epic, tickets, subtasks, or children of an existing Jira epic or ticket), each slice vertical and ready for `/research`; two fixed English templates; writes `decompositions/YYYY-MM-DD-<slug>.md` (not committed); with Jira, creates the issues and blocking links after the user's yes and resumes from the file; `disable-model-invocation: true`, not in the workflow chain; across several repositories with `RELATED_WORKSPACES` (1.43.0, `_decompose-parts.md`)
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
 Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from the `/` menu and the model's skill listing by `disable-model-invocation` + `user-invocable: false` since 1.35.1):
@@ -41,6 +41,7 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from 
 - `_independent-gate.md` (1.30.0) — fresh-context gate reviewer before the HARD GATE of specify (spec-gate), plan (plan-gate, three lenses) and breakdown (breakdown-gate); one fix loop on Criticals, open ones shown at the gate
 - `_writing.md` (1.40.0) — shared writing rules for specs, plans, tasks and reports, read by the commands that write them
 - `_plan-checks.md` (1.41.0) — what every new plan asks before it is written (Runtime) and the CI-unrun tests check; `/plan` reads it, and the plan gate pastes its sections into the architect and QA lenses
+- `_decompose-parts.md` (1.43.0) — `/decompose` across the repositories `RELATED_WORKSPACES` lists: a look at each part's branch, a leaf per part per capability with its role prefix, an agreement leaf first and a check of the whole flow last, Next Steps by part; read only with two or more parts
 
 Structural-quality layer (1.30.0): `/research` Reuse or Extend; `/specify` audit gate start line, Prior Art, spec type `feature | structural`; `/plan` 1.4–1.6 (Migration, Reuse Map, seams, Copies and Hubs, open themes); `/breakdown` `**Reuse**:` field; `/execute-task` Reuse check, New exports and Copies review inputs; `/fix` Class Sweep; `/review` 4.5 Adoption Check and 4.6 Structural Check; `/finalize` 1.5 escape analysis and 1.6 structural hand-off; `/audit` `--since-last`, structural lens, themes, triage and learning step
 
