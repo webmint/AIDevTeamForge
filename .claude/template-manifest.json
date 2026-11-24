@@ -35,6 +35,7 @@
       ".claude/commands/_writing.md",
       ".claude/commands/_plan-checks.md",
       ".claude/commands/_specify-checks.md",
+      ".claude/commands/_test-rules.md",
       ".claude/commands/_decompose-parts.md",
       ".claude/commands/conduct.md",
       ".claude/template-manifest.json",

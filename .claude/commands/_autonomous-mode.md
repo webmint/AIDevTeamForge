@@ -72,7 +72,7 @@ Stop, report, and wait for the user:
 1. A product decision the sources do not answer and that is costly to reverse (scope, money or legal semantics, data loss). DIRECT surfaces the request record does not answer yet are STOP 1: only the user answers them (point `intent`).
 2. An irreconcilable conflict between sources of truth, or a needed change to a constitution rule.
 3. Credentials, accounts, paid or external services: a push other than the routine one under "Pull Requests", any force push, merging a pull request or any merge into a remote branch, a deploy, a change to repository, CI or cloud settings or secrets. A local fast-forward of the default branch to its remote (`git merge --ff-only`) is routine.
-4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` are routine.
+4. A system-level install (a package manager, a runtime, a global tool), or an environment problem the agent cannot fix. Project-local installs justified in `plan.md` or by a task's boundary done condition are routine.
 5. A destructive or irreversible operation outside the spec branch (rewriting the default branch's history, deleting user files).
 6. The same blocker after 3 attempts (failing tests, flaky infrastructure, a review BLOCK after repair, a gate Critical after its loop).
 7. The context guard's stop message in the conductor session, or its phase-boundary `--report` above ~250k tokens (`/conduct` → "Context Limit").
