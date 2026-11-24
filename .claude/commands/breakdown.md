@@ -78,7 +78,7 @@ Create atomic tasks following these rules:
 - **Independent tasks before dependent ones**
 - **Riskiest changes first** — catch problems early
 - **Structural specs** (spec **Type** `structural`): follow the plan's "Migration" order — the machine check is the first task, the single definition next, then the consumer migrations (a few per task), and lowering the baselines is the last task. Every task's done conditions include "existing tests pass unchanged". No new end-to-end tests, unless the plan names a gap in the existing ones that the migration needs pinned first.
-- **AC-titled tests** — every AC with observable behaviour is covered by at least one test whose title starts with its AC id and carries the spec tag, e.g. `AC-3 [spec-007]: shows the total after a discount`. AC numbers repeat across specs, so the tag keeps a grep unique. A feature with UI gets a dedicated end-to-end test task (agent: `qa-engineer`) unless the project has no end-to-end runner
+- **AC-titled tests** — every AC with observable behaviour is covered by at least one test whose title starts with its AC id and carries the spec tag, e.g. `AC-3 [spec-007]: shows the total after a discount`. AC numbers repeat across specs, so the tag keeps a grep unique. A feature with UI gets a dedicated end-to-end test task (agent: `qa-engineer`) unless the project has no end-to-end runner. A task adding or changing behaviour across an external boundary has a done condition for its boundary test: read `.claude/commands/_test-rules.md` → "The real boundary"
 - **Tests go with the code under test** — a test task or test file belongs to the agent and the task that changes the code it tests, not to the agent that owns the test directory
 
 ### Agent Assignment Rules

@@ -5,6 +5,34 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.0] - 2026-11-24
+
+Tests prove what crosses an external boundary against the real dependency or its protocol, and stop multiplying values of one shape.
+
+### Added
+- **Test rules** (new partial `.claude/commands/_test-rules.md`): five rules a test can fail, each reported by its name.
+  - **Purpose**: the title names the criterion the test proves or, in words, the failure it guards against.
+  - **The real boundary**: a criterion whose new or changed behaviour crosses an external boundary (a database or query engine, an HTTP API, a mail or queue service, a file another system reads) gets at least one test in a listed form: a dry run or a test instance, a dev instance, a local protocol server started by the test, the real client against a recorded real response, or the reading system's own parser or schema. A stub of the project's own wrapper, or a library's in-memory or JSON transport, is not one. A test never writes to a shared dev instance; without a test instance, a write gets a dry run. When the project already has a suite in one of these forms, each new method crossing that boundary adds a case to it.
+  - **Contract, not text**: a request is checked against the documented contract; query, statement or template text only the engine can judge is checked by the engine, not by matching text.
+  - **One per shape, not one per value**: each shape the spec, contract or a checklist lists gets its test; further values of a shape get none; a sweep over a document's entries is one looping test.
+  - **Not tests**: copies of constants, labels or tables; tests of the framework or a library; assertions only on what a mock received as the test set it up; markup assertions where the criterion states no style.
+  - The rules yield to the project's constitution. A rule that bans the real service in tests leaves the forms that stay on the machine.
+- **Boundary done condition** (`/breakdown`): a task that adds or changes behaviour across an external boundary gets `- [ ] Boundary test (<form>) passes (.claude/commands/_test-rules.md → The real boundary)`, which `/execute-task` Phase 3.2 checks. It names when it goes beyond the plan's test level or overrides a plan decision. When the suite needs credentials the session lacks, the test is written, skips itself and is collected, and the user runs it. A dev dependency it needs (a local protocol server) is part of the task.
+
+### Changed
+- `/execute-task`: the implementer prompt's Rules and the task review read the partial when the test-lens checklist is on. The file is 29,986 bytes (was 30,025).
+- `_autonomous-mode.md`: a project-local install justified by a task's boundary done condition is routine.
+- Agent templates: backend, frontend, mobile and db engineers, the architect and the qa-engineer point to the partial. The qa-engineer no longer says to mock every expensive operation. It mocks external dependencies in unit tests, not internal modules, and adds the boundary test.
+- **Measured**:
+  - **Scratch fixture** (a mail-sending service), two runs before and two after. A mutant that sends the message to the sender at the mail-library call survived both baseline runs and was killed in both runs after, by a local SMTP server on `127.0.0.1` through the real mail library. The other 11 mutants stayed killed. The test count went from 32 and 32 to 31 and 29.
+  - **Re-applied to two field features' existing tests**, read-only:
+    - The backend's eight new database write methods each require a dry-run case, which the build had not written. That would have caught one of its two escaped write defects; a bound timestamp parameter is not shown to be caught by a dry run.
+    - Volume: the backend drops 40.9% of 597 tests, **missing the plan's 50% target**: most of what is kept are cases the spec or a checklist lists. The front end drops 43.4% of 449 (target 40%), mostly rows of generated matrices; hand-written tests lose 10%.
+    - No dropped test was the only guard of a known defect.
+  - **Not measured**: whether an implementer given the rules writes fewer tests going forward. The fixture does not show the volume problem.
+- **For existing projects**: no migration. `update.sh` installs the partial and updates the commands. The agent changes reach installed agents through the usual three-way merge. Checklists are not changed.
+- Template version: 1.45.0 → 1.46.0
+
 ## [1.45.0] - 2026-11-23
 
 `/specify` scans the decisions a spec must make and asks the user each one no source settles, even when it has a default to recommend, instead of taking them silently.

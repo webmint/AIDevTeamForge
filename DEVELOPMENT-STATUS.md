@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (22 commands + 12 shared partials in `.claude/commands/`)
+### Commands (22 commands + 13 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -42,6 +42,7 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands; hidden from 
 - `_writing.md` (1.40.0) — shared writing rules for specs, plans, tasks and reports, read by the commands that write them
 - `_plan-checks.md` (1.41.0) — what every new plan asks before it is written: the `/research` report (1.44.0, Phase 0), open decisions (1.44.0, 1.7), Runtime, and the CI-unrun tests check; the plan gate pastes Runtime and CI-unrun tests into the architect and QA lenses
 - `_specify-checks.md` (1.45.0) — the decision points every spec asks before it is saved: eight categories, what settles a choice, the split with `/plan` (what the user observes against the mechanism), stop by coverage, one number instead of a range; read by `/specify` Phase 2 and Phase 4, not pasted into a gate
+- `_test-rules.md` (1.46.0) — five rules a test can fail, reported by name: Purpose (the title names the criterion or the failure it guards), The real boundary (a criterion crossing an external boundary gets a test in a listed real form — dry run, test or dev instance, local protocol server, real client on a recorded response, the reader's own parser; never a stub of the project's wrapper; `/breakdown` writes it as a done condition), Contract, not text, One per shape, not one per value, Not tests; read by the `/execute-task` implementer and task review and by the test-writing agents; yields to the constitution
 - `_decompose-parts.md` (1.43.0) — `/decompose` across the repositories `RELATED_WORKSPACES` lists: a look at each part's branch, a leaf per part per capability with its role prefix, an agreement leaf first and a check of the whole flow last, Next Steps by part; read only with two or more parts
 
 Structural-quality layer (1.30.0): `/research` Reuse or Extend; `/specify` audit gate start line, Prior Art, spec type `feature | structural`; `/plan` 1.4–1.6 (Migration, Reuse Map, seams, Copies and Hubs, open themes); `/breakdown` `**Reuse**:` field; `/execute-task` Reuse check, New exports and Copies review inputs; `/fix` Class Sweep; `/review` 4.5 Adoption Check and 4.6 Structural Check; `/finalize` 1.5 escape analysis and 1.6 structural hand-off; `/audit` `--since-last`, structural lens, themes, triage and learning step
