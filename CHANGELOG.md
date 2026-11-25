@@ -5,6 +5,23 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.48.0] - 2026-11-25
+
+A pattern copied from a neighbour is reported and reviewed as a copy, and registry rows a task writes are checked.
+
+### Fixed
+- **A copied pattern passed as reuse** (`/execute-task` agent rule 7; architect, api-designer, backend-engineer, db-engineer, frontend-engineer, mobile-engineer templates): before following a neighbour's pattern the implementer counted its copies with `ratchet.py copies`, which prints only "ratchets is unset" on a project without ratchets (the default), so the count was empty; and the `Reuse check:` line had no outcome for a copy, so repeating a sibling's shape was written as `reused`. A measured run on a clean install added 7 more copies of a block already repeated 9 times this way, with no review finding.
+  - The count falls back to a search for the pattern's most distinctive line when ratchets are unset.
+  - The line gains `copied <neighbour>'s pattern, <n> copies`; `reused` means calling X, never repeating its shape.
+  - code-reviewer: new code that repeats a neighbour's pattern is a copy whatever its `Reuse check:` line says; a third copy without the shared definition breaks the constitution's extraction rule (Critical).
+- **Registry rows a task writes were never validated** (`/execute-task` 3.2, `/plan` Reuse Map): `check-canonical-sources.py` ran only as a lookup, so rows with unknown kinds and paths that do not exist reached the registry unnoticed. A task that changes the registry document now runs the check in its verification (a failure enters self-repair), and `/plan` asks new rows for a Kind from the check's list and repo-root paths.
+
+### Changed
+- `execute-task.md` and `plan.md` stay within their size ceilings: redundant wording in 3.2 (type-checker examples, a repeated build skip, postcondition examples) is shortened; both ceilings in `tests/installer/test_install_update.sh` are lowered (29,983 and 22,541).
+- `README.md`, `DEVELOPMENT-STATUS.md`: the Reuse check describes the copy outcome and the registry check.
+- **For existing projects**: no migration. `update.sh` brings the commands and re-renders the installed agents from their templates (three-way merge keeps local edits). Registry rows written before 1.48.0 are checked the next time a task changes the registry document.
+- Template version: 1.47.0 → 1.48.0
+
 ## [1.47.0] - 2026-11-25
 
 A GitHub issue key no longer puts `#` into spec directory and branch names.
