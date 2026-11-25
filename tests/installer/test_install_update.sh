@@ -37,8 +37,8 @@ echo "== command file size budget"
 CMD_BUDGET=20000
 cmd_ceiling() {
   case "$1" in
-    audit.md) echo 51734 ;; setup-wizard.md) echo 39914 ;; execute-task.md) echo 29986 ;;
-    fix.md) echo 26919 ;; refactor.md) echo 26577 ;; plan.md) echo 22554 ;;
+    audit.md) echo 51734 ;; setup-wizard.md) echo 39914 ;; execute-task.md) echo 29983 ;;
+    fix.md) echo 26919 ;; refactor.md) echo 26577 ;; plan.md) echo 22541 ;;
     *) echo "$CMD_BUDGET" ;;
   esac
 }
