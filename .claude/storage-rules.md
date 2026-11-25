@@ -52,8 +52,9 @@ docs/
 ### Feature Directories
 - **Format**: `<KEY|NNN>-feature-name`. `<KEY|NNN>` is the feature's ticket key when it has one, written as the tracker writes it (`PROJ-1305-user-report`); otherwise a zero-padded sequential number (`001-user-auth`). Every `<KEY|NNN>` in the commands means this.
 - **The ticket**: the key of the request (the arguments, or the roadmap row in autonomous mode), matched with `ISSUE_KEY_PATTERN` from `.claude/project-config.json` when it is set and `ISSUE_TRACKER` is not `none`. One feature has exactly one ticket: when the request holds several keys, ask which one names the feature (autonomous point `ticket`). No key: the number form.
+- **The key in names**: in directory and branch names a GitHub key `#123` is written `GH-123` (`specs/GH-123-user-report/`): a `#` in a path starts a shell comment. Every other key is written as the tracker writes it. Text keeps the tracker's form (`#123` in a spec, a commit message, a PR description).
 - **The spec branch** is `spec/<directory name>`.
-- **Created by** `/research` when it saves its report, or by `/specify` when no directory exists yet. An existing directory of the same ticket (its name starts with `<KEY>-`) is that feature: reuse it.
+- **Created by** `/research` when it saves its report, or by `/specify` when no directory exists yet. An existing directory of the same ticket (its name starts with `<KEY>-` in the form above, or, for a directory made before 1.47.0, with the GitHub key as written: `#123-`) is that feature: reuse it.
 - Existing directories keep their names; both forms are valid everywhere.
 - Feature name part: lowercase kebab-case, 2-4 words
 
