@@ -5,6 +5,18 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.0] - 2026-11-25
+
+A GitHub issue key no longer puts `#` into spec directory and branch names.
+
+### Fixed
+- **GitHub keys in names** (`.claude/storage-rules.md` → "Feature Directories"): with `ISSUE_TRACKER: github`, `/research` and `/specify` named the feature `specs/#123-name/` on branch `spec/#123-name`. A `#` at the start of a shell word starts a comment, so an unquoted path silently cut the rest of the command line, and Forge's own patterns for spec paths and branches (`comment_lint.py`) expect a letter key. In directory and branch names a GitHub key `#123` is now written `GH-123` (`specs/GH-123-user-report/`, `spec/GH-123-user-report`); GitHub links `GH-123` to the issue. Text keeps `#123` (the spec, commit messages, PR descriptions). Jira keys and sequential numbers are unchanged.
+
+### Changed
+- **For existing projects**: no migration. A directory made before 1.47.0 keeps its name and is still found as the feature of its ticket (`#123-…`); new directories take the new form.
+- `README.md`: the feature directory line names the GitHub form.
+- Template version: 1.46.0 → 1.47.0
+
 ## [1.46.0] - 2026-11-24
 
 Tests prove what crosses an external boundary against the real dependency or its protocol, and stop multiplying values of one shape.
