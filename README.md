@@ -178,7 +178,7 @@ bugs/
   002-missing-auth-check.md      # Status: Open → In Progress → Fixed
 ```
 
-- Feature dirs: `<KEY>-kebab-name` when the feature has a ticket (`PROJ-1305-user-report`), otherwise `NNN-kebab-name` — sequential numbering (001, 002, ...)
+- Feature dirs: `<KEY>-kebab-name` when the feature has a ticket (`PROJ-1305-user-report`; a GitHub issue `#123` is written `GH-123-user-report`), otherwise `NNN-kebab-name` — sequential numbering (001, 002, ...)
 - Task files: `NNN-short-title.md` — sequential within feature
 - Bug files: `NNN-short-description.md` — sequential, standalone
 - Everything for a feature lives in one directory
