@@ -66,6 +66,7 @@ Map what you find:
 - **Reusable abstractions**: Are there utilities, base classes, or patterns that could be extended?
 - **Related dependencies**: What packages/services are already in use that relate?
 - **Near duplicates**: code that already implements the same rule, calculation, check or query under another name or in another layer. Name each one: a new spec that re-implements it is the defect this phase exists to prevent.
+- **Repeated blocks**: several statements, in the same order and doing the same logic, repeated inside the functions of a file whose functions the new feature's code would sit beside or copy (see **Patterns in use**), with no shared definition of the whole block (a shared helper it calls for one step, such as an error mapper, does not count). Count its copies: `python3 scripts/forge/ratchet.py copies --min-copies 2 --files <that file>`, or a search for the block's most distinctive line when that command lists no group for it or exits with an error (no `groupsCommand` in `ratchets`, no quality profile, or no group for that block). When the feature would add the third copy or later, give the block a "Reuse or Extend" row: its files and the count, and "extract a shared definition before adding a copy". A one-line idiom (one guard clause, one log call) and a one-entry registration (a route, a DI binding, an export line) are not blocks.
 
 ### Step 3: Constitution Check
 

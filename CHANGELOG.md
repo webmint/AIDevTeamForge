@@ -5,6 +5,21 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.0] - 2026-11-26
+
+`/research` counts the copies of a block the new feature would repeat.
+
+### Fixed
+- **A block repeated inside every function of a file the feature follows went unnamed** (`/research` Phase 2 → "Codebase Search"): its near-duplicate search asks for a rule, calculation, check or query under another name, and a call wrapper repeated 9 times in two api modules is none of those and exports no symbol. It was named in 0 of 4 measured runs, and two runs offered that api layer as the pattern the new feature follows; every key class with a symbol or a rule was named in 4 of 4.
+  - A new "Repeated blocks" item: several statements repeated in the same order inside the functions of a file the feature would sit beside or copy, with no shared definition of the whole block (a helper it calls for one step does not count). Its copies are counted with `ratchet.py copies`, or a search for its most distinctive line when that command lists no group or exits with an error. At the third copy or later the report gets a "Reuse or Extend" row: the files, the count and "extract a shared definition before adding a copy". One-line idioms and one-entry registrations are not blocks.
+  - The threshold, the count and the registration exception match the breakdown-gate copy rule of 1.49.0, which stays the backstop when `/research` is skipped.
+  - Measured after the change: 2 of 2 runs on the large fixture named the block with both files and the count 9 (6 + 3) and proposed a shared call helper; both leave including it to `/specify`, since the project's architecture doc presents the block as the pattern. The small control fixture reported no repeated block.
+
+### Changed
+- `DEVELOPMENT-STATUS.md`: the consolidation decision names the `/research` repeated-block count.
+- **For existing projects**: no migration. `research.md` is template-owned, so `update.sh` replaces it (a locally edited copy is backed up). No checklist change.
+- Template version: 1.49.0 → 1.50.0
+
 ## [1.49.0] - 2026-11-26
 
 The breakdown-gate counts the copies a task tells the implementer to make.
