@@ -2,7 +2,7 @@
 
 **Gate**: on — set to `off` to skip this gate (the file is project-owned; deleting it does not work, `update.sh` restores missing checklists).
 **Runs**: in `/breakdown`, after the task files are written and before its HARD GATE · **Reviewer**: `general-purpose` on `sonnet` (`_independent-gate.md` → "Model"); a fresh context.
-**Inputs**: `specs/<KEY|NNN>-*/tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `.claude/commands/_agent-assignment.md`.
+**Inputs**: `specs/<KEY|NNN>-*/tasks/README.md` and every task file; `plan.md`; `contracts.md` and `data-model.md` if present; `spec.md`; `CLAUDE.md`; `constitution.md` if present; `.claude/commands/_agent-assignment.md`; the neighbour files a task points at.
 
 **How to use**:
 - Check every item against the artifact and its sources; report each failed item by id with evidence quoted from both sides.
@@ -24,3 +24,4 @@
 - **BG-09** Every control, anchor and action that the spec's screen sections or anchor list name has an owning task, found by searching the task files for each name, not only by reading the AC table. — field
 - **BG-10** Every reuse decision in the plan (reuse, extend or new) lands in the task that writes the consumer or creates the new definition. A task that creates an exported symbol the plan does not list is Critical. — seed
 - **BG-11** A task's Done When meets the restatement rule pasted into this prompt; a failure there is reported under this id. — field
+- **BG-12** A task that points the implementer at a neighbour's block meets the copy rule pasted into this prompt; a failure there is reported under this id. — field
