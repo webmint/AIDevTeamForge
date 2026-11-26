@@ -5,6 +5,21 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.49.0] - 2026-11-26
+
+The breakdown-gate counts the copies a task tells the implementer to make.
+
+### Fixed
+- **A task could prescribe a third copy of a neighbour's block** (`_independent-gate.md` → "Reviewer Prompt", breakdown-gate inputs; `.claude/checklists/breakdown-gate.md` BG-12): a block the plan was silent on (a call wrapper repeated 9 times in two modules) was written into the api task as "the shape of `<neighbour>`" in 4 of 4 measured `/breakdown` runs, and no gate item counted copies: they compare tasks with the plan, which had no row for it.
+  - A second pasted breakdown-gate line: a task that tells the implementer to repeat a block of logic from a neighbour file is checked by counting that block's copies (`ratchet.py copies`, or a search for its most distinctive line when that command lists no group). A third copy or later without a shared definition is Critical; the fix is a "Copies and Hubs" row, a Reuse Map row, File Impact rows for the moved copies and a seam task ordered before the copying task. One-entry registrations and pointers for naming or file layout pass.
+  - The breakdown-gate's inputs gain the neighbour files a task points at.
+  - Measured after the change: 2 of 2 runs on the large fixture raised the Critical and ended with a seam task before the api task and the plan rows; the small control fixture raised no new Critical.
+
+### Changed
+- `DEVELOPMENT-STATUS.md`: the consolidation decision names the breakdown-gate copy count.
+- **For existing projects**: `update.sh` brings the pasted line, which runs without a checklist change (a failure is reported as `new`). Checklists are copy-if-missing: copying BG-12 into `.claude/checklists/breakdown-gate.md` (under the next free id) is optional.
+- Template version: 1.48.0 → 1.49.0
+
 ## [1.48.0] - 2026-11-25
 
 A pattern copied from a neighbour is reported and reviewed as a copy, and registry rows a task writes are checked.
